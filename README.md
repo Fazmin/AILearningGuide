@@ -135,6 +135,7 @@ src/
 src-tauri/         the desktop side (Rust): database, keychain, local AI setup
 models/            Python scripts that train and export the small teaching models
 scripts/           checks, search index builder, and the new lab generator
+docs/              how the app is built and how labs and lessons are written
 docs/screenshots/  images used in this README
 ```
 
@@ -154,7 +155,7 @@ npm run new:module -- my-new-lab
 npm run check:modules
 ```
 
-This creates a new folder in `src/modules/` with everything a lab needs. The app finds it on its own, so you don't have to register it anywhere. Read [MODULE_AUTHORING.md](MODULE_AUTHORING.md) for how labs work and [CONTENT_STYLE_GUIDE.md](CONTENT_STYLE_GUIDE.md) for how the lessons are written.
+This creates a new folder in `src/modules/` with everything a lab needs. The app finds it on its own, so you don't have to register it anywhere. Read [MODULE_AUTHORING.md](docs/MODULE_AUTHORING.md) for how labs work and [CONTENT_STYLE_GUIDE.md](docs/CONTENT_STYLE_GUIDE.md) for how the lessons are written.
 
 ### Retrain the teaching models
 
@@ -162,7 +163,7 @@ You don't need to do this to run the app. The trained models are already include
 
 ### More details
 
-[ARCHITECTURE.md](ARCHITECTURE.md) explains how the pieces fit together.
+[ARCHITECTURE.md](docs/ARCHITECTURE.md) explains how the pieces fit together.
 
 ### Built with
 
@@ -175,11 +176,13 @@ You don't need to do this to run the app. The trained models are already include
 
 ## Contributing
 
-Ideas, bug reports, and fixes are all welcome.
+Ideas, bug reports, and fixes are all welcome, and you don't need to be an AI expert to help. Pointing out a lesson that didn't make sense to you is one of the most useful things you can do.
 
 - Found a bug or a mistake in a lesson? [Open an issue](https://github.com/Fazmin/AILearningGuide/issues) and tell me which lab and what you saw.
 - Want to fix something? Fork the repo, make your change on a new branch, run `npm run check`, and open a pull request.
 - Want to add a lab? Please open an issue first so we can talk about it.
+
+[CONTRIBUTING.md](CONTRIBUTING.md) has the details: how to set up, which checks to run, and how lessons and labs are written.
 
 ## License
 
