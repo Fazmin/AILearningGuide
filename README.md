@@ -190,3 +190,17 @@ The app also uses open source libraries, fonts, models, and datasets that have t
 ## Thanks
 
 Thanks to everyone who builds and shares open tools, models, and datasets. This project would not exist without them.
+
+## Cite this project
+
+If you use Discover AI in your work, teaching, or writing, you can use this reference:
+
+```bibtex
+@software{discover_ai_2026,
+  title  = {Discover AI: A Learning Guide},
+  author = {{Discover AI contributors}},
+  year   = {2026},
+  url    = {https://github.com/Fazmin/AILearningGuide},
+  note   = {An interactive desktop app for learning how modern AI works}
+}
+```

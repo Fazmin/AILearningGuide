@@ -1,0 +1,11 @@
+cff-version: 1.2.0
+message: "If you use Discover AI in your work, please cite it like this."
+title: "Discover AI: A Learning Guide"
+type: software
+authors:
+  - name: "Discover AI contributors"
+version: 0.1.0
+date-released: 2026-10-04
+license: MIT
+repository-code: "https://github.com/Fazmin/AILearningGuide"
+abstract: "An interactive desktop app for learning how modern AI works, with 51 hands-on labs."
