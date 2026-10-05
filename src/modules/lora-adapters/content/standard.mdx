@@ -1,0 +1,286 @@
+---
+objectives: ["Explain what B·A adds to a frozen weight matrix", "Trade rank against fit and parameter count", "Say what merging an adapter gains and what it forecloses", "Explain why a freshly initialized adapter changes nothing until it is trained", "Compute an adapter's trainable parameters, share of the base model, and file size from an architecture, and compare them with the toy"]
+terms: ["LoRA", "Rank", "Alpha", "Zero initialization", "Hot-swapping", "Merging", "Target modules", "Adapter", "QLoRA", "PEFT", "Trainable fraction", "Multi-adapter serving"]
+---
+
+## The big picture
+
+**LoRA**, short for low-rank adaptation, adapts a pretrained model without rewriting it: it freezes a
+weight matrix `W` and trains a separate update beside it, `ΔW = (alpha / rank) · B · A`. `B` and `A`
+are thin matrices whose shared inner dimension is the rank, and alpha / rank sets the update's
+scale. The question LoRA answers is how much of a fine-tune you can keep
+while training and shipping only that small update.
+
+*Fine-tuning & transfer* kept training a pretrained table's own weights on a new corpus and
+measured the forgetting that caused. This lab freezes the same Harbor base, compares a low-rank
+update with full fine-tuning at the same budget, and then follows the update into serving and onto
+real model sizes.
+
+### Where it shows up
+
+- Hugging Face's PEFT library, named for parameter-efficient fine-tuning, implements LoRA among
+  related methods, and TRL's trainers, such as `SFTTrainer`, integrate with PEFT.
+- In a transformer, adapters often target the query and value projections, sometimes all four
+  attention projections (query, key, value and output) and the feed-forward layers.
+- **QLoRA** trains a 16-bit adapter on a base stored in 4-bit NormalFloat (NF4), which let a
+  65B-parameter model fine-tune on one 48 GB GPU.
+- vLLM serves LoRA adapters registered by name when started with `--enable-lora`, and each request
+  selects one.
+
+### Why it matters
+
+Full fine-tuning carries gradients and optimizer state for every parameter, and Adam, for example,
+keeps two extra values per trainable parameter. LoRA confines both to the adapter. The LoRA paper
+reports that, compared with fine-tuning GPT-3 175B with Adam, LoRA can cut the trainable parameters
+by 10,000 times.
+
+Because the base is never written, one server can hold a single copy of it and choose among many
+small adapters per request, instead of a full copy of the weights per task. The price is capacity:
+whether an adapter matches full fine-tuning depends on the task.
+
+### What you will be able to explain
+
+- What the scaled product `B · A` adds to a frozen weight matrix.
+- How **Rank** trades fit against parameter count, and why a sweep at a fixed **Alpha** changes two
+  things at once.
+- What merging an adapter into `W` gains at inference, and what it forecloses.
+- Why a freshly initialized adapter changes nothing until it is trained.
+- How to compute an adapter's trainable parameters, share of the base model and file size from an
+  architecture, and how they compare with the toy's.
+
+### What the lab shows
+
+The first three cards train a toy live: a 900-weight character bigram model, one 30 × 30 table
+pretrained on Harbor weather notes, adapted to Recipe steps with plain SGD beside a full fine-tune at
+the same epochs. Losses, probabilities, spectra and the merge check are measured; the corpora, seeds
+and learning rate are fixed.
+
+- **The low-rank update**: **Rank** (1 to 12) and **Alpha** set the update's shape and scale, and a
+  diagram draws the trained `A`, `B` and ΔW, each row's mean removed. A warning offers **Set alpha = rank, for a scale of 1**
+  whenever they differ. The **Trainable parameter count** bar list sets `Full fine-tuning` against
+  `LoRA rank r`, each with its target loss. A chart compares the directions each update needs, beside
+  a map of the full fine-tune's ΔW.
+- **Adapter training and behaviour**: **Adapter epochs** (0 to 48) sets the budget.
+  **Next character after** picks a context, and paired bars compare base and adapted probabilities.
+- **Hot-swap and merge**: **Serving** switches between `Base only` and `Base + adapter`, and the
+  card reports **Target loss**, **Source loss** and **Serving weights**. **Merge the adapter into W**
+  folds the update in and reports the largest logit gap from the unmerged path.
+- **Adapter size calculator**: closed-form arithmetic that trains nothing. **Architecture**,
+  **Target matrices**, **Model dimension d**, **Layers** and **Adapter rank r** drive
+  **Trainable parameters** and **Share of the base model**, and **Adapter precision** also sets the
+  adapter's size.
+
+The key experiment runs at the defaults: compare the two target losses in the
+**Trainable parameter count** bar list, then flip **Serving** to see the attached adapter raise
+**Source loss** and detaching restore the base exactly.
+
+## What it is
+
+**LoRA** freezes a weight matrix and trains an addition to it. The **Effective weights** row
+shows the whole mechanism with the current numbers substituted: `W + (alpha / rank) · B · A`.
+
+`W` is the base table — the same 900-weight character bigram model, pretrained 60 epochs on Harbor
+weather notes, scoring 1.921 there and 2.556 on Recipe steps. It is read on every forward pass and
+written on none. `B` is 30 × r and `A` is r × 30, so their product is another 30 × 30 matrix.
+
+For a
+d × k matrix the pair holds `r · (d + k)` numbers instead of `d · k`; here that is 60r against 900.
+**Rank** sets r, and only `B` and `A` receive updates.
+
+The base is the identical 60-epoch, seed 1 Harbor table that *Fine-tuning & transfer* starts from,
+rebuilt inside this lab. *Model merging* trains its own Harbor base for 48 epochs instead. Each lab
+fixes its own epoch count, and none tests the difference.
+
+### What the diagram shows
+
+The matrix-product diagram on **The low-rank update** draws the trained numbers: A across the top, B
+down the left, and ΔW where they meet. Every row of ΔW is a weighted mix of the same r rows of A, so
+ΔW can have at most r independent directions. The chart beside the full fine-tune's map confirms it: the
+LoRA curve reaches 100% at k = r exactly.
+
+### Why an untrained adapter does nothing
+
+`B` starts at all zeros and `A` starts random, so `B · A` is exactly the zero matrix. That is **zero
+initialization**: adaptation begins from the pretrained behaviour. The gradient reaching `B` is
+proportional to `A`, which is non-zero, so `B` moves on the first batch; once `B` is non-zero, `A`
+starts receiving gradient too.
+
+### What Alpha is for
+
+**Alpha** sets the constant `alpha / rank` that multiplies the product. At the defaults — **Rank** 4
+and **Alpha** 8 — the scale is 2.00, so the adapter's contribution to each logit is twice the raw
+product.
+
+## Why it’s here
+
+The previous lab left you a whole new 900-weight table per task. LoRA changes the shipping unit:
+the base stays byte-identical and the per-task artifact is 60r numbers. That separation is what
+makes **hot-swapping** and **merging** possible.
+
+The reason anyone accepts the constraint is the measured result. At the same 24-epoch budget, a
+rank-4 adapter training 240 of 900 weights reaches 2.077 on Recipe steps, while full fine-tuning of
+all 900 reaches 2.090.
+
+## How to play with it
+
+Move **Rank** from 1 to 12. B widens, A deepens, and the bar list reads 60, 120, 240, 480 and 720
+trainable weights against 900.
+
+Set **Adapter epochs** to 0. B and ΔW go blank, **Target loss** reads 2.556, and every pair of
+bars under **Next character after** matches. Raise it back to 24 and watch the solid curve leave
+the dotted frozen-base line.
+
+At 24 epochs sweep **Rank** and read the recipe loss in the bar list: 2.462, 2.316, 2.077, 1.990 and
+2.059 for ranks 1, 2, 4, 8 and 12. Then pick `s` under **Next character after**: the base gives `a`
+5%, the adapter 29%.
+
+Switch **Serving** between `Base only` and `Base + adapter`: **Target loss** moves between 2.556 and
+2.077, **Source loss** between 1.921 and 2.235. Then press **Merge the adapter into W** and read the
+logit gap. Then press **Set alpha = rank** and repeat the rank sweep at a scale of 1.00.
+
+Last, open **Adapter size calculator**. It starts on Llama 3 8B with every matrix targeted at rank
+16: **Trainable parameters** reads 41,943,040, **Share of the base model** 0.522%, and **Adapter
+size** 83.9 MB at 16-bit. Switch the MLP off and the count falls to 13,631,488, or 0.170%. Set
+**Adapter precision** to 32-bit and the size doubles to 167.8 MB. Then read the callout: at rank 4
+the toy trains 26.7% of its table, and the 8B preset trains 0.131%.
+
+## What to notice
+
+- The headline: 240 trainable weights matched 900 at the same budget, 2.077 against 2.090. It is
+  one measurement on one corpus.
+- The full fine-tune did not need low rank to get there. Its update is spread out: the first 4
+  directions hold 63% of it, the first 8 hold 86%. LoRA found a different, rank-4 update that fits
+  recipes about as well.
+- More rank is not more fit. Rank 12 lands at 2.059, worse than rank 8 at 1.990, but that sweep
+  confounds two things: at **Alpha** 8, rank 1 has scale 8.00 and rank 12 has 0.67.
+- The adapter forgets *more* than full fine-tuning here. On Harbor the base is 1.921, full
+  fine-tuning gives 2.088, and the rank-4 adapter 2.235. A scale of 2.00 amplifies its update.
+- So separate two claims. LoRA protects the base **weights**, which is what makes swapping and
+  merging work. It does not protect the base model's **behaviour**.
+- Detaching restores the base exactly: **Source loss** returns to 1.921.
+- **Merging** matches the unmerged path to about 4e-7 per logit at rank 4, which is float32 rounding,
+  and the recipe loss agrees to four decimals.
+- The toy overstates LoRA's footprint by about two orders of magnitude. A pair costs
+  `r · (inputs + outputs)` while its matrix costs `inputs · outputs`, so at rank 4 the toy trains
+  26.7% of its table and the 8B preset trains 0.131% with every matrix targeted, about 200 times
+  less. This is the **trainable fraction**.
+- Which matrices you target matters as much as rank. At rank 16 the MLP holds 67.5% of the 8B
+  adapter, and adding it to q and v multiplies the count by 5.15.
+- Size is exactly linear in rank, layers, and bits, and the share falls as the model grows: at rank
+  16 on every matrix it is 0.912% for the 1B model, 0.522% for 8B, and 0.294% for 70B, whose adapter
+  is 207,093,760 parameters.
+- The same arithmetic reproduces a published figure. For Llama 3.2 1B with q only at rank 8 it gives
+  524,288 trainable parameters, the count the PEFT quick tour prints for that configuration.
+
+## Where it breaks
+
+**In this lab.** The adapter, its gradients, both losses, the spectra and the merge check are
+computed live. The structural gap is that this model has one matrix, so **target modules** has one
+member. A real LoRA attaches to chosen projections inside each attention block — often the query and
+value projections, sometimes all four and the feed-forward layers — and that choice is much of the
+practical skill.
+
+Both ΔW maps subtract each row's mean before drawing, because a softmax ignores a constant added to a
+whole row. The full fine-tune never adds one; the adapter does, so its raw ΔW is larger than it
+looks. **Rank** stops at 12; at 15, 60 × 15 would equal the full 900.
+
+Nothing is held out, and the optimizer is plain SGD at a fixed 0.6, with no dropout on the adapter.
+
+The **Adapter size calculator** is closed-form arithmetic. It trains and serves nothing, so it cannot
+say whether a given rank is enough for a task. Its Custom model follows Llama 3's ratios and is not a
+published architecture, and its counts leave out anything beyond the LoRA pairs.
+
+**In real systems.** Parity with full fine-tuning is a property of the task. Adapters fall behind on
+large shifts — new languages, new modalities, genuinely new knowledge. Serving many unmerged
+adapters needs batched kernels to avoid per-request latency, and merging several adapters into one
+base makes them interfere, which is the next lab's subject.
+
+The file on disk also depends on the dtype it is stored in, which can differ from the base model's.
+A small trainable fraction says nothing about quality.
+
+## Going deeper
+
+The empirical claim behind the method is that the *update* a fine-tune needs has low intrinsic rank
+even when the weights do not (Hu et al., 2021). The constraint also acts as a regularizer, which is
+part of why small ranks sometimes generalize better than large ones.
+
+`alpha / rank` exists so rank and update strength can be tuned separately. The product `B · A` sums r
+rank-one terms, so its size tends to grow with r; dividing by r holds it roughly steady, and a
+learning rate tuned at one rank still works at another. Later work (rsLoRA) argues that dividing by
+the square root of r is steadier at large ranks.
+
+The larger saving is training state, not the forward pass. Adam keeps two extra values per
+*trainable* parameter, so 240 trainable weights carry optimizer state for 240 rather than 900, and
+gradients for the frozen matrices are never stored.
+
+**QLoRA** pushes further: the frozen base is stored in 4-bit NormalFloat (NF4), dequantized to 16
+bits on the fly for each multiply, while the adapter trains in 16-bit precision. That cuts the base's
+memory about fourfold and let a 65B-parameter model fine-tune on one 48 GB GPU.
+
+The *Quantization* lab shows the uniform affine version of this storage trade, with a bit width and
+a scope. NF4 places its 16 levels non-uniformly, a data type the QLoRA paper describes as
+information theoretically optimal for normally distributed weights. Double quantization quantizes
+the quantization constants themselves to save more memory.
+
+Earlier **adapter** designs inserted small trainable bottleneck layers between frozen ones, which
+stay in every forward pass. LoRA's update is linear in the weights, so it can be folded into `W`
+once — which is also why an adapter with a nonlinearity inside cannot be merged.
+
+### Other ways to adapt
+
+LoRA is one member of the family that Hugging Face's PEFT library collects under parameter-efficient
+fine-tuning. The others change what is trained, and where:
+
+- **Prompt tuning** trains soft prompt vectors that are added to the input embeddings of a frozen
+  model.
+- **Prefix tuning** also trains vectors, but inserts them in every layer rather than only at the
+  input.
+- **IA3** learns vectors that rescale the keys, the values, and the intermediate feed-forward
+  activations. PEFT's guide says an IA3 model trains about 0.01% of T0's parameters where LoRA trains
+  more than 0.1%.
+- **DoRA** splits each weight into a magnitude and a direction, adapts the direction with LoRA, and
+  learns the magnitude as a separate parameter. PEFT turns it on with `use_dora` and recommends
+  merging for inference, because it adds overhead.
+
+PEFT also offers `use_rslora`, which scales the update by alpha over the square root of rank.
+
+### Serving many adapters
+
+Because an adapter is small, one server can hold a single copy of the base model and many adapters,
+and choose one per request. PEFT's quick tour shows the in-process version: `add_adapter` registers
+a named adapter and `set_adapter` activates it.
+
+vLLM serves LoRA adapters when started with `--enable-lora`. Adapters are registered by name, a
+request selects one through its `model` field, and `max_loras` bounds how many run at once.
+
+The S-LoRA paper describes a system that keeps every adapter in main memory and fetches those used
+by running requests into GPU memory. It reports up to four times the throughput of vLLM and PEFT
+baselines while serving several orders of magnitude more adapters. A merged adapter gives all of
+this up: each merge is a separate full copy of the weights.
+
+### Toy versus real
+
+- **Fractions.** The toy trains 26.7% of its weights at rank 4. The Hugging Face PEFT quick tour
+  prints 524,288 trainable parameters of 1,236,338,688, which is 0.0424%, for a rank-8 adapter on the
+  query projections of Llama 3.2 1B. The calculator gives 0.522% for rank 16 on every matrix of Llama
+  3 8B. The LoRA paper's abstract says that, compared with fine-tuning GPT-3 175B with Adam, LoRA can
+  cut the trainable parameters by 10,000 times.
+- **Settings.** The toy uses ranks 1 to 12, alpha 8, and plain SGD at 0.6. The QLoRA paper used
+  r = 64, alpha = 16, adapters on all linear layers, and learning rates of 2 × 10⁻⁴ for 7B and 13B
+  models and 1 × 10⁻⁴ for 33B and 65B. The PEFT quick tour's example uses r = 8, lora_alpha = 32,
+  and 1 × 10⁻³. These rates are not comparable with the toy's.
+- **Files.** `save_pretrained` writes the adapter as `adapter_config.json` plus
+  `adapter_model.safetensors`. Safetensors is a format for storing tensors safely, as opposed to
+  pickle, while staying fast through zero-copy loading. The PEFT quick tour's opt-350m adapter is
+  6.3 MB against about 700 MB for the model, and PEFT casts 16-bit adapter weights to float32 by
+  default for stable training.
+- **Tools.** Hugging Face PEFT provides `LoraConfig`, `get_peft_model`, and `merge_and_unload` to fold
+  an adapter into the base. TRL's trainers, such as `SFTTrainer`, integrate with it, and the QLoRA
+  recipe stores the base in NF4. mergekit can extract a PEFT-compatible low-rank approximation from a
+  fine-tuned model with `mergekit-extract-lora`.
+
+Sources: PEFT documentation (quick tour; LoRA, PEFT model, IA3 and soft prompt guides); Hu et al.,
+*LoRA* (arXiv 2106.09685); Dettmers et al., *QLoRA* (arXiv 2305.14314), Table 9 and appendix B.2;
+Hugging Face safetensors documentation; the mergekit README; Llama 3 paper (arXiv 2407.21783), Table
+3, and the config.json files of the Llama 3.2 1B, Llama 3 8B and Llama 3 70B checkpoints on the Hub
+(unsloth/Llama-3.2-1B, unsloth/llama-3-8b, NousResearch/Meta-Llama-3-70B).

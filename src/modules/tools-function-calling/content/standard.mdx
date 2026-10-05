@@ -1,0 +1,150 @@
+---
+objectives: ["Separate what the model does (emit text naming a tool and arguments) from what the host does (parse, validate, decide, execute, report)","Use a JSON schema to name distinct failures — unparseable text, unknown tool, missing field, wrong type, bad enum, extra field — and what the host returns for each","Explain why a call that passes every schema check can still need a policy decision, and why constrained decoding cannot provide one","Trace an error-then-retry loop: the host returns the failure as data, the next call reads it and corrects its arguments, and the host validates the corrected call from scratch"]
+terms: ["Tool","Function call","JSON Schema","Validation","Enum","Orchestrator","Host policy","Side effect","Tool result","Constrained decoding","Structured error","Tool description","Parallel tool calls","Model Context Protocol"]
+---
+
+## The big picture
+
+This module is about function calling: how a language model requests an action it cannot carry out itself, and what the program hosting it does with that request. The model writes text that names a **tool**, a function the host is willing to run, and supplies arguments. The host parses the text, checks it, decides whether to run it, runs it, and reports back. The question is which of those jobs belongs to which side.
+
+It builds on **Structured and constrained decoding**, which showed how to make a model's output parse. This module takes the next step: what happens after the output parses, and how the model learns what the host did.
+
+### Where it shows up
+
+- **Chat APIs** take tool definitions as JSON Schema and return calls in their own field; some add a strict mode that constrains decoding to the schema.
+- **Parallel tool calls** let some APIs return several calls in one turn. The host chooses whether to run them together or in order, and each call gets its own result.
+- **The Model Context Protocol** (MCP), an open protocol built on JSON-RPC 2.0 messages, standardizes how hosts list and call tools that separate servers expose.
+
+In all three, the model still only writes the request, and host code decides what runs.
+
+### Why it matters
+
+A call that parses is not yet safe to run. **Validation** against the schema catches shape errors, such as a missing field or a value outside an **enum** (a closed list of allowed values), but it checks shape, not intent. **Host policy**, such as requiring a person to approve an email, is the stage that weighs consequences, and constrained decoding cannot stand in for it.
+
+An **orchestrator** (the host code that runs these stages) that executes every call that validates lets a well-formed request delete files or send data out. If a failure is raised or dropped instead of returned as a **structured error**, data holding the path and the reason, the next model call has nothing to read and so nothing to correct.
+
+### What you will be able to explain
+
+- Separate what the model does, emitting text that names a tool and its arguments, from what the host does: parse, validate, decide, execute and report.
+- Use a JSON schema to name six distinct failures (unparseable text, an unknown tool, a missing field, a wrong type, a bad enum value and an extra field) and say what the host returns for each.
+- Explain why a call that passes every schema check can still need a policy decision, and why constrained decoding cannot make that decision.
+- Trace an error-then-retry loop: the host returns the failure as data, the next call reads it and corrects its arguments, and the host validates the corrected call from scratch.
+
+### What the lab shows
+
+No model is sampled. **Model output** holds eleven authored first calls, grouped as *well-formed*, *malformed* and *error, then retry*, and the two retry presets add an authored second call in **Model output, turn 2**. You can edit either textarea.
+
+Everything after the model's text is real code that reruns on exactly what is in the boxes: a JSON parse, a lookup among three tools (`get_dock_hours`, `add_note` and `send_email`), a validator for a subset of JSON Schema, a policy check, and a simulated execution. The tools are stand-ins: a table of dock hours, an in-memory note counter and an email that is never sent.
+
+**Host pipeline** draws the ten stages in a model lane and a host lane, **Schema check** lists each validation error with its path, and **Transcript** shows the messages the next call receives. The **Grammar blocks it** readout in **Transcript** is a rule keyed to the kind of failure; no grammar is compiled or run.
+
+The key experiment is *email the log*: it passes parsing, lookup and validation, then stops at policy until **Approve send_email** is set to *human approves*. In the retry presets, the **Turn** switch shows the first call failing at stage 6 and the retry, written as if the model had read the error, passing every host stage.
+
+## What it is
+
+Function calling is a protocol between a model and the program that hosts it. The model never runs a function. It writes text that names one, and the host decides what to do with that text.
+
+One round trip has ten stages, and the lab draws all of them:
+
+1. The host sends **tool** definitions — name, description, and a parameter schema in **JSON Schema** — along with the conversation.
+2. The model reads them as part of its input.
+3. The model generates a **function call** as text, such as `{"name": "get_dock_hours", "arguments": {"dock": "north", "day": "sunday"}}`.
+4. The host parses the text as JSON.
+5. The host looks up the tool name.
+6. The host runs **validation** of the arguments against the schema.
+7. The host applies its **host policy**.
+8. The host executes the function, which may cause a **side effect**.
+9. The host appends a **tool result** message: the output, or an error.
+10. The next model call reads that message and continues.
+
+The code that runs stages 1 and 4–9 is often called the **orchestrator**.
+
+When a stage fails, the later host stages are skipped, but stage 9 still happens: the host appends a **structured error**, with the path and the reason, as the tool result. If the loop continues, the next call can read that error and change its arguments. The last step of the lab shows this repair.
+
+## Why it’s here
+
+Tools are how a model gets fresh data, does exact arithmetic, or changes something in the world. Each of those needs code that the model does not control. Agents, the next lab, run this round trip in a loop, so every rule set here is applied many times, and an error that the model can read is what lets that loop correct itself.
+
+## How to play with it
+
+### Read the contract
+
+Leave the preset on *valid call*. **Schema check** shows `get_dock_hours`: `dock` must be `north` or `south`, `day` must be `weekday` or `sunday`, both are required, and no other keys are allowed. In **Host pipeline** every host stage passes, and the tool message reports `"closes": "16:00"`.
+
+### Break the arguments
+
+Click *missing field*, *bad enum*, *wrong type* and *extra field*. Each one parses, finds its tool, and fails at stage 6 with a path: `/dock` missing, `/dock` not one of the allowed values, `/day` an integer instead of a string, `/urgent` not allowed. Stages 7 and 8 are skipped, and the error becomes the tool message.
+
+### Break the text
+
+*not JSON* is cut off before its closing braces and fails at stage 4. *unknown tool* parses but names `get_weather`, which the host never advertised, and fails at stage 5. Then edit **Model output** yourself: change `"north"` to `"North"`. Enum matching is exact, so validation fails.
+
+### Valid is not safe
+
+Click *email the log*. Stages 4, 5 and 6 pass: the address matches its pattern and the body is short enough. Stage 7 fails, because `send_email` needs a human approval. Set **Approve send_email** to *human approves*, and only then does stage 8 run.
+
+### Read the transcript
+
+**Transcript** lists what the next call receives. The tool message is the only record of what the host did.
+
+### Repair a bad call
+
+Click *wrong type, then fixed*. **Model output** now holds two calls: turn 1 sends `"day": 7`, and a second box holds the retry with `"day": "sunday"`. In **Host pipeline**, set **Turn** to 1: the call fails at stage 6 with `/day: expected string, got integer`. Set it to 2: every host stage passes and the tool message reports `"closes": "16:00"`. **Transcript** now shows both turns, with the error between them.
+
+Then edit the retry to repeat `"day": 7`. The host rejects it with the same error, because it checks every call from scratch.
+
+## What to notice
+
+- The model lane never changes when a check fails. The model learns the outcome only from the tool message at stage 10.
+- Shape errors and bad requests are different. Missing fields, wrong types, bad enums, extra keys, broken JSON and unknown tools are shape errors. *email the log* is well-shaped.
+- **Grammar blocks it** is *yes* for every shape error. A grammar compiled from these schemas can mask those tokens during decoding. It is *no* for *email the log*, because a grammar cannot know that emailing everyone is unwise.
+- Errors are returned as data, not raised. That lets the next model call read the problem and try again.
+- In the retry presets the two calls differ in one value, and the only thing that told the model which value was the error message. The host did not repair anything.
+- A retry is checked like any other call. If it repeats the mistake, it fails the same way, and a loop with no limit would repeat for as long as it is allowed.
+
+## Where it breaks
+
+### In this lab
+
+- The eleven first calls are authored, and so are the two retries. No model is sampled, and the retries are not generated from the error text.
+- The validator covers a subset of JSON Schema: types, enum, required, extra keys, string length and pattern. There are no nested objects, arrays or references.
+- The tools are a lookup table, a counter, and an email that is never sent.
+- There is one call per turn, with no parallel calls or streaming arguments. A retry happens only in the two retry presets, and only once.
+
+### In the real mechanism
+
+- **Blind execution is a host bug.** If the orchestrator runs every call that validates, a well-formed request can delete files or send data out.
+- **Arguments can be well-typed and wrong.** A valid dock name can still be the wrong dock. Validation checks shape, not intent.
+- **Tool results are untrusted.** A search result or email returned by a tool becomes context for the next call, and it can contain instructions.
+- **Schemas differ by provider.** Each API accepts its own subset of JSON Schema, and strict modes add their own rules.
+- **A repair loop sees only detected errors.** A call to the wrong dock passes validation, so no error exists to read. Nothing guarantees that a model fixes the right argument, or fixes it at all, and an error message that only says "failed" gives it little to work from.
+
+## Going deeper
+
+Models learn to emit tool calls during post-training on examples of calls and results. Toolformer (Schick et al., 2023) is an early study of a model learning when to call an API. ReAct (Yao et al., 2022) interleaves reasoning text with actions and observations.
+
+Chat APIs now accept tool definitions as JSON Schema and return calls in a dedicated field, and many offer a strict mode that uses constrained decoding so arguments always match the schema. Protocols such as the Model Context Protocol standardize how hosts expose tools to models. None of these moves execution into the model: the host still decides.
+
+### Descriptions and tool choice
+
+The description is the part of a tool that the model reads as prose, so it does much of the choosing. Anthropic's Claude API documentation (Define tools) calls detailed descriptions "by far the most important factor in tool performance". It asks for what the tool does, when to use it and when not to, and what each parameter means, and shows "Gets the stock price for a ticker." as a poor one.
+
+From the mechanism, two tools with vague, overlapping descriptions make a wrong choice more likely. This lab measures nothing of the kind: its three tools are easy to tell apart.
+
+The same documentation describes a tool-choice setting with four modes: `auto` (the model decides whether to call a tool), `any` (it must call one of them), `tool` (it must call a named one) and `none`. Such a setting narrows what the model may emit; it does not make the arguments right.
+
+### Parallel calls
+
+Some APIs let the model write several tool calls in one turn. The Claude API documentation (Parallel tool use) says the host chooses how to run them, together or in order, that independent read-only calls are usually safe to run in parallel, and that tools with side effects or ordering needs may be better run one at a time. Each call still gets its own result. This lab handles one call per turn.
+
+### Protocol standards
+
+The Model Context Protocol (MCP) is an open protocol for connecting an application to tools and other context held by separate servers. Its specification uses JSON-RPC 2.0 messages between hosts, clients and servers. A server lists tools with `tools/list`; each has a name, a description and an `inputSchema` in JSON Schema; a client calls one with `tools/call`.
+
+The specification (Tools page) separates two kinds of failure. Protocol errors, such as an unknown tool or a malformed request, are JSON-RPC errors. Tool execution errors, such as invalid input, are returned in the result with `isError: true`, and clients should pass them to the model so it can correct itself. It also says hosts must obtain explicit user consent before invoking any tool.
+
+This lab does not implement MCP. It has no server, no JSON-RPC and no tool listing: three tools are hard-coded, and every failure, including an unknown tool, returns the same kind of JSON tool message. What the lab shows is the host-side loop that any such protocol still leaves to the host.
+
+Sources: Anthropic, Claude API documentation, Define tools, Handle tool calls and Parallel tool use (platform.claude.com/docs); Model Context Protocol specification, overview and Tools pages (modelcontextprotocol.io/specification/latest).
+
+Agents runs this round trip in a loop with a step cap. Failure modes, safety, and security treats tool results as a route for injected instructions.

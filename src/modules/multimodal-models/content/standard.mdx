@@ -1,0 +1,148 @@
+---
+objectives: ["Compute how many patch tokens an image becomes from its size and the patch size, including the optional CLS token","Describe a patch embedding as a linear map from a patch's pixels to a vector, plus a position code","Compare what CLIP, LLaVA-style and Flamingo-style designs hand on — one pooled vector, projected tokens inside the text sequence, or 64 resampled vectors read by cross-attention — and what each costs in context","Explain how a contrastive loss over a batch of image–caption pairs rewards the labelled pairs and penalizes the other pairings, and how the temperature sharpens or flattens each softmax"]
+terms: ["Modality","Patch","Patch embedding","Position embedding","CLS token","Vision encoder","Contrastive learning","Projector","Cross-attention","Image token","Temperature","Negative pair","Spectrogram","Image-borne injection"]
+---
+
+## The big picture
+
+A **multimodal model** takes in more than one **modality**, a kind of input such as text, images or audio. This module follows a still image into a transformer: how its pixels become token vectors, where those vectors go in a language model, and how training makes an image and its caption score as a match. The question it answers is what a model receives when it is handed a picture, and at what cost.
+
+It builds on *The architecture zoo*, *Attention*, *The transformer block* and *Embeddings for search and retrieval*. The image is cut into **patches**, square tiles that each become one vector. Attention then mixes them like any other sequence, and image and caption vectors are compared by cosine similarity, as in search.
+
+### Where it shows up
+
+- **ViT** (Dosovitskiy et al., 2020) introduced patch tokens.
+- **CLIP** (Radford et al., 2021) trains an image encoder and a text encoder together to compare images with captions. It does not generate.
+- **LLaVA** (Liu et al., 2023) puts projected CLIP patch features into the prompt as **image tokens**.
+- **Flamingo** (Alayrac et al., 2022) lets a frozen language model read resampled image features through added **cross-attention** layers: attention whose queries come from the text and whose keys and values come from the image features.
+- Audio, video and document models reuse the cut-and-embed idea. Whisper starts from a **spectrogram**, energy by time and frequency.
+- This app's local assistant, Qwen3.5 2B, cannot see images: its family's vision encoder and projector ship as a separate file that the app does not download.
+
+### Why it matters
+
+A transformer cannot read pixels directly, so every vision-language system must decide how an image becomes vectors and where they go. That decision sets the price: the patch count grows with the square of the image side, and only some designs put image tokens in the language model's own sequence.
+
+Contrastive training is how two encoders learn to give a matching image and caption a high score. Its loss depends on which pairs the labels call matches, not only on the similarities. And because an image is ordinary input, text printed inside it can carry **image-borne injection**: instructions the model may follow.
+
+### What you will be able to explain
+
+- How many patch tokens an image becomes from its side and the patch size, with or without the optional **CLS token**, an extra token some encoders prepend.
+- How a **patch embedding** works as a linear map from a patch's pixels to a vector, and what the added position code contributes.
+- What CLIP, LLaVA-style and Flamingo-style designs hand on (one pooled vector, projected tokens in the text sequence, or 64 resampled vectors read by cross-attention) and what each costs in context.
+- How a contrastive loss over a batch of image–caption pairs rewards the labelled pairs and penalizes the other pairings, and how the **temperature**, which divides each score before the softmax, sharpens or flattens the resulting shares.
+
+### What the lab shows
+
+Nothing is trained, and no encoder or language model runs. Every readout is closed-form arithmetic on your drawing, fixed constants or hand-authored vectors.
+
+- **Image to patches**: an 8×8 binary pad that starts with a 5. **Patch size** (2×2, 4×4 or 8×8) sets **Patch tokens**.
+- **Patch embedding**: four hand-set filters and a fixed sine position code turn the **Selected patch** into a four-number token.
+- **Token sequence**: image tokens sit between whole-word text tokens.
+- **Real-scale arithmetic**: shapes only, from **Image side**, **Encoder patch**, **CLS token** and **Connector**, with fixed widths and a 4,096-token context.
+- **Contrastive pairs**: six hand-authored 4-number vectors for three images and three captions, with **Temperature τ** and **Which pairs count as matches**. The **Contrastive loss** is computed for real.
+
+The key experiments: in **Real-scale arithmetic**, compare 224px at 16×16 with 336px at 14×14; in **Contrastive pairs**, switch **Which pairs count as matches** to *shuffled captions*. No cosine changes, yet the loss jumps.
+
+## What it is
+
+A transformer reads a sequence of vectors. To read an image, a model first has to turn the image into such a sequence. The standard way, from the Vision Transformer (ViT), has three steps:
+
+1. **Cut** the image into non-overlapping square **patches**.
+2. **Embed** each patch: flatten its pixels into a vector x and apply a learned linear map, `z = W·x`.
+3. **Add a position embedding** so each token keeps track of where its tile came from.
+
+A 224×224 image cut into 16×16 patches gives (224 / 16)² = 196 patches. Some encoders prepend one extra **CLS token**, making 197. Each patch holds 16 × 16 × 3 = 768 pixel values, and ViT-B/16 maps each to a 768-number vector.
+
+A **vision encoder** then runs transformer layers over those tokens, so each patch's vector comes to reflect its neighbours.
+
+### Getting images into a language model
+
+There are three common designs, and the lab computes the shapes of each.
+
+- **CLIP** trains an image encoder and a text encoder together with **contrastive learning**, so a matching image and caption get a high cosine similarity. It outputs one vector per image. It compares; it does not generate.
+- **LLaVA-style** models take the patch features from a CLIP encoder, pass each through a small **projector** to the language model's embedding width, and insert them into the prompt as **image tokens**.
+- **Flamingo-style** models compress the features to a fixed set of 64 vectors and let text tokens read them through inserted **cross-attention** layers. The image never enters the text sequence.
+
+### How contrastive learning works
+
+Take a batch of N images, each with its own caption. Encode all of them and compute the cosine similarity of every image with every caption: an N × N table. The N cells on the diagonal are the true pairs. The other N² − N cells are **negative pairs**.
+
+Divide each score by a **temperature** τ and apply a softmax along every row (which caption fits this image?) and every column. The loss is the cross-entropy against the true pairing, averaged over both directions. It is small only when each true pair outscores its rivals. The CLIP paper (Radford et al., 2021) describes the goal as maximizing the cosine similarity of the N real pairs while minimizing it for the N² − N incorrect pairings.
+
+## Why it’s here
+
+The architecture zoo slid a small filter across an image. A patch embedding is closely related: it applies a filter bank once per tile, with a stride equal to the tile size. This lab connects that picture to the transformer you have now studied, where image tokens use the same context window, attention and compute as words.
+
+## How to play with it
+
+### Cut the grid
+
+Ink cells on the 8×8 pad. With **Patch size** 4×4 the image is 4 tiles, each flattened into 16 numbers. At 2×2 it is 16 tiles of 4 pixels; at 8×8 it is a single token.
+
+### Read one token
+
+At 4×4, patch #2 holds the right end of the 5's top bar. Its four filter outputs are ink 0.19, left − right 0.38, top − bottom 0.13 and ╲ − ╱ 0.00. Adding the position code gives the token `[0.26, 0.45, 0.20, −0.07]`.
+
+### Scale it up
+
+In **Real-scale arithmetic**, set **Image side** to 224px and **Encoder patch** to 16×16: 196 patch tokens, 197 with CLS. Set 336px and 14×14: 576 tokens. With the LLaVA connector, those 576 tokens take 14.1% of a 4,096-token context.
+
+### Compare connectors
+
+Switch **Connector**. CLIP ends with one 768-number vector per image. LLaVA ends with 576 tokens in the language model's sequence. Flamingo-style ends with 64 resampled vectors that text reads through cross-attention.
+
+### Match images to captions
+
+In **Contrastive pairs**, read the table: three images, three captions, six hand-written vectors. Each image's highest cosine, in bold, sits on its own caption, and the outlined cell is the labelled match. At τ = 0.20 the loss is 0.235, against a chance loss of ln 3 = 1.099.
+
+Lower **Temperature τ** to 0.05 and the loss falls to 0.006, because each row's share concentrates on its labelled caption. Raise it to 1.00 and the shares flatten, with each labelled caption holding only 44%, 46% and 43% of its row, and the loss rises to 0.813.
+
+Then set **Which pairs count as matches** to *shuffled captions*. No cosine changes, but at τ = 0.20 the loss goes from 0.235 to 2.582, because the labels now call low-scoring pairs matches.
+
+## What to notice
+
+- The patch grid is fixed geometry. A stroke that crosses a border is split between tokens, and later attention layers have to recombine it.
+- The embedding is linear. Each output is one filter dotted with the patch, so a balanced patch can score 0 on a contrast filter while still holding ink.
+- Without the position code, two identical tiles in different places would be identical tokens.
+- Doubling the image side quadruples the patch count. Attention cost grows with the square of the sequence length.
+- Only the LLaVA-style connector spends the language model's context on the image.
+- A contrastive loss compares scores with labels. Its value depends on which pairs you call matches, not only on how similar things are.
+- A lower temperature sharpens every row, so any pair the labels get wrong costs more. Image C, a ship under storm clouds, scores 0.74 with the ferry caption, and a rival like that keeps the loss above zero.
+
+## Where it breaks
+
+### In this lab
+
+- The image is 8×8, one binary channel.
+- W holds four hand-set filters and the position code is a fixed sine pattern. Nothing is trained, and no encoder layers run.
+- Text tokens are shown as whole words for readability.
+- The real-scale widths are fixed per encoder family, and Flamingo itself used an NFNet image encoder rather than a ViT.
+- **Contrastive pairs** uses six hand-authored 4-number vectors, not encoder outputs. The objective is computed for real, but nothing is trained, so the card shows what the loss measures and not how encoders come to satisfy it. Three pairs give each image only two negatives.
+- In Real-scale arithmetic, CLIP appears only as the shape of its output, and cross-attention only as the place the 64 vectors go.
+
+### In the real mechanism
+
+- **An encoder sees only what survives resizing.** Small text or fine detail can vanish when a large image is shrunk to 336 pixels, which is why newer models tile images or accept variable resolutions.
+- **Alignment is measured, not guaranteed.** Contrastive and instruction training make image features useful for chosen tasks. A model can still misread counts, spatial relations or text in images.
+- **Images are untrusted input.** Text printed inside an image reaches the model like any other input and can carry **image-borne injection**: instructions the model may follow. [Failure modes, safety, and security](#/failure-modes-safety) shows the attack through retrieved text. This lab has no image attack, but the route is the same.
+- **Every other pairing counts as wrong.** A contrastive loss treats a caption that fits two images as a mistake for one of them, which is one reason the labels in a scraped dataset matter.
+
+### The model in this app
+
+The app's local assistant is Qwen3.5 2B. Its model family accepts images, but the vision encoder and projector ship as a separate file, often named `mmproj`. The app downloads only the language-model file and never sends images, so the local assistant cannot see anything, including this pad.
+
+## Going deeper
+
+ViT (Dosovitskiy et al., 2020) introduced patch tokens, in a paper titled “An Image is Worth 16x16 Words”. CLIP (Radford et al., 2021) trained its encoders on 400 million image–text pairs. Flamingo (Alayrac et al., 2022) added a Perceiver resampler and gated cross-attention layers to a frozen language model. LLaVA (Liu et al., 2023) used a single linear projector; LLaVA-1.5 moved to a two-layer MLP and CLIP ViT-L/14 at 336 pixels.
+
+### Beyond still images
+
+Audio, video and documents reuse the same ideas: cut the input into pieces, embed each piece, and let attention mix them. What changes is the count of tokens, and so the cost.
+
+- **Audio.** A **spectrogram** shows energy by time and frequency. Whisper (Radford et al., 2022) resamples audio to 16,000 Hz and computes an 80-channel log-magnitude Mel spectrogram on 25 ms windows with a 10 ms stride, over 30-second segments. Its encoder stem ends in a convolution of stride two. From those figures, 30 seconds is 3,000 frames, halved to 1,500 positions: 50 per second.
+- **Video.** A clip is a sequence of frames. Suppose a model sampled one frame per second and cut each like the 336-pixel image above. A one-minute clip would be 60 × 576 = 34,560 tokens, more than eight times this lab's 4,096-token context. The sampling rate is an assumption for illustration; real models skip, merge or pool frames.
+- **Documents and OCR.** A model can read a page by extracting the text first, with OCR or a layout parser, and passing ordinary text tokens. Or it can take the page as an image. At 448 pixels with 14-pixel patches that is (448 / 14)² = 1,024 tokens whether the page holds a paragraph or is blank, and small print can vanish in the resize.
+
+Sources: Radford et al., “Learning Transferable Visual Models From Natural Language Supervision” (CLIP, arXiv 2103.00020); Radford et al., “Robust Speech Recognition via Large-Scale Weak Supervision” (Whisper, arXiv 2212.04356).
+
+Attention explains how all of these tokens mix. Diffusion & VAEs covers models that generate images rather than read them.

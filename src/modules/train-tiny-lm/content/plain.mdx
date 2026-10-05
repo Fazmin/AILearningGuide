@@ -1,0 +1,915 @@
+---
+objectives: ["Assemble the decisions that define a training run: text, size, and recipe", "Relate parameter count to how well a model can fit its data", "Read a model card and say what it does and does not promise", "Set learning rate, schedule, batch size, and gradient clip together, and judge the recipe by held-out loss"]
+terms: ["From scratch", "Rank", "Factorization", "Capacity", "Underfitting", "Overfitting", "Held-out loss", "Generalization gap", "Perplexity", "Model card", "Sample", "Training recipe", "Learning-rate schedule", "Gradient clipping"]
+---
+
+## The big picture
+
+Picture a friend reading a sentence to you one letter at a time, pausing before each new letter so
+that you can guess it. If they stop at `the harbo`, you would bet on `r`, and after a `q` you would
+bet on `u`. You can do this because you have seen those letters follow each other many times before.
+
+In this module you build a tiny program that plays a simpler version of this guessing game, and you
+build it starting from nothing at all. A program that guesses the next piece of text is called a
+**language model**. The large language models behind chatbots do this same job at an enormous size,
+while yours works one character at a time on a few hundred characters of text.
+
+Your model starts **from scratch**, which means its numbers begin as meaningless starting values
+that carry no information about any text. Everything it can predict by the end has to come from the
+text you chose for it, and from nothing else.
+
+The lab lays out a training run in four stages, where the first three are decisions you make and
+the fourth is a report on them:
+
+- **The text** the model learns from, which you pick from three short choices in the lab.
+- **The size** of the model, meaning how many adjustable numbers, called **weights**, it gets to
+  tune while it learns.
+- **The recipe**, which covers how long training lasts, how big each learning step is, and how many
+  examples the model studies before each step.
+- **The report** at the end, on a page called a **model card**, which the lab fills in to record
+  what you built and how it scored.
+
+### Where you have met it
+
+The chatbots you may have used rest on language models trained through these same kinds of
+decisions, only with vastly more text and weights. The team behind Llama 2, a family of large
+language models, trained one version with 7 billion weights. It learned from 2 trillion tokens,
+where a token is a word or a piece of a word. That is far more text than a person could read in many
+lifetimes.
+
+The Llama 2 recipe used ideas you will try in this lab, such as a step size that shrinks during
+training and a limit on oversized steps. Real model cards exist too, and they list much more than
+yours will, such as where the data came from and what the model is meant for.
+
+### Why it matters
+
+Without a training run there is no model at all, but a run can also go wrong in ways that are hard
+to spot. To see how a model is doing, you measure its error with a number called the **loss**,
+where lower means better guessing. The loss on the model's own practice text flatters it, since it
+has already studied that text, so you need a second loss measured on text it has never seen.
+
+A recipe whose steps are too large can wreck the whole run, while one with too few steps stops well
+short of where it could get. This module also holds a result you might not expect: with the lab's
+starting recipe, a smaller model beats a bigger one. Working out why will show you that the number
+of weights a model has does not, on its own, decide how well it learns.
+
+And unless you write down what you did and how it scored, nobody else can tell what your numbers
+mean or whether they apply to anything they care about.
+
+### What you will be able to explain
+
+By the end of this lesson, you should be able to explain each of these ideas in your own words:
+
+- how the text, the size and the recipe together define a training run, and how each of them changes
+  the result you get;
+- why giving a model more weights does not automatically make it fit its text better, and what
+  decides how well it fits instead;
+- what a model card promises about a model, and the much longer list of things it does not promise;
+- how four recipe settings work together, and why you judge the whole recipe by how well the model
+  does on text it never trained on.
+
+Those four settings are:
+
+- the **learning rate**, which is the size of each learning step;
+- the **schedule**, which is the plan for changing that step size during the run;
+- the **batch size**, which is how many examples the model studies before each step;
+- the **gradient clip**, which is a limit on oversized steps.
+
+### What the lab lets you do
+
+The lab trains two real models from scratch every time you move a control. One is yours, and the
+other is a plainer comparison model, called the full table, that stores its numbers in the simplest
+possible way. Because both are really trained, every curve, loss and sample you see is computed, not
+drawn by hand.
+
+You pick the text, slide the model's size up and down, and choose how many times it reads through
+the text. Then you watch two losses fall as the model trains, one on its practice text and one on
+text it never saw.
+
+Along the way, you can read three samples of the model's writing, from before training to the very
+end, and watch random letters turn into rough word shapes. The **Training recipe** card lets you
+change how the model learns, and even break a run on purpose to see how a safety limit contains the
+damage. The **Model card** then sums up your whole run, with both losses side by side.
+
+A few things are fixed rather than computed: the three texts, and the random choices training makes,
+so the same settings always give the same result. The messy "raw scrape"
+version of a text is built by the lab from that text's own sentences plus made-up junk, rather than
+collected from the web.
+
+## What it is
+
+### The guessing game, as numbers
+
+Your model reads one character and guesses the next one, and that single character is all the
+context it ever gets. So at `the harbo` it bets using the `o` alone, not the whole word, which makes
+its game much narrower than the one you played above.
+
+Its alphabet has 30 symbols: a space, the letters `a` to `z`, and a full stop, plus two angle
+brackets. Those two are kept back for a later lab, which uses them as special markers, and none of
+the three texts here contains them.
+
+Every character in the practice text, together with the character right after it, makes one practice
+pair. One of the lab's three texts, Harbor weather notes, has a sentence that begins
+`the morning fog`. That gives the pairs `t` then `h`, `h` then `e`, and `e` then a space, and so on
+through the whole text. A model that learns from pairs of characters like this is called a
+**character bigram**, since "bi" means two, and the **Model card** uses that name under Architecture.
+
+In this lesson, the character the model is looking at is called the current character. For each of
+the 30 characters that could be current, the model keeps a row of 30 scores, one for each character
+that could come next. A step called **softmax** turns each row of scores into chances that add up to
+100 percent, and the highest scores get the biggest chances.
+
+For example, if a row had only three scores, 2, 1 and 0, softmax would turn them into chances of
+about 67, 24 and 9 percent. A score can even be negative, and it still gets a chance, only a small
+one.
+
+After training, you would expect the row for `t` to give `h` a large share of the chances, because
+`th` turns up again and again in the practice text.
+
+### Measuring surprise: the loss
+
+To improve, the model needs a single number that says how badly it is doing, and that number is the
+**loss** from the big picture. For each pair, the lab looks at the chance the model gave to the
+character that really came next. A big chance means little surprise while a small chance means a
+lot, and the loss is the average surprise over every pair, so lower is better.
+
+The surprise for a chance of 1 in N is written ln N, where ln is the natural logarithm key on a
+scientific calculator. You do not need to know how ln works inside, only how it behaves for a few
+chances:
+
+- A sure thing, which is a chance of 1 in 1, gives a surprise of 0, because there is nothing to be
+  surprised by.
+- A chance of 1 in 8 gives a surprise of about 2.08, which is a moderate amount.
+- A chance of 1 in 30 gives a surprise of 3.401, which is what a completely blind guess gets here.
+
+A chance that is not a whole "1 in N" works the same way. A 40 percent chance is 1 in 2.5, so its
+surprise is ln 2.5, which is about 0.92.
+
+So the surprise climbs as the chance shrinks, but it climbs slowly, since going from 8 choices to 30
+adds only about 1.3. The unit of this surprise is called the **nat**, which is why the chart measures
+loss in nats per token. A **token** is the piece of text a model reads at a time. Large models use
+words and pieces of words, while in this lab every token is one character.
+
+Now picture a model that has learned nothing and spreads its bets evenly, giving each of the 30
+symbols a chance of 1 in 30. Its surprise is ln 30 = 3.401 on every character, so its loss is 3.401
+as well. The chart draws this as a dotted line labelled `knows nothing`, which is the number to
+beat, since any model that has learned a pattern should land below it.
+
+When a model's loss on a text is low, people say the model fits that text well, and the lower the
+loss, the closer the fit.
+
+### How training works
+
+Training from scratch begins with those meaningless starting values and then repeats one small
+routine hundreds of times. First, the model takes a handful of practice pairs, called a **batch**,
+and measures its loss on them; at the default settings a batch holds 16 pairs. Then it works out,
+for every weight, how steeply the loss would rise or fall if that weight moved a little. That
+steepness is called the weight's **slope**, just like the slope of a hill on a graph.
+
+The full list of those slopes is called the **gradient**. It points the way that would raise the
+loss, so each weight steps the opposite way, downhill, and this lesson calls that downhill direction
+the push. The **learning rate** sets how big each step is. Repeating this routine is called
+**gradient descent**, because each step heads downhill on the loss, the way a ball rolls toward the
+lowest point of a valley.
+
+To work one push through, picture the weights for now as the 900 scores in the rows, since the
+Model size section below shows a cheaper way to store them. Suppose a batch holds the pair `t`
+then `h`, and the model gives `h` only a 10 percent chance after `t`.
+
+The push then says to raise the score for `h` in `t`'s row by a lot. It also says to lower the
+other 29 scores in that row by a little, so that `h` gets a bigger share next time. Each weight's part of the
+push says which way that weight should move, and how strongly.
+
+One full pass through all the practice pairs is called an **epoch**, and the default run makes 20 of
+them. The pairs are shuffled into batches, the pushes are actually calculated rather than made up,
+and the whole run starts again from the beginning each time you move a control. Because the model is
+so small, that takes only milliseconds, which are thousandths of a second.
+
+### The four choices
+
+The first card, **Build a model in four choices**, lays the run out as a strip of four stages, and
+each stage stands for one part of the run:
+
+- **Corpus** is the text the model reads, since a corpus is the usual name for a body of text used
+  for training.
+- **Size** is how many weights the model gets, which you set with the **Model size** slider.
+- **Recipe** is how the model trains, which you set with **Epochs** and the **Training recipe**
+  card.
+- **Model card** is the report the lab fills in on what you built, so it is a summary of the other
+  three rather than a fourth choice.
+
+Clicking a stage only moves the `Choice N of 4` marker at the top of the card, since no choice is
+locked behind another. Every control stays live the whole time, so you can change any choice in any
+order you like.
+
+### What Model size does
+
+The most direct way to store the scores is a full grid, with a row for each current character and a
+column for each next character. That grid holds 30 × 30 = 900 numbers, and this lab calls it the
+**full table**. Each of its rows is completely separate, so learning something about `t` changes
+nothing in the row for `s`.
+
+Picture a coach who has to rate how well each of 30 players suits each of 30 positions on a team.
+One way is to write all 900 ratings by hand, one for each player and position, with no link between
+them, and that is the full table.
+
+A cheaper way is to give each player a short stats card, with one number for speed and one for
+strength. Each position then gets a matching card that says how much speed and strength it needs.
+
+To rate a player for a position, the coach multiplies the matching numbers on the two cards and adds
+up the results. **Model size** swaps the full table for this cheaper version, so each character, as
+the current one, gets a short list of r numbers. Each possible next character gets a matching list
+of r numbers, and the score for a pair is the two lists multiplied number by number, then added up.
+
+Storing a big grid as two thin sets of lists that multiply together like this is called a
+**factorization**. The length of each list, r, is called the **rank**, and it is the number that the
+**Model size** slider sets.
+
+Here is one score worked through at rank 2, using made-up numbers. Suppose the list for `t`, as the
+current character, is 2 and −1, while the list for `h`, as a possible next character, is 1.5 and
+0.5. Multiplying the matching numbers and adding gives 2 × 1.5 plus −1 × 0.5, which comes to
+3 − 0.5 = 2.5, the score for `h` after `t`.
+
+Counting the weights uses the same kind of arithmetic, because each of the 30 characters gets r
+numbers on the current side and r more on the next side. So the model stores 2 × r × 30 weights in
+all, and at the default rank of 8 that is 2 × 8 × 30 = 480.
+
+The slider shows this as `rank 8 · 480 weights`, and the other sizes you will try in this lesson
+follow the same rule:
+
+- rank 1 stores 60 weights, which makes it the smallest model the slider allows;
+- rank 4 stores 240 weights, which is about a quarter of the full table's size;
+- rank 12 stores 720 weights, which makes it the largest model the slider allows.
+
+The lab trains your factored model and the full table side by side. Because both models use the same
+text and the same recipe, the only difference between them is how the weights are stored. On the
+chart, the thick curves are your model and the thin curves are the full table.
+
+The coach picture stops matching in one important way, because a coach chooses what each stat means,
+while nobody chooses what the model's r numbers mean. They end up wherever training happens to leave
+them, so you usually could not put a name such as "speed" on any one of them.
+
+### Capacity: the ceiling that rank sets
+
+How much pattern a model can represent at all, however long it trains, is called its **capacity**,
+and the rank puts a hard ceiling on it. Rank 1 shows that ceiling most clearly, because each list
+then holds a single number, so every score is one number multiplied by another.
+
+Take a small case with only three possible next characters, where the next-side numbers are 3 for
+`h`, 2 for `e` and 1 for `u`. A current character whose number is 2 gets scores of 6, 4 and 2,
+so `h` comes first. One whose number is 0.5 gets 1.5, 1 and 0.5, which is the same order but
+flatter. One whose number is −1 gets −3, −2 and −1, so the order flips and `u` comes first.
+
+So at rank 1, every row follows one shared order of next characters or its exact reverse. Each row's
+favourite must be either the top or the bottom of that order, so there can only ever be two
+different favourites. A rank 1 model can never expect `u` after `q`, `h` after `t` and `t` after a space all at once,
+because that needs three. Real text needs far more than three.
+
+In the coach picture, that is like rating everyone on speed alone. Every player gets the same order
+of positions, only more or less extreme, or flipped end to end for a player whose number is negative.
+That limit is built into the model's shape, so extra training cannot remove it.
+
+### What the recipe changes
+
+The size decides what the model could represent, while the recipe decides how training gets there,
+much like a set of cooking instructions. With the same ingredients and the same pan, how hot you
+cook, for how long and how much at a time can change the dish completely.
+
+The **Training recipe** card holds the settings that the earlier labs kept fixed, now turned into
+controls. The cooking picture stops matching at one point: a cook can taste the dish, but a model's
+loss on its own practice text is a poor guide. You judge a recipe mainly by the held-out loss, which
+the Why it’s here section explains.
+
+The **training recipe**, then, is everything about the run apart from the model's shape. It covers
+which version of the text the model reads and how many epochs it runs, along with the learning rate
+and how it changes. It also covers the batch size, the gradient clip and a fixed seed, and each of
+these gets its own part below.
+
+### The training text
+
+A program that copies text off web pages is called a scraper, and the pile of text it collects is
+called a scrape. A scrape picks up junk along with the writing you wanted, such as the repeated
+notices at the bottom of every page, which are called **boilerplate**. The **Training text** switch
+chooses between a `Raw scrape`, junk included, and a `Cleaned scrape`, which is the default.
+
+The lab builds the raw scrape from the corpus's own training sentences by slotting extra lines in at
+fixed places:
+
+- footer lines of the kind found at the bottom of web pages, such as
+  `click here to subscribe to our newsletter.`. Harbor gets three of these, and Proverbs gets four
+  because it has one more training sentence;
+- two exact repeats of sentences that already appeared earlier in the scrape;
+- one copy of a sentence with a spelling mistake in it, such as `cllouds` in place of `clouds`;
+- two tiny fragments, `ok.` and `yes.`, which carry almost no useful text at all.
+
+Cleaning uses the stages from *Building a dataset*, in order, dropping lines with a boilerplate
+phrase, lines under 12 characters, exact repeats, and near-repeats such as the misspelled copy. For
+Harbor weather notes, the raw scrape has 14 lines and 696 characters, and cleaning removes 8 of
+those lines:
+
+- 3 boilerplate lines, which are the three footers;
+- 2 lines that are too short, which are the two fragments;
+- 2 lines that repeat an earlier line exactly;
+- 1 near-repeated line, which is the misspelled copy.
+
+That leaves 6 lines and 379 characters, and those 6 lines are exactly the original training
+sentences. So the `Cleaned scrape` is the very same text that this lab has always trained on.
+
+### Learning rate and schedule
+
+**Learning rate** sets how far each weight moves for a given push, and its slider has eight notches
+that each double the one before. The notches run from 0.125 up to 16, and the default is 0.5. For
+the same push, a rate of 4 moves every weight eight times as far as the default rate does.
+
+**Schedule** changes the step size over the course of the run, and its four buttons give four
+different shapes:
+
+- `Constant` keeps the same step size from the first batch of the run to the last.
+- `Cosine decay` starts at full size and eases down along the smooth curve that gives it its name,
+  ending at 3 percent of where it began.
+- `Warmup + decay` starts near zero and ramps up to full size over the first 15 percent of the steps.
+  Then it shrinks in a straight line to 5 percent of full size.
+- `One cycle` also warms up to full size, then eases down along a smooth curve until it ends below
+  where it began.
+
+Every schedule works by multiplying the learning rate, so the rate you set is the peak, and the
+schedule decides how much of that peak each step uses. With the rate at 4 and `Cosine decay`, for
+example, the first step uses 4 and the last uses about 0.12, which is 3 percent of 4. A plan like
+this for the step size across a run is called a **learning-rate schedule**.
+
+### Batch size
+
+**Batch size** is how many pairs the model studies before each update, from 2 up to 64, and the
+default is 16. The number of updates, which the card shows as **Steps**, is the number of pairs
+divided by the batch size, rounded up, and then multiplied by **Epochs**.
+
+Harbor's training text gives 378 pairs, shown at the top of the **Training progress and samples**
+card, and the default run turns them into steps like this:
+
+- 378 pairs ÷ 16 pairs per batch = 23.6, which rounds up to 24 batches in each epoch;
+- 24 batches × 20 epochs = 480 steps, which is the number the **Steps** readout shows.
+
+### Gradient clip
+
+The push has an overall size, which is one number for how strong it is across all the weights
+together. To find it, square each weight's part of the push, add up the squares, and take the square
+root. That size is called the **gradient norm**, and the **Peak gradient norm** readout shows the
+largest one in the whole run, measured before any clipping happens.
+
+Putting a limit on that size is called **gradient clipping**, and the **Gradient clip** control sets
+the limit. Whenever a push is bigger than the limit, the lab shrinks every part of it by the same
+fraction, so that its size drops to exactly the limit.
+
+Here is a small example with only two weights. A push of 0.6 on one weight and 0.8 on the other has
+a size of the square root of 0.36 + 0.64, which is 1. With the clip at 0.50, the lab halves both
+parts to 0.3 and 0.4, so the size drops to 0.5.
+
+The two weights still move in the same proportion to each other, which is what people mean when they
+say clipping keeps the push's direction. A push whose size is already under the limit, such as 0.3,
+passes through untouched.
+
+The clip is off by default and can go up to 1.50, while the **Clipped steps** readout counts how
+many steps it had to shrink.
+
+### The seed, and sharing your recipe
+
+Training your factored model uses random numbers twice, once for its starting values and once for
+shuffling the pairs into batches. The full table needs them only for shuffling, since it starts with
+every number at zero. A **seed** is a number that fixes those random choices, so the same recipe
+always gives the same result, and this lab always uses seed 9.
+
+Your recipe is saved in the lab's state, so the **Copy a link to this state** button in the header
+shares it with the rest of your work. **Copy my recipe** writes every setting out as one line of
+text that starts with `tiny-lm-recipe v1`, and **Load this recipe** reads a line like that back in.
+
+### The model card
+
+The last stage is a report rather than a choice, because the **Model card** writes down the run that
+the other three stages defined. It lists the corpus and how it was split, the architecture and the
+recipe. Then come the **Training loss** and the **Held-out loss**, with a number called perplexity
+that the What to notice section explains.
+
+Its last row gives the full table's two losses for comparison, and under the rows sit three
+readouts, **Train**, **Held out** and **Gap**, which the next section explains.
+
+## Why it’s here
+
+### The flattering loss and the honest one
+
+Picture a friend who gets ready for a test by memorising the answer key to the practice test. They
+score 100 percent every time they retake the practice test, yet that says little about how they will
+do on the real test, which asks new questions.
+
+Training loss has the same weakness, because it measures the model on text it has already studied
+many times over. So the lab holds back about the last quarter of each corpus's sentences, which never
+enter a single training step, and measures the model's loss on those sentences as well. That second
+loss is the **held-out loss**, and it is the honest one, because it shows how well the model predicts
+text it has never seen.
+
+For Harbor weather notes, the held-out text is the final two sentences of the corpus, which come to
+119 characters, against 379 for training:
+
+- `in summer the harbor fills with sails and the water stays warm.`
+- `the fog returns in the morning and the pattern repeats.`
+
+How well a pattern learned from one text carries over to new text is called generalization. The
+chart draws both losses after every epoch, with a solid line for training and a dashed line for held
+out, and it shades the space between them. The size of that space is the **generalization gap**,
+which is the held-out loss minus the training loss.
+
+The **Gap** readout on the **Model card** shows that difference at the end of the run, and the chart
+prints it beside the curves as well. The readout subtracts the losses before they are rounded to
+three decimals, so your own subtraction can differ from it by 0.001.
+
+Extra capacity usually lowers the training loss, and the gap shows how much of that gain fails to
+carry over to new text, which training loss alone never shows.
+
+### Two ideas that usually travel together
+
+The number of weights, often called the parameter count, and capacity usually rise together, so
+people tend to treat them as one idea. They are not the same thing. A rank 15 model would store 900 weights, the same as the full table.
+Yet every row of its scores would still be a mix of only 15 shared patterns, so it could build only
+some of the grids the full table can.
+
+This lab adds a second surprise, which What to notice unpacks: even the model with more of both can
+end up fitting worse after a short run.
+
+### The run that is yours
+
+From here on, every lab in the track starts from weights that somebody else trained, and you adapt
+them. This is the one run you own from start to finish, and the model card is the claim you have to
+stand behind afterwards.
+
+A model card works a bit like the label on a food packet. It lists what went in and a few measured
+numbers, but it does not tell you whether the food tastes good or suits your plans. The comparison
+stops there, because a food label's numbers hold for every packet, while a model card's losses hold
+only for the text and recipe it names.
+
+### Where the first half of the track meets
+
+*Building a dataset* asked which text is worth training on, and *Hyperparameters & schedules* asked
+how to spend each step. In this lab both questions land in one run. The **Held out** readout judges the recipe, but it barely tells raw text from cleaned
+text. The difference cleaning makes shows up instead in **Footer lines**, a readout on the **Training
+recipe** card that gives the model's loss on the footer junk.
+
+## How to play with it
+
+Start with every control at its default, which is Harbor weather notes, **Model size** at rank 8,
+**Epochs** at 20, and the **Training recipe** card untouched.
+
+### Compare the three texts
+
+Click each of the three corpus buttons and read the character count on it, which is the size of the
+whole corpus. Harbor weather notes has 499 characters, roughly one short paragraph of a school book,
+and the other two are shorter still.
+
+The **Model card** then shows how the text splits, and for Harbor that is 379 characters for
+training and 119 held out. The one character left over is the space where the two parts meet.
+
+Notice how little text that is, since every pattern the model ends up with has to come from those
+few sentences. Each button also describes its corpus, and Harbor is repetitive description. Recipe
+steps is a list of cooking instructions, which has nothing to do with the training recipe apart from
+the word.
+
+The Proverbs button calls it short unrelated sentences that are hard to fit. You will see below what
+that means here: the text is small enough to memorise, so its training loss can fall low, while its
+held-out loss stays high.
+
+### Walk Model size up
+
+Leave **Epochs** at 20 and move **Model size** from 1 up to 12, stopping at these ranks to read the
+**Model card** each time:
+
+- At rank 1, the training loss ends at 2.925 and the held-out loss ends at 3.025.
+- Rank 4 brings the training loss down to 2.208 and the held-out loss down to 2.246.
+- Rank 8 brings them lower again, to 2.039 for training and 2.117 for held out.
+- Rank 12 barely changes the training loss, at 2.038, but the held-out loss rises to 2.165.
+
+Now read the thin lines, which belong to the 900-weight full table and end at 2.283 for training and
+2.302 held out. So with this recipe, the 240-weight model at rank 4 has already beaten a table almost
+four times its size. The boxed note under the two sliders on the **Size and epochs** card, which
+this lesson calls the callout, explains why.
+
+### Hit the wall at rank 1
+
+**Try this:** put **Model size** back to 1 and drag **Epochs** all the way to 30. The training loss
+ends at 2.852, and the callout reports that the full table is ahead by 0.688 nats. Look at the thick
+solid curve, too: from about epoch 10 to epoch 22 it hardly moves, staying between about 2.92 and 2.96.
+
+Now set **Model size** to 8, and its training curve drops below 2.852 by epoch 4, while even the
+slow full table passes that mark by epoch 5. Changing the learning rate or the schedule on the
+**Training recipe** card does not rescue rank 1 either. With or without the clip, it never gets
+within a third of a nat of the full table. That is a wall, not a slow start.
+
+### Read the samples
+
+Below the chart on the **Training progress and samples** card sit three samples, labelled A, B and
+C. Each one is also marked on the solid curve at the point where it was written. A **sample** is
+text that the model generates one character at a time, starting after `the` and a space.
+
+The model only uses that last space, and the sample shows only the characters it adds. Each next
+character is picked at random, with the likelier characters picked more often. The samples use a
+fixed seed of their own, so they come out the same each time for the same weights.
+
+Sample A comes from before any training, B from halfway through, and C from the end, and each one
+shows the loss the model had at that moment. At the defaults, sample A is letter soup, because the
+untrained model sits at a loss of 3.40, right on the `knows nothing` line. By sample C, at a loss of
+2.04, you can see word-shaped pieces such as `the` in a stream that is still not real English.
+
+Moving **Model size** changes all three samples, because they come from your factored model rather
+than from the full table.
+
+### Watch overfitting happen
+
+Pick **Proverbs**, set **Model size** to 12 and **Epochs** to 30, and keep your eyes on the dashed
+held-out line. It falls for a while, bottoms out, and then turns back up, while the solid training
+line keeps going down the whole time. The What to notice section explains what that turn means.
+
+### Set the recipe
+
+Go back to Harbor weather notes, rank 8 and 20 epochs, and open the **Training recipe** card with
+its defaults. There, **Held out** reads 2.117 and **Peak gradient norm** reads 0.95, and from that
+starting point you can work through these comparisons one at a time:
+
+1. Raise **Learning rate** to 4 with **Schedule** on `Constant`, and **Held out** jumps to 3.016,
+   which is much worse than before.
+2. Switch **Schedule** to `Cosine decay` at the same rate, and **Held out** falls to 2.054, which is
+   better than the default.
+3. Return the rate to 0.5 and compare the two schedules again, and the order flips, with `Constant`
+   at 2.117 and `Cosine decay` at 2.251.
+
+### Break the run, then rescue it
+
+Set **Learning rate** to 8 with **Schedule** on `Constant`, and the run halts at step 154 with a
+warning that it diverged. Diverging means the weights grew so large that the computer could no
+longer store the loss as an ordinary number, so training could not go on.
+
+Now turn **Gradient clip** up to 0.50, and the same run finishes, with 459 of its 480 steps clipped.
+It ends with a held-out loss of 3.089, which is far worse than the default's 2.117 but is at least a
+real number.
+
+### Change the batch size
+
+Return the rate to 0.5 and the clip to off, then set **Batch size** to 8, 16 and 64 in turn while
+you watch **Steps** and **Held out**:
+
+- batch 8 gives 960 steps, and its held-out loss ends at 2.089;
+- batch 16 gives 480 steps, and its held-out loss ends at 2.117;
+- batch 64 gives only 120 steps, and its held-out loss ends clearly highest, at 2.618.
+
+### Feed it junk
+
+Last, note **Held out** and **Footer lines** with `Cleaned scrape`, then switch **Training text** to
+`Raw scrape` and see how much each one changes. The **Footer lines** readout is the model's loss on
+the three footer lines, so a low number there means the model has learned to predict the junk.
+
+### Save your recipe
+
+When you find a recipe you like, press **Copy my recipe** and paste the line somewhere safe, or send
+it to a friend. They can paste it into the box labelled `Load a recipe someone sent you` and press
+**Load this recipe** to set up exactly the same run.
+
+## What to notice
+
+### The smaller model wins, and sharing is the reason
+
+At the default recipe, the full table only updates the row for the current character, so each
+practice pair moves 30 weights. In the factored model, the same pair moves that character's own list
+of r numbers plus the whole next side, which every character shares. At rank 8 that is 8 + 240 =
+248 weights moved by a single pair.
+
+The letter `q` shows how uneven this gets, since it appears only once in Harbor's training text, in
+the word `quiet`. So the full table's `q` row learns from that one pair in each pass. Over 20 epochs that
+row gets only 20 updates, while every weight on the shared side of the factored model is updated on
+every one of the 480 steps.
+
+In the coach picture, one game showing that player `t` suits position `h` changes only `t`'s own 30
+ratings in the full table. With stats cards, the coach updates `t`'s card and also every position's
+card, and those position cards are used to rate every other player too. With only 378 pairs to learn
+from, that sharing gets far more out of each example.
+
+### More weights is not more fitting power
+
+The full table has more weights than any rank 8 model, and more capacity too.
+Every grid that a rank 8 model can build is also a possible 900-number grid. Yet after 20 epochs at the default
+recipe it fits worse.
+
+Capacity is only a ceiling, the most a model could ever fit with unlimited training. The full table
+has the higher ceiling, but after 20 epochs it is still far below it, because each of its rows gets
+so little practice. So a parameter count tells you at best about the ceiling, not how close a given
+run gets to it.
+
+You can check that the full table was short of practice rather than capacity. At a rate of 4 on
+`Constant`, its training loss in the Model card's comparison row reaches 1.872. That is far below
+the 2.039 your rank 8 model reaches at the default.
+
+### Read the Gap as a trend
+
+The **Gap** tells the other half of the story. The full table has the smallest gap, only 0.019,
+although the next part explains why that is not the win it looks like. Among the factored models,
+the gap tends to grow with rank past rank 4, but it grows in a bumpy way:
+
+- at rank 4, the gap is 0.038, so the two curves almost touch;
+- at rank 6, the gap jumps to 0.095, more than twice as wide;
+- at rank 8, the gap dips back down to 0.077;
+- at rank 12, the gap reaches 0.128, the widest of these four.
+
+The held-out text is only 119 characters, which is two sentences. So the held-out loss can shift by a
+few hundredths through small accidents, such as which letters happen to land in those sentences.
+Random ups and downs like these are called **noise**.
+
+Ranking rank 6 against rank 8 on so little text is like ranking two basketball players on two free
+throws each. A single step such as rank 6 to rank 8 is mostly noise, so it is the overall trend that
+counts.
+
+### A small gap can still be bad news
+
+A gap only means something when you read it next to the loss itself. At the very start of training,
+the two curves begin at the same point, a gap of about 0.001, yet the model knows nothing.
+
+The full table's gap of 0.019 is small for a similar reason. Its training loss of 2.283 is worse
+than any rank from 4 up, so it has fit its practice text too loosely to have much to lose on new
+text. Train it at a rate of 8 on `Constant`, and the Model card's comparison row reads 1.853 for
+training and 2.066 held out, a gap of 0.213.
+
+A loss that stays high because the model cannot represent the pattern, or has not trained long
+enough, is called **underfitting**. The full table at the default recipe shows the second kind,
+since bigger steps let it fit much better.
+
+Rank 1 shows the first kind. Its gap of 0.100 is no comfort, because its training loss of 2.925 is
+not far below the 3.401 of a model that learned nothing. However you train it, it stays well behind
+the full table. When a model is stuck like this, more capacity would help and more steps would not.
+
+### Overfitting on Proverbs
+
+On **Proverbs** at rank 12 and 30 epochs, you can watch the opposite failure happen. The dashed
+held-out line bottoms out at 2.668 around epoch 18, then climbs back to 2.818. Meanwhile the solid
+training line keeps dropping, all the way down to 1.865.
+
+Past epoch 18, extra practice made the model worse at new text, because it was fitting quirks of its
+training sentences that new sentences do not share. Fitting the training text more closely than new
+text of the same kind is called **overfitting**.
+
+Picture the friend with the answer key again, but now they have memorised it so firmly that they
+write the practice answers down on new questions too. The model does the same, making confident bets
+on patterns from its training sentences. Each confident wrong bet costs a lot of surprise on new
+text, so the held-out loss rises.
+
+### Enough, then too much
+
+Rank 8 and rank 12 train to almost the same place, 2.039 against 2.038, and rank 12 does no better
+on the held-out text. Its 2.165 against rank 8's 2.117 is a difference of 0.048, which is inside the
+noise, and at 30 epochs the two swap places.
+
+So the extra 240 weights bought nothing here, which is the shape to look for when you size a model:
+more capacity helps only until the model has enough. For a clear case of too much capacity costing
+you on new text, look back at Proverbs.
+
+### Perplexity turns the loss into a count
+
+The **Model card** shows **perplexity** beside the held-out loss, and it turns the loss back into a
+number of choices. At the defaults, the held-out loss of 2.117 becomes a perplexity of 8.31. That
+means the model is about as unsure as if it were picking among 8 equally likely characters, which is
+a big drop from the 30 it started with.
+
+On a scientific calculator, the eˣ key undoes ln, and e to the power 2.117 is about 8.31. You can
+check this against the surprise scale from earlier, where a 1 in 8 chance gave a surprise of about
+2.08. By the same logic, a model that learned nothing would have a perplexity of exactly 30.
+
+### Samples follow the loss
+
+The samples improve as the loss falls, from letter soup before training to word-shaped pieces such
+as `the` in a stream that is still not fluent. A sample shows you what a loss number looks like as
+text, but it measures nothing, so never judge a run by its samples alone.
+
+### Rank 15 is where the saving ends
+
+Past rank 15, the factored model saves nothing at all, because 2 × 15 × 30 is already 900, the size
+of the full table. **Model size** stops at 12, so you cannot reach that point in this lab.
+
+### The best learning rate depends on the schedule
+
+Picture adjusting the hot tap in a shower that is slow to respond. If you make big turns the whole
+time, you keep overshooting, too hot and then too cold, and you never settle. If you start with big
+turns and switch to tiny ones near the end, you get close quickly and then settle on the right
+temperature.
+
+A learning rate of 4 behaves like those big turns, because on `Constant` every step stays large
+right to the end. The run keeps overshooting and finishes at 3.016 held out. Under `Cosine decay`,
+the same peak reaches 2.054, better than the default's 2.117, because the decay hands back small
+steps for the end of the run.
+
+At a rate of 0.5, though, no step is too big to begin with, so shrinking the steps only wastes the
+later part of the run. That is why `Cosine decay` ends worse there, at 2.251 against 2.117 for
+`Constant`. A schedule only makes sense when you judge it together with the rate it multiplies.
+
+### Why only the factored model can blow up
+
+The full table cannot explode, because of how its push is built. For one pair, the push lowers each character's score by the chance the model gave it. The one
+exception is the character that really came next, which is raised by 1 minus its chance.
+
+The worst case is a model that is 100 percent sure of a wrong character. Then the wrong character is
+lowered by 1, the right one is raised by 1, and the rest do not move. The size is the square root of
+1 + 1, which is about 1.41. Every other case is smaller, and averaging over a batch cannot make it
+bigger.
+
+So at a learning rate of 8 on `Constant`, the full table trains normally to 2.066 held out, and its
+biggest push has a size of only 0.34.
+
+The factored model is different, because it multiplies two sets of numbers together, so the push on
+each side grows with the size of the other side. A big step can make one side larger, which makes
+the next push on the other side larger, which makes the next step larger still.
+
+On `Constant` at a rate of 8, the factored run halts before the end, so this comparison uses
+`Cosine decay`, where the run does finish. With no clip, its **Peak gradient norm** reaches about
+`1.2e+12`, which is calculator shorthand for 1.2 trillion.
+
+The run ends at a held-out loss of 22.245, far worse than the 3.401 of a model that learned nothing.
+With a clip of 0.50, the same run ends at 2.065. That even beats the default, because `Cosine decay`
+shrinks the steps late in the run: the clip held the early, oversized steps in check, and the
+schedule did the rest.
+
+### Clipping contains a bad rate without fixing it
+
+On `Constant` the clip gets no such help, so at a rate of 8 it lets the run finish, but only at
+3.089 held out, against the default's 2.117. The steps are shorter, but they are not better
+aimed, because the rate is still too large for every step of the run. Clipping is a safety limit
+that stops one oversized step from wrecking the weights, not a cure for a learning rate that is
+wrong.
+
+### Batch size trades steps against noise
+
+Picture two teachers marking the same pile of homework over the same number of weeks. One gives
+feedback after every 8 questions, while the other waits until 64 questions are done. The second
+teacher's feedback is based on more work each time, so it is steadier, but the student hears it far
+less often.
+
+Batch size works the same way when **Epochs** is fixed, because a bigger batch averages over more
+pairs and smooths out the random wobble in each push. The catch is that bigger batches leave fewer
+updates, so batch 64 makes only 120 of them and ends clearly highest, at 2.618.
+
+Batch 8 makes 960 updates and ends at 2.089, which is within noise of batch 16. So the clear lesson
+is at the large end: on this text, with the epochs fixed, too few updates cost more than steadier
+pushes gain.
+
+### Junk text: the footers notice it, the held-out loss does not
+
+The raw scrape adds steps, 880 against 480, because it has more pairs in each pass. It also lowers
+**Footer lines** from 3.090 to 2.509, which shows that the model has learned to predict the footer
+junk. Yet **Held out** barely moves, 2.105 against 2.117, and with other seeds the difference
+sometimes goes the other way, although this lab keeps the seed fixed at 9.
+
+So the held-out loss alone would never have told you to clean the text, while the **Footer lines**
+loss does. In this lab, cleaning keeps junk out of the model and saves training steps rather than
+lowering the held-out loss.
+
+## Where it breaks
+
+### What this lab simplifies
+
+Nothing in the training is faked: the pushes, all four curves, the held-out losses and the samples
+are all worked out live. The one made-up part is the raw scrape, described below. Each point on a
+curve is the loss of the weights saved at that epoch, measured on the whole split rather than on one
+noisy batch.
+
+What is missing is size and context, since the model sees exactly one character back, so `t`
+predicts the same thing in `the` as in `it`. A real model has many layers, which are stages that each
+rework every token's list of numbers. This model has none, and no attention either, which is the
+part of a real model that lets it look back across many earlier tokens.
+
+Nothing sits between the two halves of the factored model, the current-character lists and the
+next-character lists, while a real model does its main work in the layers between them.
+
+Because the held-out text is only 119 characters, treat any difference under about 0.05 nats as
+noise. It is also taken from the end of the document rather than picked at random, so it may not be
+typical of the rest.
+
+The three samples come from the factored model you sized, so they change when you move **Model
+size**. The thin curves belong to the full table, which has no samples of its own. **Epochs** stops
+at 30 and **Model size** stops at 12, and the three corpora are fixed, so you cannot paste in your
+own text.
+
+The scrape is synthetic, meaning the lab made it up from the corpus's own sentences with fixed junk
+slotted in, rather than collecting it from real web pages.
+
+The step method is the plainest kind, called stochastic gradient descent or SGD, where "stochastic"
+means random, because each batch is a shuffled handful of pairs. Real models use step methods with
+momentum, which carries part of each step into the next, and with a separate step size for each
+weight. So a rate of 0.5 here and a rate of 0.0003 in a real model are on different scales and
+cannot be compared, as Toy versus real explains.
+
+The clip shrinks the push on both halves of the factored model together, and only the factored model
+can explode. Every recipe result comes from one seed on about 380 characters, so differences under
+about 0.05 nats are noise there too. Weight decay, a real-world extra described below, is not
+offered, and the warmup always takes 15 percent of the steps.
+
+The callout on the **Size and epochs** card is written with the default recipe in mind. Raise the
+rate to 2 or 4 on `Constant` and the full table pulls ahead, and the callout then blames capacity.
+There the factored model is really overshooting, since the same rank 8 reaches a lower loss at the
+default rate.
+
+### Where the real mechanism fails
+
+"Smaller fits better" is a real result, but it depends on this setup, with plain SGD, 379 characters
+of training text, and a full table whose rows share nothing. It also depends on the default learning
+rate and short run. On `Constant` at a rate of 2 or more, the full table pulls ahead. Bigger steps
+let its rarely updated rows catch up, while the factored model starts to overshoot.
+
+Step methods that give each weight its own step size also shrink that advantage. They give weights
+that rarely get practice, such as the `q` row, bigger steps to make up for it, and this lab has no
+switch for them.
+
+Scaling laws are patterns that describe how loss falls as models and data grow. With real amounts of
+data, bigger models usually do better, and scaling laws say to grow the weights and the text together
+rather than pushing either one alone.
+
+A held-out loss is only honest while the split is honest. Suppose near-copies of the same sentence
+land on both sides of a real split between training text and test text. Then the model has partly
+seen the test already, so its loss looks better than it deserves, which is one more reason the
+near-repeat stage in cleaning matters.
+
+A real recipe also leans on tools that this lab leaves out, such as a step method that gives each
+weight its own step size. It also uses weight decay, which gently shrinks every weight a little at
+each step so that none grows too large. Real runs also use mixed precision, which does some of the
+arithmetic with shorter, less exact numbers to save time and memory.
+
+**A common mix-up:** a low loss is not a capable model. Loss only says how well the model predicts
+the next character on this kind of text. It promises nothing about following instructions, refusing
+what it should refuse, citing sources or getting facts right.
+
+A model card records which model was trained on which text, with which recipe, and how it scored. It
+is a statement of scope, not a quality rating, and its job is to let someone else judge whether your
+number applies to their problem.
+
+## Going deeper
+
+### The same two halves sit inside real models
+
+The two thin halves of your factored model are not a toy shortcut, because every real language model
+has these same two pieces at its two ends. One turns each token into a list of numbers, and the
+other scores every possible next token against that list. These two pieces are usually called the
+embedding and the unembedding.
+
+In a real model each list is thousands of numbers long, and much of the interesting work happens in
+the many layers stacked between the two ends. Your model has no layers there, and no attention to
+look further back. It only ever sees one character, which is why it can only learn which character
+tends to follow which.
+
+### Two reasons the small model wins
+
+The first reason is uneven practice, which the letter `q` showed in What to notice. A rare
+character's row in the full table barely gets updated, while the shared side of the factored model
+learns from every step. What matters is how much practice each weight gets, not how many weights
+there are.
+
+The second reason is that the factorization is a constraint, since it forces characters to share
+structure whether the text calls for it or not. That keeps the factored model from bending each row
+to fit its few training pairs exactly, which helps it on new text.
+
+The full table's tiny gap at the default recipe has a different cause, as you saw earlier. It learns
+so slowly that it has fit its training text only loosely, so it has little to lose on new text, and
+once it trains harder its gap grows.
+
+### What real model cards add
+
+Real model cards go much further than this one, recording where the data came from and under what
+licence, along with the exact recipe. They also list which tests were run on which version, the
+failure modes people already know about, and what the model is meant to be used for.
+
+None of that is a quality rating either, because a card describes what a model covers rather than
+how good it is. Your card does the smallest version of the same job, because it reports two losses
+that disagree instead of only the one that looks good.
+
+### Toy versus real
+
+**Learning rates do not carry over** from this lab to real models, because this lab uses plain SGD
+with rates from 0.125 to 16. The Llama 2 paper trained its models of 7 billion and 13 billion
+weights with a method called AdamW, which rescales each weight's own step.
+
+The peak learning rate for those Llama 2 models was 0.0003, which the paper writes in scientific
+notation as 3.0 × 10⁻⁴. The Llama 3 paper lists the same rate for its 8 billion weight model. Since
+AdamW gives every weight its own step size, its rates and this lab's rates cannot be compared.
+
+**The same three ideas show up at full size** in Llama 2. It used a schedule that warmed up over
+2,000 steps and then followed a cosine curve down to 10 percent of the peak. It also used weight
+decay of 0.1 and clipped its gradients at 1.0. Cosine decay, warmup and a clip are three of this
+lab's recipe settings, although the lab's cosine ends at 3 percent of the peak rather than 10.
+
+**The scale is wildly different**, since the Llama 2 paper reports 2.0 trillion training tokens for
+its 7 billion weight model. Each of its batches held 4 million tokens, while this lab works through
+16 pairs at a time.
+
+The same paper reports 184,320 hours of work on GPUs, which are chips built to do huge amounts of
+arithmetic at once. That adds up to about 21 years if a single chip had done all the work alone,
+while this lab trains on about 380 characters in milliseconds.
+
+**Cleaning is a chain of steps** in real data work, using the same kinds of stages as this lab's
+cleaning step: filtering junk and removing near and exact repeats. It runs those stages over
+collections of text vastly larger than this one, and it judges the results on large held-out tests
+rather than on one small split.
+
+These facts come from two sources, both cited in the Standard lesson:
+
+- Touvron and co-authors, *Llama 2: Open Foundation and Fine-Tuned Chat Models* (arXiv 2307.09288),
+  section 2.2 and Tables 1 and 2.
+- Llama Team, AI @ Meta, *The Llama 3 Herd of Models* (arXiv 2407.21783), Table 3.

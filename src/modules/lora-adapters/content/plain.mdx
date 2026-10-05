@@ -1,0 +1,835 @@
+---
+objectives: ["Explain what B·A adds to a frozen weight matrix", "Trade rank against fit and parameter count", "Say what merging an adapter gains and what it forecloses", "Explain why a freshly initialized adapter changes nothing until it is trained", "Compute an adapter's trainable parameters, share of the base model, and file size from an architecture, and compare them with the toy"]
+terms: ["LoRA", "Rank", "Alpha", "Zero initialization", "Hot-swapping", "Merging", "Target modules", "Adapter", "QLoRA", "PEFT", "Trainable fraction", "Multi-adapter serving"]
+---
+
+## The big picture
+
+Picture a model that has already been trained on one kind of text, and now you want it to take on a
+new job, such as writing recipe steps. The most direct way is to keep training every number inside
+the model on the new text, which is what the *Fine-tuning & transfer* lab did.
+
+That works, but every
+new job then leaves you with a complete new copy of the model, and a large model holds billions of
+numbers in each copy.
+
+This module is about a cheaper method called **LoRA**, short for low-rank adaptation. LoRA locks the
+original numbers so that training can never change them, and it trains a small add-on, called an
+**adapter**, whose numbers are added on top.
+
+You can picture the original model as a printed page
+and the adapter as a clear plastic sheet laid over it. Whatever is drawn on the sheet changes what
+you read, while the page underneath stays exactly as it was.
+
+Because the add-on stays separate, you can lift it off or swap in another one for a different job.
+You can also photocopy the page with the sheet on it into one new page for good. Each of those
+choices has a price, and this lab lets you see every one of them.
+
+### Where it shows up
+
+The calculator in this lab uses the real sizes of three Llama 3 models, which are large language
+models, the kind of program behind a chatbot. The smallest has about 1 billion learned numbers and
+the largest about 70 billion.
+
+LoRA is built into the free toolkits people use to adapt models like these, and into the software
+companies run to answer chatbot requests. Because an adapter is small, one computer can keep a
+single copy of a big model and clip on a different adapter for each request.
+
+The researchers who introduced LoRA compared it with retraining every number of GPT-3, an earlier
+large language model that holds 175 billion of them. They found that LoRA could cut how many numbers you train by 10,000 times.
+
+### Why it matters
+
+Without a method like this, teaching a model ten different jobs would mean storing ten full copies
+of it. Training each copy would also need extra working memory for every one of its numbers. That
+is because popular training methods keep notes on each number they are allowed to change.
+
+With LoRA, the big model is stored once and each job adds only a small file. For the
+8-billion-number model in the calculator, the starting setting gives an adapter of about 84
+megabytes. The model’s own numbers, stored the same way, fill about 16,000 megabytes, so the adapter
+holds about half a percent as many numbers as the model itself.
+
+In this lab, the cheap version also
+fits the new text about as well as retraining everything, which is the result that makes the trade
+worth making.
+
+### What you will be able to explain
+
+By the end of this lesson, you should be able to explain these ideas in your own words:
+
+- what the add-on, written `B · A`, adds to a table of numbers that stays locked the whole time;
+- how the **Rank** setting, which decides how many simple patterns the add-on may combine, trades a
+  closer fit against more numbers to train, store and load;
+- what you gain by merging the add-on into the original table for good, and what you give up by
+  doing it;
+- why a brand-new adapter changes nothing at all until it has been trained, and how it still manages
+  to start learning;
+- how to work out an adapter’s size for a real model, as numbers trained, share of the model and
+  file size, and how that compares with the toy.
+
+### What the lab lets you do
+
+The lab runs a real, very small model that guesses the next character of a text. Every score,
+chance, chart and merge check on its first three cards comes from actually training that model
+inside the app. The fourth card does arithmetic on the shapes of real models.
+
+- **The low-rank update** draws the adapter’s two thin tables and the correction they make, with
+  sliders for **Rank** and **Alpha** beside the picture.
+- **Adapter training and behaviour** lets you train the adapter for longer or shorter, and shows how
+  its guesses about the next character shift as a result.
+- **Hot-swap and merge** lets you attach and detach the adapter, compare scores on the old and new
+  texts, and then fold the adapter in for good.
+- **Adapter size calculator** does the same counting for real Llama 3 models, using arithmetic only,
+  since nothing on that card is trained.
+
+One surprise to watch for: LoRA keeps the original numbers perfectly safe, yet in this lab the
+adapter makes the model worse at its old job than full retraining does. Working out how both facts
+can be true at once is part of the lesson.
+
+## What it is
+
+### The base model: a table of 900 numbers
+
+The model in this lab reads one character and guesses which character comes next. Its alphabet has
+30 characters, made up of a space, the 26 letters, a full stop and two spare symbols that never
+appear in the text.
+
+Everything the model has learned sits in one table, with a row for each character it might read and
+a column for each character that might come next. Each cell holds a score, and a higher score means
+that pairing is more likely. In the row for `t`, for example, the cell in the `h` column holds a
+high score, because the training text says “the” again and again.
+
+To make a guess, the model turns one row of scores into chances that add up to 100%, giving bigger
+scores bigger chances. These raw scores are called **logits**, a word the lab uses when it checks a
+merge.
+
+With 30 rows and 30 columns, the table holds 900 numbers, which are called **weights** or
+**parameters**, and the lab calls the whole table `W`. A table of numbers laid out in rows and
+columns like this is called a **matrix**, so you will also see `W` called a weight matrix.
+
+`W` was trained for 60 passes over a short text called Harbor weather notes, which is eight lines
+about fog, wind, rain and boats. One full pass over the training text is called an **epoch**.
+
+The lab measures how well a model fits a text with a **loss**, the average of how surprised the
+model is by each real next character. The model counts as very surprised when it gave the character
+that really came next a small chance, and barely surprised when it gave it a big chance.
+
+Lower is better, and a model that spread its guesses evenly over all 30 characters would score
+about 3.4, so anything below that means it has picked up real patterns.
+
+The base model scores 1.921 on Harbor weather notes, the text it trained on, and 2.556 on Recipe
+steps, a short set of cooking instructions it was never trained on. It does worse on recipes because
+cooking lines such as “simmer the sauce until it thickens” follow different letter patterns from
+weather notes.
+
+This is the same base model that the *Fine-tuning & transfer* lab starts from, rebuilt inside this
+lab, so the two methods begin from exactly the same place.
+
+### Locking the table and adding a correction
+
+Fine-tuning, in the last lab, let training change all 900 numbers in `W` on the recipes. Only 720 of
+them actually move, as the note under the lab’s formula row points out. The recipes never contain some
+characters, such as j, q, x and z, so the rows for those characters get no push.
+
+LoRA takes a different route: it **freezes** `W`, which means the model reads the table every time
+it makes a guess, but training never writes a single change into it.
+
+Instead, LoRA learns a separate grid of corrections, the same 30 by 30 size as `W`, and adds it cell
+by cell to the table before each guess. The lab calls this grid `ΔW`, said “delta W”, because the
+Greek letter Δ is the usual math shorthand for “change in”.
+
+The lab’s formula row, **Effective weights**, shows the table the model actually uses. At the
+starting settings it reads `W + (8 / 4) · B · A`, where each dot means “times”. That is
+`W + (alpha / rank) · B · A` with the two slider values filled in. `B · A` is the raw correction,
+built from two small tables explained below.
+
+`alpha / rank` is a dial that turns the raw correction up or down, set by two sliders you will meet
+later. `ΔW` is the correction after the dial. At the starting settings the dial is 8 ÷ 4 = 2, so
+`ΔW` is twice `B · A`.
+
+Picture the base table as a printed page and the **adapter** as a clear plastic sheet laid on top.
+Ink on the sheet changes what you read, but the page itself is never marked, so when you lift the
+sheet off, the original is exactly as it was.
+
+You can keep a different sheet for each job and swap them in and out, which is called
+**hot-swapping**. You can also photocopy the page with a sheet on it into one flat new page, which
+is called **merging**. The copy is quicker to read because there is only one layer, but you can
+never peel the sheet off it again.
+
+### Building the correction from two thin tables
+
+If the correction could be any 30 by 30 grid, it would have 900 numbers of its own, and you would
+be training as many numbers as before. LoRA saves work by building the grid out of two thin tables,
+called `B` and `A`, in a way that needs far fewer numbers.
+
+In the simplest case, `B` is one column of 30 numbers, one per row of the grid, and `A` is one row
+of 30 numbers, one per column. To fill in any cell of the grid, you multiply the `B` number for its
+row by the `A` number for its column.
+
+It works exactly like a times table, where every cell is its row heading times its column heading,
+and that is how 60 numbers can fill all 900 cells.
+
+Here is a made-up miniature with three rows and three columns, so you can see the arithmetic. Say
+`A` holds the pattern 2, 0, −1 and `B` holds one number per row, so each row of the grid is its `B`
+number times that pattern:
+
+- Row 1 has a `B` number of 1, so it reads 2, 0, −1.
+- Row 2 has a `B` number of 3, so it reads 6, 0, −3.
+- Row 3 has a `B` number of 0, so it reads 0, 0, 0.
+
+Six numbers have filled nine cells, but notice the catch: every row is the same pattern, multiplied
+by a different amount. A correction built from one pattern can only push every row in that one
+shared way, harder for some rows and softer for others. A row whose `B` number is negative gets the
+pattern in reverse.
+
+To allow more variety, LoRA adds several of these times tables together. With two patterns, `B`
+gets a second column and `A` gets a second row, so every row of the correction becomes its own mix
+of the two patterns.
+
+In the miniature, add a second pattern, 0, 1, 1. Then give each row a second `B` number: 0 for row
+1, 1 for row 2 and 2 for row 3. Each cell now adds two products, one from each pattern:
+
+- Row 1 stays 2, 0, −1, because it takes none of the new pattern.
+- Row 2 becomes 6, 0, −3 plus 0, 1, 1, which is 6, 1, −2.
+- Row 3 becomes 0, 0, 0 plus twice 0, 1, 1, which is 0, 2, 2.
+
+The rows no longer all follow one shape, because each one mixes the two patterns in its own amounts.
+In a grid this tiny, two patterns already cost more numbers than the grid holds. In the lab’s 30 by
+30 grid, though, each pattern costs 60 numbers against 900 cells, so a few patterns stay cheap.
+
+The number of patterns is the adapter’s **rank**, written `r`, and the **Rank** slider sets it from
+1 to 12. So `B` is 30 tall and `r` wide, `A` is `r` tall and 30 wide, and multiplying them always
+gives a 30 by 30 grid.
+
+In math, the smallest number of patterns needed to build a grid is called its rank. That is where
+the name comes from, since low-rank adaptation means a correction built from only a few patterns.
+The lab’s chart calls each pattern a **direction**, so a rank-4 correction has at most 4 directions.
+
+### Counting the cost
+
+Each pattern costs 30 numbers in `B` plus 30 in `A`, so every pattern adds 60 numbers to train. The
+lab writes this as `r · (d + k)`, where `d` and `k` are the height and width of the table, both 30
+here. At the starting rank of 4, that is 4 × 60 = 240 numbers to train, a little over a quarter of
+the 900 that full fine-tuning trains.
+
+A higher rank gives the correction more freedom, but it also means more numbers to train, store and
+load. That trade between fit and cost is what the **Rank** slider lets you explore.
+
+### Where the sheet picture stops matching
+
+Ink on a real sheet usually marks a few spots and leaves the rest clear, but this sheet is not a
+small patch. It can change every cell in any row the recipe text uses, which is 24 of the 30 rows
+here. Only the rows for characters the recipes never contain are left exactly as they were.
+
+Nothing on it is a drawing you could read, either, since it is a grid of small positive and
+negative numbers. And the sheet is not drawn freely, because everything on it must be built from `r`
+patterns, which is exactly the limit that rank sets.
+
+### What the diagram shows
+
+The card called **The low-rank update** draws all of this with the real trained numbers. `A` runs
+across the top, labelled `A · 4 × 30 · random start`, while `B` runs down the left, and the
+finished correction `ΔW` sits where the two meet.
+
+The label tells you how `A` began. Once training starts, `A` changes too, and after 24 passes most
+of what you see in it was learned.
+
+In the `ΔW` grid, blue cells raise a score compared with the rest of its row, and red cells lower
+it. In `A` and `B`, blue means a positive number and red a negative one. The deeper the
+colour, the further that number is from zero, measured against the biggest number in the same grid.
+
+Below the diagram, a second map shows the change full fine-tuning made to the table over the same
+passes. Any grid, even that one, can be broken into patterns like the ones above, up to 30 of them,
+and some patterns carry much more of the change than others.
+
+A chart next to that map asks the same question of both changes: if you kept only the `k` strongest patterns,
+how much of the change would you keep? This is the same letter as in the cost formula, but here it
+means the number of patterns kept. The solid curve is the adapter, and the dashed curve is full
+fine-tuning.
+
+To judge size, the chart squares each number in a change and adds them up, which is why it talks
+about squared size and update energy. The bottom axis calls each pattern’s strength a **singular
+value**, a name from the math used to find the patterns, and you will not need that math here.
+
+Because the adapter’s correction is built from exactly `r` patterns, its solid curve always reaches
+100% at k = r and stays flat after that.
+
+### Why a fresh adapter changes nothing
+
+Before any training, `B` is filled with zeros and `A` is filled with small random numbers. As in
+the two-pattern miniature, every cell of `B · A` is made by multiplying `B` numbers by `A` numbers
+and adding the results, and anything multiplied by zero is zero.
+
+So the whole correction is exactly zero, and the effective weights are exactly the base weights.
+This starting trick is called **zero initialization**, and it means training begins from the base
+model’s own behaviour instead of from a copy that random numbers have knocked off course.
+
+You might wonder how `B` ever moves if it starts at zero. Training looks at a small handful of
+examples at a time, called a **batch**, and nudges the trainable numbers after each one. Each number
+gets a push that says which way to move to lower the loss, and that push is called its **gradient**.
+
+Picture one cell made from a `B` number of 0 and an `A` number of 0.3, so the cell is
+0 × 0.3 = 0. If training nudges the `B` number up by 1, the cell becomes 1 × 0.3 = 0.3, so a change
+to `B` moves the cell by an amount set by `A`.
+
+If training nudges the `A` number instead, the cell is still 0 times something, which is 0. A change
+to `A` cannot help yet, so training gives `A` no push at first.
+
+That is why `B` starts moving on the very first batch, while `A` has to wait until `B` holds
+something other than zero. It is also why the two cannot both start at zero, since nudging either
+one alone would leave every cell at zero, and neither would ever get a push.
+
+### What Alpha does
+
+The correction passes through one more control before it is added: a scale equal to
+`alpha / rank`, where **Alpha** is a slider from 1 to 24. At the starting settings, **Rank** is 4
+and **Alpha** is 8, so the scale is 8 ÷ 4 = 2.00 and `ΔW` is twice `B · A`. The card’s top line
+shows all three at once, as `rank 4 · alpha 8 · scale 2.00`.
+
+Why divide by rank at all? Adding more patterns together tends to make the raw correction bigger.
+The researchers behind LoRA reasoned that dividing by the number of patterns keeps its size roughly
+steady, so training settings that worked at one rank still work at another.
+
+That reasoning was made for a different training method from the one this lab uses. In this lab,
+the scale also sets how big every training nudge is, so a smaller scale means smaller nudges.
+
+The catch shows up when you hold **Alpha** at 8 and slide **Rank**, because the scale moves too.
+Rank 1 then gets a scale of 8.00, while rank 12 gets only 0.67, so a higher rank also gets a smaller
+scale. In this lab, that makes each training nudge count for less.
+
+At **Alpha** 8, rank 12’s finished correction ends up a little over half the size of rank 4’s. When
+alpha equals rank instead, the correction stays roughly the same size from rank 4 to rank 12.
+
+Whenever alpha and rank differ, the card shows a warning that the scale has changed. Under it sits a
+button labelled **Set alpha = rank, for a scale of 1**, which makes the two equal.
+
+### From the toy to a real model
+
+Real models are built from the same kind of tables, only far bigger and far more of them. A model
+such as Llama 3 8B, where 8B means about 8 billion numbers, is a stack of 32 **layers**. The layers
+are steps that the text passes through one after another, and each layer holds several weight
+matrices.
+
+Four of them sit in the attention part from the *Attention* lab, named `q`, `k`, `v` and `o` for
+query, key, value and output. Here `k` is only the name of a table, the third job this letter has
+had in the lesson. Three more sit in a second part called the **MLP**, a block that works on each
+position of the text after attention has run. The calculator names those three gate, up and down.
+
+Every one of these tables has the **model dimension**, `d`, as at least one of its sides. The letter
+`d` stands for the count of numbers the model uses to describe each piece of text. For Llama 3 8B,
+`d` is 4,096. The calculator uses `d` for this width only, while in the toy’s cost formula `d` and
+`k` were the table’s two sides.
+
+The tables are not all square, though. In Llama 3 8B, `q` and `o` are 4,096 by 4,096, but `k` and
+`v` are 4,096 by 1,024. The three MLP tables are 4,096 by 14,336, with down turned the other way
+round, which is why the MLP takes most of the adapter.
+
+Choosing which matrices get adapters is called picking the **target modules**. The calculator’s
+**Target matrices** buttons do exactly that, with one button for each attention matrix and one for
+the whole `MLP`.
+
+For each targeted matrix, the adapter pair costs `r · (inputs + outputs)`, where inputs and outputs
+are the matrix’s two sides. The calculator’s formula row adds that up over all targeted matrices and
+layers, writing it as `Σ r · (inputs + outputs)`, where the Greek letter Σ means “add them all up”.
+
+As a worked example, the `q` matrix in Llama 3 8B has 4,096 inputs and 4,096 outputs, so its two
+sides add up to 8,192. At rank 16, one layer’s pair for that matrix holds 16 × 8,192 = 131,072
+numbers. Multiplied across all 32 layers, that comes to 4,194,304, which is the figure the
+calculator’s bar list shows for `q projection`.
+
+The same steps work for the other tables. For `k`, the sides add up to 4,096 + 1,024 = 5,120, so
+32 layers at rank 16 give 16 × 5,120 × 32 = 2,621,440. Each MLP table has sides that add up to
+18,432, so the three of them come to 28,311,552, about two thirds of the whole adapter.
+
+Add `q` and `o` at 4,194,304 each, `k` and `v` at 2,621,440 each, and the MLP. The total is
+41,943,040, the count the calculator shows for every matrix at rank 16.
+
+### From a count to a file size
+
+To turn a count into a file size, you need to know how much room each number takes. Computers store
+everything as **bits**, each a single 0 or 1, and 8 bits make one **byte**.
+
+At an **Adapter precision** of 16-bit, each number takes 16 bits, which is 2 bytes. A **megabyte**,
+written MB, is a million bytes, so a million numbers stored at 16-bit fill 2 MB. More bits per
+number keep each number more precise, but they make the file bigger in exact proportion.
+
+So the 8B adapter’s 41,943,040 numbers, at 2 bytes each, fill 83,886,080 bytes. That is the 83.9 MB
+the calculator shows.
+
+### Why a real adapter is a tiny share
+
+Last, the calculator divides the adapter’s count by the number of weights in the whole base model
+and shows the result as **Share of the base model**. The badge at the top of the card gives the 8B
+model’s count, about 8.03 billion, and 41,943,040 ÷ 8,030,000,000 is about 0.00522, or 0.522%.
+
+The general name for this is the **trainable fraction**: how many numbers training is allowed to
+change, as a share of how many the base model holds. With LoRA, the numbers training changes are the
+adapter’s. When the lab says the toy “trains 26.7% of its table”, it means the adapter holds that
+many numbers compared with the table. The table itself still never changes.
+
+A pair’s cost grows with the *sum* of a matrix’s two sides, while the matrix itself grows with their
+*product*. In the times-table picture, 60 headings fill a 900-cell table, but 8,192 headings fill a
+table of more than 16 million cells.
+
+So the bigger the matrix, the smaller the adapter’s share, which you can see by comparing two
+matrices at rank 4. The toy’s adapter holds 26.7% as many numbers as its 30-wide table, a bit more
+than a quarter. A 4,096 by 4,096 matrix at the same rank needs 4 × (4,096 + 4,096) = 32,768 adapter
+numbers, while the matrix itself holds 16,777,216. That makes the adapter only 0.195% of it, or
+about 1 number in 500.
+
+## Why it’s here
+
+With LoRA, the base table stays exactly as it was, byte for byte. The only new thing you keep for
+each task is the adapter, which is 60r numbers in this lab.
+
+The saving reaches training as well as storage. A popular training method keeps two extra numbers
+of notes for every number it is allowed to change. At rank 4, that bookkeeping covers 240 adapter
+numbers instead of all 900, and the frozen table needs none at all.
+
+Picture a school with one expensive set of science textbooks and three teachers who each want to
+mark the books up for their own class. If every teacher had to buy and write in a full set, the
+school would pay for three sets and fill three shelves.
+
+If each teacher instead keeps a thin folder of clear sheets that lie over the pages, the school
+keeps one set of books and three thin folders. A teacher can also lift her sheets off at the end of
+a lesson, and the next class finds the books exactly as they were.
+
+The open question is whether squeezing the correction into a few patterns costs too much accuracy,
+and in this lab it costs almost nothing. At the same budget of 24 passes, a rank-4 adapter with 240
+numbers of its own reaches a loss of 2.077 on Recipe steps.
+
+Retraining all 900 weights for the same 24 passes reaches 2.090, so here the adapter does slightly
+better while training a little over a quarter as many numbers. That is one measurement on one small
+text, so treat it as an example of the trade rather than a rule.
+
+Why might a cheap correction do about as well? LoRA rests on a bet that the *change* a new task
+needs is simple, even though the table being changed is not. Recipes push the model to favour some
+letter pairs over others, such as `a` after `s` for “sauce” and “salt”. The bet is that a handful of
+patterns can carry most of a shift like that.
+
+## How to play with it
+
+The lab follows the steps below in order, and each one tells you which control to move and what to
+compare.
+
+### Size the update
+
+On **The low-rank update**, drag **Rank** from 1 to 12 and watch `B` widen and `A` grow taller.
+Each new pattern adds a column to `B` and a row to `A`, so the two thin tables grow together.
+
+The slider’s label shows the cost as you go, such as `4 · 240 weights`. Below it, the bar list
+called **Trainable parameter count** compares a bar for LoRA at the current rank with the 900
+weights of **Full fine-tuning**. As you drag, the LoRA bar climbs in steps of 60:
+
+- At rank 1, the LoRA bar reads 60 weights, which is one fifteenth of the full table.
+- At rank 2, it reads 120, because two patterns cost 60 numbers each.
+- At rank 4, the starting value, it reads 240, a little over a quarter of the table.
+- At rank 8, it reads 480, which is already more than half of the full table.
+- At rank 12, the top of the slider, it reads 720, which is 80% of the full table.
+
+The slider stops at 12, well short of rank 15, where the adapter would cost 900 numbers, as many as
+the whole table. Before moving on, set **Rank** back to 4, its starting value.
+
+### Train the adapter
+
+**Try this:** set **Adapter epochs** to 0, where the slider reads `untrained`. `B` and `ΔW` go blank
+in the diagram, even though `A` still shows its random colours, because zero times anything is zero.
+
+**Target loss**, on the **Hot-swap and merge** card, now reads 2.556, which is exactly the base
+model’s score. Every pair of bars under **Next character after**, the base-versus-adapter bars you
+will explore in a moment, matches too, because an untrained adapter changes nothing at all.
+
+Now raise **Adapter epochs** back to 24 and look at the **Adapter training loss** chart. Its solid
+line peels away from the dotted line, which marks the frozen base model’s score on recipes.
+
+The solid line is bumpy because each point averages the loss on about a dozen small batches,
+measured while the adapter was still changing. For a fair score, read the full-text loss in the note
+under the chart.
+
+The chart measures loss in nats per character. A nat is the unit this surprise score is counted
+in, the way points are the unit of a game score, and every loss in this lesson uses it. Lower is
+better, and the dotted line at 2.556 is the score to beat.
+
+Next, pick `s` under **Next character after**, and you will see a row for each of the seven most
+likely next characters, each with two bars. The upper, hatched bar is the base model, and the lower,
+solid bar is the base model plus the adapter.
+
+Find the row for `a`, which reads `5% → 29%`: the base model gives `a` a 5% chance after `s`, and
+the adapter raises it to 29%. That fits the text, because recipes keep saying “sauce”, “salt” and
+“salted”.
+
+Now pick `␣`, the symbol the lab uses for a space, and notice that the most likely next character,
+`t`, barely moves, from 22% to 18%. The picker offers five starting characters: `␣`, `e`, `s`, `l`
+and `a`.
+
+If you click through all five, the bars after `l` change most, since a space after `l` jumps from 5%
+to 62%. The bars after `s` and `a` change next most, those after `e` a little less, and the bars
+after the space barely move.
+
+### Compare ranks fairly
+
+Keep **Adapter epochs** at 24 and slide **Rank** again, this time reading the target loss printed on
+the LoRA bar, where lower is better:
+
+- Rank 1 scores 2.462, the worst of the five and the closest to the untrained model.
+- Rank 2 scores 2.316, a clear step better than rank 1.
+- Rank 4, the starting value, scores 2.077, beating full fine-tuning.
+- Rank 8 scores 1.990, the best fit of the five.
+- Rank 12 scores 2.059, which is worse than rank 8 even though it has more patterns.
+
+That last result looks odd until you read the warning above the bars, which says that with **Alpha**
+held at 8, the scale changed every time you moved **Rank**.
+
+At each rank, press **Set alpha = rank, for a scale of 1** so that the scale reads 1.00, then read
+the loss again. With the scale held steady, the extra patterns pay off, and rank 12 comes out
+slightly ahead of rank 8.
+
+Rank 4 is worth a look here too. The button drops its scale from 2.00 to 1.00, and its loss rises
+to 2.091, level with full fine-tuning’s 2.090. So the adapter’s small win at the starting settings
+owes something to its scale.
+
+The button disappears once the two values match, and it comes back as soon as you move **Rank**
+again, because **Alpha** stays wherever you left it.
+
+Before moving on, set **Rank** back to 4 and **Alpha** back to 8, the starting values, because the
+next steps quote the numbers for those settings.
+
+### Hot-swap it
+
+On **Hot-swap and merge**, flip **Serving** between `Base only` and `Base + adapter`, and watch
+three readouts move together:
+
+- **Target loss**, the score on the recipes, moves between 2.556 and 2.077.
+- **Source loss**, the score on Harbor weather notes, moves between 1.921 and 2.235.
+- **Serving weights** moves between 900 and 1140, because keeping the adapter separate means holding
+  its 240 numbers beside the table.
+
+The sample text under the readouts changes too, since it is written by whichever table is being
+served. The model is given the word “the” and a space to start from, but that start is not shown,
+so the text begins with what it wrote next. It uses a temperature of 0.7, a setting that controls
+how much randomness goes into picking each character.
+
+### Merge it
+
+Press **Merge the adapter into W**, and the button changes to `Adapter merged into W` while
+**Serving** shows only one option, `Merged — nothing left to swap`.
+
+**Serving weights** drops back to 900, because the correction now lives inside the table itself.
+**Target loss** stays at 2.077, since the merged table holds the same numbers the adapter was
+producing.
+
+In a real system, an unmerged adapter makes every guess take extra work. The model reads its row of
+`W`, builds the matching row of the correction from `B` and `A`, and adds the two. After a merge
+that sum is already done and stored, so each guess reads one table, and that saved work is what
+merging gains.
+
+The callout under the button reports the largest logit gap, at about 4e-7, which is 0.0000004. That
+is the biggest difference in any score between the merged table and the unmerged path, which keeps
+`W` and the adapter apart and adds their effects for each guess. Changing **Rank**, **Alpha** or
+**Adapter epochs** undoes the merge, because each of them retrains the adapter.
+
+### Size a real adapter
+
+Open the **Adapter size calculator**, which starts on **Architecture** `Llama 3 8B` with every
+button under **Target matrices** switched on and **Adapter rank r** at 16. At those settings, the
+three readouts across the middle of the card show what the adapter costs:
+
+- **Trainable parameters** reads 41,943,040, the count of numbers the adapter would train.
+- **Share of the base model** reads 0.522%, which is about 1 number in every 190.
+- **Adapter size at 16-bit** reads 83.9 MB, the size of the file that holds those numbers.
+
+Switch the `MLP` button off, and the count falls to 13,631,488, or 0.170% of the model. Switch the
+`MLP` back on, then set **Adapter precision** to `32-bit` to store each number with twice as many
+bits. The size doubles to 167.8 MB, since each number now takes 4 bytes instead of 2.
+
+Then read the callout at the bottom of the card, which uses the **Rank** from the first card rather
+than the calculator’s own rank. At the toy’s starting rank of 4, it says the toy trains 26.7% of its
+table, while the 8B model with every matrix targeted trains 0.131%.
+
+That is lower than the 0.522% above because the callout uses rank 4, a quarter of 16, so the share
+is a quarter as big.
+
+Last, switch **Architecture** between `Llama 3.2 1B`, `Llama 3 8B` and `Llama 3 70B`, and watch
+**Share of the base model** fall as the model grows.
+
+## What to notice
+
+### The cheap adapter keeps up
+
+- The headline: 240 trained adapter numbers matched 900 trained weights at the same budget, 2.077
+  against 2.090. That is the case for adapters, measured once on one small text.
+- Full fine-tuning got there with a change spread over many patterns, not a simple one. On the
+  chart, its first 4 directions hold only 63% of that change.
+- Even its first 8 directions hold only 86%, and its dashed curve does not pass 95% until it reaches
+  11 directions.
+- A rank-4 adapter can hold at most 4 directions, so at best it could have copied 63% of full
+  fine-tuning’s change. Since it still scored as well, it must have found a different, simpler
+  change that fits recipes about as well.
+
+### More rank is not automatically better
+
+Of the five ranks in the list, the best recipe loss at **Alpha** 8 came from rank 8, not rank 12. If
+you stop at every rank, rank 7 is best at 1.977, and rank 12 does worse than every rank from 5 to
+11.
+
+Two things changed at once, which is the problem: rank 12 had more patterns to work with, but its
+scale had dropped to 0.67. That smaller scale made every push it took count for less.
+
+Picture testing whether bigger study groups score higher on a quiz, while cutting the study time
+each time you add a member. If the biggest group does worse, you cannot tell whether the size hurt
+or the shorter session did. The rank sweep at a fixed **Alpha** has exactly that problem, and
+setting alpha equal to rank fixes it by holding the scale at 1.00.
+
+So a worse score at rank 12 does not prove that extra rank harms the fit. Once the
+scale is held at 1.00, rank 12 edges ahead of rank 8, so the drop came from the weaker scale, not
+from the extra patterns.
+
+### Swapping and merging
+
+- Taking the adapter off restores the base exactly, because `W` was never written, so **Source
+  loss** goes back to 1.921.
+- While the adapter is on, the model does worse on Harbor weather notes than full fine-tuning left
+  it, scoring 2.235 there against full fine-tuning’s 2.088.
+- A scale of 2.00 makes the adapter’s correction bigger, but it is not the main reason. With
+  **Rank** at 4, set **Alpha** to 4 for a scale of 1.00. The adapter now fits recipes as well as
+  full fine-tuning, 2.091 against 2.090, yet still leaves Harbor weather notes at 2.208.
+- To reach its recipe score, the adapter’s correction ended up bigger overall than the change full
+  fine-tuning made, and some of that correction also reaches the harbor text. The lab does not pin down
+  the exact cause.
+- **Merging** matches the unmerged path to within about 4e-7 per score. That difference is
+  rounding, and the recipe loss is the same to four decimal places.
+
+The rounding happens because the unmerged path does its sum with extra-precise numbers each time,
+while the merged table stores every number once in a format that keeps fewer digits. The difference
+is far too small to change any prediction, which is why the two losses match.
+
+### Real models
+
+- The toy makes LoRA’s share look about 200 times bigger than it is on a real model. At rank 4, the
+  toy’s adapter holds 26.7% as many numbers as its table, while the 8B model’s adapter, with every
+  matrix targeted, holds 0.131% as many as the model.
+- The share being compared is the **trainable fraction**, and it shrinks on big models because pairs
+  grow with the sum of a matrix’s sides while matrices grow with the product.
+- Which matrices you target matters as much as rank. At rank 16, the MLP holds 67.5% of the 8B
+  model’s adapter, because its three matrices are much larger than the attention ones.
+- Starting from `q` and `v` alone at rank 16, switching on the MLP as well multiplies the count by
+  5.15.
+- Size grows in exact proportion to rank, to layers and to bits, so doubling any one of them doubles
+  the file.
+
+The share also falls as the whole model grows, as the calculator shows at rank 16 with every matrix
+targeted:
+
+- The 1B model’s adapter is 0.912% of the model, a little under 1 number in 100.
+- The 8B model’s adapter is 0.522% of the model, about 1 number in 190.
+- The 70B model’s adapter is only 0.294% of the model, even though it holds 207,093,760 numbers.
+
+The same arithmetic also matches a published figure: for Llama 3.2 1B with only `q` targeted at rank
+8, it gives 524,288 trainable parameters. That is the exact count printed by the quick tour of
+PEFT, a free toolkit for adapting models, for the same setup.
+
+## Where it breaks
+
+### What this lab simplifies
+
+The adapter, its gradients, both losses, the charts and the merge check are all computed for real as
+you move the controls. The biggest gap is that this model has only one matrix, so the list of
+**target modules** has one member. A real LoRA attaches to chosen matrices inside each layer, often
+`q` and `v`, sometimes all four and the MLP, and choosing them well is much of the real skill.
+
+Both `ΔW` maps subtract each row’s average before drawing, which the diagram notes as “each row’s
+mean removed”. Adding the same number to a whole row of scores changes no prediction, because the
+chances depend only on how the scores in a row differ from each other.
+
+For example, scores of 2, 1 and 0 give exactly the same chances as 5, 4 and 3, because only the gaps
+between them matter. Full fine-tuning never adds a same-for-the-whole-row amount, but the adapter
+does, so its raw correction is slightly bigger than its map shows. The hidden part is small: at most
+about 0.08 per row, next to cells as large as about 4.5.
+
+**Rank** stops at 12, well short of rank 15, where the adapter would cost as many numbers as the
+whole table. The full fine-tuning bar and map come from one run, with one fixed random order of
+practice examples. They are a reference point, not a verdict on which method wins.
+
+Nothing is held out. Every recipe loss is measured on the same eight recipe lines the adapter
+trained on, and **Source loss** on the Harbor lines the base trained on. So a low recipe score shows
+how well the adapter fits those lines, not how it would handle new ones.
+
+Picture a student who is only ever graded on the eight practice questions they studied. A good score
+there tells you little about how they would do on new questions, and this lab only ever shows you
+that practice score.
+
+The training rule is plain SGD, a basic rule that nudges each number by its gradient times a fixed
+step size of 0.6. It also uses no dropout, a guard that randomly blanks out some of the
+adapter’s inputs during training to discourage memorising.
+
+**Next character after** offers five starting characters, chosen because recipes change them
+visibly, but every row whose character appears in the recipes is trained as well. On **Hot-swap and
+merge**, there is no second adapter to swap in, so detaching is the only swap.
+
+Merging there is a switch plus a real numerical check, not a new file being written. To keep the lab
+quick, the `Base + adapter` setting also reads from a table that was added up in advance. So you
+never feel the extra work of an unmerged adapter here. The lab does the slower, separate sum only
+for the merge check.
+
+**Serving weights** still counts `A` and `B`, though, because that is the memory a real server pays
+to keep the adapter swappable.
+
+The **Adapter size calculator** does arithmetic and nothing else. Because it trains and serves
+nothing, it cannot tell you whether a given rank is enough for a task. Its `Custom` model follows
+Llama 3’s proportions and is not a real published model, and its counts leave out anything beyond
+the LoRA pairs. All three presets come from one family of models, so a model built differently
+would give different counts.
+
+**A common mix-up:** LoRA does not protect a model from forgetting its old job. The rank-4 adapter
+leaves Harbor weather notes at 2.235, while full fine-tuning leaves them at 2.088. What LoRA
+protects is the base *weights file*, which is why you can swap adapters and merge them.
+
+In the sheet picture, the page under the sheet is untouched, yet while the sheet is on, the whole
+page reads differently, including the parts you never meant to change. Whether the old *behaviour*
+survives depends on the scale, the rank and the training budget, just as forgetting after full
+fine-tuning depends on how long and how hard it trains.
+
+### Where real LoRA falls short
+
+How close an adapter comes to full fine-tuning depends on the task. Adapters fall behind on big
+shifts, such as a new language, a new kind of input or genuinely new knowledge. Only testing on
+examples held back from training tells you which case you are in.
+
+An adapter’s training loss can look excellent while the adapter fails on prompts unlike the ones it
+trained on. The **Source loss** readout is this lab’s cheap check for side effects on the old job.
+
+Serving many unmerged adapters at once needs special code that handles several requests together, so
+that each request is not slowed down. Merging several adapters into one base makes them get in each
+other’s way, which is the subject of the next lab, *Model merging*.
+
+The file on disk also depends on the number format the adapter is stored in, which can differ from
+the base model’s. Even when the base model uses 16-bit numbers, PEFT keeps the adapter’s
+numbers at 32-bit by default, because training is steadier that way. So the 32-bit size is a
+realistic size during training. A small trainable fraction also says nothing about quality on its
+own.
+
+## Going deeper
+
+### The bet behind the method
+
+LoRA’s central bet is that the *change* a fine-tune needs is simple, even when the weights are not.
+In math terms, the change is close to low rank, so squeezing it into rank `r` loses little.
+
+The squeeze also acts as a brake on overfitting, which means fitting the training text so closely
+that new text suffers. That is part of why small ranks sometimes do better than large ones on new
+text. This lab cannot show that, because it scores only the text the adapter trained on.
+
+### Why Alpha divides by rank
+
+The product `B · A` is a sum of `r` one-pattern pieces, so its size tends to grow as `r` grows.
+The LoRA paper divides by `r` to hold it roughly steady, so that you can change rank without also
+changing how hard the adapter pushes.
+
+That reasoning was made for the paper’s training method, Adam.
+It does not hold for this lab’s plain nudges, where alpha equal to rank keeps the size roughly
+steady, at least from rank 4 to rank 12.
+
+Later work called rsLoRA argues that dividing by the square root of `r` is steadier at large ranks,
+and PEFT offers that choice as `use_rslora`.
+
+### Where the real saving is
+
+The biggest saving in real systems is training memory, not prediction speed. The training method
+with two extra numbers of notes for every *trainable* weight, from *Why it’s here*, is called Adam.
+No pushes are stored at all for the frozen table, so its memory goes only to holding it.
+
+### QLoRA
+
+**QLoRA** goes further by storing the frozen base in 4-bit numbers instead of 16-bit, which cuts the
+base’s memory about four times. Each 4-bit number is expanded back to 16-bit on the fly whenever it
+is needed for a multiply, while only the 16-bit adapter trains.
+
+That was enough to fine-tune a model with 65 billion numbers on one graphics chip, or GPU, with 48
+gigabytes of memory, where a gigabyte is a billion bytes.
+
+The *Quantization* lab shows the plain version of this storage trick, where the allowed values are
+evenly spaced. QLoRA’s 4-bit format, called NormalFloat or NF4, spaces its 16 allowed values
+unevenly to suit weights whose values follow a bell-shaped spread. The QLoRA paper describes this
+layout as the best possible use of 16 values, in a precise mathematical sense, for weights spread
+that way.
+
+A second trick, called double quantization, squeezes the small helper numbers that the 4-bit format
+needs, which saves a little more memory.
+
+### Older adapters
+
+Earlier **adapter** designs slid small extra layers between the frozen ones, and those extra layers
+stay in every prediction forever. LoRA’s correction is plain addition, so it can be folded into `W`
+once and cost nothing extra when the model makes predictions.
+
+An adapter that does anything beyond multiplying by fixed numbers and adding, such as cutting off
+negative values, cannot be folded in this way.
+
+### Other ways to adapt
+
+LoRA is one member of a family called **PEFT**, short for parameter-efficient fine-tuning, which
+means training a small set of added or chosen numbers while the base stays frozen. The PEFT
+toolkit, published free by the company Hugging Face, collects these methods, and they differ in what
+is trained and where:
+
+- **Prompt tuning** trains a few extra lists of numbers, called soft prompts, that are added to the
+  model’s input.
+- **Prefix tuning** also trains lists of numbers, but slips them into every layer rather than only
+  at the input.
+- **IA3** learns numbers that turn the volume up or down on parts of each layer. PEFT’s guide says
+  it trains about 0.01% of a model called T0, where LoRA trains more than 0.1%.
+- **DoRA** splits each weight into a size and a direction, adapts the direction with LoRA, and
+  learns the size separately. PEFT turns it on with `use_dora` and recommends merging it before use,
+  because it adds extra work.
+
+### Serving many adapters
+
+Because an adapter is small, one server can hold a single copy of the base model and many adapters,
+then choose one for each request. This is called **multi-adapter serving**, and it works like
+keeping one printed page and a stack of clear sheets beside it.
+
+PEFT’s quick tour shows the simplest version, where `add_adapter` registers a named adapter and
+`set_adapter` switches to it. The serving software vLLM runs LoRA adapters when it is started with
+`--enable-lora`, and each request names the adapter it wants. A setting called `max_loras` caps how
+many adapters run at once.
+
+The S-LoRA paper describes a system that keeps every adapter in main memory and moves the ones in
+use onto the GPU. It reports up to four times the work done per second of vLLM and PEFT setups. It
+does that while serving several orders of magnitude more adapters, where each order of magnitude
+means ten times as many.
+
+A merged adapter gives all of this up, because each merge is a separate full copy of the weights.
+
+### Toy versus real
+
+- **Shares:** the toy trains 26.7% of its weights at rank 4. The PEFT quick tour prints 524,288
+  trainable numbers for a rank-8 adapter on the `q` matrices of Llama 3.2 1B.
+- That quick-tour adapter is 0.0424% of the 1,236,338,688 numbers PEFT counts in total, which is
+  about 1 number in 2,400.
+- GPT-3 is the 175-billion-number model from the start of this lesson. The LoRA paper says that,
+  compared with retraining all of it with Adam, LoRA can cut the numbers being trained by 10,000
+  times.
+- **Settings:** the toy uses ranks 1 to 12, **Alpha** 8 by default and plain SGD. The QLoRA paper
+  used rank 64, alpha 16 and adapters on every matrix, with its own step sizes, called learning
+  rates, that cannot be compared with the toy’s 0.6.
+- The PEFT quick tour’s example uses rank 8 with alpha 32, so its scale is 4.
+- **Files:** PEFT saves an adapter as two files, a small settings file and a file of numbers in a
+  format called safetensors. Safetensors is built to store tables of numbers safely and load them
+  fast.
+- The quick tour’s adapter for a model called opt-350m is 6.3 MB, against about 700 MB for the model
+  itself.
+- **Tools:** PEFT’s `merge_and_unload` folds an adapter into the base, and the training tools in a
+  toolkit called TRL work with PEFT.
+- A tool called mergekit can go the other way: from a fully fine-tuned model, it can pull out a
+  low-rank adapter that approximates the change.
+
+The base model here was trained for 60 passes, while the *Model merging* lab trains its own Harbor
+base for 48 instead. Each lab fixes its own count, and none of them tests the difference.
+
+### Where these facts come from
+
+The facts about tools come from the PEFT documentation, including its quick tour and its guides to
+LoRA, IA3 and soft prompts, and from the safetensors and mergekit documentation. The research claims
+come from the LoRA paper by Hu and others (arXiv 2106.09685) and the QLoRA paper by Dettmers and
+others (arXiv 2305.14314). The model shapes come from the Llama 3 paper (arXiv 2407.21783) and the
+released settings files of the three Llama models.

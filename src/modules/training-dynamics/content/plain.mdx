@@ -1,0 +1,621 @@
+---
+objectives: ["Distinguish training and validation performance", "Recognize and respond to overfitting", "Predict how capacity, weight decay, learning rate, and batch size change a training run"]
+terms: ["Generalization", "Model capacity", "Overfitting", "Underfitting", "Training set", "Validation set", "Test set", "Generalization gap", "Early stopping", "Regularization", "Weight decay", "Dropout", "Distribution shift", "Data leakage", "Double descent"]
+---
+
+## The big picture
+
+Picture two classmates who both score 100% on every practice quiz in the back of their maths textbook. On
+the real test, though, one of them does well and the other falls apart. The first one had learned how to
+solve the problems, while the second one had memorized the answers to those exact questions. If all you
+ever saw were their practice scores, you could never tell the two of them apart.
+
+Training an AI model has the same trap, since a model learns by adjusting the numbers inside it until it
+does well on a pile of examples. It can get there by picking up the real pattern behind the examples, or
+by memorizing the examples themselves, odd details and all. This module is about telling those two apart,
+catching the moment a model starts sliding from one to the other, and knowing what to do about it.
+
+The main idea fits in one sentence: keep some examples out of training, and score the model on those as
+well. Training only ever looks at the score on its own examples, so the score on the held-back ones is
+your honest check on what the model really learned.
+
+### Where you have met it
+
+Whenever you read that a new AI model did well on a test, often called a benchmark, that score was
+measured on questions held back from its training. The score only means something if those questions were
+truly kept out, since otherwise it measures memorizing instead of skill, and nobody can tell from the
+number alone.
+
+The chatbots you may have used face the same risk at one stage of their training. The large models behind
+them are first trained on huge amounts of text, and can then be trained again on a much smaller set of
+examples, called fine-tuning. That smaller round is one of the places where memorizing becomes a real danger.
+The checks you will practise in this lab are the ones people use to catch it.
+
+### Why it matters
+
+Without a held-back score, a training error that keeps shrinking looks like progress even while the
+model is busy memorizing its examples. You could end up with a model that shines on its practice examples and fails on
+everything new, without finding out until it meets real inputs. You would also have no good way to choose
+a model’s size or when to stop training, because the practice score keeps improving almost whatever you
+do.
+
+### What you will be able to explain
+
+By the end of this lesson, you should be able to explain each of these ideas in your own words:
+
+- how a model’s score on the examples it trained on differs from its score on examples it never saw, and
+  why only the second one shows real learning;
+- how to spot the moment a model starts memorizing, which is called overfitting, and two ways to respond:
+  keeping its numbers small and stopping at the right time;
+- what happens to a training run when you make the model more or less flexible, or change how hard its
+  numbers are pulled toward zero;
+- what happens when you change how big each training step is, called the learning rate, and how many
+  examples feed into each step, called the batch size.
+
+### What the lab lets you do
+
+The lab trains a real, tiny model right inside the app, and its only job is to draw a curve through 16
+dots. Another 16 dots are kept back to score that curve, so you can see how it does on dots it never
+trained on. Nothing on the screen is a pre-drawn animation. Every line and number comes from real training runs, one for each model size.
+The app runs them again in a split second whenever you change a training setting or the noise draw, and
+records them as they go. Moving **Epoch** or **Polynomial degree** retrains nothing. It only picks which
+saved run, and which moment in it, to show.
+
+The lab is split into four cards, and each one lets you see or change a different part of the run:
+
+- watch the two scores move together or drift apart over 10,000 rounds of training on **Training
+  curves**;
+- see the actual curve the model has drawn so far, next to both sets of dots, on **Fitted function**;
+- change the model’s size and each of its training settings, one at a time, on **Training dynamics
+  controls**;
+- compare every model size at the same moment of training, side by side, on **Capacity sweep**.
+
+The lab is unrealistic in one way, on purpose: it makes its own dots from a curve it chose, then nudges
+each dot up or down at random. Because it made the data itself, it can show you the true curve behind the
+dots, which no real project ever gets to see. The badge that calls a run “fitting” or “overfitting” uses
+cut-off points that the lab picked, and they are not rules that every project follows. The lab also
+leaves out a third set of examples, a kind of final exam that real projects keep, which you will meet
+further down.
+
+## What it is
+
+Go back to the two classmates for a moment, because there are two very different things you can measure
+about any student. One is how well they do on practice problems they have already worked through, and the
+other is how well they do on brand-new problems. You can measure a model in the same two ways, and this
+lab draws both measurements as lines on one chart so that you can compare them.
+
+### Two scores from one model
+
+The examples a model trains on are called the **training set**, and they are like the practice problems
+with the answers in the back of the book. During training, the model is adjusted over and over to do
+better on exactly these examples and no others. Its score on them is the **training loss**, where “loss”
+means how far wrong the model is, so a lower loss is a better score.
+
+A second pile of examples is kept out of training on purpose, or “held out”, and it is called the
+**validation set**. The model is never adjusted to fit these examples, so they work like a quiz full of
+brand-new problems. The score on them is the **validation loss**, and it tells you how well whatever the
+model learned carries over to examples it has not trained on.
+
+Doing well on new examples like these is called **generalization**, and it is the only real evidence that
+a model picked up a pattern. A memorized answer is no help on a question you have never seen, so a model
+that only memorized its practice set will do badly on new examples.
+
+The difference between the two scores, the validation loss minus the training loss, is called the
+**generalization gap**, and the lab shows it as `Gap (val − train)`. Neither line tells you much on its
+own, because the useful information is in how far apart the two lines sit and whether that distance keeps
+growing.
+
+### How a miss is scored
+
+The model in this lab draws a curve, and its loss measures how badly that curve misses the dots it is
+being scored on. For each dot, the lab measures the up-and-down distance between the dot and the curve,
+squares that distance, and then averages the squares over all 16 dots. That average is called the **mean
+squared error**, and it is the loss on every chart in the lab.
+
+Here is a small worked example that uses three dots instead of 16, with the curve missing each dot by a
+different amount:
+
+- The curve passes 0.1 above the first dot, and that miss squares to 0.01.
+- It passes 0.3 below the second dot, and squaring that miss turns it into a positive 0.09.
+- It passes 0.2 above the third dot, and that miss squares to 0.04.
+- The squares add up to 0.14, so their average over the three dots, which is the loss, comes to about
+  0.047.
+
+Squaring does two useful jobs: it turns misses below a dot into positive numbers, so they cannot cancel
+out misses above another dot. It also makes big misses count far more than small ones, since a miss that
+is three times bigger counts nine times as much.
+
+To turn a loss back into a distance, take its square root, which gives you the size of a typical miss.
+For example, a loss of 0.0625 means a typical miss of about 0.25. That is because 0.25 squared is 0.0625,
+and you will meet this exact number again in a moment, when the lab measures its noise.
+
+### The model in this lab
+
+The “student” in this lab is a small model whose only job is to draw a curve that fits a set of dots. The
+lab starts from a smooth wave that tilts upward from left to right, which it calls the true curve, and
+places 32 dots along it. It then nudges each dot up or down by a random amount, so the dots sit near the
+wave but not exactly on it.
+
+Those random nudges are called the **noise**, and in the textbook picture they are like misprints in the
+answer key. They are part of what the student studies, but they are not part of the method the student
+should learn, so memorizing them can only hurt.
+
+Counting from left to right, every other dot goes into the training set and the rest go into the
+validation set, which gives each pile 16 dots. Because the two piles alternate, both of them are spread
+across the whole width of the chart. The model only ever trains on the 16 training dots, and it never
+sees the true curve at all.
+
+The lab chose the size of the nudges itself, so their average size is known exactly, something real data
+never offers. A typical nudge is about 0.25, so the average squared nudge is 0.0625, and the lab calls
+this the **noise variance**. It is written σ² and read as “sigma squared”, and it appears as a dotted
+line on both loss charts.
+
+That dotted line matters because no curve can predict random nudges, so even the true curve misses the
+dots by that much on average. On this lab’s 16 training dots, the true curve scores 0.081, a little above
+0.0625, because these particular nudges happen to run on the large side.
+
+The true curve is the best any
+curve can do by following the pattern alone. So when a model’s training loss sinks well below the dotted line, it can only have got there
+by bending toward some of the random nudges in its own dots. Those
+nudges will not be there on any new dot, so matching them can never help on new examples.
+
+### Weights, degree and capacity
+
+The model builds its curve by adding together a set of simple building-block curves of different shapes.
+The first block is a flat line, the next is a sloping line, and each block after that bends one more time
+than the block before it. Each block comes with its own number, which says how much of that block goes
+into the mix, and these numbers are called **weights**. Training a model means adjusting its weights
+until the blocks add up to a curve that matches the training dots well.
+
+A curve built from blocks like these is called a **polynomial**, and its degree counts how many blocks
+come after the flat one. The **Polynomial degree** control runs from 1 to 13, and next to the degree it
+shows how many weights that gives. At degree 1 there are two weights, one for the flat block and one for
+the sloping block, so the model can only ever draw a straight line. At degree 11 the control reads
+`11 · 12 weights`, and a curve built from that many blocks can bend as many as 10 times.
+
+How flexible a model is, meaning how many different shapes it can draw, is called its **model capacity**,
+and in this lab capacity is the polynomial degree. Turning up the degree gives the model more freedom to
+bend, and in the much larger models behind chatbots, capacity grows with the number of weights.
+
+### How training moves the weights
+
+Training starts with every weight set to zero, so the first curve is a flat line across the middle of the
+chart. From there, training repeats the same move thousands of times, and each repeat is called a step.
+In each step it looks at the training dots, works out which small change to each weight would lower the
+training loss fastest, and makes that change.
+
+One full pass through all 16 training dots is called an epoch, and the **Epoch** slider in the lab runs
+from 0 to 10,000 of them. The lab recorded both losses 83 times along the way, so dragging the slider
+shows you the model at any of those moments.
+
+Two settings on **Training dynamics controls** decide how each step is made, and each one comes with an
+everyday picture below:
+
+- **Learning rate** sets how big each step is, and the lab writes it with the Greek letter η, read as
+  “eta”, set to 0.1 unless you change it. A bigger learning rate gets somewhere faster, but a step that
+  is too big can jump past the best values for the weights and land somewhere worse.
+- **Batch size** sets how many training dots the model looks at before each step. At `16 (full)` it uses
+  every dot and takes one step per epoch, while at 4 it takes four quicker but less reliable steps per
+  epoch.
+
+Picture a group chat of 16 friends trying to pick a place for lunch, where you can either wait for
+everyone or decide as the replies come in. If you wait for all 16 replies, you make one well-informed
+choice, but it takes a while to arrive. If you decide after every 4 replies, you make four quick choices
+in the same time, but each one leans toward whichever friends happened to answer first. Smaller batches
+work the same way: more steps per epoch, each pointing a little away from the direction that all 16 dots
+would agree on.
+
+The picture stops matching in one way. Lunch choices replace each other, but the four small steps add
+up, each one starting from where the last one left off. Over an epoch every dot still gets its say, and
+the lean only makes the path wobble.
+
+Overshooting deserves its own picture, so imagine someone in a shower who turns the knob a long way every
+time the water feels wrong. The water goes from too cold to too hot, so they swing the knob hard the
+other way, and each correction overshoots by more than the last. A training run with too big a learning
+rate can do the same thing, with its loss swinging wider and wider instead of settling down.
+
+On the chart you will see a steady climb rather than visible swings, because the lab only records the loss now and
+then. Once the loss passes 10⁶, which is a 1 followed by six zeros, the lab stops the run and marks it as
+`diverged`.
+
+Two more controls round out the card: **Weight decay**, a fix for memorizing that you will try further
+down, and **Noise draw**. **Noise draw** picks one of four random draws of the dots, labelled seed 1 to seed 4.
+It lets you check whether a result depends on the luck of the draw. A seed is the starting number
+the lab feeds into its random-number maker, so the same seed always gives the same dots. A different
+seed changes both the up-and-down nudges and exactly where each dot sits from left to right.
+
+### Three ways a run can go
+
+As you drag **Epoch**, a badge on **Training curves** names the situation the run is in, and there are
+three main situations to know:
+
+- **Underfitting** means both losses stay high, because the model is too simple to follow the pattern or
+  has not trained long enough yet. A straight line at degree 1 settles at a training loss of 0.322 and
+  never improves, because no straight line can follow a wave.
+- **Fitting** means both losses fall together and then hold fairly steady, which is what you want to see.
+  At the default degree 5, validation reaches its lowest point at epoch 11, then creeps up only slightly
+  and holds steady for the rest of the run.
+- **Overfitting** means the training loss keeps falling while the validation loss turns around and
+  climbs. The model is now matching the random nudges in its 16 training dots, which helps on those dots
+  but hurts on every new one.
+
+The badge also has a fourth reading, `diverged`, for a run whose steps overshoot so badly that its loss
+explodes, as in the shower story. In the textbook picture, overfitting is the student who has memorized
+the answer key, misprints and all, so their practice score is perfect for the wrong reason.
+
+### Three piles, not two
+
+The validation set has a weakness of its own, because you also use it to make choices about the model.
+You check it to decide how big a model to use, how big a learning rate to pick, and when to stop
+training. Every time you keep whichever option scored best on it, you are choosing partly on luck, so
+your final choice’s score looks a little better than it really is.
+
+Picture a student who tries ten different ways of studying and keeps whichever one earns the best mark on
+the same practice quiz. Part of that winning mark is real, and part of it is luck, because one method
+happened to suit those particular questions. To get an honest number, the teacher needs a final exam that
+played no part in any of the choosing.
+
+That final pile is called the **test set**, and a real project locks it away and scores it only once, at
+the very end. It stays honest only until someone starts tuning against it, because at that point it has
+turned into one more validation set. This lab does not draw a test set. The split strip is the row of all 32 dots at the top of **Training dynamics controls**.
+The note under it says so in plain words: “No test split is drawn.”
+
+## Why it’s here
+
+The last few labs in this course worked on making a loss go down, and this one asks which loss, measured
+on which examples. It also asks when to stop pushing that loss down, which is the difference between just
+running training and ending up with a model you can trust.
+
+### Training cannot tell pattern from noise
+
+Training can only push down the score it can see, and the only score it sees is the training loss on its
+own dots. From inside that score, a random nudge in a dot looks exactly like part of the real pattern, so
+there is no signal that says “ignore this one”. Bending the curve toward a noisy dot lowers the training
+loss as surely as following the true wave does. So training does both whenever the model has enough
+weights to bend that far, and a high degree gives it plenty.
+
+Nothing in the process is trying to cheat, and nothing in it can tell the difference between a pattern
+and an accident. The validation dots are the only outside check, because their nudges are different
+random amounts from the nudges in the training dots. A curve that bent toward the training noise has no reason to pass near the validation dots.
+So it misses some of them, most of all where no training dot holds it in place.
+
+### Why the damage shows up late
+
+Training does not learn every part of the curve at the same speed, and that turns out to matter a great
+deal. Big, smooth changes to the curve lower the loss a lot with each step, so training makes them first,
+mostly within the first dozen or so epochs. Fine, wiggly changes lower the loss only a tiny bit with each
+step, so training gets to them slowly, over hundreds and then thousands of epochs.
+
+The real pattern here is mostly smooth, while the noise mostly looks like fine wiggles from one dot to
+the next, so useful learning arrives first. The harmful fitting creeps in afterwards, which is why, at
+degree 11, the validation line falls quickly at the start and only later begins to climb.
+
+Picture a friend who studies the same practice book every night for a month, hoping to do well on the
+end-of-term test. In the first few sessions they pick up the methods, and their marks on new problems
+improve quickly. Weeks later they have started remembering particular answers, misprints included, so
+their practice marks keep creeping up while their marks on new problems slowly slip.
+
+This ordering is the reason that stopping early works, because there is a moment between the two stages
+when the pattern is learned but little noise is matched. At degree 11 in this lab, that moment comes at
+epoch 13, long before the thousands of epochs in which the damage builds up.
+
+### Why it matters for every score you read
+
+Any claim that a model is good rests on a held-out score of some kind, and a benchmark score is one of
+these. So a benchmark score can only be trusted when you know how its test questions were kept apart from
+the training data. **Going deeper** shows two ways that can fail.
+
+## How to play with it
+
+The lab’s four guided tasks walk you through this in order: **Split the data**, **Watch the curves**, **Trigger
+overfitting** and **Regularize**. The parts below follow the same path, after a quick tour of what each
+card shows and how to read its axes.
+
+### Reading the cards
+
+- **Training dynamics controls** holds every control, and at its top is the split strip, which lines up
+  all 32 dots in a row. Filled dots above the line are training dots and hollow dots below it are
+  validation dots. The strip’s note sums this up as “Hollow only scores it.” In other words, hollow dots
+  are only used to score the curve and are never used to train it.
+- **Training curves** plots both losses against the epoch, with a solid blue line for training, a dashed
+  orange line for validation, and a shaded band for the gap. A green ring marks the lowest validation
+  loss of the whole run, and a dotted upright line shows the epoch you have picked.
+- **Fitted function** draws the model’s curve, labelled ŷ and read as “y-hat”, over the filled training
+  dots and the hollow validation dots. The dashed line is the true curve, which the legend reminds you is
+  hidden from the model.
+- **Capacity sweep** shows training and validation loss for every degree from 1 to 13 at the epoch you
+  have picked, each trained with the same settings. The degree runs along the bottom and the loss up the
+  side, so each line runs from simple models on the left to flexible ones on the right.
+
+Both loss charts use a **log scale** on the up-and-down axis, which works differently from the axes you
+usually see in maths class. On an ordinary axis, each grid line adds the same amount to the one below it,
+such as going up by 1 each time. On a log scale each grid line is ten times the one below, so a tiny loss
+like 0.007 and a huge one like 8.63 both fit on one chart.
+
+The epoch axis on **Training curves** works the same way. After 0 at the corner, each labelled mark is
+ten times the one before, from 1 up to 10k, which means 10,000. One handy result follows from this: a run that does the same
+things, only ten times later, slides about one mark to the right.
+
+### Split the data
+
+Pick the third filled dot from the left on the split strip, then count across to the third filled dot
+from the left on **Fitted function**. Do the same with a hollow dot. Because the split alternates along the line, both piles cover the whole width, so the
+validation dots test every part of the curve.
+
+### Watch the curves
+
+Start at the default degree 5, and drag **Epoch** back to 0 and then slowly all the way up to the end.
+Both lines drop fast in the first few epochs and then level off, with validation sitting a steady
+distance above training.
+
+The green ring sits at epoch 11, where validation reaches its lowest value of 0.100. The
+`Lowest validation` readout shows this as `0.100 @ 11`, where the @ sign means “at epoch”, and the button
+under the slider names the same epoch. Its label reads `Stop at lowest validation (epoch 11)` for now,
+and it changes whenever the ring moves.
+
+Now go back to epoch 100, where the slider sat when you first opened the lab, and look at the readouts
+under the chart. Training reads 0.017 and validation reads 0.111, and the badge says `fitting`. Their
+difference shows up in `Gap (val − train)` as 0.093, and the readouts are rounded, so the subtraction can
+look off by 0.001. The gap barely moves for the rest of the run.
+
+Notice that 0.017 is already well below the dotted line, so even this model has matched a good share of
+the noise. What makes the run healthy is that it stops there. With only 6 weights it cannot bend any
+further, so the gap holds steady and validation does not climb.
+
+### Trigger overfitting
+
+**Try this:** Set **Polynomial degree** to 11, which gives the model 12 weights to turn, then drag
+**Epoch** to 10,000 and watch the two lines part ways.
+
+As soon as you set the degree to 11, the green ring and the stop button jump to epoch 13, the lowest point
+of the new run. Here is what you should see, in order, as the slider moves:
+
+- Validation drops to its best value, 0.098, at epoch 13.
+- After that, validation turns around and climbs, and the badge switches to `overfitting` at epoch 215.
+- By the last epoch, validation has climbed to 8.63, which is 88 times worse than the best it reached.
+- Meanwhile, the training loss keeps falling the whole way down to 0.007, which is far below the dotted
+  noise line.
+
+Now look at **Fitted function** at epoch 10,000, where the curve has stopped following the dashed true
+curve and bends toward individual filled dots instead. Near the right edge, the last hollow dot sits
+beyond the last filled dot, so no training dot holds the curve in place there. The curve swings so far
+that it leaves the chart, which only runs from −2 to 2, and a red note reports a peak of about 24.
+
+That one hollow dot at the right edge accounts for almost all of the 8.63. The curve misses it by about
+11.7, which squares to about 136. The other 15 hollow dots have squared misses that average only about
+0.14, so most of the curve still passes fairly close to them. This is the squaring rule from earlier at
+work, because one huge miss can outweigh everything else in the average.
+
+### Regularize
+
+Any rule that makes it harder for a model to bend toward noise is called **regularization**, and the lab
+gives you two kinds to try at degree 11.
+
+First, raise **Weight decay** to 0.03, which makes every step pull each weight except the flat block’s a
+little toward zero, as well as toward a better fit. The lab writes the strength of that pull with the
+Greek letter λ, read as “lambda”, so the control now shows `λ 0.03`.
+
+Each building block on its own only rises and falls a modest amount. Bending sharply toward one dot and back before the next takes large amounts of the bendiest blocks,
+some pushing up and some pushing down. Swinging far off near an edge takes the same. So wild swings need large weights, and a steady pull toward
+small weights keeps the curve smoother and calmer between the dots.
+
+Drag **Epoch** to 10,000 again and read the validation loss, which now sits much closer to the best this
+model ever reached. It reads 0.135 instead of 8.63, while the training loss ends a little higher than it
+did without weight decay. That trade is the whole idea: the model gives up a little fit on its own dots
+in exchange for a curve that works on new ones.
+
+Second, set **Weight decay** back to `λ 0 (off)` and press **Stop at lowest validation**, which jumps the
+slider back to the ring at epoch 13. Validation there reads 0.098, and this move is called **early
+stopping**: same model, same settings, but you keep the version from the best epoch instead of the last.
+
+### More comparisons to run
+
+Once you have seen the main story, these comparisons show how the other settings change a run:
+
+- **Learning rate:** at degree 11, move **Learning rate** from 0.1 down to 0.01 and look at where the
+  green ring lands. The best validation loss is almost the same, at 0.097, but it arrives about ten times
+  later, at epoch 147. The whole run slides about one mark to the right on the log scale, and it still
+  overfits afterwards.
+- **Batch size:** go back to degree 5, set **Learning rate** to 0.3, and try each **Batch size** in turn.
+  With 16 or 8 dots per step, the run trains normally from start to finish. With only 4 dots per step,
+  the loss explodes and the badge reads `diverged` at epoch 22. **What to notice** explains why.
+- **Model size and learning rate:** put **Batch size** back to `16 (full)` and set **Learning rate** to
+  0.6, then compare two degrees. At degree 5 the run still trains normally, but at degree 11 it diverges
+  at epoch 562, so a bigger model can need a smaller learning rate. The training loss bottoms out near
+  0.03 in the first few epochs, then climbs steadily for hundreds of epochs before the run is stopped.
+  One reason is that the bendiest blocks reach their biggest values near the edges of the chart. A small
+  change in their weights moves the curve a lot there, so the loss reacts more sharply. A step size that
+  is safe at degree 5 then overshoots at degree 11, like turning a more sensitive shower knob just as far.
+- **Capacity sweep:** with every setting back at its default, drag **Epoch** and watch the dashed
+  validation line on **Capacity sweep** change shape as training goes on. At epoch 13 the line is nearly
+  flat from degree 5 up. At epoch 10,000 it rises steeply after degree 8 and peaks at degree 12. Degree
+  13 lands back near 1.0, because on this draw its swing at the right edge happens to miss the last
+  hollow dot by less. That dip is the luck of the draw, not the strange pattern described at the end of
+  **Where it breaks**.
+- **Noise draw:** at degree 11, try each seed. Seed 1 is the most dramatic, ending at 8.63. Seeds 2 and
+  3 overfit far less, ending near 0.12 and 0.34. With seed 4 the run barely overfits at all. Its best
+  validation comes late, at epoch 909, and it ends at 0.078, only a little above that best of 0.073. How badly a model overfits depends on which dots it
+  happened to get, especially near the edges.
+
+In both runs that end in `diverged`, the badge reads `overfitting` for a while first, because validation
+has passed 1.5 times its best. Look at the training line, though. It is climbing, not falling, so this is
+an unstable run, not a model memorizing its dots.
+
+## What to notice
+
+**A common mix-up:** Validation loss sitting above training loss does not, by itself, mean that the model
+is overfitting. The model was adjusted to fit the training dots and has never seen the validation dots,
+so on only 16 points some gap is expected from the start. What signals overfitting is a gap that keeps
+growing while training goes on, not a gap that holds steady.
+
+With that in mind, here are the signals worth watching as you move the controls:
+
+- **A steady gap is healthy:** at degree 5 the gap settles near 0.09 and stays there for thousands of
+  epochs, while at degree 11 it keeps widening.
+- **Falling training loss proves nothing by itself:** at degree 11 it falls at every one of the 83
+  recorded moments. That includes the ones where validation is 88 times worse than its best. It is the cheapest number to improve,
+  because memorizing noise lowers it as well as learning the pattern does.
+- **Training loss far below the dotted line means noise is being matched:** even the true curve scores
+  0.081 on the training dots. At degree 5 the training loss settles near 0.017, so it has matched a good
+  share of the noise. It cannot bend any further, though, and validation holds steady near 0.111. At degree
+  11 the training loss ends at 0.007, only a little lower, yet validation ends 88 times worse than its
+  best. How far training sinks below the line tells you noise is being matched, but only the validation
+  line tells you how much that hurts.
+- **Being consistently bad is not the same as generalizing:** at degree 1 the losses sit close together,
+  0.322 for training and 0.279 for validation. Validation even lands a little lower here, by the luck of
+  which dots fell into each pile. Yet both are poor at every epoch, so a small gap only counts as good
+  news when both losses are also low.
+- **Capacity matters differently at different times:** at epoch 13, **Capacity sweep** shows every degree
+  from 5 upward scoring about the same on validation. Let training run to the last epoch and they spread
+  far apart, with degree 7 holding at 0.100 and degree 12 climbing past 10. Memorizing depends on model
+  size, the amount of data and the length of training, all acting together.
+- **A smaller learning rate tells the same story, only slower:** cutting the learning rate to a tenth
+  gives about the same best score, reached roughly ten times later. The run still overfits afterwards, so
+  smaller steps buy you time to stop, but they do not prevent the memorizing.
+- **Batch size and learning rate work together:** picture the loss as a valley, with the best weights at
+  the bottom. With all 16 dots the valley has gentle sides, so a step at learning rate 0.3 moves most of the way
+  down toward the bottom without crossing it. The loss on just 4 dots can make a much narrower, steeper valley.
+  A step at the same learning rate then jumps clean over the bottom and lands higher up the far wall. The next
+  step overshoots even more, like the shower knob, which is how the batch-4 run above diverged. This is a
+  different problem from the wobble in the lunch picture.
+- **Weight decay shows up in the weights:** the `Weight size ‖θ‖` readout on **Fitted function** gives
+  one number for the size of all the weights together. It squares every weight, adds the squares up and
+  takes the square root, where θ, read as “theta”, stands for the whole list of weights. At degree 11 and
+  the last epoch, it reads 2.48 with no weight decay at all. Raising **Weight decay** to 0.03 brings it
+  down to 0.74, which makes the weights about three times smaller overall.
+- **One noise draw is one roll of the dice:** changing **Noise draw** changes how badly each degree
+  overfits. A single run shows you one roll of the dice, so try a few seeds to see what is typical.
+
+## Where it breaks
+
+### What this lab simplifies
+
+- **Everything is real, but unusually visible:** the model, the data, the training and every loss are
+  real, and the same seed gives the same run every time. What is unrealistic is how much you can see: the true curve, the exact noise level, and a simple
+  model. It takes in just one number, how far left or right a dot sits, so it fits on a flat chart.
+- **The split is unusually even:** half the dots are held out, so that the validation line is not decided
+  by a few unlucky points. Real projects usually hold out far less than half, often somewhere between 10
+  and 20 percent of their data.
+- **The badge uses the lab’s own cut-offs:** it reads `overfitting` once validation is 1.5 times the best
+  it reached earlier in the run. It reads `underfitting` while the training loss is above 0.125, which is
+  twice the noise variance, and these are sensible choices rather than laws.
+- **Overfitting here is slow:** it spreads over thousands of epochs because a polynomial picks up fine
+  wiggles very slowly. Other models overfit on their own schedules, and some do it within a few epochs of
+  fine-tuning.
+- **Only one fix is built in:** weight decay is the only regularizer the lab offers, and early stopping
+  is something you do yourself with the **Epoch** slider. The lab has no dropout and no extra data, which
+  are other fixes you will meet in the last section.
+- **The capacity sweep stops early:** the highest degree, 13, has 14 weights, which is fewer than the 16
+  training dots. In general, a curve needs as many weights as there are dots to pass exactly through every
+  one of them. A straight line, with its two weights, can always pass through two dots but usually not
+  through three. So here the curve can never pass exactly through every training dot, which keeps the lab
+  away from a stranger pattern described at the end of this section.
+- **Real models cannot be drawn:** a model with one input can be shown as a curve, but a real model takes
+  in thousands of numbers at once. Nobody can look at a curve like that, so in real projects overfitting
+  is spotted from held-out loss and never seen directly.
+
+### Where the textbook picture stops matching
+
+The textbook picture suggests deliberate cheating, but nothing in a model is choosing to memorize
+anything. Fitting the noise is one more way to lower the training score, and the training process has no
+way to tell noise from pattern. A student could also look at a misprint and notice that it is wrong,
+while the model has nothing to compare its dots against except the dots themselves.
+
+### Where the real thing gets harder
+
+- **Real validation curves are bumpy:** in real projects the validation score jumps around from one check
+  to the next, so a single upward point is not a verdict. People smooth the curve, wait for several worse
+  checks in a row before stopping, or average over several runs started from different random seeds.
+- **Loss and the score you care about can disagree:** picture a model answering multiple-choice
+  questions. Instead of naming one answer, it gives each choice a percentage, such as “95% sure it is B.”
+  The loss for this kind of model punishes being confidently wrong very hard, so being 95% sure of a
+  wrong answer costs far more than being 60% sure of it. A model can get more answers right while growing
+  too sure about the few it gets wrong, which is called overconfidence. Its validation loss then rises
+  even as its share of right answers improves.
+
+Overfitting is also not the main worry when a large language model, the kind behind a chatbot, is first
+trained. Those runs often see most of their text only about once, so there is little
+chance to memorize by repetition and the two curves stay close. Overfitting comes back later, when a
+model is fine-tuned on a small set of examples or when the same data is repeated many times.
+
+It also returns when a model is trained against an automated judge, itself a model that scores answers, until it
+exploits a weakness in that judge. The model ends up learning the judge’s quirks instead of the real
+skill, which is memorizing the judge rather than learning the pattern.
+
+There is also a genuinely strange pattern called **double descent**, which shows up in very large models
+and runs against the tidy story of this lab. Held-out error can get worse as a model gains enough
+capacity to pass exactly through every training point. Then, once the model grows far beyond that size,
+the error can start improving again, and a similar rise and fall can even appear as training runs longer.
+This lab stops at degree 13, below the 16 training dots, so it never gets there, and its tidy story
+describes one situation, not a law of nature.
+
+## Going deeper
+
+### How the weight decay penalty works
+
+Weight decay adds a penalty to the loss that training pushes down, equal to λ times the sum of the squared
+weights. It leaves out the flat block’s weight, which only shifts the whole curve up or down and cannot
+make it swing. The info panel on **Training dynamics controls** writes this as `λ Σ θₖ²`, where Σ means
+“add them all up” and θ stands for the weights. Here is one worked example, using made-up numbers that
+are small enough to check in your head:
+
+- Suppose the penalty counts only two weights, 0.5 and −1, and λ is set to 0.1.
+- The squares of the two weights are 0.25 and 1, which add up to 1.25.
+- The penalty is λ times that total, so 0.1 times 1.25 gives 0.125.
+
+The training line on the chart leaves this penalty out, so both loss lines still measure plain misses on
+the dots. Because big weights make a big penalty, training now has two goals at once: fit the dots well,
+and keep the weights small. A weight that is twice as big adds four times the penalty, so the largest
+weights get pulled down the hardest. Wild swings in the curve need large weights, so they become
+expensive, and the curve that wins is a calmer one.
+
+### Other tools against memorizing
+
+Weight decay is one of several real tools for the same problem, and all of them count as regularization:
+
+- **Dropout** is used in neural networks, which are built from many small parts that each pass a number
+  along to the next. During training, dropout switches off a random handful of those parts on every step,
+  so no part can count on one particular partner and backup routes have to form.
+- **More or more varied data** attacks the real cause, because memorizing is hardest when there is too
+  much to memorize. One way is to make extra examples by changing existing ones without changing their
+  answers, such as flipping a photo of a cat.
+- **Early stopping** is regularization by budget, because fewer steps leave less time to fit noise.
+- **Label smoothing** stops a model that answers multiple-choice questions from pushing its percentage
+  for one choice all the way to 100%.
+
+### Two readouts about the steps
+
+Training works out each step from a list of slopes, one for each weight, called the gradient, and
+**Training dynamics controls** has two readouts about it. Each slope says how fast the loss changes as
+that weight changes, so together they show which way lowers the loss fastest.
+
+- `Full-batch |∇L|` shows how big the whole list of slopes is when all 16 dots are used, and ∇L is
+  shorthand for the gradient of the loss.
+- `Minibatch noise` shows how far, typically, the slopes from a smaller batch stray from the full-batch
+  ones, and at `16 (full)` it reads `0 (full)`.
+
+Once the big, smooth part of the fit is done, after the first dozen or so epochs, the second readout can
+be several times the first. You can see this at degree 11 with **Batch size** set to 4. At epoch 100 in that run, `Minibatch noise` reads 0.199, while
+`Full-batch |∇L|` reads only 0.051. By that point, most of each small-batch step is noise rather than
+real direction, because the full slope has already become small.
+
+### Problems in the real world
+
+- **Distribution shift:** a model can do well on held-out data from the same source as its training data
+  and still fail on real inputs that look different. It is like practising only with one teacher’s
+  quizzes and then sitting an exam written by someone with a very different style. That is why where the
+  validation set came from matters as much as how big it is.
+- **Data leakage:** sometimes near-copies of one example land on both sides of the split, or the test
+  questions were quietly in the training data all along. The held-out line then stays reassuring while
+  measuring nothing, like a final exam whose questions were printed in the practice book by mistake.
+  Everyone aces that exam, and the score tells you nothing about what anyone learned.
+
+### For the curious
+
+If you have met the sine function in maths class, the true curve in this lab is `y = 0.8 sin(4x) + 0.4x`.
+The random nudges are drawn so that their typical size, which statisticians call the standard deviation,
+is 0.25.
+
+Later in the course, **Anatomy of a training run** returns to batch size on a real model that writes text
+one character at a time. **Hyperparameters & schedules** trains four learning-rate schedules side by
+side, so you can compare ways of changing the learning rate during a run.

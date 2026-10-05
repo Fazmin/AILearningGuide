@@ -1,0 +1,331 @@
+---
+objectives: ["Describe an agent as a host loop that repeatedly calls a model, executes its tool calls, and appends the results, not as a different kind of model","Explain how a terminal action, a step cap and a host stop rule each end the loop, and what happens when only the cap is left","Explain why each model call's input grows with the loop, so cost rises faster than the number of steps","Compute the chance that an agent completes every step of a run from its per-step success and the run length, and explain how an approval gate that sometimes catches errors changes it and what it costs in extra steps","Tell a retry that repeats the same call from a repair that changes the call after reading the error, and say which of them a stop rule on identical failures can end"]
+terms: ["Agent","Agent loop","Observation","Terminal action","Step cap","Stop rule","Horizon","Context growth","Planning","Compounding error","Approval gate","Agent memory","Multi-agent system"]
+---
+
+## The big picture
+
+You have probably typed a question into a chatbot and watched it write back a single reply, all in one go. Some AI systems go further: they look things up, read what comes back, try again when something goes wrong, and only then give you an answer. A system that works this way is called an **agent**, and this lab opens one up so you can watch every step it takes.
+
+The surprising part is that an agent is not a new or smarter kind of AI, and the model inside it can be exactly the one a chatbot uses. What turns it into an agent is a second program wrapped around the model, and this program runs the same few steps over and over in a loop. Each time round, the loop asks the model what to do next, carries out what the model asked for, writes down what happened, and checks whether to stop.
+
+Agents are used for jobs where one request turns into many steps, such as researching a question or working on computer code. One AI company, Anthropic, has described a research agent that splits a big question into pieces and hands them to helper agents.
+
+Without a loop, the model gets a small, fixed number of turns. It can ask for one lookup, read what comes back and reply, and then the conversation is over, whatever happened. The loop removes that limit, so the model can keep looking things up and trying again for as long as the job needs.
+
+That freedom brings new trouble: the loop needs a way to stop, it gets more expensive the longer it runs, and mistakes can pile up. That is why this lesson spends as much time on how the loop ends and what it costs as on how it works.
+
+By the end of this lesson, you will be able to explain these five ideas in your own words:
+
+- why an agent is a loop wrapped around an ordinary model, and not a different or special kind of model;
+- the three ways the loop can end, and what happens when a limit on the number of steps is the only one left;
+- why each step reads more text than the step before it, so the total cost grows faster than the number of steps;
+- how to work out the chance that a long run gets every step right, and how a check partway through can raise it at the cost of redone work;
+- the difference between repeating a failed request and fixing it after reading the error, and which of the two a rule against repeated failures can stop.
+
+The lab is set in a harbor, where an assistant answers questions about when the docks close, when the ferry leaves and how windy it is. The **Agent loop** card draws the loop as a diagram and lets you replay a run one event at a time, while **Trace** lists every message in order. **Budgets** sets the limits that end a run, and **Context growth** shows how much text each step has to read before it can write anything.
+
+The last card, **Reliability**, works like a calculator: you choose how often each step goes right and how long the run is. It then shows how often the whole run comes out right, with and without a person checking the work partway through. Its numbers come from a formula, not from running an agent.
+
+The model in this lab is not a real AI: its choices follow a short script written in advance. Everything around it is computed for real, including the loop, the tools, the limits and every count of text read.
+
+## What it is
+
+### The model writes, the host acts
+
+The model inside a chatbot does one thing, which is to read text and write more text after it. It cannot click a button, open a website or check a timetable on its own. Anything that has to happen in the world is done by the program that runs the model, which this lab calls the **host**.
+
+The host offers the model a few **tools**, small programs the host is willing to run, such as one that looks up when a dock closes. To use a tool, the model writes a request in a strict text format that names the tool and fills in the details it needs. That request is called a **tool call**, and here is the exact one that the lab's first task writes:
+
+```text
+{"name": "get_dock_hours", "arguments": {"dock": "north", "day": "sunday"}}
+```
+
+The details inside it, here the dock and the day, are called **arguments**, which is why one of the lab's tasks is named *Fix an argument*. The model only writes this text, while the host is the one that reads it, runs the tool and receives the result.
+
+### The agent loop
+
+An **agent** is a model together with a host that asks it the same kind of question over and over, in a loop. The model can be the same one used for chat, because what makes an agent is the host code around the model, not anything new inside it. Each time round the loop, the host goes through the same five steps, in this order:
+
+1. It gathers everything written so far into one block of text, and the model will read that block from start to finish.
+2. It hands that text to the model, which writes back exactly one thing: either a final answer or a tool call.
+3. If the model wrote an answer, the loop ends there and the host passes that answer on to the user.
+4. If the model wrote a tool call, the host adds that call to the bottom of the text, runs the tool, and adds the result below it.
+5. The host checks its limits and, as long as they allow another turn, goes back to step 1 and starts again.
+
+This cycle is called the **agent loop**, and the growing record of every message, in the order the host wrote it, is called the **transcript**. On every call the model reads the whole transcript, so the diagram's first box is labeled **Context**: the text the model reads this time.
+
+Here is the loop at work on the first task, *Look up hours*, where the user asks, “When does the north dock close on Sunday?” Model call 1 reads the transcript, which so far holds the host's instructions and that question, and writes the tool call shown above. The host runs the tool, which reports that the dock closes at 16:00, or 4 p.m., and adds that result to the transcript.
+
+Model call 2 reads everything again, including that result, and writes, “The north dock closes at 16:00 on Sundays,” which ends the loop after two calls.
+
+### Observations: the model's only news
+
+The result the host adds after running a tool is called an **observation**, and it can be a useful answer, such as a closing time, or an error. One error in this lab reads “timeout after 5 s”, which means the tool took too long and the host stopped waiting for it after five seconds.
+
+Either way, the observation is the only way the model finds out what happened, because the model never sees the tool run. The model also remembers nothing from one call to the next. If the host did not write the observation into the transcript, the next call would have no sign that the tool had ever run.
+
+### Three ways to stop
+
+A loop needs a way out, and this one has three, all of which you can trigger in the lab:
+
+- A **terminal action** is the model writing a final answer instead of a tool call, where “terminal” means “last”, like the terminal at the end of a bus line.
+- A **step cap** is the most model calls the host will make in one run, and once they are used up, the host refuses to call the model again.
+- A **stop rule** is a check in the host's code that ends the loop early when a run looks stuck. In this lab, the stop rule fires when the same tool call fails twice in a row, which is a sign that repeating it will not help.
+
+Only the first of these ends with an answer, while the other two are the host stepping in, which stops the run but leaves the question unanswered.
+
+This matters most when the model keeps writing tool calls and never writes an answer at all. The model can only end the loop by answering, so if no stop rule is switched on, the step cap is the only limit left. The loop then keeps going until every allowed call is used, each one reading more text than the last, and then it stops with no answer.
+
+### An analogy: the advisor and the runner
+
+Picture a harbor office with two workers, an advisor and a runner, who split the work between them. The advisor sits in a back room with no phone and can only write, while the runner sits at the front desk with the phone and the customers.
+
+Each turn, the runner hands the advisor a notebook that holds everything so far, and the advisor reads it from the very first page. Then the advisor writes one line at the bottom, either an answer for the customer or a request such as “phone the dock office and ask about Sunday.”
+
+If the line is an answer, the runner passes it to the customer and the job is done. If it is a request, the runner makes the call, writes down what they heard, and checks the office rules before handing the notebook back. One rule limits how many turns a job may take, and another tells the runner to stop if the same request fails twice in a row.
+
+In this picture, the advisor is the model, the runner is the host and the notebook is the transcript. Each line the runner writes down is an observation, and the office rules are the step cap and the stop rule.
+
+The analogy stops matching in two places, and the first is that a person handed the same notebook again would skip the pages they had already read. A model re-reads every word on every call, and each re-read has a cost, which the next part of this section measures.
+
+The second is that a real advisor understands the notebook, while a model is a program that turns text into more text. The “advisor” in this lab is something simpler still, as the last part of this section explains.
+
+### Every call re-reads everything
+
+To measure reading, the lab counts **tokens**, the small chunks a model reads text in, such as a word, part of a word, a number or a punctuation mark. Reading more tokens takes more work, and in real services re-reading has a price, so the number of tokens read is this lab's measure of cost.
+
+The lab counts tokens with a toy rule. Every unbroken string of letters (such as a word), every unbroken string of digits (such as 16) and every single symbol counts as one token. By that rule, the question “When does the north dock close on Sunday?” is 9 tokens, which is eight words plus the question mark. A time such as 16:00 counts as 3 tokens, because the hours, the colon and the minutes each count once.
+
+Each call's input starts with a fixed base, which is the host's opening instructions, called the **system prompt**, plus the user's question. The system prompt tells the model that it is the harbor assistant and lists the tools it may call, asking it to call them one at a time. After that base comes every earlier call and result, so the input gets bigger each time the loop goes round.
+
+The task *Retry forever* shows this most clearly, because every one of its turns adds exactly the same text. Its base is 58 tokens, and each failed turn adds 31 more, made up of the tool call and the error message that comes back. So the first four calls read these amounts, with each one paying again for everything before it:
+
+- Call 1 reads only the base, which is 58 tokens, because nothing has happened yet.
+- Call 2 reads the base plus one earlier turn, so it reads 58 + 31 = 89 tokens.
+- Call 3 reads the base plus two earlier turns, which comes to 120 tokens in all.
+- Call 4 reads the base plus three earlier turns, which comes to 151 tokens in all.
+
+Added together, those four calls read 418 tokens, which is the number **Tokens read** shows at a cap of 4.
+
+If you drew each call's earlier turns as a row of blocks, the rows would be zero, one, two and three blocks long, making a triangle. A triangle with 4 rows holds 0 + 1 + 2 + 3 = 6 blocks, while one with 8 rows holds 0 + 1 + 2 + … + 7 = 28 blocks, more than four times as many. Doubling the rows more than quadruples the blocks, which is the same pattern you see when you square a number.
+
+That is why the total reading grows much faster than the number of calls itself. Allowing ten calls instead of four gives two and a half times as many calls, but the total reading jumps to 1,975 tokens, almost five times as much.
+
+The triangle itself grows even faster. With ten calls it holds 45 blocks instead of 6, which is seven and a half times as many. So why does the total grow only about five times? Every call also reads the same 58-token base, and that part grows only as fast as the number of calls. Mixing the two slows the total down a little:
+
+- The base comes to 10 × 58 = 580 tokens.
+- The earlier turns come to 45 × 31 = 1,395 tokens.
+- Together they make 580 + 1,395 = 1,975 tokens in all.
+
+So the total grows much faster than the number of calls, but not quite as fast as the triangle alone.
+
+This effect is called **context growth**, and the card with that name draws it as a row of bars, one for each call the cap allows. Each bar is one call's input, split into two parts. A faded part stands for the system prompt and user message, and a solid, full-color part stands for earlier calls and tool results. The key under the chart names each one. As you move along the row, the solid part grows from bar to bar while the faded part stays the same.
+
+Calls that the cap allowed but the run never used show up as short, flat markers, which the key labels “allowed but unused”. The chart also follows **Replay step** on the **Agent loop** card. If you move it back, the bars for calls the replay has not reached yet are dimmed as a whole. They come back to full color as you move forward again.
+
+### Retry or repair
+
+When a tool call fails, there are two very different ways to try again, and the difference decides whether a stop rule can help.
+
+Picture a friend logging in to a game who types their password, sees “wrong password”, and types exactly the same thing again. That is a **retry**, the same request sent again in the hope of a different result. This time the screen says “wrong password: Caps Lock is on”, so they switch Caps Lock off and type the password in small letters, and it works. That is a **repair**: they read the error message and changed what they sent to match it.
+
+A retry is the right move when a failure was bad luck, as in *Recover from error*, where the ferry tool times out once and the same call then works. A retry is useless when the failure is built into the request itself, so repeating it can never succeed. In *Retry forever*, the model keeps asking for a wind tool that the host never offered, and no number of repeats will change that.
+
+A repair needs an error message that says what went wrong, and *Fix an argument* shows one. Its first call asks about the south dock with the day written as “Weekday”, with a capital W, but the tool only accepts “weekday” or “sunday” in small letters. So the host sends back an error that names the day input and lists the values it allows.
+
+The error writes the day input as `/day`, where the slash is how it points at one part of the request. The second call reads that note and sends “weekday” instead, and this time the tool returns the closing time.
+
+The two also look different to a stop rule, because the rule in this lab counts identical failures, meaning the very same call failing twice in a row. It can end a loop of retries, because a retry sends the same call again, but it can never end a loop of repairs. Each repair changes the call, so if a repair kept changing the call and kept failing, the rule would never fire and only the step cap would stop it.
+
+### Small mistakes multiply
+
+Even when every tool works, a long run can still fail, because each step is another chance for something to go wrong. The **Reliability** card gives every step the same chance of coming out right, a number it calls **Per-step success**.
+
+Picture a quiz with 20 questions where you get each answer right 95% of the time, so it feels as if a perfect score is almost certain. Most of the time you will not get one, though, because a perfect score needs every single answer to be right at the same time.
+
+To see why, picture a large number of runs starting at once, and notice that 95% of them get step 1 right. Of those, 95% also get step 2 right, and 95% of 95% is 0.95 × 0.95 = 0.9025, or about 90%. Each new step multiplies the chance by 0.95 again, so the chance of a fully right run keeps shrinking as the run gets longer:
+
+- With 2 steps, about 90% of runs come out right from start to finish.
+- With 10 steps, about 60% of runs come out right from start to finish.
+- With 20 steps, the chance is 20 copies of 0.95 multiplied together, which is about 36%.
+
+So the 20-question quiz gives you only about a 36% chance of a perfect score, even though each answer felt safe. An agent that is right 95% of the time per step does no better, finishing a 20-step run with no mistakes only about 36% of the time. The card shows that as 35.8% under **Completes end to end**, the chance that a run gets every one of its steps right.
+
+This effect is called **compounding error**. A fully right run needs every step to go right, so each step, early or late, is one more chance to slip, and the chances multiply. A small chance of error at each step therefore becomes a large chance that the whole run goes wrong. In a real agent it is often worse, because a slip early on gets built on by the steps after it.
+
+The multiplying also works in your favor. Raising the chance per step from 95 out of 100 to 99 out of 100 looks like a small change. But now 0.99 is the number multiplied 20 times, and 20 copies of 0.99 multiplied together come to about 0.818. So a 20-step run comes out fully right 81.8% of the time, more than double what it was.
+
+### A check partway through: the approval gate
+
+One way to fight compounding error is to have a person look over the work partway through, before more steps get built on top of it.
+
+Picture a group project with a long report, where your teacher offers to read the first half before your group writes the rest. If the teacher spots a mistake, your group rewrites the first half, which costs time but gives the second half a better chance of resting on correct work. The rewrite can contain new mistakes of its own, though, because nobody checks it a second time. And if the teacher misses a mistake, it stays, and everything you write next is built on top of it.
+
+In an agent, a point where a person reviews the work so far before the agent goes on is called an **approval gate**. The **Reliability** card lets you place one after any step, with **Approval gate after step**, and set how often the reviewer catches a wrong run, with **Reviewer catches**. In the card's version, a run that gets caught redoes the steps before the gate once, and the redo is not checked again.
+
+Here is how a gate after step 10 works out at 95% per step on a 20-step run, with a reviewer who catches every wrong run:
+
+1. About 60% of runs get the first 10 steps all right, so they pass the gate without being sent back.
+2. The other 40% reach the gate with a mistake, and the reviewer catches all of them, so they redo the first 10 steps.
+3. About 60% of those redos come out right, which rescues 60% of 40%, or about 24% of all runs.
+4. Adding the two groups together, about 84% of runs leave the gate with a correct first half.
+5. The last 10 steps still have to go right, which happens about 60% of the time. 60% of 84% is about 50%, so the whole run comes out right in about half of all runs.
+
+The card shows that figure as 50.2% under **With the gate**, compared with 35.8% for the same run with no gate at all.
+
+The price is extra work, because the runs that get sent back do some of their steps twice. About 4 in every 10 runs redo 10 steps, which is 40 extra steps for every 10 runs. Shared out evenly, that is 4 extra steps per run on average. That is why **Expected steps run** reads 24.0 with the gate, instead of 20.0 without it.
+
+A gate placed later protects more steps but sends back more work when it catches something, while a reviewer who never catches anything adds no protection at all.
+
+### What stands in for the model here
+
+The **Agent loop** card carries a badge that says **scripted policy**, which tells you something important about this lab. A policy is the rule that picks the model's next message, and “scripted” means the rule was written out ahead of time instead of coming from a real model. This one says that if the last tool result worked, the model answers, and otherwise it sends the same tool call again.
+
+One task, *Fix an argument*, uses a different rule, which reads the error note from the last tool result and corrects the input that the note names. Neither rule is a real model, but everything else on the page is really computed: the loop, the tools, the step cap, the stop rule and every token count.
+
+The **Reliability** card has a different badge, **closed-form formula**, which means its numbers come straight from formulas like the ones worked through above, and not from running an agent.
+
+## Why it’s here
+
+The Tools and function calling lab showed one round trip: the model writes a tool call, the host runs it, and the result comes back. Many real jobs need a whole chain of these round trips, where each one depends on what the one before it returned. Think of a job that goes like this: look something up, find that the tool timed out, try again, then use that answer to look up a second thing.
+
+A single round trip cannot cover that, so the host needs a loop that hands each result back and asks the model again until the job is done. But a loop creates four problems that a single call never had, and each of them shows up on one of the lab's cards:
+
+- **Errors can repeat**, because a call that fails can be sent again and fail again, forever, unless something in the host notices. **Trace** shows each failed tool result as an outlined row.
+- **Costs grow every turn**, because each call re-reads a transcript that keeps getting longer, so later turns cost more than early ones. **Context growth** shows this as bars that get taller.
+- **Mistakes pile up**, because a run of many steps has many chances to go wrong, and later steps build on earlier mistakes. **Reliability** shows this as the chance in **Completes end to end** shrinking.
+- **Something has to say stop**, because the model may never write an answer, so the host needs limits of its own. **Budgets** holds those limits and shows the **Stop reason**.
+
+How many steps the loop is allowed to take is called its **horizon**, and you set it on the **Budgets** card, whose small heading reads “Horizon and stop rules”. A longer horizon lets harder jobs finish, but it also gives errors, costs and unwanted changes in the world more room to pile up.
+
+## How to play with it
+
+### Walk a successful loop
+
+Leave **Task** on *Look up hours*, and notice that **Replay step** starts at the end of the run, where the whole story is already shown. Drag it back to the start, where it reads 1/4 · Model call 1, and then move it forward one event at a time:
+
+- At 1/4, the **Context** box, the **Model call** box and the “final answer?” diamond light up, and the line under the diagram says call 1 reads 56 tokens.
+- At 2/4, **Host runs the tool** and **Host check** light up, because the host runs the call, adds the result and checks the step cap.
+- At 3/4, call 2 reads 118 tokens, more than twice as many as call 1, because the transcript now holds the first call and its result.
+- At 4/4, the run leaves through **Stop · answer**, which the diagram labels terminal action, since call 2 wrote a final answer instead of a tool call.
+
+The two dashed boxes, **Host runs the tool** and **Host check**, are host code, while the **Model call** box is marked “writes text only”. You can also click any row in **Trace** to jump **Replay step** straight to that event, which makes comparing two calls quicker.
+
+### Cap the horizon
+
+**Try this:** before you touch anything, guess what will happen if the host allows only one model call, and then set **Step cap** to 1. The host still runs the tool that call 1 asked for, so the result, 16:00, lands in the transcript. But **Host check** says stop, because a second call is not allowed, so the run leaves through **Stop · step cap** instead of **Stop · answer**. **Stop reason** reads step cap.
+
+The tool result, 16:00, sits in the transcript where no call will ever read it, so no answer is written.
+
+### Recover from an error
+
+Set **Step cap** back to 4 and **Task** to *Recover from error*, where the user asks when the afternoon ferry leaves. In **Trace**, call 1 asks for `get_ferry_time`, and the host replies with a timeout, which the row outlines as a failure. Call 2 sends exactly the same call, which makes it a retry, and this time it gets back 15:40, or 3:40 p.m. Call 3 answers, so the run ends with a terminal action, and **Tool runs** reads 2 (1 failed).
+
+### Loop without a stop rule
+
+Set **Task** to *Retry forever*, where the user asks for the wind speed at the harbor right now, and slide **Step cap** to 10. The policy asks for `get_wind`, a tool that was never on the host's list, so the host replies “unknown tool get_wind” every time. All ten calls fail, and the run ends by step cap without ever producing an answer.
+
+Now look at **Context growth**, where each bar is taller than the last, rising from 58 tokens for call 1 to 337 tokens for call 10. That last call reads almost six times as much as the first, even though both of them send the same request. The heading adds every bar together to give 1,975 tokens read in total, the same number **Tokens read** shows in **Budgets** (Budgets writes it without the comma, as 1975).
+
+Set the cap back to 4 and the total drops to 418, so the last six calls cost far more than the first four did.
+
+### Add a stop rule
+
+Keep *Retry forever* and set **Stop rule** to *stop after 2 identical failures*, then watch how quickly the run ends. The host now stops after two calls and 147 tokens read, whatever the step cap says, because the same call failed twice in a row. The diagram exits through **Stop · host rule**, and **Stop reason** reads host stop rule.
+
+Then switch **Task** to *Recover from error* with the rule still on, and the run still answers on call 3. One failure followed by a success is not two failures in a row, so the rule leaves this run alone. The rule is a bet, though, because it cannot tell a hopeless repeat from a useful one. It allows one repeat, which is enough for a one-off timeout, but it would also stop a tool that happened to time out twice by bad luck.
+
+### Repair an argument
+
+Keep the stop rule on and set **Task** to *Fix an argument*, where the user asks when the south dock closes on a weekday. Follow the run in **Trace**, where each row shows one message in the order the host wrote it:
+
+- Call 1 sends `"day": "Weekday"` with a capital W, which is not one of the values the tool accepts.
+- The host rejects it with an error that names `/day`, lists the allowed values `"weekday"` and `"sunday"`, and quotes the `"Weekday"` it got.
+- Call 2 reads that note and sends `"weekday"` instead, and the host returns a closing time of 21:00, or 9 p.m.
+- Call 3 writes the answer, “The south dock closes at 21:00 on weekdays,” which ends the run with a terminal action.
+
+The whole run takes 3 model calls and reads 391 tokens, and **Tool runs** reads 2 (1 failed). Only one call failed in this run, so the stop rule had nothing to stop.
+
+Look at the two calls anyway. Compare call 1 and call 2 in **Trace**, and you will see that they differ only in whether the day starts with a capital letter. So even if call 2 had failed too, the rule would not count it as the same failure repeated. A loop of repairs that keep changing the call and keep failing would slip past this rule, and only the step cap would end it.
+
+### Compound the error
+
+Find the **Reliability** card, leave **Per-step success** at 95% and **Steps in the run** at 20, and read **Completes end to end**. It shows 35.8%, and next to it **Longest run that finishes half the time** reads 13 steps. That means that at 95% per step, only runs of 13 steps or fewer come out fully right more often than not.
+
+Now raise **Per-step success** to 99%: Completes end to end jumps to 81.8%, and the longest run that finishes half the time stretches to 68 steps. The solid line in the chart tells the same story, because it shows the chance of a fully right run falling as the run gets longer. At 99% that line falls much more slowly, which is why far longer runs stay above the halfway mark.
+
+Set **Per-step success** back to 95% and try the approval gate, watching the dashed line that the chart adds for the run with a gate:
+
+- Set **Approval gate after step** to 10, with **Reviewer catches** at 100% of wrong runs, and **With the gate** reads 50.2%. **Expected steps run** rises from 20.0 to 24.0 at the same time, because some runs now redo their first half.
+- Lower **Reviewer catches** to 0%, and With the gate falls back to 35.8%, because a reviewer who never catches anything never sends anything back.
+- Put **Reviewer catches** back to 100% and move the gate to step 1, and With the gate reaches only 37.6%, because it protects one step out of twenty.
+- Move the gate to step 20, the end of the run, and With the gate reaches 58.8%, the highest so far. The catch is that Expected steps run climbs to 32.8, because a run that gets caught now redoes every one of its steps.
+
+## What to notice
+
+- The model never ends the loop except by writing an answer, and every other way out, the step cap and the stop rule, lives in the host's code.
+- A step cap makes sure the loop ends, but it does not make sure you get an answer, so a run stopped by a limit leaves the question unanswered.
+- Every call re-reads the whole transcript, so on *Retry forever*, where each turn adds the same 31 tokens, each call reads more than the last. The total therefore grows much faster than the number of calls, and raising the cap from 4 to 10 makes it almost five times bigger.
+- The stop rule leaves *Recover from error* alone, because one failure followed by a success is not two identical failures in a row.
+- A retry repeats the call, while a repair changes it after reading the error. A stop rule on identical failures can end a loop of retries, but it cannot end a loop whose calls keep changing.
+- Small losses at each step multiply, so going from 95% to 99% per step more than doubles the chance of finishing all 20 steps.
+- A gate protects only the steps before it and costs redone work, so its value depends on where you put it and how often the reviewer catches mistakes.
+
+## Where it breaks
+
+### In this lab
+
+This lab is a simplified model of an agent, and here are the places where its simplifications show:
+
+- The model is a fixed rule, the scripted policy, while a real model picks its words with some chance involved. So a real model could answer early, choose a different tool, or write a reply saying it cannot find the answer, which would end the loop as a terminal action.
+- The repair in *Fix an argument* is a matching rule that compares the wrong value with the allowed values in the error note, ignoring capital letters. It does not understand the note, and a real model could misread the same note and repair the call wrongly.
+- The tools return fixed values, and the ferry tool fails on its first try on purpose so that you can watch a retry work.
+- Token counts use the toy rule, not the real method a model uses to split text into tokens, which is called a **tokenizer**.
+- Nothing is saved between calls to make re-reading cheaper, a trick called prompt caching that Going deeper describes. Nothing runs side by side either, so every call waits for the one before it.
+- The **Reliability** card is a formula, not a run of an agent, and **Per-step success** is a number you choose, not a measurement of a real agent.
+
+The formula behind that card also rests on assumptions that real runs often break, and these are the main ones:
+
+- Every step has the same chance of going right, and one step going wrong does not make the next one more or less likely.
+- The agent cannot see its own wrong steps, so it never notices a mistake or fixes one by itself.
+- There is one reviewer, and a run that gets sent back is redone once, with the redo not checked a second time.
+
+### In real systems
+
+- **Errors compound:** if each step is right 95% of the time, a 20-step job is fully right only about 36% of the time. Real steps are not all alike, because some are much harder than others, and one mistake can make the next more likely. That is why a real agent's per-step rate has to be measured on its own tasks instead of guessed.
+- **Reviewers miss errors:** an approval gate helps only as far as the reviewer catches wrong work, and a reviewer can miss a mistake or be skipped when time is short.
+- **Plans are only text:** some agents write out the steps they intend to take before or between actions, which is called **planning**. A plan is text the model wrote, so nothing forces later calls to follow it, and a longer plan has more steps to get right.
+- **Observations can mislead:** a tool can send back text that is out of date, incomplete or even hostile, meaning written on purpose to trick the model. The next call reads that text as part of the transcript, the same way it reads everything else.
+- **Changes in the world add up:** each step can do something real, such as sending a message or deleting a file. A long loop with the power to change things needs permissions and confirmations from a person, not only a step cap.
+- **Long transcripts cause trouble:** they cost more to re-read, and they can bury early details that the model needs later on. They can also grow past the **context window**, which is the most text a model can take in on a single call.
+
+**A common mix-up:** people often think that a longer loop means a smarter agent, as if the extra steps made the model cleverer. The model inside is the same on call 10 as on call 1, so more steps only give it more chances to finish. They also give it more chances to repeat a mistake, spend more and change things you did not want changed. On *Retry forever*, raising the cap from 4 to 10 bought six more failures and almost five times the reading, but still no wind speed.
+
+## Going deeper
+
+Most agent frameworks, the ready-made toolkits people use to build agents, still run a loop like this one and add extras around it. Typical extras are memory, written plans, more than one model, and helper agents that each take on part of a job. A 2022 research method called ReAct helped make this style popular by mixing the model's written reasoning, its actions and the observations into one transcript.
+
+Real agents are limited by more than a step cap, because they also get limits on time, on money spent and on which tools are offered. Many are also set up to ask a person before an action that cannot be undone, such as deleting something for good.
+
+Some services can store the unchanged start of a transcript so that re-reading it costs less, which is called **prompt caching**. Even with prompt caching, though, the transcript itself still grows on every turn, along with all the other problems a long transcript brings.
+
+### Memory
+
+What an agent can use beyond the current call is called its **agent memory**, and it comes in two quite different kinds. Its working memory is the transcript the loop re-reads on every call, which is exact but limited by the context window, and which keeps growing. An **external store** sits outside the transcript, and it can be a file or a database, which is an organized collection of saved records.
+
+The agent saves notes in an external store and reads them back by calling tools. That way a fact can survive even after the host cuts old parts out of a long transcript or starts a fresh one. That comes with costs, because the agent has to choose what to save and what to fetch, and a fetch can miss what it was looking for. A wrong note is also a problem, because it gets trusted the next time it is read, as if it were correct.
+
+Anthropic's multi-agent research system saves its plan to external memory, because its transcript would be cut off once it passed 200,000 tokens (Anthropic Engineering, June 2025). This lab does not simulate memory at all, so its agent has nothing to work with except the transcript.
+
+### Several agents
+
+A **multi-agent system** has several agent loops working on one job, often with one lead agent in charge of the others. In one common pattern, the lead agent splits the job, hands pieces to helper agents that each keep their own transcript, and combines what they send back. That can help when the work splits into parts that can run side by side, or when it is too big for one context window.
+
+It also costs more: Anthropic reported that its agents used about 4 times the tokens of a normal chat, and its multi-agent system about 15 times. It added that most coding jobs split into fewer side-by-side pieces than research does. It also said that agents are not yet great at coordinating with each other and handing out work in real time.
+
+Every hand-off between agents is one more step that can go wrong, so compounding error applies across a team of agents too. This lab has only one agent, and it simulates none of this.
+
+Sources: Anthropic Engineering, “How we built our multi-agent research system” (June 13, 2025), anthropic.com/engineering/multi-agent-research-system.
+
+The Failure modes, safety, and security lab shows how text that arrives as an observation can carry hidden instructions meant to steer the model. Training a model further, as the Post-training lab describes, can make it better at choosing tools and at stopping on its own. Even so, it does not remove the need for limits in the host. Only a hard limit, such as a step cap, a time limit or a spending limit, is sure to end the loop.

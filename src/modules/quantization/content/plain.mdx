@@ -1,0 +1,862 @@
+---
+objectives: ["Explain what a scale and a zero point do, and when a symmetric grid wastes levels", "Trade bit width against scaling granularity in real bits per weight", "Read a GGUF block type or file name and predict its size and rough quality", "Compare fp32, fp16, bf16, and fp8 by their exponent and mantissa bits, and say whether a value runs into range or precision"]
+terms: ["Quantization", "Scale", "Zero point", "Symmetric quantization", "Per-tensor scaling", "Group scaling", "Bits per weight", "Outlier", "GGUF", "K-quant", "Post-training quantization", "Floating-point format", "Calibration"]
+---
+## The big picture
+
+When a friend asks how tall you are, you probably say “about 165 centimetres” rather than “164.73
+centimetres”. You have rounded the number, which means you gave up a little detail to get an answer
+that is shorter but still useful. This module is about doing the same thing to the numbers inside an
+AI model, on purpose and with a lot of care.
+
+A language model, the kind of program behind a chatbot, is built from a huge pile of stored numbers
+called **weights**. Training nudged each one into place, and the small model that this app can
+download has nearly 1.9 billion of them. Storing every weight in full detail takes a lot of space,
+so people often round the weights before they share a model. That careful rounding is called
+**quantization**, and it is what this whole module is about.
+
+Computers store everything as **bits**, where one bit is a single switch that is either 0 or 1.
+Quantization swaps a long way of writing each weight, with many bits, for a much shorter one with
+only a few. The hard part is to measure how much the model suffers for that change, and to decide
+when the saving is worth it.
+
+### Where you have met it
+
+You may not have heard the word before, but quantization is already at work inside this app. In
+Settings, the app can download a small language model called Qwen3.5 2B so that it can run right on
+your own computer. The file it downloads has `Q4_K_M` in its name, which is a label that says how
+its weights were rounded. Models that people download for their own machines often carry labels like
+this, and by the end of this module you will be able to read them.
+
+The same trade between detail and size also shows up one level lower, in the way computers write
+ordinary numbers. Even “full detail” numbers have to be stored in some format, and a computer can
+write a decimal number with 32, 16 or 8 bits. Each of those formats gives up something different,
+and the last card in the lab lets you compare them side by side.
+
+### Why it matters
+
+To write each new piece of text, a model has to read all of its weights from memory. Memory here
+means the fast storage where a computer keeps a program while it runs, and every machine has only so
+much of it. So the bits in each weight decide two things: whether the model fits on your machine at
+all, and how fast it can answer.
+
+Picture every weight stored in 16 bits, a common format you will meet later. The model this app
+downloads would then be about three times bigger than the file you actually get. On a computer with
+little memory, that can be the difference between a model that runs and one that does not. The catch
+is that rounding throws detail away. Every saving has a price in quality, and this module shows you
+how to measure that price honestly.
+
+### What you will be able to explain
+
+By the end of this lesson, you should be able to explain each of these ideas in your own words:
+
+- what a **scale** and a **zero point** do when weights are rounded to a short list of allowed
+  values, and when a list centred on zero wastes some of them;
+- why “4-bit” does not mean each weight costs only 4 bits, since the rounding settings are stored
+  too, and more of them make the rounding closer but the file bigger;
+- how to read a name like `Q4_K` or `Q4_K_M` and guess how big a file will be and roughly how much
+  quality it gives up;
+- how the number formats fp32, fp16, bf16 and fp8 split their bits between range, meaning how big a
+  number can be, and precision, meaning how finely it is stored;
+- how to tell whether a number is too big for a format or only stored roughly.
+
+### What the lab lets you see and try
+
+The lab works on a real table of 900 weights, trained in the tiny language-model labs earlier in
+this app, rather than on made-up numbers. Every time you move a control, it rounds all 900 weights
+again. Then it measures how far each one moved and how much worse the model became, and it counts
+every bit of storage the result would need. The work is spread across six cards:
+
+- **Quantization controls** holds the dials that decide how the rounding works, and it adds up the
+  storage bill for whatever you choose.
+- **Rounding grid and per-weight error** draws the allowed values over the weights and shows how far
+  each weight had to move to reach one.
+- **Quality against bits per weight** plots how much worse the model gets against how much space it
+  takes, and it shows a sample of text from each version.
+- **Published quantization formats** runs the same table through real formats with names like `Q4_0`
+  and `Q4_K`. Its last column copies the file sizes that the makers of those formats report.
+- **The file you downloaded** weighs the model file this app downloads, part by part, to show where
+  its storage really goes. Its numbers were copied from the file once, so it shows size but not
+  quality.
+- **Float formats** shows how computers write ordinary decimal numbers in 32, 16 and 8 bits, and
+  what each format can and cannot hold.
+
+## What it is
+
+### A table of scores
+
+Start with the table that the lab rounds, which comes from a tiny model that reads one character at
+a time and guesses the next one. Its alphabet has 30 characters: the 26 letters, a space, a full
+stop and two spare symbols. For each character it could have read last, the model keeps a row of 30
+scores, one for every character that could come next. That makes a 30 by 30 table of 900 numbers,
+and those numbers are the model’s weights.
+
+A higher score means that a character is more likely to come next, and a lower score means it is
+less likely. The biggest score in the table is 5.93, for a space right after a full stop. The model
+learned from its training text that a space nearly always follows a full stop, so every other
+character in that row scores only about −0.20. The lab’s chart calls each weight a **logit**, which
+is the name for a raw score before it is turned into a probability. It also calls the whole thing a
+**bigram** table, meaning a table about pairs of characters that sit next to each other.
+
+The model was trained on a short collection of harbour weather notes for 80 epochs, where an epoch
+is one full pass through the training text. Its quality is measured by **perplexity**, which says
+how unsure the model is, on average, about each next character in that text. A model guessing at
+random among all 30 characters would score 30, while this table scores 6.600. That is as unsure as
+choosing among about 6.6 equally likely characters, and lower is better, so watch this number rise
+as the rounding gets rougher.
+
+### Short codes instead of long numbers
+
+Each extra bit doubles the number of different patterns you can make, because every old pattern can
+now end in either a 0 or a 1. One bit gives two patterns, 0 and 1, while two bits give four: 00, 01,
+10 and 11. Keep doubling and you find that 4 bits gives 16 patterns, while 8 bits gives 256 of them.
+A group of eight bits is called a **byte**, which is the unit that file sizes are usually counted
+in.
+
+The original table stores each weight in 32 bits, which is enough to write a number like 1.0174948
+with about seven digits of detail. **Quantization** replaces those 32 bits with a much shorter code,
+such as 4 bits, plus a little shared information that turns the codes back into numbers. The rebuilt
+weight keeps its meaning but loses some detail, in the same way that 165 keeps the meaning of
+164.73.
+
+### Rounding onto a ruler
+
+Picture a ruler laid along the number line beneath the weights, with a fixed number of evenly spaced
+tick marks. Each weight slides to its nearest tick, and instead of storing the weight itself, you
+store only which tick it landed on, counting up from the start. That tick number is the weight’s
+**code**, a small whole number such as 0, 5 or 15.
+
+To turn a code back into a number later, you also need to know where the ruler starts and how far
+apart its ticks are. The gap between neighbouring ticks is the **scale**, and the lab’s readout for
+it is called **Step in this block**. The value where the ruler starts is the **zero point**, which
+is the value that code 0 stands for. The lab calls the ruler a **grid** and its ticks **levels**, so
+a 16-level grid is a ruler with 16 ticks.
+
+**Bit width** sets how many ticks there are, since every tick needs its own pattern of bits, and 4
+bits gives 16. Fewer ticks means wider gaps between them, so each weight has to move further, on
+average, before it reaches one.
+
+### A worked example from the lab
+
+Take the whole table at 4 bits with one ruler, which is what you get when **Scaling granularity** is
+set to `Per tensor`. That is the lab’s name for one ruler for the whole table, explained below. The
+smallest weight is −1.71 and the largest is 5.93, so the ruler has to stretch across a distance of
+7.64 to cover them both. Sixteen ticks leave 15 gaps between them, so each gap is 7.64 ÷ 15, which
+is about 0.51.
+
+Under the chart, the lab writes this rule as `scale = (max − min) / 15`, where `max` and `min` are
+the largest and smallest weights that the ruler has to cover.
+
+Now round a weight of 1.00, which sits 2.71 along the ruler, because 1.00 minus −1.71 is 2.71.
+Dividing 2.71 by the gap of 0.51 gives about 5.3, so the weight sits about 5.3 gaps along. The
+nearest tick is tick 5, and the number 5 is the code that gets stored.
+
+To rebuild the weight, start at −1.71 and add 5 gaps of 0.51 each, which lands on about 0.84. The
+rebuilt weight is 0.84 where the original was 1.00, so rounding has moved this weight by about 0.16.
+
+No weight on the ruler can move by more than half a gap, since a weight halfway between two ticks is
+as far from both as it can be. Here half a gap is about 0.25, and the **Largest error** readout
+shows a value a hair under that.
+
+### Measuring the damage
+
+How far a weight moves is called its rounding error, and the lab writes it as `w′ − w`, which you
+read as “w prime minus w”. It means the rebuilt weight minus the original one, so a positive error
+means the weight was rounded up and a negative one means it was rounded down. The lower strip of the
+**Rounding grid and per-weight error** card draws one dot for every weight. Each dot sits left or
+right according to the weight’s original value, and up or down according to its error.
+
+To boil all 900 errors down to one number, the lab uses **RMS rounding error**, where RMS stands for
+“root mean square”. You square every error, find the average of those squares, and then take the
+square root of that average. Suppose one weight moved up by 0.1 and another moved down by 0.3, so
+that squaring makes both positive and gives 0.01 and 0.09. Their average is 0.05, and the square
+root of 0.05 is about 0.22, which is a little more than the plain average size of 0.2. The squaring
+gives a bigger miss more say than a small one, so a few large errors push RMS up quickly.
+
+What matters in the end, though, is not how far the weights moved but how much worse the model
+writes as a result. The **Quality against bits per weight** card measures that by running the
+rounded table over the training text and reading its perplexity again. Its **Full precision**
+readout shows the original 6.600, and **Quantized** shows the perplexity of the rounded table.
+**Quality cost** then shows how much higher the second number is than the first, as a percentage of
+the first.
+
+At 4 bits with one ruler, **Quantized** reads 6.662, which is 0.062 above the original perplexity of
+6.600. Since 0.062 is 0.94% of 6.600, **Quality cost** reads +0.94%, which means the perplexity has
+gone up by a little less than 1 part in 100.
+
+### Where the ruler picture stops matching
+
+A real ruler’s ticks cost nothing, because they are printed once and the same ruler can be used for
+years. Here, every ruler has to be written down and stored beside the codes, or the codes could
+never be turned back into numbers. On the default setting, every ruler costs 32 bits to store: 16
+bits for its start and 16 bits for its gap. That cost is the central tension of the whole lab, since
+more rulers fit the weights better but each one adds to the bill.
+
+### Two ways to lay the ruler
+
+The **Range mapping** control decides where each ruler sits on the number line, and it has two
+settings.
+
+`Asymmetric · min/max` is the default, and it starts the ruler at the smallest weight it covers and
+ends it at the largest. Every tick then sits over real data, so none is wasted, but the ruler must
+store both its start and its gap, which costs 32 bits.
+
+`Symmetric · absmax` centres the ruler on zero and stretches it the same distance in both
+directions, out to the weight that sits furthest from zero. The “absmax” in its name means the
+largest absolute value, which is the biggest distance from zero on either side. Because the middle
+tick is always exactly zero, this ruler does not need to store its start, so it costs 16 bits
+instead of 32. This layout is called **symmetric quantization**, and it is cheaper to store and
+simpler to compute with.
+
+To stay balanced around zero, a symmetric 4-bit ruler uses the codes from −7 to +7, which makes 15
+ticks rather than 16. These codes count outward from the middle tick instead of up from the start,
+so code 0 stands for exactly zero and there is no separate zero point to store. You can see this in
+the **Bit width** label, which reads “4 bits · 15 levels” whenever the symmetric setting is on.
+
+The trouble starts when the weights lean to one side, as they do here, since this table runs from
+−1.71 up to 5.93. A symmetric ruler has to stretch from −5.93 all the way to +5.93, so every tick
+below −1.71 sits over empty space where no weight will ever land. With 7 ticks above zero, the ruler
+needs 7 gaps to climb from 0 to 5.93, so each gap is 5.93 ÷ 7, or about 0.85. That is much coarser
+than the 0.51 of the asymmetric ruler.
+
+### One ruler or many
+
+The **Scaling granularity** control decides how many weights share one ruler, and the lab calls a
+set of weights that share a ruler a **block**.
+
+- `Per tensor` gives all 900 weights a single ruler, and since a whole table of weights is called a
+  **tensor**, this is **per-tensor scaling**.
+- `Per row` gives each of the 30 rows its own ruler, so there is one ruler for each character the
+  model could have read last.
+- `Per group` gives each short run of neighbouring weights its own ruler, which is called **group
+  scaling**, and the run length is set by the **Group size** slider.
+
+The **Group size** slider only appears in `Per group` mode, and it runs from 2 up to 30 weights per
+ruler in steps of two. A ruler that covers fewer weights only has to stretch across their range,
+which is usually narrower than the range of the whole table. A narrower range means smaller gaps and
+smaller gaps mean smaller errors, so going from one ruler to many usually makes the rounding far
+more accurate.
+
+The danger with a shared ruler is a single extreme weight, which is called an **outlier** because it
+lies far outside the range of its neighbours. Picture a class lining up for a photo beside a height
+chart with 16 marks, spread evenly from the shortest student to the tallest. Then a visiting
+basketball player joins the end of the line, far taller than anyone else in the class. The chart has
+to stretch up to reach them, so its marks spread apart and every ordinary student ends up crowded
+around the bottom few marks.
+
+Weights behave in the same way, since one far-out weight stretches any ruler it shares. The more
+weights share that ruler, the more of them get stuck with its wide gaps. The story stops matching
+this table in one place, though, because the table has no single giant. Several rows hold big scores
+of their own, such as 5.61 and 5.42, not far below the 5.93.
+
+So the one shared ruler is wide because the whole table is spread out, not because of one weight,
+and taking away the 5.93 alone would barely narrow it. Smaller blocks help here mainly because each
+row or group covers a much narrower range than the whole table. They also stop any one big score
+from widening everyone else’s gaps.
+
+Inside its own row, though, the 5.93 really is an outlier, since every other score after a full stop
+is about −0.20. You will see what it does to that row’s ruler in How to play with it.
+
+### Bits per weight: the real bill
+
+**Bit width** counts the bits in each code, but each weight also has to pay for its share of a
+ruler. That true cost is called **bits per weight**, and it adds each ruler’s 32 bits, shared out
+evenly among the weights that use the ruler. Here is how the three choices work out at 4 bits, where
+every code takes 4 bits before the rulers are added:
+
+- `Per tensor`: one 32-bit ruler shared by 900 weights adds only about 0.04 bits to each one, so
+  **Bits per weight** reads about 4.04.
+- `Per row`: 30 rulers cost 960 bits in total, which comes to about 1.07 extra bits for each weight,
+  so the readout is about 5.07.
+- `Per group` with a **Group size** of 8: each ruler is shared by only 8 weights, so its 32 bits add
+  4 more bits to each, for about 8.02.
+
+That last figure sits slightly above 8 because 900 does not split evenly into groups of 8, which
+leaves a final group of only 4 weights. At groups of 8, about half of all the storage goes on rulers
+rather than on codes, and the note under the readouts spells out the same sum.
+
+Push **Group size** down to 2 and each ruler is shared by only two weights, adding 16 bits to each,
+for a total of 20 bits per weight. The rounding error drops to zero, because a ruler for two weights
+starts on one of them and ends on the other. But 20 bits is more than the 16 bits of the
+half-precision format you will meet later, so the “shrunk” table is now bigger than a plain 16-bit
+copy.
+
+The same card also turns bits into a size, using the **Model size** readout, which gives the whole
+table’s size in bytes. At 4 bits per tensor, 900 codes of half a byte each make 450 bytes, and the
+single ruler adds 4 bytes. So the readout says 454 B, where B stands for bytes. **Against 32-bit**
+compares that with the original table, which takes 4 bytes per weight or 3,600 bytes in all, so it
+reads 12.6%.
+
+### Real formats have names
+
+Programs that run models on ordinary computers do not let you pick any ruler size you like, because
+they use fixed recipes called **block types**. The ones in this lab come from **llama.cpp**, a
+program for running language models on your own computer. It is also the engine behind this app’s
+optional local model. Each block type fixes how many weights share a ruler, how many bits each code
+gets, and how the ruler itself is stored.
+
+The number after the Q in a block type’s name is the code width in bits, so `Q4_0`, `Q4_1` and
+`Q4_K` all store 4-bit codes. The rest of the name tells you how the rulers are stored, and the
+**Published quantization formats** card lists each layout in detail:
+
+- `Q4_0` gives every 32 weights one symmetric ruler with a 16-bit gap, so its ruler adds
+  16 ÷ 32 = 0.5 bits to each weight, for 4.5 in total.
+- `Q4_1` adds a 16-bit start to each ruler so that it can sit off-centre, which doubles the ruler
+  cost to a whole bit per weight, for 5.0 in total.
+- `Q4_K` puts 256 weights in one big block and splits it into eight groups of 32, then squeezes each
+  group’s ruler into small 6-bit numbers.
+
+That last layout is a **K-quant**. Each group’s start and gap take 6 bits each, so the eight groups
+need 8 × 12 = 96 bits. The whole block then adds two 16-bit numbers that turn those small numbers
+back into real ones. That makes 128 bits of ruler for 256 weights, or half a bit per weight.
+
+So a K-quant spends half a bit per weight on rulers instead of one, and `Q4_K` costs 4.5 bits per
+weight, the same as `Q4_0`. Yet it keeps the off-centre rulers that make `Q4_1` accurate.
+
+A whole model contains many tensors, and one file can mix block types across them, which is what a
+file name like `Q4_K_M` describes. It is a recipe built around `Q4_K` that keeps some sensitive
+tensors in larger types such as `Q5_K` or `Q6_K`. An ending of `S`, for small, keeps fewer tensors
+in the larger types, and `M`, for medium, keeps more. Some types, such as `Q3_K`, also come in an
+`L` version, for large, that keeps more still.
+
+All of this travels in a single file called a **GGUF** file. It holds the tensors in their block
+types, along with the information that turns codes back into numbers. The file also holds the
+tokenizer, the part that splits text into the pieces that a model reads. The file begins with a
+header, a short description of what is inside, which a program checks before it trusts the rest of
+the file. This app does the same kind of check for its own local engine before starting it.
+
+### Predicting a file’s size and rough quality
+
+To predict a file’s size, multiply the number of weights by the bits per weight, and then divide by
+8 to turn bits into bytes. File sizes are often given in **GiB**, short for gibibytes, where one GiB
+is 1,024 × 1,024 × 1,024 bytes, a little over a billion.
+
+The model this app downloads has 1,881,825,088 weights, which the lab calls parameters, so you can
+try this prediction on a real file. If every one of those weights were stored as `Q4_K` at 4.5 bits,
+the file would come to about 0.99 GiB. The real file is 1.19 GiB, which is 21.0% bigger than that
+prediction, because its recipe keeps many tensors in larger types. Dividing the real file’s size in
+bits by its number of weights gives its **Effective bits per weight**, 5.445, the true average cost.
+
+Rough quality is harder to read from a name, but it follows a pattern that the formats table makes
+clear. More bits per code usually means smaller gaps and less damage, so `Q8_0` costs almost nothing
+on this table, while `Q3_K` and `Q2_K` cost noticeably more. The **RMS error** column is not
+perfectly in order, though, because the way a type stores its rulers matters too. `Q3_K` uses
+symmetric rulers that waste ticks on this lopsided table, so its RMS error is slightly larger than
+that of `Q2_K`, even though `Q2_K` still costs more in quality. Among types with the same code
+width, the cleverer ruler storage of `Q4_K` buys the accuracy of `Q4_1` for half a bit less. Still,
+a name is a promise about storage rather than quality, which always has to be measured on the task
+you care about.
+
+### How computers write ordinary numbers
+
+Everything so far started from weights stored in 32 bits, but those 32 bits do not use a ruler at
+all. They use a different layout called a **floating-point format**, or a float for short, and the
+**Float formats** card compares five of them.
+
+You may have seen big numbers written in scientific notation, such as 6.5 × 10,000 for 65,000, which
+splits a number into two parts. The first part holds the digits, here 6.5, and the second is a power
+of ten that sets how big the number is.
+
+Picture a friend’s old calculator that shows every number as three digits times a power of ten. It
+can show 1.23 or 1,230, but it has to round 1,234, since that would need a fourth digit. If the
+largest power it allows is 1,000, it cannot show 50,000 at all, however you round it. The first
+problem is about precision, meaning how finely numbers can be told apart, and the second is about
+range, meaning how big a number can be.
+
+A float works the same way, except it uses powers of two, the numbers you reach by doubling again
+and again from 1. Its bits split into three parts:
+
+- one **sign** bit, which says whether the number is positive or negative, so that the rest of the
+  bits only have to describe its size;
+- **exponent** bits, which pick the power of two and so set the format’s range, meaning how big or
+  small a number it can hold;
+- **mantissa** bits, which hold the digits and so set its precision, meaning how finely it can tell
+  nearby numbers apart.
+
+Each exponent value picks one stretch of the number line, running from a power of two up to the next
+one, such as from 2 to 4. The mantissa bits split that stretch into equal steps, one for each
+pattern they can make, so a format with 10 mantissa bits makes 1,024 steps in every stretch. In the
+stretch from 1 to 2, each of those steps is about 0.001 wide, which is what the **Spacing at 1.0**
+column shows for such a format. The column writes it as `2^−10`, meaning 1 divided by 2 ten times
+over, which is 1 ÷ 1,024.
+
+Higher stretches are wider but still have the same number of steps, so the steps grow as the numbers
+grow. That is why a float keeps about the same number of digits of detail whether a number is tiny
+or huge. The exponent bits decide how many stretches there are, and so they decide the largest
+number the format can write.
+
+Take fp16, which has 5 exponent bits and 10 mantissa bits. Its 5 exponent bits make 32 patterns.
+Roughly half of them pick stretches below 1, for tiny numbers, and a couple are kept for special
+jobs. So the highest stretch starts at 32,768, which is 1 doubled 15 times, and runs up to 65,536.
+Each of its 1,024 steps in that stretch is 32 wide, so the largest number fp16 can write is one step
+short of 65,536, which is 65,504. Anything bigger than that does not fit at all, however it is
+rounded, and the lab marks such a number as `overflow`.
+
+The lab lines up five formats, from the most bits to the fewest, and writes each one as sign plus
+exponent plus mantissa bits:
+
+- fp32 is 1 + 8 + 23 bits, which is the full precision that this lab starts from and compares
+  everything else against.
+- fp16, also called half precision, is 1 + 5 + 10 bits, so it has fewer exponent bits than fp32 and
+  far fewer mantissa bits.
+- bf16 is 1 + 8 + 7 bits, so it keeps all of fp32’s exponent bits and its huge range, but it has
+  fewer mantissa bits than fp16.
+- fp8 E4M3 is 1 + 4 + 3 bits, where the name means 4 exponent bits and 3 mantissa bits.
+- fp8 E5M2 is 1 + 5 + 2 bits, which gives it more range than E4M3 but even less precision.
+
+So a number can go wrong in a float format in two separate ways, and the lab shows you which one is
+happening. It can be too big for the exponent bits, which is a range problem, and then the lab marks
+it `overflow`. Or it can fit but land between two of the format’s values, which is a precision
+problem, and the **Error** column shows how far off it ends up.
+
+Very small numbers have a problem of their own, which shows up in the **Smallest normal to largest**
+column. As numbers get smaller, the stretches get shorter and the steps inside them shrink too, but
+the exponent bits eventually run out of smaller stretches. The first number in that column is the
+smallest normal value, the smallest number where the usual pattern still works.
+
+Below that number, the steps stop shrinking and stay the size they were in the lowest stretch, so
+tiny numbers keep fewer digits of detail. The lab calls a number stored down there **subnormal**. A
+number smaller than half of one of those steps has nowhere to go but zero, which is called
+**underflow**, and the lab says it “underflows to zero”.
+
+## Why it’s here
+
+### The problem: every token reads every weight
+
+A model writes text one **token** at a time, where a token is a small piece of text such as a word
+or part of a word. For every token, the model reads all of its weights out of memory once. A long
+answer runs to hundreds of tokens, so that reading happens again and again. A model stored in half
+the bits has half as much to read each time, which is why **bits per weight** affects speed as well
+as size.
+
+That is also why the Deployment & serving lab, later in this app, counts a model’s weights in bits.
+It uses them to work out how much memory a model needs, including the file this app downloads.
+
+### Why plain rounding is not enough
+
+Rounding with one ruler for everything works well at 8 bits, but it falls apart quickly as you take
+bits away. At 2 bits per tensor the ruler has only four ticks, about 2.55 apart, and the model’s
+perplexity rises by almost a quarter. The tools in this module are the fixes for that problem: where
+each ruler starts, how far apart its ticks are, and how many weights share it.
+
+Each of those fixes costs something, because a ruler with its own start takes more storage than one
+centred on zero, and more rulers take more storage still. Real formats such as `Q4_K` are the result
+of balancing those costs carefully, and this lab lets you see each part of that balance on its own.
+
+### Rounding after training is finished
+
+Everything in this lab happens after training is over, so nothing is retrained and the model’s
+weights are only rounded. Quantizing a finished model like this is called **post-training
+quantization**, and it is cheap enough that anyone can apply it to a model whose weights have been
+released.
+
+The downside is that plain rounding looks only at the weights themselves and not at how the model
+uses them. Better methods first run some sample text through the model to measure which weights
+matter most, and then use that to round more carefully. That step is called **calibration**, and the
+file this app downloads records that it was calibrated in this way.
+
+### Why number formats belong here too
+
+The 32-bit starting point is a choice as well, and smaller float formats such as bf16 and fp8 save
+space in a different way from integer codes. Instead of sharing one ruler, they keep a separate
+exponent for every number, which lets each number carry its own sense of size. The **Float formats**
+card shows what each format gives up, so you can tell when a value runs out of range and when it
+only loses precision.
+
+## How to play with it
+
+Work through the cards in order, since each step builds on the one before, and remember that the lab
+opens at 4 bits with groups of 8.
+
+### Round the weights
+
+**Try this:** Set **Scaling granularity** to `Per tensor` and pull **Bit width** from 8 down to 2.
+Watch the dots in the lower strip of **Rounding grid and per-weight error** line up into a sawtooth,
+which is a row of slanted teeth.
+
+Each tooth is one gap of the ruler: as a weight slides from one tick towards the next, its error
+grows steadily until it reaches half a gap. Then the weight snaps to the next tick and its error
+flips to the other side, so each tooth is exactly one gap wide. As you take bits away, the gaps
+widen, so the teeth get wider. They get taller too, but the strip rescales to fit them, so read the
+numbers on its left edge: about +0.015 at 8 bits, and about +1.27 at 2 bits.
+
+The top half of the same card is a **histogram**, a bar chart that counts how many weights fall in
+each small range of values. The ruler’s ticks are drawn over it as vertical lines, solid where at
+least one weight landed and dashed where none did. Its bars use a square-root scale, which squashes
+the tallest bars so that the few large weights still show up beside the big pile near zero. At 7 and
+8 bits there are too many ticks to draw, so the chart prints a note instead, and the lines appear
+once you reach 6 bits.
+
+Here is what the readouts show at each width, with **RMS rounding error** rounded to three decimals
+and **Quality cost** as the lab prints it:
+
+- 8 bits: the error is 0.008 and the cost is +0.01%, which is too small to matter.
+- 5 bits: the error is 0.074 and the cost is +0.14%, which is still a small change.
+- 4 bits: the error is 0.147 and the cost is +0.94%, a little under one percent.
+- 3 bits: the error is 0.353 and the cost is +5.03%, which is now clearly visible.
+- 2 bits: the error is 0.967 and the cost is +23.90%, so perplexity is almost a quarter higher.
+
+Below 5 bits, each bit you remove multiplies the cost by roughly five to seven, so losing bits is
+cheap at first and then suddenly very expensive.
+
+While you are at 2 bits, look at the two text samples on **Quality against bits per weight**, which
+show what each version of the model writes. Both start from the prompt “the ” and write 76
+characters at temperature 0.7, a setting for how much chance goes into picking each character. Both
+panels also roll the same dice, so any difference between the full-precision text and the rounded
+text comes from the rounded weights.
+
+### Change the granularity
+
+Set **Bit width** back to 4 and click through the three **Scaling granularity** choices while you
+watch **RMS rounding error**. It falls from 0.147 with one ruler to 0.031 with a ruler per row, and
+then to 0.027 for groups of 8. Now read **Bits per weight** for the same three settings, which come
+to about 4.04, 5.07 and 8.02. Shorter rulers fit better, but every ruler costs 32 bits to store, so
+the storage bill climbs as the error falls.
+
+Then pick `Per row` and look at **Inspect block**, the slider that chooses which block’s ruler is
+drawn on the chart. It starts on the block that holds the largest weight, the row for the full stop,
+where **Step in this block** reads 0.41. That is because the 5.93 score has stretched this ruler far
+above the rest of the row. **Levels used in this block** reads 2 of 16. The 5.93 takes the top tick,
+and the other 29 weights in this row are all the same, about −0.20, so they share the bottom tick
+and lose nothing.
+
+The real damage is the gap. A gap of 0.41 is wide, and in a row with varied weights it would blur
+neighbouring weights together onto the same few ticks. Drag **Inspect block** to other rows and the
+step is smaller in every one. Rows with big scores of their own, such as the rows for h and v, still
+come close to 0.41.
+
+A few rows show a step of exactly 1, and they belong to characters that never appear in the training
+text, such as the two spare symbols. All the weights in those rows are equal, so they need no gaps
+at all, and the lab shows a stand-in step for them.
+
+### Move the zero point
+
+Go back to `Per tensor` at 4 bits and switch **Range mapping** to `Symmetric · absmax`, then look at
+the grid lines on the chart. The ruler now runs from −5.93 to +5.93, but no weight is below −1.71,
+so most of the negative ticks are wasted. The dashed lines mark ticks that no weight landed on, and
+**Levels used in this block** reads 10 of 15. **Quality cost** rises from +0.94% to +2.33%, so the
+cheaper ruler has more than doubled the damage.
+
+Now drop **Bit width** to 2 with the symmetric ruler still on, which leaves only three ticks, at
+−5.93, 0 and +5.93. Almost every weight now rounds to zero, and **Quantized** jumps to about 22.55,
+which is more than three times the original perplexity.
+
+### Price the tradeoff
+
+Switch **Range mapping** back to `Asymmetric · min/max` and look at the chart on **Quality against
+bits per weight**, where each point is one setting. A point sits left or right according to its bits
+per weight with the rulers included, and up or down according to its quality cost. Down and to the
+left is better, because a point there means less space and less damage at the same time.
+
+The upward direction uses a log scale, which means each equal step up multiplies the cost by ten
+instead of adding to it. So the gap from 0.1% to 1% looks the same as the gap from 1% to 10%, which
+lets tiny costs and huge ones share one chart. Points at 0.01% or below cannot go any lower, so they
+sit on the floor of the chart as hollow markers.
+
+The chart draws three lines, and each has its own marker and line style so you can tell them apart
+without relying on colour. Circles on a solid line mark `per tensor`, squares on a dashed line mark
+`per row`, and triangles on a dotted line mark `per group of 8`.
+
+Find the 4-bit point on each line and compare them, starting with per tensor at about 4.04 bits and
++0.94%. Per row sits further right, at 5.07 bits, but far lower, at +0.17%, so one extra bit per
+weight cuts the damage to under a fifth.
+
+The diamonds are the real llama.cpp block types, and a ring marks your current setting so you can
+always find it. The `Q4_K` diamond sits at 4.5 bits and +0.19%, about as low as the per-row point
+but well to its left. It gets about the same quality for less storage because it stores its rulers
+more compactly, at 0.5 bits per weight instead of 1.07.
+
+If you set a very small **Group size**, some points land beyond 17 bits per weight, and the chart
+leaves those off and tells you how many it skipped.
+
+### Read the format names
+
+Open **Published quantization formats**, where each row is a block type and the columns include
+**Bits per weight**, **Toy perplexity** and **RMS error**. The **Toy perplexity** column gives the
+perplexity measured on this table, with its percent cost printed underneath, so you can compare it
+with the chart. Rows whose code width matches your **Bit width** are highlighted, so at 4 bits you
+will see the 4-bit types light up.
+
+Compare the three types that all use 4-bit codes, since they differ only in how they store their
+rulers:
+
+- `Q4_0` costs 4.5 bits per weight, with an RMS error of 0.127 and a cost of +0.20%.
+- `Q4_1` costs 5.0 bits per weight, with an RMS error of 0.063 and a cost of +0.16%.
+- `Q4_K` costs 4.5 bits per weight, with an RMS error of 0.062 and a cost of +0.19%.
+
+`Q4_0` has about double the error of the other two, because its symmetric ruler wastes ticks on this
+lopsided table. `Q4_K` matches `Q4_1` while spending half a bit less per weight, which is the whole
+point of squeezing its rulers. Notice too that all three costs are small and close together, a
+reminder that double the rounding error does not always mean double the damage.
+
+The last column, **llama.cpp file, Llama-3-8B**, lists the file sizes that llama.cpp reports for a
+model with about 8 billion weights. Its `Q4_K_M` file is 4.58 GiB, which works out to about 4.90
+bits per weight rather than the 4.5 of a single block.
+
+### Weigh the file you downloaded
+
+Now open **The file you downloaded**, which weighs the model file this app downloads in the same way
+as the toy table:
+
+- **File size** reads 1.19 GiB, and the note below the bars gives the exact count, 1,280,835,840
+  bytes.
+- **Parameters in the file** reads 1.88 B, where the B means billion rather than bytes, so this is
+  the number of weights.
+- **Effective bits per weight** reads 5.445, which is the file’s size in bits divided by its number
+  of weights.
+- **Share of the F16 size** reads 34.0%, so the file is about a third of the size of a plain 16-bit
+  copy.
+
+So a file built from 4-bit blocks really costs 5.445 bits per weight, which is 0.945 above the 4.5
+of a `Q4_K` block. To find where those extra bits go, switch **Group tensors by** from `Block type`
+to `Role in the network`, which sorts the model’s parts by the job each one does. Each bar is then
+one part of the model, sized by its share of the file’s bytes, with its own bits per weight written
+beside it.
+
+The token embedding costs 6.56 bits per weight, while the feed-forward layers cost 4.84. A model is
+built as a stack of repeated steps called layers. The feed-forward parts of those layers, added
+together, hold more weights than any other part of the model. The token embedding is the table that
+turns each token into a list of numbers the model can work with. This recipe keeps it in the larger
+`Q6_K` type, which is why it costs so much per weight. Bars above 5 bits per weight are drawn in a
+warning colour, so you can spot the expensive parts quickly.
+
+Back on `Block type`, the `Q6_K` bar holds 35.3% of the parameters but 42.9% of the bytes, because
+each of its weights costs more to store.
+
+### Climb the float ladder
+
+Last, open **Float formats**, where the **Example value** control jumps to a few preset numbers and
+the **Value to store** slider reaches anything from 0.000001 up to 1,000,000.
+
+Set **Example value** to 100,000, and you will see that only fp32 and bf16 can write it, because
+only they have 8 exponent bits. The fp16 row shows `overflow` because fp16 stops at 65,504, and the
+fp8 rows overflow too, since E5M2 stops at 57,344 and E4M3 at 448. Even bf16 cannot store the number
+exactly, so it rounds it to 99,840, which is 0.16% low because bf16 has few mantissa bits.
+
+Set it to 0.02, which fits in every format, and read the **Error** column to see how close each one
+gets. The fp16 row is off by 0.021% and the bf16 row by 0.098%, while both fp8 formats are off by
+2.3%. Here the problem is precision rather than range, because fewer mantissa bits mean wider steps,
+so the stored value lands further from 0.02.
+
+Try 300 as well, which fits in every format, although fp8 E4M3 stores it as 288 and fp8 E5M2 stores
+it as 320. Between 256 and 512, three mantissa bits make steps that are 32 wide, while two mantissa
+bits make steps that are 64 wide.
+
+Finally, try 0.001. E4M3’s smallest normal value is about 0.0156, so 0.001 sits down in the
+subnormal zone, where every step is about 0.00195 wide. That means the nearest values E4M3 can write
+are 0 and about 0.00195. The number 0.001 is a little closer to 0.00195, so it rounds up.
+
+The fp8 E4M3 row shows this as `1.9531e-3`, meaning 1.9531 ÷ 1,000, or about 0.00195, and marks it
+subnormal. The stored value is nearly double the real one, which shows how little detail is left
+down there.
+
+The last two columns round the whole trained table through each format, and **Toy table RMS error**
+is 0.0002 for fp16 but 0.0017 for bf16. So fp16 keeps the weights more than eight times closer,
+because its 10 mantissa bits make steps 2 × 2 × 2 = 8 times finer than the 7 of bf16. The table
+never comes near the fp16 limit of 65,504, so the extra range of bf16 buys nothing here.
+
+## What to notice
+
+- The bit width is not the size, because at 4 bits, groups of 8 cost 8.02 bits per weight once the
+  rulers are counted.
+- A group of 2 costs 20 bits per weight, which is more than the 16 bits of half precision, even
+  though every code is only 4 bits.
+- One huge weight bends its whole ruler: the 5.93 score stretches its row’s 4-bit gap to 0.41, which
+  would blur any varied weights that shared that row.
+- A weight like that is called an **outlier**, and smaller blocks keep its stretch inside its own
+  block instead of widening the gaps for the whole table.
+- On the chart, down and to the left is better, and `Q4_K` sits left of the per-row line at about
+  the same cost. That is because `Q4_K` stores its rulers more compactly, at half a bit per weight
+  instead of about one.
+- A ruler centred on zero wastes ticks on lopsided data, which is why the symmetric `Q4_0` has
+  double the error of `Q4_1` on this table.
+- Each bit you remove below 5 bits multiplies the per-tensor cost by roughly five to seven, so the
+  savings get expensive fast.
+- The label on the box is not its weight: the downloaded `Q4_K_M` file averages 5.445 bits per
+  weight. That is because about 51% of its parameters sit in larger types such as `Q5_K` or `Q6_K`.
+- The biggest of those larger parts is the token embedding table, which has a row of numbers for
+  each of its 248,320 tokens.
+- The header of that file adds only 0.047 bits per weight, so almost all of the gap comes from the
+  recipe itself.
+- A float is like a number written as digits times a power. Mantissa bits are the digits and set
+  precision, while exponent bits are the power and set range.
+- The fp16 and bf16 formats both use 16 bits but split them differently, so on the trained table
+  fp16’s error is 0.0002 against bf16’s 0.0017. Yet bf16 holds 100,000 while fp16 overflows, because
+  bf16 spent its bits on range instead.
+- An 8-bit float with no ruler is rougher than an 8-bit integer code with one: fp8 E4M3 costs +0.17%
+  and fp8 E5M2 costs +0.36% on this table.
+- Meanwhile `Q8_0` costs below 0.01%, although its ruler raises its storage to 8.5 bits per weight,
+  so the better result is not quite free.
+
+**A common mix-up:** many people read “4-bit” as exactly 4 bits of storage per weight, but it is
+always more, because the rulers are stored too. That is why `Q4_0` costs 4.5 bits per weight, and
+why llama.cpp’s own `Q4_K_M` file for an 8-billion-parameter model averages about 4.9. The app’s own
+2B file averages 5.445, because some of its tensors are kept in `Q5_K`, at 5.5 bits per weight, or
+in `Q6_K`, at about 6.56.
+
+Picture a friend who downloads a “4-bit” model and expects it to be a quarter of the size of the
+16-bit version, since 4 is a quarter of 16. The **Share of the F16 size** readout says 34.0%
+instead, which is about a third, and now you can explain the difference to them.
+
+**A common mix-up:** because bf16 shares fp32’s exponent bits, it can seem like the more precise of
+the two 16-bit formats, but it is the other way around. Exponent bits buy range rather than
+precision, so near 1.0 the steps in bf16 are about 0.008 apart, while the steps in fp16 are about
+0.001 apart.
+
+## Where it breaks
+
+### What this lab simplifies
+
+Every card except **The file you downloaded** is really computed, including the rounding, the
+errors, the bit counts and every perplexity. The one other exception is the **llama.cpp file,
+Llama-3-8B** column, which copies the file sizes that llama.cpp itself reports. What is missing is
+size and structure, because the lab rounds one small 30 by 30 table and the model behind it looks
+back only one character. Only the stored weights are rounded, and not the numbers that flow through
+a model while it runs.
+
+Perplexity here is measured on the same text the table was trained on, so it tells you how closely
+the rounded table matches the original. It does not tell you how well the model would handle new
+text that it has never seen.
+
+When you use the **Quantization controls**, the lab counts 16 bits for each start and each gap, but
+it rebuilds the weights with the exact, unrounded start and gap. So its errors can differ very
+slightly from what a real 16-bit ruler would give. The controls also count every bit with none
+wasted, while real files sometimes leave a few spare bits to keep the codes lined up. The
+**Published quantization formats** rows, by contrast, do round their stored rulers the way the real
+files do.
+
+The histogram on **Rounding grid and per-weight error** sorts the weights into narrow bins for
+display. So its bars are a slightly blurred picture of the table rather than an exact one.
+
+The **Published quantization formats** rows copy each llama.cpp block’s layout, but they run it
+along the table as one long line of 900 weights. The real tool rounds each row separately, searches
+for better rulers, and needs rows that are a multiple of 32 or 256 weights long. Because the lab
+skips that search, its errors for those formats are an upper limit, and the real tool’s errors may
+be lower. With only one tensor, the lab also cannot show how the `_S`, `_M` and `_L` recipes mix
+block types across a model.
+
+**The file you downloaded** shows one file’s labels, read from its header on 30 September 2026 and
+typed into the lab. Nothing is downloaded or measured again when you open the card, and it tells you
+the file’s size, not its quality.
+
+**Float formats** rounds the table straight into each format with no ruler or scaling step first,
+which is not how real 8-bit setups work. Its perplexity is also measured on the training text, like
+the rest of the lab, so it shares the same blind spot.
+
+### Where real quantization runs into trouble
+
+In real models the weights are not the hardest part. While a model runs, it passes lists of numbers
+from step to step, called **activations**, and these are harder still to round. In large models, a
+few positions in those lists, called channels, carry values far larger than their neighbours. One
+shared ruler has to stretch to reach those big values, so every other value gets coarse steps.
+
+Rounding error is not the same as quality loss, so real recipes try to keep the model’s outputs
+close on sample text, not only its weights. Better methods than plain rounding use calibration to
+find and protect the weights that matter most, as the Going deeper section describes.
+
+Perplexity is a weak final test, because a format can keep its perplexity on ordinary prose and
+still get worse in other places. It may slip on very long inputs, on computer code, or on languages
+that were rare in the training text.
+
+A format only helps if fast software exists to do its arithmetic, so an unusual layout can make a
+file smaller and the model slower at once.
+
+Effective bits per weight only measures storage, so it says nothing about quality and leaves out the
+extra memory a model uses while it runs. That extra memory includes the saved keys and values that
+you met in the Inference & KV cache lab.
+
+When a number is too big for a float format, what happens next depends on how the conversion is set
+up. The number might be clipped to the largest value, or it might be turned into a special marker
+that means infinity or “not a number”.
+
+## Going deeper
+
+### Reading the names in full
+
+A block type such as `Q4_K` is a storage layout that holds 256 weights in a super-block, split into
+eight groups of 32. Each group’s gap and start are squeezed into 6-bit numbers, and two 16-bit
+numbers for the whole super-block turn those small numbers back into real ones. Altogether that is
+144 bytes for every 256 weights, which works out to 4.5 bits per weight. `Q4_0` is the older layout,
+with 32 weights sharing one 16-bit gap, and it also lands on 4.5 bits per weight.
+
+A file name such as `Q4_K_M` is a recipe across tensors, and for Llama-3-8B it is mostly `Q4_K`.
+Parts of two kinds of layer, along with the final output layer, are kept in `Q6_K`. The llama.cpp
+project reports this file at 4.58 GiB, which is about 4.90 bits per weight.
+
+### The file you downloaded
+
+The app’s local model is Qwen3.5 2B, as a `Q4_K_M` file from the `unsloth/Qwen3.5-2B-GGUF`
+repository. It is pinned to one exact version with a known fingerprint, a SHA-256 hash, which lets
+the app check that it has exactly that file. The counts in the lab were read from the file’s own
+header on 30 September 2026. Hugging Face, the site that hosts the file, reports the same parameter
+total.
+
+According to its model card, the model has 24 layers. Six of them use full attention, the method
+from the Attention lab where every token looks back at every earlier token. The other 18 use a
+cheaper kind of layer called Gated DeltaNet.
+
+The recipe keeps the big token embedding table at the larger `Q6_K` size, and that table has a row
+of 2,048 numbers for each of its 248,320 tokens. The lab calls it “shared with the output” because
+the same table is used again at the very end, to score each possible next token. In a small model
+that table makes up 27.0% of all the parameters, so keeping it wide moves the average a lot. The
+Deployment & serving lab turns this same file into a memory budget, so you will meet these numbers
+again there.
+
+### The float ladder in more detail
+
+Each step down the ladder halves the bits and gives something up, and the two 16-bit formats give up
+different things. The bf16 format keeps fp32’s 8 exponent bits and cuts the mantissa to 7 bits,
+while fp16 trades the other way, with 5 exponent bits and 10 mantissa bits.
+
+The lab also lists a **bias** for each format. This is a fixed number subtracted from the stored
+exponent, so that the exponent can reach small numbers as well as big ones.
+
+The two fp8 formats come from a 2022 paper by Micikevicius and colleagues, who suggest E4M3 for
+weights and activations and E5M2 for gradients. Gradients are the nudges that training applies to
+the weights, so they matter while a model is being trained rather than when it is used. E4M3 gives
+up its patterns for infinity and keeps only one for “not a number”, which stretches its largest
+value up to 448. The paper describes scaling each tensor first so that its biggest value lands near
+the format’s maximum, which is a step this lab does not take.
+
+### Calibration methods
+
+Plain rounding looks only at the weights, while **calibration** also runs sample text through the
+model. In a real model each weight is multiplied by numbers that come from the text. A weight that
+is always multiplied by large numbers matters more than one that is always multiplied by tiny ones.
+These are the published claims, not measurements from this lab, and the sources were checked on 30
+September 2026. They are the papers’ summaries and the documentation for llama.cpp version b10991,
+which is the version this app pins.
+
+- llama.cpp can compute an importance matrix for a model from a text file and then use it to improve
+  the quality of quantizing.
+- This app’s own file records that it used one, built from a dataset called
+  `unsloth_calibration_Qwen3.5-2B.txt` in 80 chunks.
+- GPTQ (2022) rounds the weights in order and adjusts the ones not yet rounded to make up for each
+  error. It reports 3 or 4 bits per weight with very little loss on models of 175 billion weights.
+- AWQ (2023) finds that protecting about 1% of the weight channels, the ones that matter most,
+  greatly reduces the error.
+- AWQ picks those channels by watching the activations rather than the weights, and it protects them
+  by scaling instead of by retraining.
+- LLM.int8() (2022) sends the few outlier channels through 16-bit arithmetic, while more than 99.9%
+  of values go through 8-bit arithmetic.
+- SmoothQuant (2022) instead moves the difficulty of activation outliers into the weights, so that
+  both the weights and the activations can use 8 bits.
+
+### Quantizing the cache
+
+While a model writes, it saves keys and values from earlier tokens in a **KV cache**, as the
+Inference & KV cache lab shows, and these can be rounded too. The llama.cpp server has a setting for
+the type of each, `--cache-type-k` and `--cache-type-v`, with `f16` as the default and `q8_0` and
+`q4_0` among the other choices. A 2024 paper, KIVI, rounds them to 2 bits and reports 2.6 times less
+peak memory, counting the weights, and the Deployment & serving lab prices this lever.
+
+### What comes after rounding
+
+A barely trained model hardly cares about rounding, which is why this lab trains for 80 epochs
+first. A well-trained table spreads its scores apart and stores information in the differences
+between them, which rounding can damage. On a fresh table, by contrast, even 2 bits would look free,
+so the lab would teach you nothing about the real cost.
+
+Training with the rounding switched on is called quantization-aware training, and it teaches a model
+weights that survive rounding. It costs a whole training run, and it is most useful at 4 bits and
+below.

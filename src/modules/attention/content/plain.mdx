@@ -1,0 +1,930 @@
+---
+objectives: ["Distinguish queries, keys, and values", "Read an attention pattern without over-interpreting it", "Tell a head that follows content from one that reads a fixed distance", "Explain what the causal mask changes and how encoder and decoder-only models differ", "Say why scores are divided by the square root of the head dimension"]
+terms: ["Query", "Key", "Value", "Attention weight", "Attention head", "Scaled dot product", "Causal mask", "Multi-head attention", "Output projection", "Head dimension", "Attention pattern", "Induction head", "Previous-token head", "Attention sink", "Grouped-query attention", "Encoder", "Decoder-only (causal) language model", "Masked language model", "Positional encoding"]
+---
+
+## The big picture
+
+Read this sentence from the lab: “The animal did not cross the street because it was tired.” You
+knew right away that `it` means the animal and not the street, because you linked one word to
+another word several places earlier in the sentence.
+
+A language model, the kind of program behind a chatbot, has to make links like this for every word
+it reads. To guess what comes next, a word often needs information from somewhere else in the text,
+such as the name that a pronoun stands for. It might instead need the opening bracket that a closing
+bracket belongs to, or the pattern that a few earlier examples set up. The part of the model that
+fetches that information is called **attention**, and this module shows you how it works, one small
+step at a time.
+
+In a single breath: every word sends out a search request. It compares that request with what each
+earlier word has to offer, which gives each one a match score. The word then takes in a blend of
+information from the words that match best. None of these links is wired in ahead of time, because the model
+works them out fresh for every sentence it reads. That means the same word can draw on different
+neighbours in different sentences.
+
+### Where you have met it
+
+Most of today’s chat models are the same kind of model as the tiny one in this lab. They read text
+in one direction, from left to right, and they learned by guessing the next piece of text over and
+over again. Suppose a chatbot keeps track of who “she” is in your message, or carries on a list in
+the same format that you started. In both cases, attention is the part of the model that lets each
+word reach back to earlier words for the information it needs.
+
+### Why it matters
+
+In a model like this one, attention is the only step that lets one word take information from
+another. Without it, every word would be stuck with what it knew about itself and its place in the
+line. The model’s guesses about the next word would then be far worse, because what helps a guess
+usually sits somewhere else in the text.
+
+Attention also changed the way models are trained, and that matters nearly as much. It lets a model
+practise guessing what comes next at every spot in a long text at the same time. Older models had to
+work through the text one spot after another. That is a big reason it became practical to train very
+large models at all.
+
+### What you will be able to explain
+
+By the end of this lesson, you should be able to explain each of these ideas in your own words:
+
+- the search slip, label and packet that every word makes, and why the slip and label decide where
+  information comes from while the packet carries it;
+- how to read a picture of attention carefully, since a thick line shows where information could
+  flow, not why the model answered as it did;
+- how to tell a part of the model that follows the text’s content from one that always looks a fixed
+  number of characters back, spaces included;
+- what the one-way rule changes, since it stops a word from reading later words, and how models that
+  read in both directions differ from this one;
+- why each match score gets divided by 8 before it becomes a share, why 8 is the right number here,
+  and what goes wrong when that step is skipped.
+
+### What the lab lets you do
+
+The lab runs a real, very small model that was trained on the plays of Shakespeare. With the model’s
+own settings, the numbers you see are measured straight from that model, rather than taken from a
+cartoon of how attention might work. You can pick a word and watch lines fan out to the words it
+draws from. You can also see a grid of links for every word at once. You can also step through the arithmetic
+behind any single link, one stage at a time.
+
+Three switches let you break the machinery on purpose and watch what changes as a result. One stops
+the match scores from being shrunk, one empties out the information being passed along, and one lets
+a word read ahead to later words. When you flip a switch or type in your own numbers, the lab works
+out new results from the model’s numbers. You are then looking at an experiment, not at the model as
+it was trained.
+
+A few things are fixed or made up rather than measured, starting with the example sentences, which
+were chosen for this lesson. About 3 in every 10 of the model’s practice texts were made up on
+purpose, from a short string repeated over and over. If the model fails to load, the lab shows
+stand-in numbers that mean nothing, and it tells you so.
+
+One warning before you start: in this small model, the line from `it` to `animal` is always thin. No
+part of the model makes it the strongest link or gives it even 10 percent of the attention of `it`,
+even though you made that connection instantly. Working out why is part of the lesson, and it is a
+good reminder that these pictures need careful reading.
+
+## What it is
+
+### Words as lists of numbers
+
+Inside the model, every character of your sentence is stored as a long list of numbers that
+describes it. A list of numbers like this is called a **vector**, a bit like a player’s stats in a
+sports game, where each number rates one skill. The model’s vectors differ in one important way:
+nobody decided what each number stands for.
+
+The model settled on its numbers itself during **training**, a long practice period in which it
+guessed the next character over and over. After each round of guesses, it nudged all its numbers a
+little, so that its next guesses would come out better.
+
+This model reads characters, meaning letters, spaces and punctuation marks, rather than whole words,
+so every character gets its own vector. For most of this lesson we will talk about words, since the
+lab’s main views group characters that way, and return to characters when they matter.
+
+### Three things on every desk
+
+Picture a classroom where every word of the sentence sits at its own desk, in order from left to
+right. Each desk holds three different items, and each item has an official name that the lab and
+the glossary use:
+
+- A **search slip** describes what this word is looking for in the rest of the sentence, and its
+  official name is the **query**.
+- A **label** pinned to the front of the desk advertises what this word can offer to others, and its
+  official name is the **key**.
+- A **packet** in the drawer holds the information that actually gets handed over, and its official
+  name is the **value**.
+
+Every word, every time, compares its search slip with the label on every desk it is allowed to see,
+including its own desk. Labels that match the slip well receive a high score, while poor matches
+receive a low one. Those scores are then turned into shares that add up to 100 percent. Finally, the
+word receives a blend of everyone’s packets, in which each packet counts exactly as much as its
+share.
+
+All three items are vectors, and the model calculates all three from the same starting vector, using
+three separate sets of learned numbers. Each set works like a separate recipe, so a word’s label can
+differ from its packet. Training shaped the label for being matched and the packet for being useful
+once it arrives.
+
+Keep this split of jobs in mind for the rest of the lesson, because the lab keeps returning to it.
+The query and the key decide **who gets read**, while the value decides **what gets read**. The lab
+has a switch that tests this split directly, which you will try in How to play with it.
+
+### The five stages
+
+The lab walks through one word’s search in five stages, named on the buttons in the first card:
+`Query`, `Keys`, `Score`, `Softmax` and `Mix`. Each stage below gives the idea first and then a
+small example that you can check by hand.
+
+In the `Query` stage, you choose the word whose search you want to follow by clicking its chip in
+the **Model attention routing diagram** card. A chip is one of the small boxes that hold each word,
+and the word you click becomes the query. The `Q` chip in the **Query key value inspector** card
+then displays the first four numbers of that word’s query.
+
+In the `Keys` stage, every word that the query is allowed to see presents its key, the label on the
+front of its desk. The `K` chip displays the first four numbers of the key belonging to whichever
+word you are inspecting, which the lab calls the inspected key. You choose which word to inspect by
+clicking a cell in the **Attention matrix** grid, as How to play with it shows.
+
+In the `Score` stage, the query is compared with every key using a calculation called the **dot
+product**, which takes two steps. First you multiply the two lists position by position, and then
+you add up all of the answers. Here is a short example with four numbers in each list, matching the
+four numbers that each chip displays. Suppose the query is (2, −1, 0, 3) and the key is (1, 2, 5,
+1):
+
+- first position: 2 × 1 = 2
+- second position: −1 × 2 = −2
+- third position: 0 × 5 = 0
+- fourth position: 3 × 1 = 3
+
+Adding the four answers gives a score of 3, since the −2 from the second position cancels the 2 from
+the first and leaves the 3 from the fourth. Whenever the two numbers in a position have the same
+sign, they increase the score, and whenever their signs are opposite, they decrease it. A high score
+therefore means that the two lists tend to agree across many positions, which is what a good match
+looks like in numbers.
+
+The inspector shows its working as a stack of labelled lines, like the lines of a worked answer in a
+maths test. The real lists in this model are 64 numbers long, so the **Score** line adds up 64
+products rather than four. It shows the total next to `q · k`, which is how the lab writes the dot
+product of a query and a key.
+
+The `Score` stage does one more thing, and it does it to the query’s whole row of scores, meaning
+its score with every character it can see. Every score is divided by 8, because each list in this
+model is 64 numbers long and 8 is the square root of 64. The **Scale** line shows this step as
+`score ÷ √64`, and it gets its own section below, because it matters more than it looks.
+
+In the `Softmax` stage, the scaled scores are turned into shares that are all positive and add up to
+100 percent. The tool that does this is called **softmax**, and the lab writes its formula as
+`exp(s) ÷ Σ exp(s)`. In that formula, `s` is one score, and `exp(s)` means a special number, about
+2.718, raised to the power `s`. The Greek letter `Σ`, called sigma, means “add this up for every
+character the query can see”. Put into words, softmax turns every score into a positive number and
+then divides each one by the total of them all.
+
+Try it with three scores, 2, 1 and 0, and turn each one into a positive number first:
+
+- The score 2 becomes 2.718 × 2.718, which is about 7.39.
+- The score 1 becomes 2.718 itself, which rounds to 2.72.
+- The score 0 becomes exactly 1, because any number raised to the power 0 equals 1.
+
+Those three numbers add up to about 11.11, and dividing by that total gives each score its share.
+The top score gets 7.39 ÷ 11.11, which is about 66.5 percent of the row. The middle score gets about
+24.5 percent and the bottom score about 9 percent, so together the three shares make 100 percent.
+
+Negative scores work too, and real scores are often negative, so it helps to know that a power below
+zero means dividing instead of multiplying. The score −1 becomes 1 ÷ 2.718, which is about 0.37, and
+the score −2 becomes 1 ÷ 7.39, which is about 0.14. The more negative the score, the closer the
+result gets to zero, but it never reaches zero. Scores with decimals land in between, so a score of
+1.5 becomes about 4.48.
+
+Two features of softmax matter for everything that follows in this lesson. Every share is positive,
+because 2.718 raised to any power is above zero, so even a low-scoring character gets a sliver of
+the row. Softmax also cares a great deal about the gaps between scores, because each step of 1
+multiplies rather than adds. A gap of 1 makes one share about 2.7 times the other, and a gap of 2
+makes it about 2.7 × 2.7, or 7.4, times the other. A gap of 8 means multiplying by 2.7 eight times
+over, which comes to about 3,000.
+
+These shares are called **attention weights**, and each one tells you how much of one word’s value
+ends up in the query’s blend.
+
+In the `Mix` stage, the query collects every value it is allowed to see and blends them together,
+with each value counting exactly as much as its attention weight. A blend like this is called a
+**weighted average**, and you have probably met one already in a class grade. Say a test counts for
+75 percent of your grade and a quiz counts for the other 25 percent. You score 80 on the test and
+100 on the quiz. Three quarters of 80 is 60 and one quarter of 100 is 25, so your grade for the
+class works out to 85.
+
+Attention does the same calculation with whole lists of numbers instead of single marks, multiplying
+every number in a value by that value’s weight. Suppose the query gives 75 percent of its weight to
+a value holding (4, 0) and 25 percent to a value holding (0, 8). Three quarters of the first value
+is (3, 0) and one quarter of the second is (0, 2). Adding them position by position gives (3 + 0,
+0 + 2), so the blend is (3, 2). The lab shows the first four numbers of the real blend, out of 64, in
+the **Mixed value** chip.
+
+The **Mix length** readout turns the whole blend into one number that says how big its numbers are
+overall. To get it, square every number in the blend, add up the squares, and take the square root.
+For the blend (3, 2), that is √(9 + 4), which is about 3.6. The readout is 0 only when every number
+in the blend is 0, because any other number has a square above 0.
+
+### Heads and layers
+
+Everything so far describes one **attention head**: one complete set of the three recipes, with its
+own learned numbers. This model has four heads working side by side, and each one makes its own
+slips, labels and packets from the same text. Running several heads side by side like this, so that
+one sentence can be routed in four different ways at once, is called **multi-head attention**.
+
+Each head’s lists are 64 numbers long in this model, and that length is called the **head
+dimension**.
+
+The model also has two layers, one after the other, so attention happens twice on the way through.
+Layer 1 works on the character vectors as they come in and passes updated vectors on to Layer 2,
+whose four heads then do their own fetching. That makes eight heads in all, and you choose one with
+the **Layer** buttons and the **Attention head** slider at the top of the **Query key value
+inspector** card.
+
+The grid of attention weights for one head in one layer, showing how every word shares out its
+attention, is called an **attention pattern**. The **Attention matrix** card draws it, with one row
+for each query word and one column for each key word.
+
+### Why divide by 8?
+
+The divide-by-8 step looks like tidy bookkeeping, but it decides how the shares come out. To see
+why, picture a game where you flip a coin 64 times, adding 1 to your total for every heads and
+taking away 1 for every tails. Most of the flips cancel each other out, so your total almost never
+ends up anywhere near 64. In about three games out of four it lands within 8 of zero, on one side or
+the other, and it rarely lands more than 16 away.
+
+Now change the number of flips. With 16 flips the total usually lands within about 4 of zero, while
+with 256 flips it usually lands within about 16. How far from zero the total usually lands is called
+its spread, and four times as many flips only doubles the spread. That is the square-root pattern:
+√16 = 4, √64 = 8 and √256 = 16.
+
+A dot product behaves the same way when the numbers in both lists are about the size of 1 and their
+signs look random. Each of the 64 positions then adds a product of about size 1, sometimes positive
+and sometimes negative, like one coin flip. So the score usually lands within about 8 of zero, while
+lists of 256 numbers would give scores that usually land within about 16. Dividing by the square
+root of the head dimension brings the typical score back to a size of about 1, however long the
+lists are.
+
+That pattern holds for lists of random-looking numbers, but a trained head can still learn bigger
+scores on purpose, as you will see in Layer 1.
+
+The size of the scores matters because softmax turns gaps between scores into huge differences in
+share. Go back to the three scores 2, 1 and 0, which gave shares of about 66.5, 24.5 and 9 percent.
+Now make them 8 times bigger, so they become 16, 8 and 0. The top score now takes more than 99.9
+percent of the row, which leaves almost nothing for the other two.
+
+When one character takes 99 percent or more of a row, the lab calls that row **saturated**. A
+saturated row has stopped blending, because it hands over one value and ignores almost everything
+else.
+
+A dot product divided by the square root of the head dimension is called a **scaled dot product**.
+The lab’s **Score scaling** switch lets you turn the division off and watch rows saturate for
+yourself.
+
+### The one-way rule
+
+In this model, a word may read itself and the words before it, but it may never read the words after
+it, and this rule is called the **causal mask**. It is called a mask because it covers up later
+words, and causal because each word may only use what came before it, as a cause comes before its
+effect.
+
+The mask works by changing the scores before softmax runs: the score for every later character is
+set to minus infinity, written −∞, which is lower than any number. That makes it the one exception
+to “every share is positive”, because 2.718 raised to −∞ shrinks all the way to zero. The later
+character’s share therefore comes out as exactly zero. The lab draws those blocked spots with
+diagonal stripes, called hatching, and the **Scale** line says `masked` if you inspect one.
+
+Because each row can only reach back, the grid in the **Attention matrix** card is a triangle rather
+than a square. The diagonal runs from the top-left to the bottom-right corner, where each word or
+character meets itself, and the corner above it, where later words would sit, stays empty.
+
+The diagonal also lets you read distances. In the Characters view, a stripe of dark cells just below
+the diagonal, one cell to the left of it in every row, means each character looks 1 back. A stripe 7
+cells to the left of the diagonal means each character looks 7 back.
+
+To see why the rule exists, remember that this model learned by guessing each next character in a
+64-character piece of text, called a window, seen all at once. Picture a practice quiz where the
+answer to each question is printed right underneath it. You could score 100 percent by copying the
+line below each question, and you would learn nothing at all.
+
+Without the one-way rule, the model would be in the same position, because the spot before each
+answer could read the answer directly. For example, when the model reads “the cat”, the spot holding
+`c` has to guess that `a` comes next. Without the rule, the `c` could read the `a` one seat to its
+right and copy it. The mask hides every answer from the position that has to guess it.
+
+That is what makes all-at-once practice fair. Without the mask, the only fair way to practise would
+be to run the model 64 separate times. Each time, it would see only the text up to the spot it has
+to guess. With the mask, the model takes in the whole window in one run, and every spot still has to
+guess its next character without seeing it. One run then gives 64 fair guesses to learn from.
+Attention lets those 64 guesses be worked out side by side, and the mask keeps them honest.
+
+The rule is a design choice, not a law of nature, and keeping it or dropping it divides language
+models into families:
+
+- An **encoder** drops the rule, so every word may look both backward and forward, and its grid is a
+  full square. Reading in both directions like this is called bidirectional attention, and encoders
+  use it to understand a whole text at once. That suits jobs such as sorting emails into spam and
+  not spam, or finding the pages that best match a search.
+- A **decoder-only (causal) language model** keeps the rule and learns to guess the next piece of
+  text at every position. This lab’s model is one, and so are most of today’s chat models, which
+  write by guessing one piece, adding it to the end, and running again. The name comes from an older
+  design with two halves: an encoder that read the input and a decoder that wrote the output. A
+  decoder-only model keeps only the writing half.
+
+An encoder cannot practise by guessing the next word, because every position could see its own
+answer, so it needs a different practice task. A **masked language model** is an encoder that
+practises by covering some words in the middle of a text with a blank. It then guesses them from the
+words on both sides. A well-known model called BERT works this way, and this kind of practice suits
+understanding text better than writing it.
+
+Be careful with that name, because “masked” here means words hidden behind a blank, which is a
+different thing from the causal mask. A masked language model has no causal mask at all.
+
+The lab’s **Mask** control can lift the one-way rule for one head so you can see what that head
+would read. Doing so does not turn this model into an encoder, as Where it breaks explains.
+
+### Where position comes from
+
+The desk story has a gap: nothing on a label says which desk it sits at, so shuffling the desks
+would leave every match with the same score. Attention on its own therefore could not tell “the dog
+bit the man” from “the man bit the dog”. The one-way rule leaks a little information about order,
+because a word near the start can see only a few words while a word near the end can see many. **The
+transformer block** lab measures how much.
+
+Models close the gap by giving every desk its seat number in some form, so that position becomes
+part of the calculation. Any way of doing this is called a **positional encoding**, and four kinds
+are common:
+
+- **Learned seat numbers** (used by GPT-2, an older text-writing model, and by this lab’s model):
+  the model learns one list of numbers for each seat. It adds that list to the vector of whatever
+  character sits there. There is no list for a seat past the last one, so the model has a fixed
+  longest input, which is 64 characters here.
+- **Wave-pattern seat numbers** (used by the Transformer, the 2017 design that first built a model
+  around attention): each seat gets a fixed pattern made from waves, with nothing to learn. Models
+  that use this kind tend to work poorly on texts longer than the ones they trained on.
+- **A distance penalty** (ALiBi): instead of seat numbers, the match score between two words is
+  lowered more the farther apart they are, so nearby words tend to win.
+- **A twist** (RoPE, used by Llama models and many other recent ones): each slip and label is turned
+  by an amount set by its seat, like turning a clock hand. The match still depends on what the slip
+  and label say. The seat part of the match, though, depends only on how far apart the two words
+  sit, not on where in the text they are. **Modern attention at scale** shows how it works.
+
+This lab’s model uses the first kind, and you can see the result in its heads. A head can prefer to
+look a fixed distance back only if its slips and labels carry the seat number. Some heads in Layer 1
+here do exactly that, looking 1, 2 or 3 characters back on every text this lesson tries. Those heads
+put between 66 and 100 percent of their weight at that fixed distance. If the learned seat numbers
+are wiped to zero, that share falls to under 6 percent.
+
+### What is actually running
+
+With the model’s own settings, none of this is a simulation: the lab runs a real, very small trained
+model and reads every vector and route straight out of it. The three switches and the editable chips
+work out new results from those same vectors. The model has two layers of four heads and about 1.4
+million learned numbers, called **parameters**, which were all set during training.
+
+The badge at the top of the first card starts with `ONNX model` once the model is running, since
+ONNX is the file format it is stored in. While the model loads, the badge says
+`Loading teaching model…`, and if loading fails, it says `Model unavailable · inspectable fallback`.
+In both cases the lab shows stand-in values from a fixed wave pattern with no learned meaning, and a
+note in the **Attention matrix** card tells you so.
+
+The model practised on Shakespeare for 8,000 rounds of training, called steps, and each step gave it
+a batch of windows to guess its way through. The first 90 percent of the text was used for practice,
+and over all those steps the model went through it about 23 times. The last 10 percent was kept
+aside, so the model could be tested on lines it had never seen.
+
+About 30 percent of the practice windows were not ordinary Shakespeare text. In every batch of 64
+windows, 19 were made-up repeats: a short string, sometimes random symbols and sometimes a snippet
+of the play text, repeated over and over. They were put in on purpose, so the model would meet lots
+of repetition and have a reason to learn copying. Each string repeated every 4 to 31 characters.
+Repeats of 11, 13, 17 and 19 characters were left out on purpose, so they could be used later to
+test the model on something new.
+
+The model knows 66 different symbols, such as letters, punctuation marks and the space. The
+**Words** view is one of two settings on the **Matrix view** control. It adds up the shares of each
+word’s characters, and it counts the space in front of a word as part of that word. For example, the
+Words cell for `animal` adds together the shares on the space before it and on a, n, i, m, a and l.
+
+A word’s row is the row of its last character, so the row for `it` is really the row for its `t`.
+Under the one-way rule, that `t` is the first spot that has seen the whole word. Every character
+that row can see, spaces included, belongs to exactly one word, so a row’s word totals still add up
+to exactly 100 percent.
+
+The **Characters** view shows the grid the model really works with, with one row and one column for
+every character.
+
+## Why it’s here
+
+Start with the information a word holds before attention runs, which is less than you might expect.
+Take the `t` at the end of `it`. Before attention runs, its vector says only something like “I am a
+`t`, and I sit at this seat in the line”. Nothing in it says that an animal appeared earlier, that
+someone is tired, or even that the letter before it was an `i`. Guessing what comes next from that
+alone would be like guessing the next word of a story from a single letter.
+
+Picture opening a group chat where the newest message says “she said yes!!” and nothing else. To
+make sense of it, you scroll back up through the conversation to find out who “she” is and what the
+original question was. Each word in a model faces the same problem, and attention is how it looks
+back through the earlier text for what it needs.
+
+Some of the fetching is very simple: Layer 1 heads 3 and 4, which you will meet later, look exactly
+one character back. So after Layer 1, the `t` can carry information about the `i` before it, and
+later heads can build on that.
+
+### Looking things up by content
+
+The important feature is that this looking back is organised by content rather than by fixed wiring.
+A word has no permanent connection to “three words back” or to “the first word of the sentence”.
+Instead, its query is compared with every key it can see, and the resulting scores decide where its
+information comes from. As a result, the same head can pull information from the previous word in
+one sentence and from a word thirty places back in another. Some heads do learn a fixed-distance
+habit, as you will see, but they learn it from the seat numbers, not from wiring.
+
+After training, the model’s parameters never change again, yet the routes are calculated fresh for
+every sentence, because they depend on which queries match which keys in that text. That is the
+whole trick: a fixed set of learned numbers, used to build new connections every time.
+
+### Doing it all at once
+
+Attention also solved a second problem, which was about speed rather than understanding. Older
+language models, called recurrent models, read text strictly in order and squeezed everything they
+had read into a single memory of fixed size. That is a bit like remembering a whole book by
+rewriting one index card after every page. On a single card the details get crowded out, and you
+cannot start page 50 until you have finished page 49.
+
+During training, attention works out the scores for every position at the same time, so none of that
+work has to wait its turn. The one-way rule keeps that fair, since each spot still has to guess its
+next character without seeing it. The powerful chips used to train models are built to do huge
+numbers of small calculations side by side. Attention finally let language models use those chips
+fully, and that is a large part of why training on huge amounts of text became practical.
+
+## How to play with it
+
+The lab opens on the pronoun sentence, “The animal did not cross the street because it was tired”.
+It starts on Layer 2 head 2, with `it` as the query and `animal` as the inspected key. The
+experiments below build on each other, so try them in order the first time you work through the lab.
+
+### Follow one word
+
+Click any word chip in the **Model attention routing diagram** card to make that word the query.
+Curved lines called arcs fan out from it to the other words, and a thicker arc represents a bigger
+attention weight. Later words get only a very faint, thin line, because the one-way rule gives them
+no weight at all. The query has no arc to itself, so its weight on itself shows only in the bar
+under its chip, while the bars under the other chips show their weights.
+
+The readout strip underneath names the **query**, the **inspected key**, the **strongest route** and
+its **weight**. It also shows how much of the row lands **on spaces**, a number that needs careful
+reading, as What to notice explains. With `it` as the query in Layer 2 head 2, the strongest route
+goes to `because` rather than to `animal`, which is worth remembering.
+
+**Try this:** Keep `it` as the query and move the **Attention head** slider through all four heads
+with **Layer** set to *Layer 1*. Then do the same with *Layer 2*, and notice that the sentence never
+changes while the routes do. In Layer 1, head 1 sends most of the weight of `it` to `because`. Heads
+2, 3 and 4 pile it onto `it` itself, for reasons you will see below. In Layer 2, the four heads’
+strongest routes go to `it`, `because`, `cross` and `it`. Each head has its own learned numbers for
+making queries and keys, so each one routes the sentence its own way, though two heads can learn
+almost the same habit.
+
+### Check the arithmetic for one pair
+
+Click a cell in the grid of the **Attention matrix** card, where darker cells represent bigger
+attention weights. Each cell’s row is the query word and its column is the key word, so a single
+cell describes one pair of words. Clicking sets both words at once and jumps the stages to `Score`,
+so the **Query key value inspector** card shows the arithmetic for that pair.
+
+Now step from `Score` to `Softmax` and look at the strip in the inspector, which draws the whole row
+twice. The top band shows each score as a bar that rises above its zero line when the score is
+positive and drops below it when the score is negative. The bottom band shows each share as a bar,
+and shares are never negative. The inspected word’s characters are outlined, and later characters
+are hatched out by the mask, since the query cannot read them. The band titles write the head
+dimension as `d`, so `√d` means √64, which is 8.
+
+The **Softmax** line works out the share for one pair of characters itself. It uses the model’s full
+query and keys, all 64 numbers of each, not only the four on screen. It then prints the model’s own
+figure beside it. Next to that, it shows the largest gap between the lab’s sums and the model’s own
+figures anywhere in the row, written in a short form such as 2.4e-7. That form means 0.00000024, so
+every share in the row agrees to within about one part in a million. That shows you are looking at
+the real arithmetic.
+
+Two readouts look alike but measure different things, so it is worth telling them apart. **Selected
+score** is the scaled score for one pair of characters: the last character of the query word and the
+last character of the inspected word. **Selected weight** is the share for the whole word, all its
+characters plus the space in front, which is the number the grid cell shows. A single character can
+get a tiny share while its word’s total is large, because the weight is spread across the word’s
+characters.
+
+If you prefer reading numbers to reading shades, open **View weights as text** under the grid for a
+list of the current row.
+
+### Edit a key
+
+The `Q` and `K` chips are editable, which lets you test how a change to a single key spreads through
+the whole row. Type a different number into one of the four boxes in the `K` chip. Then watch the
+arcs, the bars under the word chips, or the list under **View weights as text**. Every share in the
+row moves, not only the one for the word you edited. That happens because every share is worked out
+by dividing by the same total, and that total changes when one key’s score does.
+
+The strip is a poor place to watch this, because it draws every share bar as a fraction of the
+tallest one. The other bars there keep their heights unless the bar you changed is, or becomes, the
+tallest.
+
+Raising one number in `K` changes the score by the matching number in `Q` times the amount you
+added. So where that `Q` number is positive, raising the `K` number raises the score. Where it is
+negative, raising the `K` number lowers the score, whatever sign the `K` number started with. For
+example, if the matching `Q` number is 0.5 and you add 2 to the `K` number, the score rises by 0.5 ×
+2, which is 1. **Selected score** shows the change after the division by 8, so it rises by 0.125.
+
+Only the first four of the 64 numbers can be edited, while the other 60 stay as the model made them.
+Press **Match the model vectors** to switch back to the model’s own numbers. The lab remembers what
+you typed, though, so if you type in a box again, your earlier changes come back with it.
+
+### Switch off the scaling
+
+Set **Score scaling** to *No scaling*, so the scores reaching softmax are 8 times bigger than
+before. In many rows the largest score now takes nearly everything, and two readouts show it as you
+switch back and forth. **Largest weight** is the biggest share any single character gets in the
+current row. **Saturated rows** counts the rows in this head’s whole grid where one character gets
+99 percent or more.
+
+For Layer 2 head 2 on the pronoun sentence, no row is saturated with the division, but 26 of 55 rows
+are saturated without it. The count is out of 55 because the sentence has 56 characters and the
+first one is left out. That first character can only see itself, so it always gives itself 100
+percent and would tell you nothing.
+
+So in this head, the division by 8 is what keeps the shares spread across several characters,
+instead of letting one big score drown out the rest. The division does not ban saturation, though,
+since all it does is stop scores from growing just because the lists are long. A trained head can
+still learn scores big enough to saturate when that is useful.
+
+Set the control back to *÷ √64*, then move to Layer 1 head 3 or head 4, and **Saturated rows** still
+counts most of the 55 rows. Those heads pile onto the previous character on purpose, which is how
+they put 99.9 percent of `it` on the `i` before its `t`. The trouble the division prevents is
+saturation that nobody asked for, caused only by long lists. Leave the control on *÷ √64*, so the
+next experiments use the model’s own setting.
+
+### Empty the packets
+
+Set **Value vectors (V)** to *Zero all*, which replaces every value with a list of zeros. Look at
+the strip and the arcs, and you will notice that every attention weight stays exactly where it was.
+The **Mixed value** chip, though, drops to all zeros, and **Mix length** falls to 0.
+
+This is the cleanest test of the split of jobs from earlier, between choosing a route and carrying
+the content. The query and the keys chose the routes and the values travelled along them, so
+emptying the values changes what arrives but not where it comes from.
+
+Next, click a dark cell in the grid, so the inspected word has a large share. Then switch the
+control between *Model* and *Zero word*, which empties only the inspected word’s values, including
+the value for the space in front of it. The **Mixed value** numbers and **Mix length** change while
+the shares stay put, because the blend loses exactly that word’s contribution and nothing else. When
+you are finished, set the control back to *Model*, which restores the model’s own values.
+
+### Lift the one-way rule
+
+In the **Attention matrix** card, set **Mask** to *Bidirectional*, so every character may read the
+whole sentence. Shares now appear above the diagonal, and the triangle fills into a square because
+later characters can be read too. The readout strip adds two new numbers: the share **on later
+characters** and the share **on the next character**.
+
+Every share below the diagonal shrinks by the same factor. The earlier characters’ scores have not
+changed, so softmax keeps their sizes compared with each other and divides them all by a bigger
+total that now includes the later characters. For example, suppose 40 percent of a row moves to
+later characters, leaving 60 percent for the earlier ones. Every earlier share is then multiplied by
+0.6, so a share that was 50 percent becomes 30 percent.
+
+How much moves depends a great deal on which head you are looking at. For `it` on the pronoun
+sentence, Layer 1 head 3 moves only 0.1 percent of its weight to later characters, and head 4 moves
+only 0.2 percent.
+Layer 2 head 4, by contrast, moves 90.2 percent of its weight there.
+
+Layer 2 heads 2 and 3 put about a third of the weight of `it` on the very next character, 33.8 and
+30.6 percent. That next character is exactly the answer the model practises guessing, so reading it
+would turn guessing into copying. This is the practice-quiz problem from earlier, and it is why the
+model trained with the mask on. Set **Mask** back to *Causal* before you go on, so the grid shows
+the model as it was trained.
+
+### A route that is not what it looks like
+
+Press the **Pronoun sentence** button in the Examples row of the first card, which reloads the
+example and resets the mask, scaling and values to the model’s own settings. With `it` as the query,
+move the **Attention head** slider through all four heads with **Layer** on *Layer 1*, then again on
+*Layer 2*. Look for a thick arc to `animal`, which you might expect to find, since that is what `it`
+means in this sentence. There isn’t one: no head’s strongest route goes to `animal`, and none gives
+it even 10 percent.
+
+Look at Layer 1 heads 3 and 4 instead, which put 99.9 percent of `it` on the word `it` itself. That
+self-route has no arc, so you see it as a full bar under the `it` chip. To see why it happens,
+switch **Matrix view** to *Characters* and find the stripe just below the diagonal. A stripe in that
+position means that every character looks at the character immediately before it.
+
+The lab reads `it` at its last letter, the `t`, and the character immediately before that letter is
+the `i` inside `it`. That is why the Words view credits the word `it` with nearly all the weight. A
+thick arc or a full bar shows where information could come from, and it is not a sign that the model
+has worked out what `it` refers to.
+
+So why does no head reach for `animal`? One likely reason is that the lab reads `it` at its `t`, and
+the only guess that spot has to make is the next character. Here that is a space, and the spelling
+of `it` already makes a space a good guess without any help from `animal`. No head in this model
+shows a sign of linking `it` to `animal`, and these pictures cannot tell you how a large chatbot
+handles pronouns.
+
+### A route that follows the content
+
+Now press **Repeated name**, which loads “Mark Jones met Anna Blake and then Mark” with the second
+`Mark` as the query. Set **Layer** to *Layer 2* and move the **Attention head** slider to head 3.
+That head sends 92.7 percent of the second `Mark`’s weight to `Jones`, the word that came right
+after the first `Mark` in the sentence.
+
+That is a sensible place to look, because at the second `Mark` the model has to guess what comes
+next. The last time `Mark` appeared, a space and then `Jones` came right after it.
+
+Switch **Matrix view** to *Characters* to see exactly where the weight lands. Almost all of it sits
+on one character: the space right after the first `Mark`, which the Words view counts as part of
+`Jones`. That is also why **On spaces** reads close to 100 percent. Under the one-way rule, that
+space has seen only “Mark ” so far, so its packet cannot hold the name `Jones` at all. The head
+points at the spot that came right after `Mark` last time, which is the spot it would copy from to
+guess the next character this time.
+
+Press **Name moved earlier**, which loads “Anna Blake met Mark Jones and then Mark”. The share on
+`Jones` stays high, at 97.2 percent, although the space right after the earlier `Mark` is now 19
+characters back instead of 34. A head that always looked a set distance back would have lost its
+target when the name moved. This route follows the content instead: wherever the earlier `Mark`
+sits, the head’s weight lands right after it.
+
+For one more check, press **Repeated name** again, then click at the end of the **Sentence** box at
+the top of the first card. Type a space and then Smith, and click the new `Smith` chip to make it
+the query, keeping Layer 2 head 3. There is no earlier `Smith` for the head to match, and no word
+receives even 20 percent of its attention.
+
+Other names can come out differently, because the head matches characters, not whole names. `Clark`
+ends in the same `k` as `Mark`, so the head lands mostly on the space after the second `Mark`, which
+the Words view counts as part of `Clark`. A name such as `Davis` makes the head park much of its
+weight on the first character of the sentence, which the Words view credits to the first `Mark`.
+That looks like what Going deeper calls an attention sink, a parking spot for spare weight, not a
+link to `Mark`.
+
+Even the `Jones` route is only a lead worth testing, not proof that the model used it, and Where it
+breaks explains why.
+
+## What to notice
+
+- **Every row adds up to 100 percent**, so routes compete: making one connection stronger has to
+  weaken the others in that row, as you saw when you edited one key.
+- **The grid is a triangle, not a square**, because each character can look at itself and at earlier
+  characters but never ahead. Attention lets the model practise on every position in one run, and
+  this rule is what keeps that practice fair. Setting **Mask** to *Bidirectional* fills the empty
+  corner.
+- **The On spaces readout needs careful reading.** With `it` as the query, Layer 1 head 2 puts 99.1
+  percent on spaces. That happens only because the head always looks two characters back, and two
+  characters back from the `t` in `it` is the space in front of the word. For `because`, the same
+  head puts 1.3 percent on spaces, while Layer 2 head 4 puts 61.7 percent on spaces for `it`. So a
+  big On spaces number does not mean a head is interested in spaces. It can be a side effect of
+  where a word ends and how far back the head looks.
+- **Layer 1’s heads look a fixed distance back**: head 2 looks 2 characters back, and heads 3 and 4
+  look 1 character back. Head 1 puts about two thirds of its weight 3 characters back. Layer 2’s
+  routes look different on the same text, because Layer 2’s heads have their own learned numbers and
+  read vectors that Layer 1 has already changed.
+- **The division by 8 is not a small detail**, even though, with the model’s own setting, the
+  **Score** and **Scale** lines differ only by that same factor. Without it, many rows in a head
+  such as Layer 2 head 2 pile almost everything onto one character. With it, a row piles up like
+  that only where a head has learned big scores on purpose, as Layer 1 heads 3 and 4 have.
+- **Emptying the packets changes nothing in the strip and everything in the blend**, because keys
+  decide who is read and values decide what is read.
+
+## Where it breaks
+
+### Where the desk picture stops matching
+
+The desk story explains routing well, but routing is all it explains. Real slips and labels have no
+words written on them, because they are lists of learned numbers whose meaning nobody chose. A
+strong match between a slip and a label tells you nothing about what is in the packet that gets
+handed over. Real desks would also come with seat numbers, while attention gets them only because
+the model adds them on purpose.
+
+### A thick arc is not an explanation
+
+The biggest caution in this lesson is about how you read these pictures. A thick arc means that one
+position’s packet was given a large weight in one word’s blend, in one head of one layer. It does
+not tell you what that packet contained, whether the following step kept it, or whether a later
+layer cancelled it. It also does not tell you whether the final answer depended on it at all. The
+`Jones` route showed this already, since the packet it points at could not even hold the name.
+
+A route is a place where information could flow, not evidence that it mattered. Showing that a part
+of the model matters takes an experiment that changes the model on purpose and then measures the
+effect. One such experiment is switching a head off and checking whether the model’s predictions get
+worse, and tests like that are the subject of **Interpretability II: circuits**.
+
+### Copying, or a habit?
+
+Picture a game where someone reads out a long string of letters that repeats, and two friends race
+to call out each next letter. The first friend looks back along the string for the last place the
+current letter appeared and calls out the letter that came after it. The second friend has a habit
+instead, and always calls out the letter from 7 places back.
+
+If the string repeats every 8 letters, both friends are right every time once the pattern has gone
+round once. Say the letters are ABCDEFGH repeated and you have just heard the second C, so the first
+friend finds the earlier C and calls out the D that followed it. Counting 7 back from the second C
+goes B, A, H, G, F, E, D, so the habit friend also calls out D, which is exactly what comes next.
+
+Now change the string so it repeats every 9 letters, as ABCDEFGHI. Counting 7 back from the second C
+now lands on E, which is wrong, while the first friend still finds the earlier C and calls out D.
+Only the first friend keeps winning.
+
+Heads in the model can behave like either friend, and the lab lets you run the same test on them. A
+head with a fixed-distance habit looks like a copier whenever the repeat length happens to match its
+distance. The reliable way to tell them apart is to change the repeat length and then watch whether
+the stripes follow.
+
+The game stops matching the model in two places. A head does not call out anything itself, because
+it only puts weight on a position, and the rest of the model turns that into a guess. Also, nobody
+can call the letters the first time through the string, since there is no earlier copy to look back
+at yet.
+
+Press **Repeats every 8**, which loads eight random letters repeated four times and switches to the
+Characters view. In Layer 2, heads 2 and 3 show stripes 7, 15 and 23 characters back. They put 94
+and 88 percent of their weight on earlier copies of the character that comes next. The next
+character itself is still hidden by the one-way rule, so the heads find where that same letter
+appeared before. By the last copy of the string, the pattern has already appeared three times, which
+is why there are three stripes.
+
+Now press **Repeats every 9** and watch the same two heads. Their stripes move to 8, 17 and 26
+characters back. Head 2 now puts 95 percent on earlier copies of the next character, and head 3 puts
+89 percent. Less than 1 percent is left at the old distances, so these heads are the first friend: they look for what
+followed last time, wherever it is.
+
+The other six heads do not copy, and none of them puts more than 11 percent on earlier copies of the
+next character at either repeat length. Layer 1’s four heads keep the same stripes both times: head 1
+looks 3 characters back, head 2 looks 2 back, and heads 3 and 4 look 1 back. Those are fixed-distance habits, like the second friend’s, and only the
+learned seat numbers make them possible.
+
+A head that copies like this is called an **induction head**. A head that looks at the character
+right before the current one, like Layer 1 heads 3 and 4, is called a **previous-token head**. Here
+a token means one piece of text, which in this model is a single character.
+
+In the usual explanation of a two-layer model, the two kinds of head work as a pair. Take “Mark
+Jones met Anna Blake and then Mark” again, where a previous-token head in Layer 1 looks one
+character back from every spot. So the space after the first `Mark` picks up a note that says,
+roughly, “the character before me was `k`”. When the second `Mark` reaches its last letter, `k`, the
+induction head’s slip asks for a spot whose previous character was `k`. The space after the first
+`Mark` carries exactly that label, so the head reads it, and that space is where `Jones` begins.
+
+This lab has not proven that wiring, as the next part explains.
+
+### What this model shows, and what it does not
+
+The model was given a test built so that a fixed-distance habit would fail it. A random string is
+repeated once, at a repeat length the model never practised on: 11, 13, 17 or 19 characters. The
+test then measures how much weight each head puts on the character right after the earlier match.
+
+To read the results, you need one more idea, which is how the model’s error gets measured. When the
+model guesses, it does not pick one character. Instead, it gives each of its 66 symbols a chance,
+such as 60 percent for `e` and 10 percent for `a`. The error is a score called **loss**, which is
+higher when the model is more surprised by the character that actually comes next. Being surprised
+here means the model had given the correct character only a small chance.
+
+Lower loss is better, and it is measured in a unit called a nat. To turn nats into something you can
+picture, raise 2.718 to the power of the loss. The answer is roughly how many equally likely
+characters the model is choosing among. A blind guess that gives all 66 symbols an equal chance
+scores about 4.19 nats, because 2.718 raised to 4.19 is about 66.
+
+Here is what the test shows about the two copying heads and the rest of the model:
+
+- On random strings, Layer 2 heads 2 and 3 put 83 and 81 percent of their weight on the character
+  after the earlier match. Those figures come from the worst of the four repeat lengths, so the
+  other lengths score at least as well. A head with a fixed 7-back habit would score near zero here,
+  because none of these repeat lengths puts that character 7 back.
+- On pieces of held-out Shakespeare, each repeated once in the same way and never seen in practice,
+  the same two heads put 40 and 51 percent on that character.
+- Every other head stays under 6 percent on random strings, whatever the repeat length.
+- On random strings, the loss on the first copy is about 4.3, a little worse than a blind guess.
+  That is most likely because the model still bets on characters that are common in Shakespeare,
+  which a random string does not favour. On the second copy the loss falls to between 0.13 and 0.25,
+  so the model is nearly certain of each next character.
+- On Shakespeare text, the loss on the first copy is about 1.6 or 1.7. On the second copy it falls
+  to between 0.39 and 0.53.
+- Layer 1 heads 3 and 4 put 99 percent or more of their weight on the previous character. That is
+  the information a copying head in Layer 2 would need from the layer below.
+
+Here is what the test does not show, and these gaps matter as much as the results:
+
+- It does not show **the wiring**: nobody traced which Layer 1 head feeds which Layer 2 head.
+  Switching a head off is a blunt test, because it removes everything the head adds to the model
+  rather than one connection. Switching off Layer 2 head 3 makes the loss on the second copy more
+  than ten times higher. If the copying heads relied on a previous-token head, switching that head
+  off should hurt clearly more than switching off a head that does something else. Instead,
+  switching off Layer 1 head 2, which is not a previous-token head, raises the loss about as much as
+  switching off Layer 1 head 4, which is one. So this test cannot tell which head feeds which.
+- It says nothing about **big models**: this model has about 1.4 million parameters, reads
+  characters, and learned from one author’s plays plus the made-up repeats. So it cannot tell you
+  how big chatbots pick up a pattern from a few examples you type into your message, which
+  researchers call in-context learning.
+- It does not explain **the other heads**: Layer 1 head 1 and Layer 2 heads 1 and 4 are shown in the
+  lab but not explained.
+- It is not **a full explanation**, because an attention pattern on its own is evidence about
+  routing and nothing more.
+
+### Other limits of this lab
+
+The model trained for 8,000 steps, which added up to about 23 passes over its practice text. That
+practice text was the 1.0 million characters in the first 90 percent of the plays. On the held-out
+last tenth of Shakespeare, its loss is 1.54 nats per character, compared with 4.19 for a blind
+guess. Since 2.718 raised to 1.54 is about 4.7, that is roughly as unsure as picking among 5 equally
+likely characters instead of 66. That is far better than guessing, though still a long way from
+certain. About 30 percent of its practice windows were made-up repeated strings, so this model was
+shown repetition on purpose.
+
+The three switches are experiments run on a model that has already finished training, which limits
+what they can show:
+
+- **Mask** lifts the rule for one head of a model that was trained with the rule on, so that head
+  never practised scoring later characters. In Layer 2, its slips and labels are still built from a
+  Layer 1 that kept the rule, and the rest of the model does not change.
+- **Score scaling** turns off the division for one head of a model that learned with it on. So it
+  shows that head’s rows piling onto one character, which the lab calls saturation, not what
+  training without the division would have produced.
+- **Value vectors (V)** changes the lab’s blend for one head, but it does not change the model’s
+  answer, because the emptied blend never runs through the rest of the model.
+
+Input stops at 64 characters, which is the window length the model trained on. The Words view adds
+up characters, while big chat models read pieces of words called tokens, so the lab’s word totals
+are not real tokens. The editable chips show only the first four numbers of lists that are 64
+numbers long. Once you edit them, the shares come from your numbers rather than the model’s.
+
+### In real systems
+
+Full attention compares every position with every other position, so the work grows with the square
+of the text’s length. Double the length of a text and there are about four times as many pairs to
+score. Make it ten times longer and there are about a hundred times as many, which adds up fast.
+That one fact drives most of the engineering behind models that read very long texts.
+
+**A common mix-up:** Attention in a model is not the same as human focus or attention span. A thick
+arc or dark cell is also not proof that one word caused the model’s answer. Even a link that follows
+the content, like `Mark` to `Jones`, is one weight in a weighted average worked out with dot
+products, not a reason or a decision.
+
+## Going deeper
+
+### Many heads, one output
+
+Real models run several attention heads side by side, which is what the **Attention head** slider
+lets you step through here. Their blends are joined end to end and passed through one more learned
+mixing step, called the **output projection**. That step decides how the fetched information gets
+written back into the model. The result is added into a running record that each position carries
+through the model, called the residual stream, which **The transformer block** follows.
+
+Splitting the work into heads costs little: this model’s full vectors are 256 numbers long, split
+into four heads of 64 numbers each. Four heads of 64 cost about the same arithmetic as one head of
+256, and in return you get four separate ways to route information.
+
+### Positions in bigger models
+
+Most current models use the twist (RoPE) rather than this lab’s learned seat numbers. Stretching
+such a model to handle longer inputs works by adjusting how far each seat turns the slips and
+labels, and **Modern attention at scale** covers both ideas.
+
+### Saving work while writing
+
+When a model writes text one piece at a time, the keys and values of earlier pieces never change,
+since under the one-way rule they never read the new ones. They can therefore be saved and reused,
+instead of being recalculated for every new piece of text. That saved store is the subject of
+**Inference & KV cache**, where K stands for keys and V stands for values.
+
+**Grouped-query attention** makes that store smaller by letting several query heads share one set of
+keys and values. It gives up a small amount of quality in return for a large saving in memory. Other
+methods, such as FlashAttention, work out exactly the same softmax in small blocks, so the full grid
+of scores never has to be stored at once.
+
+### Induction heads in research
+
+The copying heads you met are called induction heads, and Olsson and colleagues studied them
+in 2022. Their paper is titled *In-context Learning and Induction Heads*, and it describes such a head
+by two behaviours. First, the head looks back for the spot right after an earlier copy of the
+current token. Second, it copies, which makes the token found there more likely to come next.
+
+In a two-layer model, they found an induction head paired with a previous-token head, the same two
+kinds you saw here. In larger models, they saw a sudden change early in training, when induction
+heads formed while the models got better at in-context learning. They describe their evidence as
+preliminary and indirect. It suggests that these heads drive most of that learning, but it is early
+work and does not prove the link directly.
+
+### Attention sinks
+
+Some heads park most of their attention on the very first token whenever they have nothing useful to
+fetch from anywhere else. A position that soaks up weight like this is called an **attention sink**.
+You may have seen something like it if you typed a name such as `Davis` earlier. This matters in
+practice, because deleting that position from the saved store of keys and values makes the model’s
+output worse.
+
+### Where the division came from
+
+Dividing by the square root of the head dimension comes from the original Transformer paper, by
+Vaswani and colleagues in 2017. The authors suspected that large scores push softmax into a corner
+where one share is nearly everything. In that corner, small changes to the scores barely move the
+shares, so training gets almost no signal about which way to adjust them.
+
+For example, if the top share is already 99.9 percent, nudging its score up or down a little barely
+changes any share. Training can then hardly tell whether a nudge helped or hurt, so learning would
+become very slow, which is the problem the division was meant to prevent.
+
+The lab’s **Score scaling** switch shows the corner, but not the slow learning, which would only
+appear during training, and the lab never trains the model.
+
+### Bidirectional here, and a real encoder
+
+The **Bidirectional** setting in this lab is an experiment on a decoder-only model, not an encoder.
+A real encoder, such as a masked language model, is trained from the start with every position
+visible. As a result, it learns different queries and keys from any that this model ever made.

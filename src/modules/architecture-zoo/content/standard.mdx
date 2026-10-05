@@ -1,0 +1,103 @@
+---
+objectives: ["Match convolution, recurrence, and attention to the reuse pattern each one assumes","Treat a transformer as one architecture among several that map sequences to predictions","Separate the weights a model stores from the weights each input actually uses"]
+terms: ["Architecture","Inductive bias","Dense layer","Weight sharing","Convolution","Receptive field","Recurrent network","Vanishing gradient","LSTM","Transformer","Causal","KV cache","State-space model","Mixture of experts"]
+---
+
+## The big picture
+
+This module compares six ways to wire a neural network layer: a **dense layer**, a **convolution**, a **recurrent network**, **attention**, a **state-space model** and a **mixture of experts**. Each is an **architecture**, a wiring fixed before training.
+
+The question it answers is what each wiring assumes about its input, such as locality or order, and what that costs in weights, sequential steps and memory. Built-in assumptions like these are an **inductive bias**, where bias means a prior, not a prejudice.
+
+### Where it shows up
+
+- **Transformers** (Vaswani et al., 2017) mix positions with attention. **Causal** attention reads only the current and earlier positions, and during generation it keeps a **KV cache** of their keys and values.
+- **LSTM** (Hochreiter and Schmidhuber, 1997) and GRU are recurrent networks whose gates let gradients survive many more steps than a plain recurrence.
+- **State-space models**, sequence layers with a linear recurrent state update, include S4 (Gu et al., 2021) and Mamba (Gu and Dao, 2023).
+- **Mixtures of experts** include Mixtral 8x7B, which routes each token to 2 of 8 experts.
+- **Convolutions** are the core of image convnets, which slide small learned kernels over colour images with many channels. When a model that generates text left to right uses convolutions, they are causal and see no later positions.
+
+### Why it matters
+
+Each wiring pays its cost in a different place. A hop is one layer or step on the shortest path from an input to an output.
+
+- **Dense layer**: every input reaches every output in one hop, but the weights grow with the square of the input size, and a pattern learned at one position does not transfer to another.
+- **Convolution**: few weights, but distant inputs meet only after many layers.
+- **Recurrent network**: steps must run in order, and the gradient can vanish across them, so early inputs barely affect learning.
+- **Attention**: every earlier position is one hop away, but the KV cache grows with the context, while recurrent and state-space layers keep a fixed state.
+- **Mixture of experts**: stored weights can grow while the weights each token uses stay fixed, though every expert must still sit in memory.
+
+### What you will be able to explain
+
+- Match convolution, recurrence and attention to the reuse pattern each one assumes, and to how many hops each needs between two positions.
+- Treat a transformer as one architecture among several that map sequences to predictions, and say which of its parts mixes positions.
+- Separate the weights a model stores from the weights each input actually uses, and say why adding experts grows only the first.
+
+### What the lab shows
+
+Nothing here is trained; every readout is computed in closed form. **Live filter**, **Unrolled RNN** and **Sparse experts** read one 8×8 binary digit that you ink on **Drawn digit**, by clicking cells or with **Selected cell** and **Flip selected cell**.
+
+- **Live filter** slides a hand-written 3×3 kernel, chosen with **Filter**, over the pad.
+- **Unrolled RNN** runs a one-unit recurrent net with hand-set weights over the column means; **Recurrent weight** and the ink set its exact `∂h7/∂x` gradient bars, and **RNN step** picks which one the formula multiplies out.
+- **Who sees whom** draws, over a sequence of eight positions, which inputs each output sees and in how many hops. **Wiring** picks Dense MLP, Per-position MLP, Convolution, Recurrent, Attention or State-space; with Convolution, **Conv layers** stacks 1 to 7 layers of a centred kernel, which sees later positions. A cost table from formulas counts weights, sequential steps and memory.
+- **Sparse experts** routes each pad column, as a token, to its top experts through an untrained router with seeded weights. **Experts** and **Experts per token** set the routing; **Total expert weights**, **Active per token** and **Router weights** count parameters.
+
+Four comparisons carry the outcomes:
+
+- Switching **Filter** on **Live filter**, against **Unrolled RNN**: the same 9 weights reused at all 64 positions, against one recurrent weight reused at every step.
+- Recurrent against Attention in **Who sees whom**: how many hops separate the same pair of positions.
+- Attention against Per-position MLP: which part of a transformer block mixes positions.
+- Raising **Experts** while **Experts per token** stays fixed: stored weights against the weights each token uses.
+
+## What it is
+
+An architecture fixes two things before training: which weights are shared, and which activations can see which inputs. Those choices are the architecture's inductive bias.
+
+- A **dense layer** gives every output its own weight to every input. Nothing is shared.
+- A **convolution** reuses one small kernel at every position, and each output sees only its neighbourhood.
+- A **recurrent network** reuses one update at every step and carries a fixed-size state forward, in order.
+- **Attention** lets each position score every allowed position directly; a transformer block pairs it with a per-position MLP.
+- A **state-space model** uses a linear recurrent update, so it trains with a parallel scan and generates with a fixed state.
+- A **mixture of experts** stores many MLPs and runs only the top k of them for each token.
+
+## Why it’s here
+
+The previous lab showed that a big, regular matrix multiply suits a GPU. This lab shows that the multiply is not the whole design. The same weights can be wired to look locally, sequentially, or all at once, and each wiring makes some patterns cheap to learn and others expensive.
+
+It also keeps "transformer" in proportion. It is one wiring, attention plus a per-position MLP, not the definition of a neural net.
+
+## How to play with it
+
+### Locality and sharing
+
+Select a cell on **Drawn digit** and read its value in **Live filter**. The formula lists every nonzero pixel × weight product in its 3×3 window. Switch **Filter** between vertical edge, horizontal edge, and center blob: the ink is unchanged, the 9 shared weights are not.
+
+### Recurrence
+
+Move **RNN step** and read the `∂h7/∂x` bars. At **Recurrent weight** 0.90, column 1 reaches h7 with 0.009 and column 8 with 0.598.
+
+### Wiring and experts
+
+In **Who sees whom**, compare **Wiring** options, and raise **Conv layers**. In **Sparse experts**, change **Experts** and **Experts per token**.
+
+## What to notice
+
+- The kernel has 9 weights; a dense map from 64 pixels to 64 outputs needs 4,096.
+- Each conv layer widens the receptive field by one position on each side, so joining positions 1 and 8 takes 7 layers of kernel 3.
+- The RNN gradient is a product of per-step factors `w·(1 − h²)`. Below one it vanishes; on a blank pad with w = 1.5 it grows to 1.5⁷ ≈ 17.
+- Recurrent and Attention are both **causal**, so a position reads only itself and earlier ones. They see the same cells, but in 8 hops versus 1. Attention pays with a **KV cache** of `2·n·d` numbers; recurrence and the SSM keep a fixed state.
+- Going from 8 to 16 experts doubles Total expert weights and leaves Active per token unchanged.
+
+## Where it breaks
+
+**In this lab.** The kernels are hand-written, the RNN has one hidden unit with hand-set weights, and the expert router is untrained with seeded weights. The matrix and table come from formulas, not trained models. The convolution is centred, so it sees the future; text models use causal convolutions.
+
+**In the real mechanism.** Parameter counts and path lengths do not decide which architecture learns best; data, scale, and optimisation do. Gated RNNs (LSTM, GRU) carry gradients far longer than a plain tanh chain. Residual connections, normalisation, and many heads change what each wiring can learn in practice.
+
+## Going deeper
+
+- **Attention** and **The transformer block** open up the one-hop, all-to-all mixing drawn here, with a real trained model.
+- **Modern attention at scale** covers the costs this table hints at: the KV cache, grouped-query attention, and sliding-window attention.
+- **Inference & KV cache** measures how the `2·n·d` column grows during generation.
+- Named work: LSTM (Hochreiter and Schmidhuber, 1997), the transformer (Vaswani et al., 2017), sparsely gated experts (Shazeer et al., 2017), Switch Transformer (Fedus et al., 2021), S4 (Gu et al., 2021), and Mamba (Gu and Dao, 2023).
+- Mixtral 8x7B routes each token to 2 of 8 experts: 46.7B parameters stored, about 12.9B used per token.

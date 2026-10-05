@@ -1,0 +1,638 @@
+---
+objectives: ["Differentiate pretraining, supervised fine-tuning, reward modeling, and KL-regularized policy optimization", "Fit a Bradley–Terry reward model from pairwise preferences and read what it actually learned", "Identify reward hacking as a proxy score rising while true quality falls", "Explain alignment as the gap between what can be measured and what is wanted, and name the problems RLHF does not fix"]
+terms: ["SFT", "Reward model", "RLHF", "DPO", "KL divergence", "KL penalty", "Bradley-Terry", "Reward hacking", "Constitutional AI", "Alignment", "Goal misgeneralization", "Scalable oversight", "Sycophancy", "Dangerous-capability evaluation"]
+---
+
+## The big picture
+
+Type "Explain why the sky is blue." into a chatbot, and you expect a short answer about sunlight and
+air. A model that has only had its first round of training might reply with more questions instead, such
+as "Why is the sunset red?" and "Why is grass green?"
+
+That model is not broken. Its first round of training, called **pretraining**, taught it to continue
+text by guessing what comes next. Your line looks like a question from a homework sheet. On the web, a
+question like that is usually followed by more questions from the same sheet, so more questions are a
+good guess. A freshly pretrained model is great at continuing text but poor at helping you.
+**Post-training** is the name for the stages that come next, and their job is to turn that text
+continuer into an assistant that answers you.
+
+### Where you have met it
+
+Every modern AI chatbot built on a large language model goes through post-training. Much of what feels
+like a chatbot's personality was set in these stages, not in pretraining. That includes how helpful it is, how much it hedges, what
+it refuses to do, and whether it admits when it does not know something. It is also why two chatbots
+built on the same pretrained model can feel completely different to talk to.
+
+### Why it matters
+
+Without post-training, a model would keep adding to your text instead of answering it, so there would be
+no assistant to talk to. Post-training is also where one of the biggest problems in AI is clearest to
+see. To train a model toward good answers, you need a number that a computer can push up, and that
+number always stands in for what people really want. If you push hard on a stand-in, the model gets
+better at the number rather than at the thing you meant. In this lab, you will watch that happen with a
+set of starting clicks, and then fix it with one click of your own.
+
+### What you will be able to explain
+
+By the end of this lesson, you should be able to explain these ideas in your own words:
+
+- how the four stages differ: pretraining, copying good answers, training a scorer on people's picks,
+  and tuning the model toward that scorer on a leash;
+- how a scorer learns from your picks between pairs of answers, using a rule called Bradley-Terry, and
+  how to check what it really learned;
+- how to spot reward hacking, where a stand-in score keeps going up while the real quality of the
+  answers goes down;
+- what alignment means, which is the gap between what people can measure and what they really want, and
+  which problems this training does not fix.
+
+### What the lab lets you do
+
+The lab shrinks the whole process down to one prompt, the sky question, and six possible answers labeled
+A to F. With only six answers, you can see how likely the model is to give each one, and watch every
+number change as you work. You will train the model on two good example answers, judge six pairs of
+answers yourself, and watch a scorer learn from your clicks. The leash is a limit on how far the model
+may move away from where copying left it. At the end, you will loosen that leash and watch the model
+chase the scorer.
+
+Next to all of this sits a separate grade called the gold score. The lesson's authors wrote it to stand
+for what a careful human rater would give, and it plays no part in training. It is there so you can
+tell whether the answers are really getting better or only scoring higher.
+
+With the picks the lab starts with, the answers really do get a little better at first. Then, as the
+leash loosens, they only score higher, because the model ends up favoring a long, flattering answer that
+never explains anything. Working out why, and then fixing it with one click, is the heart of this
+module.
+
+Some parts of the lab are real and some are made up. The six answers, the model's starting chances and
+the gold scores were written by the lesson's authors. So were the yes-or-no flags that say whether an
+answer explains why the sky is blue. Each answer's word count, and whether it opens with praise, are
+measured from its text instead. The copying stage and the scorer really learn,
+step by step. The final tuned model is worked out with an exact formula instead of being trained, so
+you see each result the moment you move a slider.
+
+## What it is
+
+### The model in this lab
+
+A real language model writes an answer one small piece at a time, choosing each piece from a long list
+of options. That is far too much to watch, so this lab shrinks the model to one prompt, "Explain why the
+sky is blue.", and six whole answers it could give. The model is nothing more than six chances, one for
+each answer, saying how likely it is to give that answer, and the six always add up to 100%.
+
+Each whole answer counts as one choice, which is the setup that **Reinforcement learning foundations**
+calls a bandit, after slot machines: you pick one option and get one score back. In that kind of
+learning, whatever makes the choices is called the **policy**. That is why the last stage in the strip
+across the top of the lab is labeled **Policy + KL**, where KL is the leash you will meet in Stage 3.
+
+Here are the six answers, with the short tags the lab gives them:
+
+- **A** (tagged "another exam question") lists three more exam questions, starting with "Why is the
+  sunset red?", so it never answers the prompt at all.
+- **B** (tagged "short, names scattering") explains in 25 words that air scatters blue light far more
+  than it scatters red light.
+- **C** (tagged "praise, then scattering") opens with "Great question!" and then gives the same
+  explanation in more detail, using 52 words.
+- **D** (tagged "short, wrong") claims in 9 words that the sky reflects the blue of the oceans, which is
+  not the reason.
+- **E** (tagged "praise, long, no mechanism") opens with "Great question!" and spends 59 words on how
+  fascinating the sky is without ever saying why it is blue.
+- **F** (tagged "medium, names scattering") explains the scattering in 39 words and also says why
+  sunsets look red.
+
+The real reason the sky is blue is that the gas molecules in air scatter blue light much more strongly
+than red light. Blue light travels in shorter waves, and shorter waves get scattered far more. An answer
+that explains this "names the mechanism", which means it gives the how-it-works reason rather than only
+describing the result. B, C and F name it, while A, D and E do not.
+
+Each answer also carries a **gold score** from 0 to 1, written by the lesson's authors to stand for the
+grade a careful human rater would give. F gets 1 and B gets 0.95, while E, the long empty answer, gets
+only 0.1. Gold is never used to train anything, because its only job is to grade how well the training
+turned out. The one exception is a button you will meet later, **Label like the gold rater**. It copies
+gold's rankings into your picks, to show what perfectly careful picks would teach the scorer.
+
+### A picture to keep in mind
+
+Picture a trainee cook who is learning to run a kitchen and starts by copying a mentor's plates, dish by
+dish. Next, tasters try pairs of dishes and pick the better dish in each pair, and a judge studies all
+those picks until it can score any dish on its own. Finally the cook adjusts their cooking toward
+whatever the judge scores highly. Meanwhile the head chef keeps them on a short leash, so they cannot
+stray too far from how they cooked right after copying the mentor. Behind all of it sits the diner,
+whose real appetite is what the kitchen is meant to serve, even though nobody in it can measure that
+appetite directly.
+
+Each of those steps matches one stage of post-training, and the picture also shows where things can go
+wrong. If the bigger dish happened to win every tasting, the judge learns to score big portions highly,
+whether or not the food is any better. Keep that in mind, because the lab's scorer is about to learn
+the same taste for big portions from the picks it is given.
+
+### Stage 1: copy good answers
+
+The first stage is the cook copying the mentor. The model trains on examples of a prompt followed by a
+good answer, and each round of training nudges its chances toward those answers and away from everything
+else. The examples are called **demonstrations**, and the stage is called **supervised fine-tuning**, or
+**SFT**. It uses the same kind of training as pretraining, which makes the right next piece of text more
+likely. What has changed is the text itself, which is now a set of hand-picked answers instead of
+ordinary pages from the web.
+
+In the lab, B and F are the demonstrations, and their cards are marked **SFT demo**. Before any SFT, the
+pretrained model gives about 50% of its chance to A, the exam question, while B gets about 8%. Move
+**SFT steps** from 0 to 8 and A's share falls to about 9%. Meanwhile B climbs to 38% and F to 36%, so
+the two demonstrations now hold nearly three quarters of the chance between them.
+
+Notice what SFT never does: it never looks at a score. It only knows which answers were demonstrated, so
+it can make the model more like its examples, but it cannot say what makes one answer better than
+another. Even so, SFT does most of the visible work of turning a continuer into an assistant.
+
+### Stage 2: let people compare
+
+Writing a perfect answer by hand is slow, while picking the better of two answers is fast and gives more
+consistent results. So the second stage collects many picks and uses them to train a separate program, a
+scorer that gives any answer a single number. The scorer is called the **reward model**, and the number
+it gives an answer is that answer's reward, shown as **r** on each answer card.
+
+In the cook picture the people making picks are the tasters and the reward model is the judge. In the
+lab you are the taster, and you supply the picks on the **Preference pairs** card. That card shows six
+pairs of answers, and each click records which answer in a pair you prefer. Each recorded pick is
+called a label. So that you have something to start from, the lab comes with five of the six pairs
+already labeled, and these are the starting labels.
+
+### What the scorer can see
+
+A real reward model reads every word of an answer, while the lab's much cruder scorer sees each answer
+as only three numbers, called its **features**:
+
+- **Words ÷ 10** is the answer's word count divided by 10, so E's 59 words become 5.9.
+- **Names mechanism** is 1 if the answer explains the scattering and 0 if it does not.
+- **Opens with praise** is 1 if the answer starts with "Great question!" and 0 if it does not.
+
+The scorer gives each feature a weight, multiplies each feature by its weight, and adds up the three
+results to get the reward. The **Reward model fit** card shows the three weights as bars, and a weight
+above zero means that feature raises the reward. With the starting labels, the weight for Words ÷ 10
+comes out at +1.255, the largest of the three by far. The Names mechanism weight comes out at about
++0.47, and the Opens with praise weight at about +0.14.
+
+Here is the arithmetic for E, the long answer that never explains anything:
+
+1. Its 59 words become 5.9, and 5.9 times the words weight of 1.255 is about 7.4.
+2. E does not name the mechanism, so the weight for that feature adds nothing.
+3. E does open with praise, so the praise weight of 0.142 adds a little more.
+4. The total is about 7.5, which matches the r of 7.54 on E's card once you allow for rounding.
+
+Now run the same steps for F, the answer with a perfect gold score:
+
+1. Its 39 words become 3.9, and 3.9 times 1.255 is about 4.9.
+2. F names the mechanism, so the mechanism weight adds about 0.47.
+3. F does not open with praise, so the praise weight adds nothing.
+4. The total is about 5.4, which matches the r of 5.36 on F's card.
+
+So the scorer rates E, which explains nothing, well above F, which a careful rater gives full
+marks, and nearly all of the difference comes from word count.
+
+### Turning picks into chances: Bradley-Terry
+
+The scorer still needs a rule that links its numbers to your picks. The usual rule is called
+**Bradley-Terry**: the chance that one answer beats another depends only on the gap between their two
+rewards. If the rewards are equal, each answer has a 50% chance of being preferred, and as the gap grows
+the chance climbs toward 100% without ever quite reaching it.
+
+The lab writes this rule as `P(A ≻ B) = σ(r_A − r_B)`, where A and B stand for any two answers, not only
+answers A and B. In that line, P means "the chance that", the symbol ≻ means "is preferred to", and
+`r_A` and `r_B` are the two rewards. The symbol σ, the Greek letter sigma, stands for a curve that turns
+any gap into a chance between 0 and 1. A gap of 1 gives about 73%, and a gap of 3 gives about 95%.
+
+Pair 1 shows the rule at work: B has a reward of 3.61, while D has only 1.13. That makes the gap between
+them about 2.5, and the σ curve turns that gap into 0.92. That is the `P(B ≻ D) = 0.92` printed under
+Pair 1, which means the scorer predicts about a 92% chance that you would pick B over D.
+
+Because only the gap matters, adding the same number to every reward changes nothing: if every reward
+went up by 10, every gap and every chance would stay the same.
+
+### How the scorer learns
+
+The scorer starts with all three weights at zero, so every pair looks like a coin flip. It then adjusts
+the weights 200 times, and each adjustment makes the picks you actually made a little more likely under
+the Bradley-Terry rule. The line chart on Reward model fit tracks a number called the **training loss**,
+which measures how badly the scorer's chances fit your picks, so lower is better. It starts at 0.693,
+which is the value this measure always gives when every pair is a 50-50 guess. The exact number comes
+from a piece of math called a logarithm, which you do not need here. The loss then falls as the scorer
+learns to put your winners on top.
+
+### Stage 3: tune toward the scorer, on a leash
+
+The last stage is the cook adjusting toward the judge. The model is tuned so that answers with higher
+rewards get more of its chance, while a leash stops it from wandering too far from where SFT left it.
+
+### Measuring how far the model moved
+
+To build a leash, you first need a way to measure the distance between two sets of chances. **KL
+divergence** is a number for how far one set of chances has moved from another. For each answer, it
+looks at how many times bigger or smaller the new chance is than the old one. Then it averages those
+comparisons, giving more weight to the answers that the new model picks more often.
+
+KL divergence has three properties worth knowing: it is never negative, it is zero only when the two
+sets of chances are identical, and it is not symmetric. Not symmetric means that measuring from the new
+chances back to the old ones gives a different number from measuring the other way. That is why the lab
+always names the direction, measuring the tuned model against the SFT model.
+
+The lab reports this distance as **KL from SFT**, in units called **nats**. A nat is the unit KL comes
+in, the way a meter is a unit of length. Its name comes from a piece of math called the natural
+logarithm, which you do not need here. What matters is that 0 nats means the tuned model matches the SFT
+model exactly, and bigger numbers mean it has moved further away.
+
+Here is a feel for the size of these numbers. After SFT, the model gives E about 11% of its chance. If
+tuning pushes E to nearly 100%, E's chance has grown about 9 times, the new chances look nothing like
+the old ones, and KL reaches about 2.2 nats. That is the biggest reading you can reach with the starting
+labels. At the other end, if tuning leaves every chance where SFT put it, KL is 0. In between, at a
+β of 3.5, the chances shift a fair amount but nothing piles up on one answer, and KL is about 0.2 nats.
+For example, A's chance there is cut in half, from about 24% to about 12%.
+
+### The leash itself
+
+The leash is a **KL penalty**, which charges the tuned model for every nat of distance from the SFT
+model. A setting called β, the Greek letter beta, sets the price per nat. The lab's slider for it is
+called **KL coefficient β**, where a coefficient is a number that multiplies something else. A large β
+makes distance expensive, so the model stays close to SFT, while a small β makes distance cheap, so the
+model can chase the scorer much further.
+
+Put together, the tuning tries to make the average reward as high as possible after subtracting β times
+the distance. The lab prints this target at the top of its last card as `maximize E[r] − β·KL(π‖π_SFT)`.
+In that line, `E[r]` means the average reward, where E stands for "expected" rather than for answer E.
+It is the reward the model would earn on average if it answered the sky question many times, picking
+each answer as often as its chances say.
+The letter π stands for the tuned model's chances rather than the number 3.14, `π_SFT` stands for the
+chances after SFT, and `KL(π‖π_SFT)` is the distance between them. The double bar ‖ only separates
+the two sets of chances being compared.
+
+### The recipe the lab uses
+
+This target has an exact solution, so the lab can calculate the tuned model directly instead of training
+it. It takes each answer's chance after SFT and multiplies it by a boost that grows very fast as the
+reward goes up. Then it rescales all six results so that they add up to 100% again. For answer E, the
+formula card writes this as `π(E) ∝ π_SFT(E) · exp(r / β)`. The card always works through whichever
+answer the tuned model currently favors, so if you change β and a different answer takes the lead, the
+letter in the card changes too. In that line, ∝ means "is in proportion to",
+and `exp(x)` means a special number called e, about 2.72, raised to the power x. When x is a whole
+number such as 2, that means e times e. When x is not a whole number, a calculator handles it, and all
+you need to know is that a bigger x gives a much bigger result.
+
+At the default settings, where β is 2.0 and E is the model's favorite, the card works through E like
+this:
+
+1. E's chance after SFT is 0.108, or about 11%, and its reward is 7.54.
+2. Dividing the reward by β gives 3.77, and `exp(3.77)` is about 43, so E's chance gets multiplied by
+   about 43.
+3. That makes E's boosted value about 0.108 × 43, which comes to about 4.7.
+4. F starts with a bigger chance, about 0.20, but its lower reward earns a boost of only about 15, which
+   gives F about 3.
+5. Once all six answers are boosted, their values add up to about 11.9, and E's share of that total is
+   4.7 ÷ 11.9, or about 39%.
+
+That 39% is the result shown on the formula card. E, an answer that explains nothing, is now the model's
+favorite, because the scorer's taste for length has been turned into chance.
+
+Making β smaller makes every boost bigger, and halving β squares each boost. At β 1, E's boost jumps
+from about 43 to about 1,900. F's boost grows too, but E's lead widens from about 3 times F's boost to
+about 9 times. That is why sliding β down hands more and more of the chance to whichever answer the
+scorer likes best.
+
+### Where RLHF fits
+
+Stages 2 and 3 together are called **RLHF**, short for reinforcement learning from human feedback.
+Reinforcement learning means learning from a score that arrives after acting, like a game that awards
+points after each move instead of telling you the right move in advance. In RLHF, people's comparisons
+train the scorer, and the scorer's rewards then steer the model. **What AI actually is** introduced this
+reward-after-acting kind of learning, and **Reinforcement learning foundations** runs the basic version
+on a small bandit.
+
+A real model cannot list every possible answer the way this lab lists six, so real RLHF cannot use the
+exact recipe above. Instead, it has the model write answers, scores them with the reward model, and
+adjusts the model a little at a time. Step by step, that moves the model toward the same target by trial
+and error.
+
+### Where the cook picture stops
+
+The analogy stops at intent, because a cook knows they are trying to please a judge, while the model has
+no idea it is pleasing anyone. Its chances shift toward higher numbers only because the math moves them
+there. The judge is different too, since in real systems it is a program built from many people's picks.
+As the lab shows, that program can end up rewarding things that nobody meant to reward.
+
+## Why it’s here
+
+### Copying is not enough
+
+SFT can only copy, so it shows the model what a good answer looks like but cannot rank two decent
+answers against each other. Writing perfect example answers by hand for every kind of question would
+also take an enormous amount of work. Comparisons fill that gap, because judging is much faster than
+writing. A scorer trained on comparisons can then rate answers that nobody has ever judged, which lets
+training reach far beyond the examples people wrote.
+
+### Why the leash is needed
+
+The reward model is fitted to a limited set of picks, so it is only an approximation, and it has
+mistakes. Pushing hard on it rewards those mistakes along with the things it gets right. Without a
+leash, the tuned model would pile all of its chance onto whichever answer the scorer rates highest,
+however that answer earned its score. The leash keeps the model near the SFT model. SFT
+never saw a score, so it has no special liking for the answers the scorer wrongly loves. It gives E,
+the long empty answer, only about 11% of its chance. So the model can move away from the junk answers that the scorer rightly dislikes,
+without running all the way to the scorer's mistakes.
+
+### The trap of pushing on a measurement
+
+Post-training is the clearest example in this course of a general trap, known as **Goodhart's law**.
+Push hard on a measure of what you want, and it stops tracking what you wanted, so you start getting the
+measurement instead of the thing.
+
+Picture a class where the teacher, short on time, starts giving higher marks to longer essays, because
+the longer ones have usually been the more careful ones. One student notices and begins padding every
+essay with sentences that say nothing new. Their marks go up while their essays get worse, so the marks
+have stopped measuring what the teacher cared about. In the lab, the scorer plays the teacher and the
+tuned model plays the student. The model is not scheming, though, since the math pushes it toward
+whatever scores higher.
+
+Raising a score without raising the quality it was meant to measure is called **reward hacking**, and
+the lab's last chart is a picture of it. That gap between a measurement and what you meant is also the
+core of the **alignment** problem. This lab shows one small piece of it, and the subsection on alignment
+under Where it breaks says which pieces it leaves out.
+
+## How to play with it
+
+The lab has four cards, and they follow the stages in order. At the top of the first card, a strip of
+five stages runs Pretrained → SFT → Preferences → Reward model → Policy + KL. Each stage shows a short
+live readout, and the highlighted stage follows the lesson step you are on.
+
+### 1. Watch SFT move the chances
+
+On the **Post-training pipeline** card, each of the six answer cards shows three bars. The **base** bar
+shows the pretrained model's chance of giving that answer, the **SFT** bar shows the chance after
+fine-tuning, and the **tuned** bar shows the final chance. Each card also shows **r**, the scorer's
+reward, and **gold**, the careful rater's score. Set **SFT steps** to 0, and the base and SFT bars
+match, with A out in front at about 50%.
+
+Now raise SFT steps to 8, and watch A's SFT bar shrink while the bars for B and F, the two
+demonstrations, grow. Then set it back to 3, the starting value, so the numbers you see match the ones
+in this lesson.
+
+### 2. Be the judge
+
+On **Preference pairs**, each row is one pair, and the pressed button shows which answer is preferred.
+The starting labels already pick a winner in five pairs and leave **Pair 5** unlabelled. Under each row,
+the lab prints the scorer's predicted chance that the first answer beats the second, and it shows this
+even for a pair that nobody has labeled.
+
+Click an answer to pick it, and click a pressed button again to clear that label. Below the rows, three
+buttons change every label at once: **Restore default labels**, **Label like the gold rater** and
+**Clear all**.
+
+### 3. Read what the scorer learned
+
+On **Reward model fit**, read the three weight bars, each marked "raises reward" or "lowers reward".
+Below the loss chart, three readouts sum up the fit. **Pairs used** counts your labels, and **Labels
+fitted** counts how many of those pairs the scorer now ranks the way you did. **Agrees with gold** goes
+further, because it checks all 15 ways of pairing up the six answers, most of which you never labeled,
+against the gold scores.
+
+With the starting labels, Labels fitted reads 5 of 5, while Agrees with gold reads only 9 of 15.
+
+### 4. Loosen the leash
+
+On **Optimize against the reward model**, the **KL coefficient β** slider runs from 20 down to 0.02.
+Each notch multiplies or divides β by the same amount, so the stretch from 0.02 to 0.2 takes up as much
+room as the stretch from 2 to 20. Under the slider, **Reward-model score** shows the tuned model's
+average reward, the same `E[r]` as in the target, and **Gold score** shows the same kind of average for
+gold. **KL from SFT** shows how far the tuned
+model has moved from the SFT model, in nats.
+
+The chart plots both scores against KL from SFT, and a marker shows where your current β sits. To fit
+both lines on one chart, the reward-model line is rescaled so that the worst answer counts as 0 and the
+best answer counts as 1.
+
+**Try this:** Leave the default labels, push **KL coefficient β** up to 20, and then drag it all the way
+down to 0.02. The Reward-model score keeps climbing the whole way. On the chart, the gold curve starts
+at 0.49 at a KL of 0, where the model still equals the SFT model. Even β 20 lets the model move a
+little, so there the Gold score readout already shows about 0.51. The curve rises to a peak of about
+0.56 near β 3.5. At that peak, KL
+from SFT reads about 0.20 nats. After that the gold score collapses to 0.10, because the tuned model has
+piled onto E, the long answer that never explains anything. On the first card, an outline marks the
+tuned model's favorite answer, and you can watch it move from B to F and then to E.
+
+### 5. Break the length shortcut
+
+Now give the scorer the one comparison it was missing. On **Preference pairs**, label **Pair 5** for B,
+the short answer that names the mechanism, over E, the long one that does not. On Reward model fit,
+Words ÷ 10 falls from +1.255 to +0.456. Meanwhile **Names mechanism** rises to about +1.86 and becomes
+the biggest weight, and **Opens with praise** slips a little below zero.
+
+Agrees with gold climbs to 12 of 15 at the same time. Sweep KL coefficient β down again, and this time
+the gold score peaks at about 0.91. It ends at 0.85, on C, a correct answer padded with praise, instead
+of collapsing onto E.
+
+### 6. Compare with the gold rater
+
+Finally, press **Label like the gold rater**, which labels every pair the way the gold scores would.
+Agrees with gold reaches 13 of 15, and Opens with praise drops far below zero, to about −0.93. That
+happens because Pair 4 now prefers the plainer B over C, which opens with "Great question!".
+
+Even these perfect labels cannot reach 15 of 15. The scorer sees only three numbers per answer, and no
+choice of three weights puts all six answers in exactly gold's order.
+
+## What to notice
+
+- In the default labels, the preferred answer is always the longer one. Pairs 1 to 3 also favor the
+  answer that explains the scattering; in Pair 4 both answers explain it, and in Pair 6 neither does.
+- Length is the only feature that sides with the winner in all five labeled pairs, while naming the
+  mechanism explains only Pairs 1 to 3. So the scorer leans on length. A gap of 40 words also becomes a
+  gap of 4 in Words ÷ 10, far bigger than the gap of 1 that naming the mechanism can make. That means a
+  modest weight on length already buys a large difference in reward.
+- **Labels fitted** can be perfect while **Agrees with gold** is poor, because matching your clicks is
+  not the same as learning what you meant by them.
+- Before Pair 5 is labeled, the scorer already puts `P(E ≻ B)` at 0.98, even though nobody compared
+  those two answers. It has carried its taste for length over to a pair it never saw.
+- The reward-model curve never bends down, and it cannot, because for each β the tuned model is built to
+  push that score as high as the leash allows. Only an independent score, like gold, can reveal reward
+  hacking.
+- One extra comparison, Pair 5, does more for the final answers than any setting of β. With the starting
+  labels no β gets gold above about 0.56, but with Pair 5 labeled the gold score peaks near 0.91. That
+  is because β never changes what the scorer learned.
+- The leash, β, decides how far along the curve the model goes, but it cannot change the curve itself.
+  Without a gold score you could not see where the peak is. A larger β keeps the model close to SFT and
+  gives up part of the gain, so choosing β is a trade-off with no setting that is right in general.
+
+## Where it breaks
+
+### What this lab fakes or simplifies
+
+- Six fixed answers stand in for everything a model could write, while a real model builds its answers
+  piece by piece from a huge range of possibilities.
+- The starting chances, the "names mechanism" flags and the gold scores were all written by the lesson's
+  authors. The word counts and the praise check, by contrast, are measured from the text.
+- Gold is an authored score standing in for a careful rater, not the result of a study with real people.
+- The scorer sees three numbers instead of the words, so it cannot notice anything else about an answer.
+- The tuning is calculated exactly rather than learned by trial and error, so none of the randomness or
+  extra machinery of real training appears here.
+- Your labels are one person's six clicks on one prompt, while real preference data pools the picks of
+  many people on many prompts.
+- Because the lab changes six chances for a single prompt, it cannot show how training on some prompts
+  changes a model's answers to others.
+- Because the tuned model is calculated straight from the scorer, the lab cannot show a model that
+  learned a goal of its own. The alignment subsection below covers that problem separately.
+
+### Where the real thing fails
+
+Real reward models read the whole answer and still pick up shortcuts, and they have been measured
+favoring longer answers, confident wording and agreement with the user. That last habit drives
+**sycophancy**, where a model drops a correct answer as soon as you push back.
+
+Picture a friend in your group chat who always ends up agreeing with whoever spoke last. Ask whether a
+film was good and they say yes, but tell them you hated it and suddenly they hated it too. Their replies
+please you in the moment but tell you nothing, and a model trained to win people's approval can drift
+toward the same habit.
+
+Pushing hard against a scorer like that produces the same curve you saw in the lab. A 2022 study by Gao
+and colleagues measured it by using a much bigger reward model to play the part of the careful rater. The stand-in score kept rising,
+while the gold score rose, peaked and then fell. A KL penalty slows that slide, but it does not remove
+it.
+
+**A common mix-up:** people assume that if the reward number goes up, the model is getting better. Past
+a point, the scorer's number keeps rising while a careful human's rating falls, because the model has
+found a loophole in the scorer. That is reward hacking, and the lab's last chart shows it happening.
+
+Post-training has other limits too, because it can teach a model not to *say* certain things without
+removing the ability underneath. That is why a jailbreak, a cleverly worded prompt that gets around that
+training, can work. Alignment training can also cost a model some performance on benchmarks, the shared
+tests researchers use to compare models, and that cost is called the **alignment tax**.
+
+Finally, preference data reflects whoever produced it. The instructions the raters were given, who the
+raters are and how they are rewarded for the work all shape what "better" means. So no set of
+preferences is free of someone's choices.
+
+### What alignment is, and what RLHF does not fix
+
+**Alignment** means getting a model to do what its makers and users actually want, but a model never
+sees what you want directly. It only sees stand-ins, such as example answers, which of two answers
+people picked, a written rule, or a score. In the cook picture, the cook only ever meets the judge's
+scores, never the diner's real appetite, and the alignment problem is the gap between the two.
+
+Researchers ask two separate questions about that gap. The first is whether the stand-in is the right
+thing to aim at, which is called outer alignment. The second is whether the trained model really aims at
+that stand-in, which is called inner alignment. The coin game described below, under goal
+misgeneralization, is an example of the second question going wrong.
+
+### What this lab shows about alignment
+
+In this lab, the scorer is a stand-in built from your clicks, and the gold score stands in for what you
+meant. When you drag **KL coefficient β** down, the scorer's number rises the whole way. Meanwhile the
+gold score peaks, near 0.56 at 0.20 nats on the default labels, and then falls to 0.10. A measure pushed
+hard stops tracking what it measured, which is Goodhart's law again. The leash only limits how far the
+model goes, and it does not fix the stand-in.
+
+Every failure in this lab sits in the stand-in itself. The tuned model does exactly what the scorer
+says, so the lab shows the first question, outer alignment, and only that one.
+
+### What this lab does not show
+
+Four problems sit outside this lab, and because the evidence for each one is uneven, each comes with a
+status that says how well it is established.
+
+- **Goal misgeneralization** is when a model learns a goal that matches the training reward everywhere
+  it was trained, yet differs from the intended goal in new situations. In a 2022 game study by Langosco
+  and colleagues, a game-playing program was trained on levels where a coin always sat at the far right.
+  When the coin was moved, the program kept running right, as if its goal had been "go right" rather
+  than "get the coin". In training, both goals always led to the same place, so the reward never told
+  them apart. *Status:* shown in small game worlds, while
+  whether it explains chatbot behavior is still open. This lab cannot show it, because its model is
+  defined directly by the scorer and has no goal of its own that could differ.
+- **Scalable oversight** covers ways of supervising answers that are hard for people to check, such as a
+  long program or a subtle argument. Every pick in RLHF needs a person who can tell which answer is
+  better, and for answers like these they may not be able to. Picture judging two answers to a hard
+  chess puzzle when you only know how the pieces move: you could pick one, but your pick would mean very
+  little. Ideas for helping include a second model that points out flaws to the human judge, debates
+  between models, and feedback against written principles. *Status:* these give some help in small
+  studies, but none is proven enough for a model that does better than its judges.
+- **Sycophancy**, agreeing with the user against the evidence, differs from the others because it has
+  been measured. Studies by Perez and colleagues in 2022 and by Sharma and colleagues in 2023 looked at
+  assistants trained on human feedback. They found that these assistants sometimes tailor their answers
+  to a view the user has stated, or drop a correct answer after pushback. They also found that people
+  and scorers sometimes rate agreeable answers above correct ones, so it is the length shortcut again,
+  with agreement taking the place of length. *Status:* established as a behavior, while how much each
+  training stage adds to it is still being worked out.
+- **Deceptive behavior** is the worry that a model might behave well when it seems to be watched and
+  differently when it seems not to be. It
+  might also do badly on a test on purpose to hide a skill, which is called sandbagging. The evidence
+  comes from set-ups built on purpose to study it. In a 2024 study by Hubinger and colleagues, models
+  were trained to carry a hidden trigger, a secret cue that switches on a different behavior. The models
+  kept that trigger through safety training. Another 2024 study, by van der Weij and colleagues, showed
+  that models can be prompted or trained to do worse on tests than they are able to. *Status:* whether
+  this arises on its own during ordinary training is open.
+
+### How developers check before release
+
+Before releasing a model, developers run **dangerous-capability evaluations**, which are tests of
+whether it can do something seriously harmful. The worry is harm if someone misused the model or if it
+acted on its own, such as giving real help toward weapons or carrying out cyber attacks. Published
+frameworks, such as Anthropic's Responsible Scaling Policy, OpenAI's Preparedness Framework and Google
+DeepMind's Frontier Safety Framework, tie the results to safeguards each developer promises to apply.
+
+A failed test shows that one attempt failed, not that the skill is missing. Picture a friend who cannot
+solve a riddle on the first try: that tells you about one try only, and with a hint they might well get
+it. For the same reason, testers also try extra training aimed at the skill, and extra tools, to draw it
+out. The tests, and the scores that count as a warning sign, are each developer's own promises, and
+they are still new and changing.
+
+### Where this leaves RLHF
+
+RLHF is the best-tested way to make a model behave as intended on the cases people can check. The
+problems above are mostly about the cases people cannot check, or about what a stand-in leaves out. As
+you read about any of them, keep three kinds of statement apart: what this lab computes, what has been
+measured elsewhere, and what is still open.
+
+## Going deeper
+
+### Less human labeling
+
+In **Constitutional AI**, a model critiques and rewrites its own answers against a list of written
+principles, and those rewrites become fine-tuning data. The model then judges pairs of answers against
+the same principles to make preference data, so people write the principles instead of clicking pairs.
+
+### No scorer where a checker exists
+
+Answers in math and code can be checked, because a program can be run against its tests and a math
+answer can be compared with an answer key. Training against a real checker, called a verifiable reward,
+removes the learned scorer and its loopholes, but it only works for tasks that can be checked.
+
+### Simpler machinery
+
+**DPO**, short for direct preference optimization, skips the separate scorer and trains the model
+directly on the preference pairs. It does this by rearranging the same target that this lab computes.
+Group-based methods such as GRPO, short for group relative policy optimization, have the model write
+several answers to the same prompt and score those
+answers against each other. **Preference optimization in practice** runs DPO on a tiny model you can
+watch.
+
+### How real RLHF reaches the target
+
+Real systems approximate the lab's exact recipe with a method called PPO, short for proximal policy
+optimization. PPO has the model write
+answers, scores them and updates the model in small, limited steps. Because it learns from whatever
+answers the model happens to write, its progress is noisy, and that noise is one of the things this lab
+leaves out.
+
+### More on KL divergence
+
+The comparison inside KL divergence uses the logarithm of the new chance divided by the old chance,
+which is a tool you may meet in later math classes. That is also where nats come from, since using the
+natural logarithm gives distances in nats.
+
+### More on SFT
+
+Real SFT also teaches a **chat template**, a set of special markers showing where the instructions, the
+user's message and the reply each begin. Those markers let the model tell instructions apart from the
+text it is working on, and **Instruction tuning & templates** builds that stage on a real tiny model.
+Small open models, whose trained numbers are published for anyone to download, are also often trained
+on a larger model's answers, which is why they inherit its
+habits and mistakes.
+
+### Neighboring modules
+
+**Failure modes, safety, and security** covers attacks on deployed systems, and **Ethics and impact**
+asks who bears the costs and how rules and laws treat them. Both sit beside alignment rather than inside
+it.

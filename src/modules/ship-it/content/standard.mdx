@@ -1,0 +1,181 @@
+---
+objectives: ["Trace one model through adapt, align, compress and serve, and name what each stage costs", "Gate a release on held-out loss for the target task and for a control task, and explain what a six-item benchmark cannot settle", "Fit the artifact you would ship to a memory and concurrency budget before calling it ready"]
+terms: ["Release gate", "Control set", "Catastrophic forgetting", "Replay", "Alignment tax", "Held-out loss", "Regression", "Not decisive", "Merged adapter", "Quantization", "Pruning", "Serving budget"]
+---
+
+## The big picture
+
+This module carries one model from training to a release decision. A single small model is
+pretrained, adapted, aligned and compressed in order, and a memory budget for serving is checked at
+the same weight format. The question is whether this exact artifact should ship. The **artifact**
+is the file that would go out, after the training and compression stages have changed it.
+
+The module builds on the earlier labs rather than reteaching them. The model is the 900-weight
+character table from *Train one from scratch*. *LoRA & adapters* supplies the low-rank adapter, *Preference
+optimization in practice* the DPO (direct preference optimization) step, *Quantization* and
+*Distillation & pruning* the compression, *Evaluation* the intervals around a small benchmark, and
+*Deployment & serving* the memory arithmetic.
+
+### Where it shows up
+
+- **Release evaluation.** A real release is scored on far larger, contamination-checked suites,
+  and on the whole application rather than the model alone.
+- **Rollout and monitoring.** A release reaches a small share of traffic before everyone else, can
+  be rolled back automatically, and is watched after launch because inputs drift.
+- **Production tools.** Most stages have a production counterpart you can run on your own machine:
+  Hugging Face Transformers with PEFT for LoRA and TRL for DPO, llama.cpp for GGUF quantization
+  (the engine this app downloads for its guide), vLLM for serving at scale, and EleutherAI's
+  lm-evaluation-harness for benchmarks.
+
+### Why it matters
+
+Unless the artifact that ships is itself measured, no one can say whether the release is better
+than the model it started from. A score on the new task cannot detect **catastrophic forgetting**, the loss
+of earlier ability when a model is trained only on new data. A six-item benchmark can read the same
+before and after a real improvement. And a bar chosen after seeing the result can be loosened until
+a bad model passes.
+
+Memory fails separately. The KV cache, the keys and values stored for every token of every
+conversation being served, grows with each concurrent user and each token of context. A deployment
+that fits a light load can run out of memory at the load it will actually serve, and then the
+cache, not the weights, is what overflows.
+
+### What you will be able to explain
+
+- How one model changes as it is adapted, aligned and compressed on its way to serving, and what
+  each stage costs.
+- How a release gate reads held-out loss on the target task and on a control task, and what a
+  six-item benchmark cannot settle.
+- Why the artifact you would ship must fit a memory and concurrency budget before it counts as
+  ready.
+
+### What the lab shows
+
+Every training and compression stage runs in the app. Training uses fixed text, harbor and recipe
+sentences plus three preference pairs, and is deterministic, so the same controls always give the
+same model.
+
+Recipe text is the target task. Harbor text, which the base model learned first and the adapter is
+not meant to change, is the control. Every loss is read from the last two sentences of each corpus,
+which no stage trains on. Twelve fixed benchmark items, six per text, are scored alongside the
+losses.
+
+**Training recipe** sets **Base training epochs**, **LoRA rank**, **Adapter epochs**, **Replay
+sentences**, **DPO steps**, and **DPO beta**. **Stage by stage** tabulates both losses, in nats per
+character, and the benchmark counts from **Base model** to **As shipped**. **Eval gate** applies
+two thresholds you choose, **Required recipe-loss gain** and **Allowed harbor-loss rise**, to the
+shipped model.
+
+In **Compress and serve**, **Weight format** sets both how the toy's weights are rounded and how
+much memory the budget's weights take. **Prune** zeroes a fraction of the toy's weights only, and
+the toy's losses are measured again. **Concurrent users** and **Context length** size the budget,
+which is closed-form arithmetic for an imagined 8B-class model on one 24 GiB accelerator. That
+model is never run, and its per-user speed is computed, not timed.
+
+**Release report** joins gate and budget into `Verdict: ship` or `Verdict: hold`. The key
+experiment: at the defaults the harbor check fails. Raise **Replay sentences**, which mixes harbor
+sentences back into the adapter's training data, until the harbor check passes, then drag
+**Prune** to 90% and watch both checks fail.
+
+## What it is
+
+This lab carries one small model along the path the previous labs taught one piece at a time:
+pretrain a base table, adapt it with a low-rank adapter, align it with DPO, quantize and prune it,
+then decide whether it ships. The decision is a **release gate**: two pass-or-fail checks on
+held-out loss, plus a memory budget, all read from the artifact that would actually go out.
+
+The model is the 900-weight character table from the training labs. Stage 1 trains it on harbor
+sentences. Stage 2 trains a rank-`r` adapter on recipe sentences and folds it in as a **merged
+adapter**. Stage 3 runs DPO on three preference pairs. Stage 4 **quantizes** and **prunes** the
+result. The last two sentences of each corpus are held out of every stage, and every loss in the
+lab is read from them.
+
+## Why it’s here
+
+Each earlier lab measured one stage in isolation, so each stage looked cheap. Shipping is where
+the costs add up, and where a gain on the task you cared about can hide a loss somewhere you
+stopped looking. Adapting for recipes can make the model worse at harbor text; aligning can cost a
+little of both; compressing can undo the rest.
+
+A **control set** is what makes that visible: held-out text from the task the adaptation was not
+meant to change. The gate checks the new task and the control together.
+
+## How to play with it
+
+Read **Stage by stage** at the defaults. The adapter improves recipe text, from 2.540 to 2.461
+nats per character, and harbor text gets worse, from 2.098 to 2.248. That second change is
+**catastrophic forgetting**: the adapter trained on recipes alone, and the shared table moved.
+
+Open **Eval gate**. The recipe check passes, with a gain of 0.043 against a bar of 0.030. The
+harbor check fails: the shipped model is 0.194 nats worse than the base against an allowance of
+0.100. The verdict is hold. Now raise **Replay sentences** to 1, then 4. One sentence is enough to
+pass; four leaves harbor loss at 2.086, slightly better than the base, with recipe loss at 2.367.
+
+Then compress, with replay at 4. Step **Weight format** from `F16` to `Q4_0` and the losses barely
+move. Drag **Prune** to 90% and they jump: recipe loss returns to 2.530, almost the base model's
+2.540, and the gate fails on both checks. Finally set **Concurrent users** to 64 and **Context length** to 32,768
+and read the **Release report**.
+
+## What to notice
+
+- **Replay trades signal for memory.** At the defaults the shipped model is 0.194 nats worse on harbor
+  and 0.043 better on recipe. With four replayed sentences it is 0.173 better on recipe and no worse
+  on harbor.
+- **Alignment has a price here.** Going from After adapting to After aligning raises recipe loss by
+  0.030 and harbor loss by 0.040 with four replay sentences, while the three preference pairs end up
+  ordered correctly. That is the **alignment tax** in miniature. It is a **regression**, and the
+  report lists it even though the model still ships.
+- **The benchmark barely sees it.** With four replay sentences the recipe benchmark reads 1 of 6 before
+  and after, though recipe loss fell by 0.173. The intervals overlap, so the difference is **not
+  decisive**. That is why the gate reads **held-out loss**: it averages over every character.
+- **Quantization is nearly free; pruning is not.** Against After aligning, 50% pruning raises recipe
+  loss by 0.022 and 90% by 0.180. The harm is not proportional to the amount removed.
+- **The budget has a different failure.** At 64 users and 32,768 tokens the imagined 8B-class budget
+  is 261.58 GiB at `Q4_K_M` and 271.96 GiB at `F16`. The cache, not the weights, overflows.
+
+## Where it breaks
+
+**In this lab.** The model has 900 weights, and adapting and aligning edit the same table, so
+forgetting and the alignment tax are exaggerated by the architecture. Twelve benchmark items and
+two held-out sentences per text cannot separate close models. The thresholds are sliders, which
+lets you loosen the gate until a bad model passes: drag **Allowed harbor-loss rise** to its
+maximum and the defaults ship. A real gate fixes its bars before the run.
+
+The quality columns come from the toy; the budget is arithmetic about an imagined 8B-class model.
+No figure is measured on a real model or real hardware.
+
+**In general.** Passing a gate is evidence, not proof. Release evaluation uses thousands of items
+across several domains, checks for contamination, and covers the application as well as the model:
+retrieval, tool use, safety, and regression suites that re-run on every change. A gate tuned
+against its own held-out text can be overfit like any other test set.
+
+## Going deeper
+
+### What a real release adds
+
+- **Larger, fresher evaluation.** Hundreds to thousands of items per capability, refreshed so the
+  model has not seen them, with the uncertainty reported.
+- **Application tests.** Context recall and faithfulness for retrieval, task success and cost for
+  agents, attack success and false refusals for safety.
+- **A staged rollout.** A small share of traffic first, with automatic rollback if a monitored metric
+  moves, and a record of which model, data, and thresholds produced the release.
+- **Monitoring after release.** Inputs drift and users find prompts you did not test, so the gate
+  is the start of the evidence, not the end.
+
+### Where to go next
+
+The pieces in this lab have production counterparts you can run on your own machine:
+
+- **Training and adaptation:** Hugging Face Transformers with PEFT for LoRA and TRL for DPO and other
+  preference methods.
+- **Compression and local inference:** llama.cpp for GGUF quantization and CPU or GPU inference, the
+  same engine this app downloads for its guide.
+- **Serving at scale:** vLLM for batching and paged attention.
+- **Evaluation:** EleutherAI's lm-evaluation-harness for standard benchmarks, and your own held-out
+  sets for the task you care about.
+
+Four papers cover most of the mechanisms the labs touched: Vaswani et al., 2017, *Attention Is All
+You Need*; Hu et al., 2021, *LoRA*; Rafailov et al., 2023, *Direct Preference Optimization*; and
+Hoffmann et al., 2022, *Training Compute-Optimal Large Language Models*. A good first project is to
+repeat this lab's loop on a small real model: pick one task, hold out a control, adapt, and write down
+the gate before you run it.

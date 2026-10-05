@@ -1,0 +1,309 @@
+---
+objectives: ["Assemble the decisions that define a training run: text, size, and recipe", "Relate parameter count to how well a model can fit its data", "Read a model card and say what it does and does not promise", "Set learning rate, schedule, batch size, and gradient clip together, and judge the recipe by held-out loss"]
+terms: ["From scratch", "Rank", "Factorization", "Capacity", "Underfitting", "Overfitting", "Held-out loss", "Generalization gap", "Perplexity", "Model card", "Sample", "Training recipe", "Learning-rate schedule", "Gradient clipping"]
+---
+
+## The big picture
+
+This module puts a whole training run in your hands. You choose the text, the model's size, and
+the training recipe, train a character-level language model from initialized weights, and read a
+model card that records what you built and how it scored.
+
+The question is which of those decisions helped, judged on text the model never trained on.
+Along the way, with plain SGD on a few hundred characters of text, a model with fewer parameters
+can fit better, and the best learning rate depends on the schedule.
+
+This module brings the first half of the track together, building on two prerequisites.
+*Building a dataset* asked what text is worth training on, and *Hyperparameters & schedules* asked
+how to spend a step. Here both land in one run.
+
+The model card's **Held out** readout judges the recipe, but it barely separates training on the
+raw scrape (the corpus with footer lines and repeats mixed in) from training on the cleaned one. The difference cleaning makes shows up in
+**Footer lines** on the Training recipe card, the model's loss on the three boilerplate lines the
+raw scrape contains.
+
+### Where it shows up
+
+- **Pretraining recipes.** Llama 2 used three of the Training recipe card's ideas (cosine decay,
+  warmup, and gradient clipping), with AdamW instead of plain SGD.
+- **Data pipelines.** The lab's **Cleaned scrape** comes from a small version of the stages that
+  production pipelines run over web crawls many orders of magnitude larger: filtering, exact
+  deduplication, and near deduplication.
+- **Model cards.** Real cards add data provenance and licence, versioned evaluation suites, known
+  failure modes, and intended use.
+- **The ends of a language model.** The lab's factored model stores its 30 × 30 table of
+  next-character scores as a 30 × r matrix times an r × 30 one, where r is the rank. The first
+  factor is an embedding matrix, mapping each character to r numbers, and the second is an
+  unembedding, scoring every candidate next character against them. Real language models have
+  these two matrices at their ends.
+
+### Why it matters
+
+Training loss can keep falling while a model gets worse on new text, so without a held-out score
+you cannot tell useful capacity from overfitting. Without the data and recipe written down on a
+card, nobody can reproduce the run or judge whether its number applies to their problem. The
+settings also interact: a learning rate that ruins one schedule can beat the default under another.
+
+### What you will be able to explain
+
+- Which decisions define a training run (text, size, and recipe) and what each one changes.
+- How parameter count relates to fit, and why a smaller factored model can beat the full table here.
+- What a model card promises (scope and measured scores) and what it does not.
+- How learning rate, schedule, batch size, and gradient clip interact, and why held-out loss judges
+  the recipe.
+
+### What the lab shows
+
+The lab trains two real character bigrams with minibatch SGD on the same text and recipe,
+retraining whenever you move a control: the factored model you configure and the full 900-weight
+table for comparison. Every curve, loss, perplexity, gradient readout, and step count comes from
+those runs, and the samples are drawn from the factored model's checkpoints. The weight and
+character counts are exact arithmetic, and the dotted "knows nothing" line at `ln(30)` is
+closed-form.
+
+The inputs are fixed: three short built-in corpora (Harbor weather notes, Recipe steps, and
+Proverbs), a held-out split taken from the end of each, and seed 9. The **Raw scrape** option is
+synthetic, the corpus's own sentences with footer lines, repeats, and fragments slotted in.
+
+The corpus buttons sit on **Build a model in four choices**, and **Size and epochs** holds **Model
+size** (the factored model's rank) and **Epochs**. **Training recipe** holds **Training text**,
+**Learning rate**, **Schedule**, **Batch size**, and **Gradient clip**.
+
+That card's readouts are **Held out**, **Footer lines**, **Steps**, **Peak gradient norm**, and
+**Clipped steps**, and **Copy my recipe** saves the settings as one line of text that **Load this
+recipe** reads back. **Training progress and samples** plots the curves, and **Model card**
+reports **Train**, **Held out**, and **Gap**.
+
+The key experiment is the **Model size** sweep on Harbor weather notes at 20 epochs and the default
+recipe: from rank 4 up the factored model beats the full table on both losses, and held-out loss
+bottoms out at rank 8 (2.117), with ranks 7 to 11 all within about 0.03 of it. Rank 1 stalls well
+above the table.
+
+On **Proverbs** at rank 12 and 30 epochs the factored model's dashed held-out curve turns upward.
+On **Training recipe**, a rate of 8 on `Constant` makes the factored run diverge until
+**Gradient clip** contains it, while the full table trains normally at the same rate.
+
+## What it is
+
+Training **from scratch** means starting from initialized weights, so everything the model
+knows has to come from the corpus you picked. Four decisions define the run — which text, how
+many weights, which **training recipe**, and what you report — and the wizard stages are those
+decisions. The recipe is everything about the run except its architecture: epochs, peak learning
+rate, schedule, batch size, gradient clip, and a fixed seed.
+
+The model is a character bigram. The vocabulary is 30 symbols: a space, `a`–`z`, a full stop,
+and two reserved angle brackets that occur in no corpus. For each possible preceding character
+it keeps a row of 30 logits, and a softmax over that row is the next-character distribution.
+
+Loss is mean cross-entropy in nats per token. A model that has learned nothing spreads
+probability evenly across 30 symbols and scores `ln(30) = 3.401`, the dotted "knows nothing"
+line. Training is minibatch SGD on that loss, recomputed whenever you move a control.
+
+### What Model size changes
+
+The full logit table holds 30 × 30 = 900 numbers. **Model size** replaces it with a
+**factorization**: a 30 × r matrix times an r × 30 matrix, whose product is the logit table.
+That trains 2 × r × 30 = 60r weights, and r is the **rank** — 60 at rank 1, 240 at rank 4, 480
+at rank 8, 720 at rank 12.
+
+The lab trains the factored model and the full 900-weight table on the same text with the same
+recipe — by default batch 16, learning rate 0.5, a constant schedule, no clipping, and seed 9 —
+so the only difference between the thick factored curves and the thin full-table curves is how the
+weights are stored.
+
+Rank is a hard ceiling on **capacity**, and rank 1 makes that concrete. With r = 1 every logit
+is `u[row] · v[next]`, so every context row produces the *same* shaped distribution scaled by a
+single number. Sharper, flatter, or reversed — never a different ordering of characters.
+
+### What the recipe changes
+
+The **Training recipe** card carries the settings the earlier labs fixed. **Training text** chooses
+between a raw scrape and a cleaned one. The lab builds the scrape from the corpus's own training
+sentences by slotting in footer lines, two exact repeats, a misspelled copy, and two fragments.
+
+Cleaning uses the stages from *Building a dataset*: a boilerplate phrase, a length floor, an exact
+duplicate, a near-duplicate. Cleaned is the default, and it is exactly the text this lab always
+trained on.
+
+Four settings come from *Hyperparameters & schedules*:
+
+- **Learning rate** is the peak step size, in eight notches that double from 0.125 to 16.
+- **Schedule** multiplies that peak over the run: Constant, Cosine decay, Warmup + decay, or One
+  cycle. This is the **learning-rate schedule**.
+- **Batch size** is the number of pairs per update, from 2 to 64. Steps equal the pairs divided by
+  the batch, rounded up, times Epochs.
+- **Gradient clip** scales any batch gradient whose norm exceeds it down to that norm, which is
+  **gradient clipping**. It is off by default.
+
+The recipe is saved in this lab's state, so the *Copy a link to this state* button in the header
+shares it with the rest of your work. **Copy my recipe** writes only the recipe, as one line, and
+**Load this recipe** reads such a line back.
+
+## Why it’s here
+
+Every later lab adapts weights someone else trained. This is the run you own end to end, and
+the **model card** is what you have to defend afterwards. It also pulls apart two ideas that
+usually travel together: **capacity** is what a model can represent at all, parameter count is
+how many numbers it stores. Here they come apart on screen.
+
+And it puts the honest number beside the flattering one. Training loss covers text the model
+has already seen; **held-out loss** is scored on the last 25% of sentences, which never enter a
+gradient step. The chart plots both at every epoch — solid for training, dashed for held out,
+with the band between them shaded — and the **Gap** between them is what extra capacity buys
+and what it costs.
+
+## How to play with it
+
+Click each of the three corpora and read the character count on the button, which is the whole
+corpus. The **Model card** reports the split: Harbor weather notes gives 379 training characters
+and 119 held out.
+
+Leave **Epochs** at 20 and walk **Model size** upward. Rank 1 finishes at 2.925 training and
+3.025 held out; rank 4 reaches 2.208 and 2.246; rank 8 reaches 2.039 and 2.117; rank 12 reaches
+2.038 and 2.165. Now read the thin full-table curves: 2.283 training, 2.302 held out. The
+240-weight model has beaten the 900-weight one, and the callout under the sliders says why.
+
+Then set **Model size** back to 1 and push **Epochs** to 30. Training loss creeps from 2.925 to
+2.852 and stops, and the callout reports the full table ahead by 0.688 nats (0.642 at 20
+epochs). Finally read the three samples A, B, and C, which are marked on the solid curve: the
+untrained checkpoint, the halfway epoch, and the end of training, each with the loss it was
+drawn at.
+
+Next, choose **Proverbs**, set **Model size** to 12 and **Epochs** to 30, and watch the dashed
+held-out curve.
+
+### Set the recipe
+
+Go back to Harbor weather notes, rank 8, 20 epochs, and open **Training recipe** with its defaults:
+**Held out** reads 2.117 and **Peak gradient norm** 0.95. Raise **Learning rate** to 4 on
+`Constant` and Held out jumps to 3.016. Switch **Schedule** to `Cosine decay` at the same rate and
+it falls to 2.054, below the default. Return to rate 0.5 and the order flips: Constant 2.117,
+Cosine decay 2.251.
+
+Now set **Learning rate** to 8 on `Constant`. The run halts at step 154 and the page says it
+diverged. Turn **Gradient clip** up to 0.50 and it finishes, with 459 of its 480 steps clipped, at
+3.089.
+
+Set **Batch size** to 8, 16, then 64. **Steps** reads 960, 480, and 120, and Held out reads 2.089,
+2.117, and 2.618. Last, switch **Training text** to `Raw scrape` and compare Held out with **Footer
+lines**.
+
+## What to notice
+
+- The smaller model fits better, and the reason is the update rule. The full table only touches
+  the row for the character it just saw, so each example moves 30 weights. In the factored model
+  it moves that character's r weights in the input factor plus the whole r × 30 output factor,
+  which every character shares: 31r weights, 248 at rank 8. At 379 characters, shared structure
+  beats independent rows.
+- So parameter count is not capacity. The full table can express strictly more matrices than any
+  rank-8 product and still loses on this data at this budget.
+- The **Gap** readout tells the other half. The full table has the smallest gap, 0.019, but
+  because it fits its training text loosely (2.283), not because it generalizes better: at rate 8
+  on Constant it trains to 1.853 and its gap grows to 0.213. Rank 12 sits at 0.128. Among the factored runs the gap trends up past rank 4 but not
+  smoothly: 0.038 at rank 4, 0.095 at 6, 0.077 at 8, 0.128 at 12. With 119 held-out characters,
+  single steps like 6 to 8 are noise; the trend is the signal.
+- A gap is only readable next to a loss. Rank 1's gap is 0.100, larger than rank 4's, and means
+  nothing good: 2.925 against 3.401 for knowing nothing. That is **underfitting**.
+- Rank 1 is an underfitting plateau, not a slow start — thirty epochs buy 0.073 nats. Rank 8 and
+  rank 12 train to almost the same place (2.039 against 2.038) but rank 8 holds out better,
+  which is the shape of "enough capacity, then too much".
+- **Overfitting** is visible on the harder corpora. On **Proverbs** at rank 12 and 30 epochs the
+  dashed held-out curve bottoms out at 2.668 around epoch 18 and climbs back to 2.818 while
+  training keeps falling to 1.865. More epochs made the model worse on new text.
+- **Perplexity** on the model card is the held-out loss on a friendlier scale: 8.31 at the
+  defaults, so 30 equally likely options narrowed to about 8.
+- Samples track loss. The untrained checkpoint is letter soup; by the end there are word-shaped
+  fragments like `the` and `and` in a stream that is still not fluent. A **sample** illustrates
+  the loss and measures nothing.
+- Past rank 15 the factorization saves nothing, since 2 × 15 × 30 is already 900. The lab notes
+  this, and **Model size** stops at 12 so you cannot reach the crossover.
+- The best learning rate depends on the schedule. Rate 4 ruins a constant run at 3.016 held out,
+  yet under cosine decay the same peak reaches 2.054, below the default's 2.117, because the decay
+  hands back small steps for the end. At rate 0.5 nothing overshoots, so decay only wastes steps.
+- The full table cannot explode. Its batch gradient norm cannot pass the square root of 2, so at
+  rate 8 on Constant it trains normally to 2.066 held out with a peak norm of 0.34.
+- The factored model can. It multiplies two matrices, so each factor's gradient grows with the
+  other. At rate 8 on Cosine decay with no clip its **Peak gradient norm** reaches about 1.2e12
+  and it ends at 22.245; with a 0.50 clip it ends at 2.065.
+- Clipping contains a bad rate without fixing it. At rate 8 on Constant the clip lets the run
+  finish, but at 3.089 against 2.117 for the default: the steps are shorter, not better chosen.
+- Batch size trades step count against noise when Epochs is fixed. Batch 64 makes only 120 updates
+  and ends highest at 2.618; batch 8 makes 960 and ends lowest at 2.089.
+- The raw scrape adds steps, 880 against 480, and moves **Footer lines** from 3.090 to 2.509, so
+  the model has learned the page furniture. **Held out** barely moves, 2.105 against 2.117, and its
+  sign flips across seeds. The score would not have told you to clean; the footers do.
+
+## Where it breaks
+
+**In this lab.** Every number is computed: the gradients, all four curves, the held-out scores,
+and the samples. Each curve point is the loss of the weights saved at that epoch boundary,
+measured on the whole split, not a noisy batch average. What is missing is scale and context.
+The model conditions on exactly one preceding character, so `t` predicts the same distribution
+in `the` as in `it`.
+
+There are no layers, no attention, and no nonlinearity between the two factored matrices. The
+held-out set is 119 characters from the *end* of the document rather than a random sample, so
+treat differences under about 0.05 nats as unresolved. The three samples are drawn from the
+factored model's own checkpoints, so they follow **Model size**, while the thin comparison
+curves belong to the full table. **Epochs** stops at 30 and **Model size** at 12.
+
+The scrape is synthetic: the corpus's own sentences with fixed furniture slotted in, not a crawl.
+The optimizer is plain SGD with no momentum, so the learning rates are not in real units. The clip
+rescales the norm of both factors together, and only the factored model can explode. Every recipe
+result is one seed on about 380 characters, so differences under about 0.05 nats are unresolved.
+
+**In real systems.** The smaller-fits-better result is real but conditional: it depends on plain
+SGD, on 379 training characters, and on the full table being a pure lookup with no sharing
+between rows. Optimizers that normalize the step size per parameter reduce that asymmetry, and
+this lab has no such option.
+
+At realistic data scale the usual finding runs the other way, which is why scaling laws pair
+parameters with tokens instead of maximizing either alone. Loss is also not capability — a good
+cross-entropy says nothing about whether a model refuses or cites — and held-out loss is honest
+only while the split is, since near-duplicates across a real train/test boundary inflate scores
+for free.
+
+A real recipe also leans on an adaptive optimizer, warmup, weight decay, and mixed precision, none
+of which this lab offers.
+
+## Going deeper
+
+The factorization is not specific to this lab. A rank-r logit table *is* an embedding matrix
+followed by an unembedding: 30 × r maps a character to r numbers, r × 30 scores every candidate
+against that vector. Real language models have exactly these two matrices at the ends, with d in
+the thousands, and everything beyond bigram statistics happens in the layers between them —
+layers this model does not have.
+
+Two mechanisms sit behind the counterintuitive result. First, gradient sparsity: in the full
+table a character appearing ten times receives ten updates for its row, while every weight in
+the shared output factor receives an update on every batch.
+
+Effective sample size per parameter, not parameter count, is what the optimizer sees. Second,
+the factorization is a regularizer — it forces rows to share structure whether the data wants it
+or not. The full table's smaller **Gap** at the default recipe is not evidence against this: it comes
+from fitting the training text loosely, and the gap widens once the table trains harder.
+
+Real model cards go further than this one: data provenance and licence, the exact recipe,
+evaluation suites with versions, known failure modes, intended use. None of it is a quality
+claim. A card documents scope so someone else can judge whether your number applies to their
+problem, and this card does the minimum version of that by reporting two losses that disagree.
+
+### Toy versus real
+
+- **Rates are not comparable.** This lab uses plain SGD at rates from 0.125 to 16. The Llama 2 paper
+  trained its 7B and 13B models with AdamW at a peak learning rate of 3.0 × 10⁻⁴, and the Llama 3 paper
+  lists 3 × 10⁻⁴ for the 8B model. Adam rescales each parameter's step, so the two scales do not
+  convert.
+- **The same three ideas, different sizes.** Llama 2 used a cosine schedule with 2,000 warmup steps,
+  decayed to 10% of the peak, with weight decay 0.1 and gradient clipping at 1.0. Cosine decay,
+  warmup, and a clip are the Recipe card's three settings; here the cosine ends at 3% of the peak.
+- **Scale.** The Llama 2 paper reports 2.0 trillion training tokens and 184,320 GPU hours on A100-80GB
+  GPUs for the 7B model, with a global batch of 4 million tokens. This lab reads about 380 characters
+  in milliseconds, in batches of 16 pairs.
+- **Cleaning is a pipeline.** Real data work runs the same kinds of stages as the card's cleaning step
+  — filtering, exact and near deduplication — over crawls many orders of magnitude larger, and its
+  output is judged on held-out evaluations, not on one small split.
+
+Sources: Touvron et al., *Llama 2: Open Foundation and Fine-Tuned Chat Models* (arXiv 2307.09288),
+section 2.2 and Tables 1 and 2; Llama Team, AI @ Meta, *The Llama 3 Herd of Models* (arXiv
+2407.21783), Table 3.

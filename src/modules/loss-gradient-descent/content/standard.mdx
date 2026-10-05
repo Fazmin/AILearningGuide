@@ -1,0 +1,185 @@
+---
+objectives: ["Interpret loss as an optimization objective", "Predict a gradient step's direction", "Explain how the learning rate and curvature decide whether descent settles, overshoots, or diverges"]
+terms: ["Loss", "Gradient", "Objective function", "Learning rate", "Gradient descent", "Stochastic gradient descent", "Minibatch", "Momentum", "Curvature", "Convergence", "Divergence", "Local minimum", "Saddle point", "Learning-rate schedule"]
+---
+
+## The big picture
+
+This module is about how a model's parameters get their values. Training reduces "fit the data" to one
+number, the **loss**, then repeatedly moves every parameter a short way downhill on it. Gradient descent
+never sees the whole landscape: it works only from the slope at the points it has visited.
+
+**A single neuron** showed weights and a bias setting a model's output, and **The math you need**
+introduced the derivative and one gradient step. This module differentiates the loss with respect to
+every parameter. The **gradient** sets each step's direction, the **learning rate** scales its length,
+and **curvature**, how fast the slope changes along a direction, decides which learning rates are safe.
+
+### Where it shows up
+
+- **This course.** Every neural network the course trains learns its weights by some version of this
+  loop. The later language models minimize cross-entropy, the average `−log p` of the correct token,
+  instead of squared error.
+- **Large-scale training.** Real runs estimate each step's gradient from a small random **minibatch** of
+  examples rather than the full dataset, so every step points in a noisy direction.
+- **Production optimizers.** Real training usually swaps plain descent for **AdamW**, which rescales each
+  parameter's step by its own typical gradient size. Those runs pair AdamW with a warmup-then-decay
+  learning-rate schedule and with gradient clipping, which caps an oversized gradient.
+
+### Why it matters
+
+Nobody can locate a real network's minimum in advance, so training cannot aim at it. Training can only
+measure the slope where the parameters sit and step downhill. That local slope is all gradient descent
+needs, which is why the same rule scales from this lab's two parameters to billions.
+
+The gradient never says how far to go, and the safe distance depends on curvature. Past a limit set by
+the most curved direction, each step overshoots further and the loss grows without bound. Below it, that
+same cap keeps steps small along the flattest directions, which close in slowly. **Momentum**, a velocity
+built from past gradients, speeds those flat directions at the cost of overshoot.
+
+### What you will be able to explain
+
+- Interpret loss as an optimization objective: one number for a model's error on its data, where lower
+  is better and a low training value is a proxy, not the goal.
+- Predict a gradient step's direction from the partial derivatives, each parameter moving against the
+  sign of its own by an amount set by its size, and explain why the step crosses the contour (equal-loss
+  line) through the current point at a right angle rather than aiming at the minimum.
+- Explain how the learning rate and curvature decide whether descent settles, overshoots, or diverges,
+  and why a narrow valley makes plain descent crawl along its floor.
+
+### What the lab shows
+
+The lab runs real gradient descent, not a sketch. It fits `ŷ = w·x + b` to eight fixed, authored points
+by mean squared error, so the whole two-parameter loss surface fits on screen. The loss and gradient are
+closed-form, and the regime boundaries follow from the bowl's exact curvature. Every step is computed,
+noise-free, and replays identically.
+
+**Loss surface** draws the contours, the path, and the pink **−∇L** arrow, with **Loss L**, **∂L/∂w** and
+**∂L/∂b** beneath and a badge naming the regime: one-sided, overshoots, or diverges. **Data and fit**
+shows the squared residuals, each point's vertical miss squared, whose mean is the loss. **Loss per step** plots the same run on a log scale
+and measures **Settles by**, the first step after which the loss stays within 0.01 of the minimum.
+
+On **Optimizer controls**, **Start w** and **Start b**, or a click on the surface, set the start.
+**Take one gradient step** moves one step forward, and the **Step** slider shows any step of the run,
+forward or back. The key experiment sweeps **Learning rate** and compares the path, the regime badge,
+and **Settles by**, then switches **Optimizer** to **Momentum** and varies **Momentum β**.
+
+## What it is
+
+Training is a search for parameter values that make one number small. **Loss** is that number: how wrong
+the model is on its data, with lower meaning better. The **gradient** collects the loss's slope with
+respect to every parameter. It points in the direction of steepest increase, so **gradient descent**
+subtracts it:
+
+`θ ← θ − η · ∇L`
+
+The gradient supplies the direction. The **Learning rate** `η` supplies the distance.
+
+### The lab's loss is real
+
+The lab fits a line `ŷ = w·x + b` to eight fixed points. Its loss is the mean squared error
+`L(w, b) = (1/8) Σ (w·xᵢ + b − yᵢ)²`. With only two parameters, the whole landscape fits on screen, and
+each contour line joins the `(w, b)` pairs that share one loss value.
+
+The gradient is exact: `∂L/∂w = (2/8) Σ rᵢxᵢ` and `∂L/∂b = (2/8) Σ rᵢ`, where `rᵢ = ŷᵢ − yᵢ` is the
+residual. Nothing on screen is sketched.
+
+### Two common losses
+
+- **Mean squared error** averages squared misses. It suits numeric targets. Squaring makes one miss of 2
+  cost as much as four misses of 1.
+- **Cross-entropy** averages `−log p`, where `p` is the probability the model gave the correct class or
+  token. It trains every language model later in the course.
+
+### Curvature sets the speed limit
+
+This bowl is about 14 times more curved across its valley (`λ_max = 4.363`) than along it
+(`λ_min = 0.307`). Along each of those axes, one plain step multiplies the remaining error by `1 − ηλ`:
+
+- Below `1/λ_max = 0.229`, every step lands on the same side of the valley floor.
+- Between 0.229 and `2/λ_max = 0.458`, steps overshoot the floor and zigzag, but the zigzag shrinks.
+- Above 0.458, each zigzag is wider than the last and the run diverges.
+
+The shallow axis is the bottleneck. Even at the best rate, `η = 2/(λ_max + λ_min) ≈ 0.43`, the error
+shrinks by only about 13 percent per step.
+
+### What momentum adds
+
+**Momentum** keeps a velocity: `v ← βv + ∇L`, then `θ ← θ − ηv`. Along the valley floor the gradient
+keeps pointing the same way, so the step grows toward `1/(1 − β)` plain steps. Across the valley the
+gradient flips sign and the velocity partly cancels. The price is overshoot: velocity carries the point
+past the floor before it turns back.
+
+## Why it’s here
+
+The previous lab, Stacking neurons, trained a network behind one button. This lab opens that button and
+adds what it hid: curvature, the learning-rate regimes, and momentum.
+
+It is also where the vocabulary of failed training comes from. "The loss exploded" is a learning rate past
+the stability limit. "It plateaued" is often a direction with very little curvature. "It oscillates" is
+overshoot across a steep direction.
+
+## How to play with it
+
+Stay at step 0 first. Drag **Start w** and **Start b**, or click the **Loss surface**, and watch **Data and
+fit**: each bar is one squared residual, and their mean is **Loss L**. The default start reads 2.511.
+
+Still at step 0, read **∂L/∂w** and **∂L/∂b**: −3.039 and −1.403 at the default start. Both are negative,
+so descent increases both `w` and `b`. The pink **−∇L** arrow crosses the nearest contour at a right angle,
+and it does not point at the minimum.
+
+Press **Take one gradient step** a few times, then drag **Step** to 80. Set **Learning rate** to 0.05,
+0.20, 0.40, and 0.48, and read **Settles by** and the regime badge each time. The measured results are:
+not within 80 steps, step 39, step 19 while overshooting, and diverges.
+
+Finally, return to 0.05 and switch **Optimizer** to **Momentum**. Compare **Momentum β** at 0.5, 0.8, and
+0.95 with plain descent.
+
+## What to notice
+
+- Direction comes from the gradient alone. The learning rate scales every step and never turns one.
+- Steps shrink on their own near the minimum because the gradient shrinks there. That needs no schedule.
+- In a narrow valley the steepest direction points mostly across the valley, not toward the minimum. So
+  plain descent drops quickly, then crawls along the floor.
+- A learning rate that is too large does more than waste steps. Past 0.458 the swing across the valley
+  grows on every step. At 0.48 the first step still lowers the loss, from 2.511 to 2.392, but it passes
+  100 by step 25.
+- Momentum's first step equals plain descent's, because velocity starts at zero. At η 0.05, β 0.8 settles
+  by step 26 while plain descent has not settled by step 80. At β 0.95 the run spirals and does not settle
+  within 80 steps either. More momentum is not always faster.
+
+## Where it breaks
+
+**In this lab.** The loss is a real mean squared error on eight authored points. Every step, gradient,
+regime boundary, and settling step is computed. What makes it unrealistic is how easy it is: two
+parameters, the exact full-data gradient, a perfectly quadratic bowl with one minimum, and a minimum you
+can see. The contour shading is a display layer, not a colour scale you can read values from.
+
+**In real systems.** A network has millions to billions of parameters, so its landscape cannot be drawn and
+its minimum is unknown. The loss is not quadratic, so curvature changes during training, and a learning
+rate that was stable early can turn unstable later. Each step uses a minibatch gradient, a noisy estimate
+of the true direction.
+
+"Stuck in a local minimum" also transfers badly. In high dimensions, most flat points at high loss are
+saddles: downhill in some directions and uphill in others. Saddles and long flat regions slow real training
+more often than bad minima do.
+
+Low training loss is not the goal either. The **Training dynamics** lab shows training loss falling while
+held-out loss rises.
+
+## Going deeper
+
+Production runs rarely use plain descent. **AdamW** keeps running averages of each parameter's gradient and
+squared gradient, and divides each step by the square root of the second. That rescales every direction by
+its own typical gradient size, a cheap stand-in for the curvature this lab computes exactly. AdamW also
+applies weight decay directly to the parameters rather than through the gradient.
+
+**Learning-rate schedules** matter as much as the optimizer. Large runs warm up from near zero over the
+first few thousand steps, then decay along a cosine or linear path. Gradient clipping rescales any gradient
+whose norm exceeds a threshold before the update, so one odd minibatch cannot throw the run off.
+
+Two conventions help when reading real curves. Loss is usually a per-token average, so runs with different
+batch sizes stay comparable. For language models, cross-entropy in nats converts to perplexity as
+`e^loss`: a loss of 2.4 is a perplexity of about 11.0, and 2.3 is about 10.0.
+
+The **Backpropagation** lab shows where a real network's gradient comes from, one local derivative at a
+time.

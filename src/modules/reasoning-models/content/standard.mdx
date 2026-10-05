@@ -1,0 +1,142 @@
+---
+objectives: ["Contrast a reasoning model, whose long traces come from reinforcement learning against a checker, with in-context chain-of-thought prompting", "Explain how group-relative training against a verifiable reward lengthens traces, and why a missing length cost lets them pad", "Treat test-time compute as extra generated tokens or search, not as proof of inner thoughts", "Predict when majority voting helps and when only a verifier does"]
+terms: ["Chain of thought", "Test-time compute", "Reasoning model", "Verifiable reward", "RLVR", "GRPO (group-relative advantage)", "Overthinking", "Process supervision", "Majority vote", "Verifier / best-of-n", "Distillation", "Pass@n", "Padding", "Unfaithful step"]
+---
+
+## The big picture
+
+This module is about **reasoning models**, which write a long **chain of thought**, the intermediate tokens generated before an answer. It asks where those traces come from, and when **test-time compute**, extra work at answer time spent on a longer trace or on several samples, buys accuracy.
+
+Those traces come from training, not prompting: **RLVR** (reinforcement learning with a **verifiable reward**, one computed by a program that checks answers) changes the weights, while a prompt changes only what the model reads. The module builds on *ICL & reasoning*, *Reinforcement learning foundations* and *Preference optimization in practice*.
+
+### Where it shows up
+
+- **Post-training.** Reasoning models are typically post-trained with RLVR, and published variants of **GRPO**, the group-relative method the lab imitates, differ in how they normalise the loss.
+- **Thinking budgets.** On hard multi-step problems, reported accuracy tracks how long the model may think.
+- **Several samples.** Majority vote (self-consistency), best-of-n with a verifier or a learned reward model, and search guided by a process reward model (a learned model that scores each step) all spend compute on more than one sample.
+- **Distillation and agents.** Smaller models are trained to imitate a strong model's traces, and agents spend a similar budget on tool calls.
+
+### Why it matters
+
+A trace lets later tokens read results that earlier tokens wrote down, so it helps where later steps need earlier results. Training for traces and spending extra compute also have specific limits:
+
+- With only a pass-or-fail reward, nothing prices length, so traces pad past what the task needs (**overthinking**): each spare step adds latency and only a little pass chance.
+- A checker sees only the final answer, and a visible chain can be useful yet unfaithful (with steps that do not match the work the answer needs), so a trace is no proof of inner thoughts.
+- A vote amplifies the most common answer, even a wrong one; only a perfect verifier succeeds whenever any sample is right.
+
+### What you will be able to explain
+
+- How a reasoning model, whose long traces come from reinforcement learning against a checker, differs from in-context chain-of-thought prompting.
+- How group-relative training against a verifiable reward lengthens traces, and why a missing length cost lets them pad.
+- Why test-time compute is extra generated tokens or search, not proof of inner thoughts.
+- When majority voting helps, and when only a verifier does.
+
+### What the lab shows
+
+The training card is a seeded simulation of a toy policy, the traces are authored, and the voting card is closed-form arithmetic.
+
+- **Train against a checker** runs 100 GRPO-style updates on a one-parameter policy over trace lengths of 1 to 8 steps. The checker is a hand-written rule, and no language model is involved. Its controls are **Steps the task needs (k)**, **Group size (G)**, **Learning rate**, **Seed**, **Length cost** and **Training update**. Curves and bars are exact expectations, but the policy's path comes from sampled groups, so the seed matters.
+- **Problem** picks *Sunday hours*, *17 + 28* or *Dog on the ferry*; **Thinking budget** reveals up to six authored steps in **Inspectable trace**, each labelled useful, padding or unfaithful by hand, and the **Useful**, **Padding** and **Unfaithful** tiles count them. **Answer (authored)** prints at every budget.
+- **Sampling and voting** computes **Majority vote** and **Verifier picks** exactly from **Samples**, **Single-sample accuracy** (an assumed p) and **Wrong answers**, with independent samples and a perfect verifier.
+
+Key experiments: drag Training update from 0 to 100 with Length cost *Off*, then *On · 0.05 per step*, and compare **Mean length** with k. Then set Wrong answers to *Always the same one*: Majority vote falls below **One sample**, while Verifier picks holds.
+
+## What it is
+
+A **reasoning model** is a next-token predictor post-trained to write a long **chain of thought**
+before it answers. A prompt can ask any model for steps and leaves its weights alone; this recipe
+changes the weights. It is **RLVR**, reinforcement learning with a **verifiable reward**: sample
+several traces for one prompt, let a program check each final answer, and make the traces that
+pass likelier.
+
+**GRPO** scores each trace against its own group: advantage = (reward − group mean) / group
+standard deviation. The group is the baseline, so no separate value network is needed. Longer
+traces tend to emerge because they pass more often.
+
+**Test-time compute** is the extra work spent while answering. This lab shows two kinds: a longer
+trace (the authored **Thinking budget** cards) and several sampled answers with a way to choose
+among them (**Sampling and voting**, exact arithmetic).
+
+### The toy in the first card
+
+**Train against a checker** trains one number, the typical trace length, with exactly that update.
+The policy is a bump over 1 to 8 steps. The checker is a hand-written rule: a trace passes when at
+least k of its steps land, and each step lands with probability 0.80. It is a one-parameter policy
+and a rule, not a language model.
+
+## Why it’s here
+
+In-context learning showed chains prompted with worked examples. Reinforcement learning
+foundations showed a policy improving against a reward. This lab joins them: the reward is a
+checker, and the policy is a trace writer. The sampling half also sets up an idea the Evaluation
+lab uses: how often at least one of n tries succeeds.
+
+## How to play with it
+
+In **Train against a checker**, keep k = 3, a group of 16, learning rate 0.3, and seed 1. With
+Length cost off, drag Training update from 0 to 100. Mean length climbs from 1.8 steps to 7.1,
+well past the 3 the task needs, while the pass rate goes from 10% to 99%.
+
+Turn Length cost on and the length ends at 5.3 steps with a 93% pass rate. Now set Group size to
+8: the policy collapses to one-step answers, with a 1% pass rate.
+
+Problem and Thinking budget slice an authored trace. On 17 + 28, the first step writes the carry
+and the second reads it. In **Sampling and voting**, leave p = 0.40 and Split over 3, and set
+Samples to 16. Majority vote reads 70.8% and Verifier picks 99.97%. Now set Wrong answers to Always
+the same one: the vote drops to 21.3%, below a single sample.
+
+## What to notice
+
+- Length emerges because the checker rewards it. A trace shorter than k never passes, and a trace
+  of exactly 3 steps passes only 51% of the time, because every step must land. Longer traces
+  earn more.
+- With the cost off, nothing pushes back. After the pass rate saturates, Steps past k still
+  reads 4.1 at update 100: **overthinking**. In 51 of the 100 updates every sampled trace had the
+  same reward, so the group taught nothing.
+- The cost trims length but not to k. It ends 2.3 steps past k, because spare steps still insure
+  against a slip.
+- A trace helps where later steps need earlier results. Past the useful steps, **padding** and
+  **unfaithful steps** add latency and nothing else.
+- With a perfect checker, or **verifier**, success is 1 − (1 − p)^n: **pass@n**. At p = 0.40 it
+  passes 98% by eight samples.
+- **Majority vote** (self-consistency) needs no checker but returns whichever answer is most
+  common. When one wrong answer is likelier than the right one, more samples make it worse.
+
+## Where it breaks
+
+**In this lab.** The policy is one number over eight lengths, and the checker is a hand-written
+rule with a fixed step success of 0.80. There is one prompt, one gradient step per sampled group,
+no reference model, and no clipping. The curves are exact expectations of a policy whose path
+came from sampled groups, so another seed gives another path. The traces and the answer slot on
+the other cards are authored; **process supervision** is named, not computed; the sampling card
+treats p as your assumption.
+
+**In real systems.** The collapse you saw is real: with a length cost and no passing trace in the
+early groups, cost is the only signal, and normalisation scales it up. Real runs dilute it with
+many prompts per batch. A checker sees only the final answer, so it cannot tell a needed step
+from a wasted one. Samples from one model are correlated, and **best-of-n** with a learned reward
+model can pick an answer that games the reward. Visible chains can be useful and still
+unfaithful.
+
+## Going deeper
+
+Real RLVR and GRPO add what the toy leaves out:
+
+- **A token-level policy.** The gradient reaches every token's probability, so the model learns
+  what to write, not only how long to write.
+- **A KL penalty to a reference model.** It keeps the policy near the model it started from, so it
+  cannot drift into text that games the checker.
+- **Clipped ratios.** Several gradient steps can reuse one batch without moving too far.
+- **Many prompts per batch.** Noise averages out, and groups with equal rewards matter less.
+
+Published GRPO variants change how the loss is normalised by length and by group standard
+deviation, because both choices affect how long responses grow.
+
+On hard multi-step problems, reported accuracy rises with the thinking budget, and forcing an early
+stop lowers it. Search goes further than voting: sample, score partial traces with a process reward
+model, and extend the promising ones.
+
+**Distillation** copies long traces from a strong reasoning model into a smaller one; the student
+copies the text of the steps, not a guaranteed algorithm. Preference optimization and
+post-training are where related recipes live, and Agents spend a similar budget on tool calls
+instead of tokens.

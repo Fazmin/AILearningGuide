@@ -1,0 +1,775 @@
+---
+objectives: ["Contrast iterative denoising with latent reconstruction", "Interpret a continuous latent space"]
+terms: ["Latent", "Diffusion", "Noise schedule", "Denoiser", "Reverse process", "VAE", "Encoder", "Decoder", "Reparameterization", "KL divergence", "Latent interpolation", "Classifier-free guidance", "Latent diffusion", "Flow matching"]
+---
+
+## The big picture
+
+You may have seen a picture that an AI tool made from a few typed words, or heard of tools that make
+music and video clips in a similar way. This module opens up the machinery behind tools like these,
+using the smallest pictures that still mean something to a person. Those pictures are handwritten
+digits from 0 to 9, each one drawn in a tiny square.
+
+A program that makes new things, such as sentences or pictures, is called a **generative model**.
+Most other labs in this course look at generative models that write text one small piece at a time,
+guessing the next piece over and over. This lab is about a different family, the ones that make a
+whole picture at once instead of piece by piece.
+
+The lab shows two ways of doing that, and they work almost like opposites:
+
+- A **VAE** learns to squeeze each picture down to a code of only two numbers, and to redraw a
+  picture from any two numbers in one go. Two numbers work like the two coordinates of a point on a
+  graph, so every picture gets its own spot on a flat map.
+- **Diffusion** ruins pictures on purpose by adding static, like the fuzz on an old TV with no
+  signal, a little at a time. It then learns to undo that damage, so it can start from pure static
+  and clean it up, step by step, until a digit appears.
+
+Both are real, small models trained on 60,000 handwritten digits, and every digit they make in the
+lab is worked out on the spot while you watch.
+
+### Where you have met it
+
+The ideas in this lab are the machinery behind image, audio and video generation. In fact, many
+modern image generators use both ideas at once, starting with a squeezer much like the VAE that shrinks the
+picture. All the slow diffusion work happens in that smaller space, and the result is expanded back
+into a full picture at the very end. That combination is most of why making high-quality images with
+AI became affordable.
+
+### Why it matters
+
+To make a picture, a program must choose a brightness for every pixel, the tiny squares a picture is
+made of, and here there are 784 of them. Those pixels all have to agree with each other, since a
+stroke that starts on one side of a digit must carry on and join up with the rest. If you choose
+every pixel at random, you get static, because nothing makes neighbouring pixels line up.
+
+Yet a generative model needs some randomness, or it would draw the same picture every time. Both
+models in this lab answer the same puzzle, which is how to turn random input into pixels that fit
+together. Without the VAE’s learned map of codes, two random numbers would mean nothing, and without
+diffusion’s learned clean-up, random static would stay static.
+
+The two answers come with very different costs, and real systems are designed around them. The VAE
+is quick, because its drawing step runs only once per picture, but its pictures tend to come out
+blurry. Diffusion’s digits in this lab are readable far more often, but it pays for that by running
+its whole clean-up calculation again for each of its 100 steps.
+
+### What you will be able to explain
+
+By the end of this lesson, you should be able to explain these ideas in your own words:
+
+- how building a picture through many small clean-up steps differs from rebuilding it from a short
+  code in a single step;
+- why the first way is slow, while the second way tends to give blurry pictures;
+- how to read a map where every point is the code for a picture, and why points close together give
+  similar digits;
+- why the crowded middle of that map gives blurry blends of two or more digits;
+- why a perfect clean-up tool would only ever copy its examples, while a real, imperfect network can
+  make new pictures.
+
+### What the lab lets you do
+
+A switch called **Model**, at the top of the lab, swaps between two views. In the `Diffusion` view,
+the **Forward process** card shows one digit at six points along a 100-step slide into static. The **Reverse
+diffusion** card lets you drag through all 100 clean-up steps, one at a time, and watch a digit
+appear out of static. You can also swap the trained network for a perfect version built from exact
+math, and compare what each one makes from the very same static.
+
+In the `VAE` view, the **Latent map** card lets you drag a point across a map of two-number codes
+and watch the digit change as you go. The **Encode a drawing** card lets you draw your own digit, or
+load a ready-made one, and shows what comes back after the squeeze into two numbers.
+
+Adding the static in the **Forward process** card is plain arithmetic, with no network involved. A
+few numbers the lesson quotes were measured beforehand rather than live, such as how well a separate
+digit-reading network scored the pictures. Where it breaks lists those.
+
+## What it is
+
+### A picture is a grid of numbers
+
+Every picture in this lab is a small square, 28 pixels across and 28 pixels down, which makes 784
+pixels in all. The computer stores each pixel as a single number for its brightness. In the
+diffusion half of the lab, −1 means black and 1 means white, with greys in between, so a digit is a
+white stroke on a black background.
+
+The digits come from a collection called MNIST, and both models learned from all 60,000 of its
+training digits. Another 10,000 test digits were kept aside, so the models never saw them during
+training.
+
+Both models are built from **neural networks**, and a neural network is a large calculation with
+many adjustable numbers inside it. Training means nudging those numbers, over and over, until the
+network’s answers come out right.
+
+### The VAE: squeeze a picture into two numbers, then redraw it
+
+Think of the character creator in a video game, where a few sliders set things like height and
+build. Every position of the sliders gives you a complete character, and moving a slider a little
+changes the character a little. The VAE builds something like a character creator for handwritten
+digits, with only two sliders.
+
+It does this with two networks that train together as a team. The first, called the **encoder**,
+looks at a 784-pixel picture and squeezes it down to only two numbers. The second, called the
+**decoder**, takes any two numbers and expands them back into a 784-pixel picture in a single pass.
+
+During training, each digit goes through the encoder and then the decoder, and the pair is scored on
+how closely the copy matches the original. Only two numbers fit through the middle, so those two
+numbers have to hold whatever matters most about each digit.
+
+The pair of numbers is called the picture’s **latent**, a word that means hidden, since it is a
+compressed code you never see in the picture itself. The lab calls the two numbers `z₁` and `z₂`,
+and you can treat them like map coordinates, with `z₁` saying how far across and `z₂` how far up. So
+every code is a point on a flat map, which is the **Latent map** card in the lab.
+
+VAE is short for **variational autoencoder**, and an autoencoder is a model that learns to turn a
+picture into a code and then turn that code back into a copy. The word “variational” comes from the
+math used to train it, which you won’t need here.
+
+The character creator stops matching the VAE in three ways. In a game, designers decide what each
+slider does, such as setting the height, but nobody told the VAE what its two numbers should mean,
+so training settled that. A character creator also goes only one way, from sliders to a character,
+while the VAE learns the return trip too, from a finished picture back to its two numbers. And in a
+game every slider setting gives a proper character, while some points on the VAE’s map give only a
+blurry mix of digits.
+
+### Keeping the codes packed together
+
+If the encoder were free to put codes anywhere, it might push the 0s far off to one side and the 7s
+far off to the other. That would leave wide empty gaps, and a made-up code for a brand-new digit
+could land in one of them. No training digit’s code ever landed in such a gap, so the decoder was
+never taught a digit there.
+
+So the VAE adds a second rule to its training score: the codes should stay packed in a round cloud
+centred on the point (0, 0). That target cloud is called the **prior**, a word that means “before
+looking at any picture”, and the lab draws it on the map as two dashed circles.
+
+The penalty for not fitting the cloud is called the **KL divergence**. It compares each picture’s
+code with the target cloud and charges for two things. One is a code whose spot sits far from the
+centre. The other is about the size of a small wobble around each code, which you will meet in the
+next section. If the rule worked perfectly, you could pick any random point from the cloud, hand
+it to the decoder and get a believable digit back.
+
+This lab applies the rule lightly, multiplying the KL penalty by 0.35, about a third of its full
+strength, before adding it to the training score. As a result, real digits’ codes spread wider than
+the target cloud. Random picks, though, come from the cloud itself, so most of them land near the
+centre, where the regions of several digits overlap. Only about half of those picks become a clear
+digit, as Where it breaks shows.
+
+### A best-guess spot with a small wobble
+
+The encoder actually gives a little more than two plain numbers, because for each of the two it
+gives a best-guess spot, called the mean and written μ (mu). It also gives a small spread around
+that spot, written σ (sigma), so you can read its answer as “the code is about here, give or take
+σ”.
+
+During training, the decoder does not receive the exact spot but a point picked at random from the
+small patch around μ. That way the decoder has to draw well for the whole patch, and not only for
+one exact point. The lab writes the pick like this, with ε (epsilon) standing for a random number,
+usually between about −2 and 2, that is rolled before the calculation starts:
+
+`z = μ + σ·ε`
+
+Here is a worked example with a ready-made drawing of a 3 that the lab offers, which you can load
+with the `3` button in **Encode a drawing**. For this drawing, μ for `z₁` is 1.46 and σ is about
+0.03. If the random roll gives ε = 0.5, then z₁ = 1.46 + 0.03 × 0.5, which comes to 1.475. The
+wobble moves the point only a tiny distance, because σ is so small.
+
+Rolling ε first has its own name, **reparameterization**, and it solves a practical problem.
+Training keeps asking questions like this one: if μ were a little bigger, would the score get better
+or worse? If z were only “some random point near μ”, no rule would link a change in μ to a change in
+z, so that question would have no answer.
+
+Writing `z = μ + σ·ε` fixes this. The roll ε is set aside first, like a dice roll written down
+before the game, and then nudging μ up by 0.1 moves z up by exactly 0.1. Everything after the roll
+is ordinary arithmetic, so training can see how μ and σ affect the score.
+
+The KL penalty from the previous section looks at this wobble too. It compares each picture’s small
+patch with the whole target cloud, whose spread is 1. A patch far narrower than 1 counts as a poor
+fit, so it costs points too.
+
+### Diffusion: ruin pictures on purpose, then learn to undo it
+
+Picture someone learning to restore old photos by practising on photos that were ruined on purpose.
+You take a clean photo and sprinkle a little static over it, then a little more, until nothing is
+left but static. At every stage, the trainee studies the damaged photo and tries to point out
+exactly which specks are static. After enough practice, they can take a photo covered in static and
+remove some of it, so that more of the picture underneath shows through.
+
+Diffusion works the same way, in two halves, and the first half, adding static, takes no skill at
+all. The second half, working out which part of a picture is static, is the part that has to be
+learned.
+
+The photo restorer stops matching in one important way, because a restorer always has a real photo
+hidden under the static. When diffusion makes a new picture, it starts from static with nothing
+under it at all, so the digit that appears is built up by the clean-up itself.
+
+### Adding static: the forward process
+
+The first half, called the **forward process**, adds static to a clean digit over 100 steps,
+numbered from t = 0 to t = 99. Here t stands for the step, and the lab labels the clean digit `x₀`,
+meaning the picture before any static at all. How much static goes in at each step follows a fixed
+plan called the **noise schedule**. Nobody trains this plan and no network is involved, so this half
+is pure arithmetic.
+
+At every step, each pixel of the noisy picture is a mix of the clean pixel and a random static
+value:
+
+`noisy pixel = signal share × clean pixel + noise share × static`
+
+The static is a separate random number for each pixel, mostly between −2 and 2, and the lab writes
+it as ε, the same Greek letter as before. As the steps go by, the signal share falls from about 1
+toward 0, while the noise share rises from about 0 toward 1. Under each tile of the strip, the lab
+prints the signal share as `√ᾱ`, which you can read as “the square root of alpha-bar”.
+
+Here is the mix worked out at step t = 59, where the tile reads 0.60 for the signal share. The noise
+share there, 0.80, is not printed under the tile, but it follows from a rule explained just below:
+
+- A white pixel of the digit has the value 1, so if its static is −0.5, it becomes 0.60 × 1 + 0.80 ×
+  (−0.5), which is 0.60 − 0.40 = 0.20.
+- A black background pixel has the value −1, so if its static is 0.5, it becomes 0.60 × (−1) + 0.80
+  × 0.5, which is −0.60 + 0.40 = −0.20.
+
+Both pixels end up as greys close to zero, which makes them much harder to tell apart, and that is
+how the digit fades into the static. You may also notice that 0.60 and 0.80 behave like the sides of
+a 3-4-5 triangle, because their squares, 0.36 and 0.64, add up to exactly 1. The schedule keeps that
+true at every step. That rule stops the pixel values from swinging steadily wider, or shrinking toward
+zero, as the static takes over, and it lets you work out either share from the other.
+
+The plan has to end with almost nothing of the picture left, because making a new picture will start
+from fresh static. The network only knows what to do with the kind of input it practised on, so the
+last forward step has to look like plain static too. Here the last step keeps just 3% of the digit,
+which is the 0.03 under the last tile, or 0.031 to three decimal places.
+
+### Guessing the static: the denoiser
+
+The second half needs learning, so a network called the **denoiser** is trained to guess the static
+that was added to a noisy picture. It is given the noisy picture and its step number, and one
+network handles all 100 steps, since the step number tells it how much static to expect.
+
+Training runs as a loop: take a digit, pick a random step, add static using the mix above, and ask
+the denoiser to guess that static. Then score the guess by how far off it is, and nudge the
+network’s adjustable numbers so that it does a little better next time.
+
+The lab’s denoiser has 1,181,217 adjustable numbers, and it was trained for 45 passes over all
+60,000 MNIST digits, so it saw every training digit 45 times. Its error is the average, over all 784
+pixels, of the squared gap between its guess and the real static. By the end of training that error
+was 0.036, against 1.0 for a lazy guess of “no static anywhere”.
+
+Guessing the static is useful because, once you know what static was added, you can take it away and
+work out the clean picture. The lab shows that worked-out picture with the caption `predicted x̂₀`,
+where the little hat on top means “a guess at”. Beside it, `predicted ε̂` shows the guessed static
+itself, with mid-grey standing for zero.
+
+### Cleaning up: the reverse process
+
+Making a new picture is called the **reverse process**, and it starts by handing 784 numbers of
+fresh static to the denoiser, which guesses the static in it. An update then makes three small moves,
+and the result is a slightly cleaner picture. The denoiser is called again on that, for 100 calls in
+all. Each move has a reason:
+
+- **It removes only one step’s worth of the guessed static**, not all of it, because each call is
+  meant to undo just one forward step. Why not remove it all at once? Why it’s here answers that,
+  under “One jump from static to a digit is too big”.
+- **It scales the picture up very slightly**, because each forward step shrank the picture a little
+  as the signal share fell, so the way back has to grow it again.
+- **It sprinkles in a little fresh static.** Each forward step added static at random, so many
+  slightly different pictures could have come just before the current one. The step back picks one
+  of them at random. That keeps the right amount of static for the next call, and it helps stop the
+  run from drifting toward a smooth, blurry average of many possible digits.
+
+The very last call skips the fresh static, because its output is meant to be the finished picture.
+
+The **Reverse diffusion** card prints the update for the next call with its real numbers filled in.
+The recipe is called **DDPM**, the name of the standard step-by-step method that this lab uses. The
+calls work backward through the steps: call 1 cleans the picture at step 99, call 2 the one at step
+98, and so on. When you first open the lab, the **Denoiser calls** slider sits at 62, so the line
+shows call 63. That call works at step 99 − 62 = 37 and turns the picture at step 37 into the
+picture at step 36:
+
+`x_36 = (x_37 − 0.0359 · ε̂) × 1.0102 + 0.1415 · z`
+
+In that line, `x_37` is the current picture and `ε̂` is the guessed static. The letter `z` stands
+for the fresh static, and `x_36` is the slightly cleaner picture that comes out. Follow one pixel
+with a value of 0.50, where the guessed static is 2.0 and the fresh static is −0.3:
+
+1. Remove part of the guess: 0.50 − 0.0359 × 2.0 = 0.4282.
+2. Scale up slightly: 0.4282 × 1.0102 is about 0.4326.
+3. Sprinkle in fresh static: 0.4326 + 0.1415 × (−0.3) is about 0.39.
+
+That pixel moved from 0.50 to about 0.39. Most calls change the picture only a little like this,
+because the trip from static to a digit has been split into 100 small steps. The numbers in the
+line change from call to call, because each step of the schedule added a different amount of static.
+
+### A perfect denoiser to compare against
+
+The lab offers a second denoiser, the `Ideal denoiser`, which is not a network at all but exact
+math. It works with 64 reference digits that the VAE’s decoder drew, laid out in a grid 8 across and
+8 down. At every call, it compares the noisy picture with each reference, faded to match the current
+step, and gives each reference a share of weight by how well it matches. The shares always add up to
+100%.
+
+Its guess at the clean picture is a blend of the references, with each one counting as much as its
+share. If it gave 75% of the weight to one reference and 25% to another, its guess would be three
+parts of the first mixed with one part of the second. While the weight is spread over many
+references the guess looks blurry, but once one reference holds almost all of it, the guess becomes
+that reference exactly.
+
+For those 64 digits, no denoiser could guess the static better, which is why the lab calls it ideal.
+That perfection has a surprising cost, though: the ideal denoiser can only ever give back one of its
+64 references. Here is why, in three steps:
+
+1. Its guess at the clean picture is always a blend of the 64 references and nothing else, because
+   those 64 are the only clean pictures it knows.
+2. As the static thins out, one reference always ends up matching far better than the rest, so the
+   blend narrows down to that single picture.
+3. The finished result is therefore an exact copy of that one reference.
+
+Picture two friends getting ready for an art quiz with the same 64 sample drawings. One memorizes
+all 64 perfectly, so whatever the quiz asks, they reproduce the closest sample line for line. The
+other cannot hold every line in memory and picks up the general look instead, so their drawings
+resemble the samples without matching any of them.
+
+The ideal denoiser is like the first friend, and the trained network is more like the second. The
+analogy bends in two places, though. The trained network did not study the 64 references at all,
+but a much bigger set, all 60,000 MNIST training digits. And the ideal denoiser memorizes nothing,
+because it is handed the 64 references ready-made. Which one it ends on is settled gradually by the
+static, not chosen at the start.
+
+### Two opposite designs, side by side
+
+Set next to each other, the two designs differ at almost every point:
+
+- **Where a new picture starts:** the VAE starts from two numbers, which make a point on its map,
+  while diffusion starts from 784 numbers of static.
+- **What gets learned:** the VAE learns a map of codes and a way to draw any point on it, while
+  diffusion learns to guess the static in a noisy picture.
+- **How many network runs each picture takes:** the VAE’s decoder runs once, while diffusion’s
+  denoiser runs 100 times, one call after another.
+- **The usual flaw:** VAE pictures tend to come out blurry, while diffusion is slow.
+
+The big practical difference is patience, so picture a relay race with 100 runners, where each
+runner has to wait for the baton before setting off. Even with very fast runners, you cannot finish
+sooner by starting them all at once. Diffusion’s calls work the same way, since call 50 needs the
+picture that call 49 produced, so they cannot run side by side.
+
+## Why it’s here
+
+### One jump from static to a digit is too big
+
+You might wonder why diffusion bothers with 100 calls instead of training one network to turn static
+straight into a digit. From pure static, every digit is about equally likely, so the safest single
+guess is a blurry blend of many digits at once.
+
+To see why a blend is “safest”, picture a game where a friend flashes a digit at you for a split
+second and you have to redraw it. You lose points on every pixel by how far its brightness is from
+the right one, and a big miss costs far more than a small one. If you can’t tell whether it was a 3
+or a 5, a faint mix of both is only a little wrong almost everywhere. A crisp wrong guess is badly
+wrong on many pixels, so on average the faint mix loses fewer points.
+
+A network trained to make the whole jump in one go is scored in a similar way, so it learns to draw
+that blurry mix. You can see this in the lab: with the `Ideal denoiser`, the `predicted x̂₀` picture
+during the first few calls is a soft blend of many references.
+
+Diffusion avoids getting stuck with that blur by splitting the trip into 100 small steps. Each call
+moves the picture only a short way toward the current guess, adds a pinch of fresh static, and then
+asks again. As the static thins out, the guess gets sharper, and the picture gradually settles on a
+single digit. Each step is also a much smaller job than the whole trip, because the denoiser only
+has to deal with the static at one level.
+
+### Pixels are a poor place to mix pictures
+
+The VAE solves a different problem, which is giving you a space where you can move smoothly from one
+picture to another, something pixels alone are bad at. Averaging a 0 and a 2 pixel by pixel gives
+you a faint 0 and a faint 2 lying on top of each other, which looks like neither digit.
+
+On the VAE’s map, every point is a code that the decoder turns into one picture. A small move on the
+map gives a small change in the picture, so you can walk from one digit to another and watch the
+shape change along the way.
+
+The map can blur too, in two kinds of places. In a gap between two digits’ regions, few or no
+training digits’ codes landed, so the decoder was never taught a digit there. It still draws
+something, because its output changes smoothly from point to point, and what it draws is a blurry
+mix of the digits on either side. In the crowded middle of the map, the codes of several different
+digits sit close together, so a point there could belong to any of them. The decoder hedges between
+them there, for the same reason as in the flash-a-digit game.
+
+Even so, the VAE’s walk is far better than averaging pixels, which gives a double image the whole
+way. Along most of the walk the decoder draws one digit-like shape that changes a little at a time.
+The blur shows up only in the stretches where one digit’s region hands over to the next. Finding
+those stretches is part of reading the map. In most models the latent stays hidden deep inside the
+machinery, but here it becomes somewhere you can explore.
+
+### Not every generative model guesses the next piece
+
+The text models in other labs build their answer one piece at a time, from left to right, and once a
+word is written it stays. Diffusion works on the whole picture at every step instead, so even a late
+call can still adjust a stroke in the top-left corner. A text model of that kind cannot go back and
+change a word it has already written.
+
+## How to play with it
+
+The lab switches views as you move through the lesson’s steps, but you can flip the **Model** switch
+between `Diffusion` and `VAE` whenever you like.
+
+### Watch static being added
+
+Start in the `Diffusion` view, where the **Forward process** strip shows the clean digit `x₀`,
+followed by the same digit at six steps from `t = 0` to `t = 99`. The small number under each tile
+is the signal share `√ᾱ`, and the last picture, at step 99, reads 0.03 and looks like pure static to
+the eye.
+
+That clean digit is not taken from MNIST. The VAE’s decoder draws it at the point chosen on the
+**Latent map**, which is why the caption under the strip names a point z. If you move that point in
+the `VAE` view, the digit here changes too.
+
+Below the strip, the **Noise schedule** chart shows the signal share as a solid line falling toward
+0 and the noise share as a dashed line rising toward 1. The **Noise-prediction error by step** chart
+shows how far off the network’s static guesses are at every step for this digit. Its dotted line is
+the score you would get by always guessing zero static.
+
+### Watch a digit come out of static
+
+The **Reverse diffusion** card shows three large pictures side by side: the picture after the number
+of calls you have chosen, then `predicted x̂₀`, then `predicted ε̂`.
+
+Below them, the **Background pixels** readout gives the share of the 784 pixels that are nearly
+black, meaning −0.9 or darker. Pure static has only about 1 pixel in 6 that dark, while a finished
+digit is mostly black background, so this number climbs as a digit appears. The number in brackets
+beside it is the same share for the clean digit `x₀`, for comparison.
+
+The **Noise seed** slider, which runs from 1 to 24 and starts at 7, picks the random static. A seed
+is a number that fixes a random draw, a bit like the seed number some games use to build the same
+random world every time. The same seed always gives the same starting static, and a different seed
+gives different static.
+
+**Try this:** In **Reverse diffusion**, keep **Denoiser** on `Trained network` and **Start from** on
+`Pure noise`, then drag **Denoiser calls** slowly from 0 to 100. Each notch is one call to the
+denoiser, so watch the **Background pixels** number climb as the black background comes back. Then
+switch **Denoiser** to `Ideal denoiser`, keep the same seed, and compare the two final pictures.
+
+Under the slider, a filmstrip shows the picture after 0, 10, 20 and so on up to 100 calls, and
+clicking a frame jumps straight there. When you reach 100 calls, the update line turns into a
+summary that names the nearest of the 64 references and gives the distance to it.
+
+### Compare with the perfect denoiser
+
+With **Denoiser** on `Ideal denoiser`, the 64 references appear in a grid below the readouts. Each
+reference has an outline that grows stronger as it gains weight, the heaviest one is highlighted,
+and a note underneath gives its number and its share. Drag **Denoiser calls** upward from 0 and
+watch the weight gather onto one reference.
+
+Then move **Noise seed**, and the ideal denoiser settles on a different reference: seeds 1 to 24
+end on 20 different ones. The card shows one denoiser at a time, so switch **Denoiser** back to
+`Trained network` and you will see that the network’s digit changes with the seed too. The seed is
+the only way you can change which digit you get.
+
+Finally, switch **Start from** from `Pure noise` to `Noised x₀`, which starts from the clean digit
+pushed all the way through the forward process to step 99. It uses the very same static as
+`Pure noise` for that seed, with only 3% of the digit added on top. Compare the final picture with
+the one you got from pure noise.
+
+### Walk around the latent map
+
+Switch **Model** to `VAE`, and the **Latent map** card shows a mosaic of 256 small digits in a 16 ×
+16 grid. Each tile is what the decoder draws for the code at that tile’s centre. The map runs from
+−4 to 4 in both directions, with `z₁` going across and `z₂` going up. The two dashed circles mark
+the target cloud, at distances of 1 and 2 from the centre. The lab labels them 1σ and 2σ, and this
+σ is the target cloud’s spread, which is 1. It is not the encoder’s tiny wobble from earlier, even
+though the two share the same letter.
+
+Drag the point, which starts at (−2.00, −0.80) among the 5s on the left, and watch the big digit
+beside the map change smoothly. You can also move it in one direction at a time with the **Latent
+z₁** and **Latent z₂** sliders, in steps of 0.05.
+
+Two readouts sit under the sliders. **‖z‖** is how far your point is from the centre, measured in
+units of the target cloud’s spread. That spread is 1, so the number is just the distance. You can
+check it with Pythagoras: at the starting point it is √((−2)² + (−0.8)²) = √(4 + 0.64), which is
+about 2.15.
+
+**log p(z)** says how often random picks from the target cloud land near your point. It uses a
+squeezed scale measured in **nats**, where each drop of about 2.3 means random picks land there
+about 10 times less often. The closer it is to zero, the more often random picks land near that
+spot. It reads about −1.84 at the centre and −4.16 at the starting point, a drop of about 2.3. So
+the starting point gets about one tenth as many random picks as the centre. It drops faster the
+further out you go.
+
+Now try a planned route, starting on the 0s along the bottom and going up the right side through the
+2s to the 1s at the top right. From there, go along the top to the 7s at the top left. Walking from
+one code to another, usually in a straight line, and watching the picture change along the way is
+called **latent interpolation**. For a straight-line try, pick any two digits on the map and drag
+the point straight from one to the other. Smooth change tells you the map is well organized, while
+a blurry stretch marks a spot where one digit’s region hands over to another. Finish by dragging
+through the crowded middle and watching the digit blur.
+
+### Squeeze your own drawing
+
+In **Encode a drawing**, click the `7` button and then the `3` button, or draw your own digit with a
+mouse or pen. Each stroke is sent to the encoder when you lift the mouse button or pen, and `Clear`
+wipes the pad. The card shows two copies: `decoder(μ)`, drawn from the encoder’s best-guess spot, and `decoder(μ + σ·ε)`, drawn from a point
+wobbled at random. The encoded spot also appears on the **Latent map** as a diamond, with an oval
+around it that shows twice its wobble.
+
+The numbers beside the copies describe this one drawing:
+
+- **Posterior mean μ** is the encoder’s best-guess spot, where “posterior” means “after looking at
+  the drawing”, the partner word to prior.
+- **Posterior σ (prior σ = 1)** is the size of the wobble, shown next to the target cloud’s spread
+  of 1.
+- **Reconstruction BCE, decoder(μ)** scores how far the copy is from your drawing, added up over all
+  784 pixels, in nats. Here nats are simply the unit the score is counted in, the same one the KL
+  and training-loss rows use, so the scores can be added together. BCE is short for binary
+  cross-entropy, and lower is better. The pen leaves
+  soft grey edges, so even a perfect copy would score a little above 0.
+- The row starting `KL` is the packing penalty for this drawing, the KL divergence from earlier.
+- **Training loss, BCE + 0.35 × KL** is the training score for this one drawing, worked out from
+  the `decoder(μ)` copy. Training itself scored the wobbled copy, but the two are almost the same
+  here, as the note under the numbers shows.
+
+For the `3` preset, the BCE is 121.1 nats and the KL is 7.12. Multiplying the KL by 0.35 gives about
+2.49, so the training loss comes to about 123.6 nats. Almost all of that score comes from the copy’s
+mistakes, and very little comes from the packing rule.
+
+## What to notice
+
+### Making static is arithmetic, but removing it takes a network
+
+Adding static is one line of arithmetic for each tile, with nothing to learn. Only the reverse
+direction, going from static back toward a digit, needs a trained network.
+
+### Seed 7 gives one new digit and one copy
+
+With seed 7 from pure noise, the trained network turns static into a digit. Its **Background
+pixels** number goes from 0.17 to 0.82, which means about 1 pixel in 6 is near black at the start
+and about 4 in 5 at the end.
+
+The `Ideal denoiser`, given exactly the same static, lands exactly on reference #64. The network’s
+picture is nearest to reference #28, at 0.26, and is none of them.
+
+That 0.26 is a mean squared distance: square the gap between the two pictures at every pixel, then
+average those squares, so that 0 would mean a perfect copy. A distance of 0.26 is what you would get
+if every pixel were off by about 0.5, on the scale from −1 for black to 1 for white. Across every
+seed on the slider, the network’s picture never comes closer than 0.07 to any reference.
+
+Those 64 references are not what the network learned from, though, so missing them is only part of
+the story. The stronger evidence, in Where it breaks, compares the network’s pictures with its own
+60,000 training digits, and they sit about as far from those as brand-new real digits do.
+
+### The ideal denoiser makes up its mind
+
+The ideal denoiser spreads its weight over many references at first, so its guess at the clean
+picture is a blurry blend. At seed 7 one reference holds half the weight after 15 calls and 99%
+after 32, and from then on its guess is that picture. The remaining calls clear away the leftover
+static around it.
+
+### Guessing static is hardest when there is little of it
+
+The network guesses the static worst at step 0 (error 0.60) and almost perfectly at step 99 (under
+0.001). That can seem backwards, since you might expect a lightly damaged picture to be the simplest
+one to fix.
+
+Picture a friend who tries to weigh a single letter by stepping on a bathroom scale with it and then
+without it, and taking the difference. The letter is so light that the scale’s tiny errors swamp it,
+yet the same trick works well for a heavy suitcase.
+
+At step 0 the static is the letter, because the noise share there is only about 0.025. To get the
+static out of a noisy pixel, you take away the clean part and then divide by the noise share. You
+divide because the static was multiplied by that share on the way in. Dividing by 0.025 is the same
+as multiplying by 40, so any mistake in the clean part grows 40 times. Being off by 0.01 on a pixel’s clean value,
+for example, means being off by 0.4 in the guessed static, because 0.01 ÷ 0.025 = 0.4.
+
+At step 99 the static is the suitcase, since the picture there is almost entirely static, so
+guessing the static comes close to reading off the picture itself. Even at its worst, the network
+beats the dotted line, which sits at 1.03 for always guessing zero static.
+
+The flip side is that at step 99 the digit is the letter. Only 3% of it is left, so even a tiny slip
+in the static guess becomes about 32 times bigger in the guess at the clean picture. That is how
+`predicted x̂₀` can still be a blurry blend after the first call, even though the static guess is
+nearly perfect. It is also another way to see why one jump from static to a digit does not work.
+
+### Neighbours on the map look alike
+
+Neighbouring points on the map give neighbouring digits, so a small move never makes the picture
+jump suddenly. A map like this, with no sudden jumps anywhere, is called **continuous**, and that is
+what makes a two-number code something you can steer around.
+
+Each digit owns a region, and the regions meet in a crowded middle, where the decoder blurs. Near
+the centre, the codes of several different digits sit close together, so a point there could belong
+to any of them. The decoder hedges by drawing a faint mix, as in the flash-a-digit game. Eight
+of the ten digits show up among the 12 tiles closest to the centre. The lab’s makers checked those
+tiles with a separate network trained only to read digits, which gives each picture a confidence
+score from 0 to 1. Its average score for those middle tiles was only 0.70, against 0.96 for tiles
+more than 3 from the centre.
+
+### Two numbers is a tight squeeze
+
+The `7` comes back looking like a 3, because the encoder files it among the 3s. Its best-guess spot
+is (1.55, 0.02), very close to where the `3` preset lands. Its BCE of 211.6 nats is also far worse
+than the 3’s 121.1, because the copy misses so much of the drawing.
+
+The `3` comes back as a blurry 3, and the `0` and `1` presets come back as themselves. That makes
+the `7`, with its heavy bar across the top, the odd one out. Two numbers are a tight squeeze, so a
+wrong digit is possible, not only a blurry one.
+
+### The wobble hardly shows
+
+For the `3` and `7` presets, σ is only about 0.03 to 0.05, while the target cloud’s spread is 1.
+That is why `decoder(μ)` and `decoder(μ + σ·ε)` look almost identical, since the wobble is tiny next
+to the distance between different digits on the map. The encoder pins each drawing to a very small
+patch, and the KL term charges it a penalty for doing so.
+
+That penalty is most of the KL row. For the `3`, about 6 of its 7.12 nats come from that tiny σ, and
+only about 1 from its distance to the centre. That is why the `7`, slightly further out but with a
+somewhat bigger σ, has the lower KL, at 6.26.
+
+### Two starting points that are nearly the same
+
+`Noised x₀` and `Pure noise` lead to almost the same final picture. For a given seed, `Noised x₀`
+uses the very same static as `Pure noise` and adds only 3% of the digit on top. That 3% is all that
+is left of the digit by the last step of the forward process. The two starting points are therefore
+nearly identical before the clean-up even begins. A different seed changes the static itself, and
+that does change the digit.
+
+## Where it breaks
+
+This lab is honest about its models, which are both small, and neither one is a production system,
+meaning the large kind that real products run on.
+
+### What this lab simplifies or leaves out
+
+- **The trained denoiser is small and cannot be steered:** you cannot ask it for a 4, because it
+  takes no label, so the seed picks the digit. It has 1,181,217 adjustable numbers and only ever saw
+  28 × 28 handwritten digits.
+- **Most of its pictures are clear, but not all:** the digit-reading network looked at 256 of its
+  pictures made from pure static. It read them with 0.95 average confidence, against 0.99 for real
+  digits. It scored more than 0.9 for 86% of them, and the rest are malformed or ambiguous.
+- **Its pictures are new, not copies:** on average they sit 4.45 away from the nearest training
+  digit, against 4.11 for real test digits. Bigger means more different, so the network’s pictures
+  sit a little further from its training digits than brand-new real digits do. Only 2% of them sit
+  within 1.5 of a training digit, against 4% of real digits.
+- **Those distances use their own scale**, which is measured a different way from the lab’s 0.26, so
+  compare them only with each other.
+- **The ideal denoiser is not a network:** it is exact math over 64 digits that the VAE drew. It
+  shows what a perfect denoiser would do on that set, and it can only ever give back one of
+  those 64. From pure static, seeds 1 to 24 land on 20 different ones.
+- **The noise plan does not quite reach zero.** Its last step keeps 3% of the digit, so starting
+  from a noised digit or from pure static gives almost the same picture.
+- **There is no steering and no shortcut:** the lab has no text prompt or way to push the model
+  toward a digit, and every picture takes all 100 calls.
+- **The map’s middle is crowded:** two numbers cannot keep ten digits apart, so the regions of
+  several digits overlap near the centre.
+- **Real digits spread wider than the target cloud:** the packing rule is weighted at only 0.35, so
+  the codes of real digits spread out further than the cloud. In fact, 15% of real digits land far
+  out, more than 3 from the centre, where only about 1 random pick in 100 goes.
+- **Random picks often make poor digits.** Random picks come from the narrower cloud, so they mostly
+  land in the crowded middle and rarely reach the clear outer regions. In a test, only 48% of 10,000
+  picks came out as a clearly readable digit, against 86% for the diffusion network.
+- **The VAE uses two numbers on purpose:** two numbers let the lab draw the codes as a flat map, but
+  they force the digits to overlap heavily and blur. Real image systems keep far more than two
+  numbers per picture.
+- **Your drawings are not MNIST digits:** the MNIST digits were resized and centred in a standard
+  way before training, and drawings and presets skip that step. A digit drawn very small, very thick
+  or off to one side encodes worse than a dataset digit would.
+- **The error chart comes from one picture:** the 0.60 at step 0 is for this one digit and one draw
+  of static. Averaged over the 10,000 test digits, the network’s error at step 0 is 0.13.
+- **The default digit is a harder case**, because the decoder drew it with a soft grey background.
+  The presets, with flat black backgrounds, score 0.07 to 0.10 at step 0.
+- **Some numbers are quoted, not measured live.** The digit-reader’s scores and where the test
+  digits land were measured beforehand and copied in, because the lab carries no MNIST images and no
+  digit-reading network.
+
+### Where the real mechanisms fall short
+
+VAE output is blurry, and that is true of real systems too, not only of this small lab. Think back
+to the flash-a-digit game from Why it’s here, where a faint mix of a 3 and a 5 lost fewer points
+than a crisp wrong guess.
+
+The VAE’s training score works the same way, because it checks the copy pixel by pixel and charges
+more for bigger misses. When several answers are plausible, their average scores better than
+committing to one of them, so the decoder learns to hedge.
+
+This lab’s training score is also a loosened version of the textbook one. Weighting the packing rule
+below 1 buys sharper copies at the cost of a less tidy map, so it is a trade-off rather than a free
+win.
+
+Diffusion is slow, because every step is a full run of the network and each step needs the one
+before it. Faster methods take bigger steps, but every step they take still costs a full network
+run.
+
+When a text description steers a diffusion model, a setting called guidance strength decides how
+hard the model is pushed toward the description. Too high a setting gives a scorched,
+over-contrasted look.
+
+Measuring how good a generative model is turns out to be awkward for both families. One way to grade
+a model is to show it real pictures it never trained on and ask how likely it thinks each one is. A
+good model should rate real pictures as likely. A text model can give that answer exactly, piece by
+piece. A VAE can only give a number that the true answer is at least as big as, and a diffusion
+model gives a similar limit or a costly estimate. The common scores for image quality compare broad
+patterns across many pictures, so they can miss problems that a person spots at a glance.
+
+**A common mix-up:** “A perfect denoiser would invent brand-new digits.” The ideal denoiser shows
+the opposite: the perfect answer, for a fixed set of training images, is to reproduce one of them.
+Real models make new images partly *because* they are imperfect, and big models have still been
+caught copying training images that appeared many times.
+
+## Going deeper
+
+### Why a real network can make new pictures
+
+The ideal denoiser shows that the exact best answer to the training task, on a fixed set of
+pictures, is to memorize them. Trained networks make new pictures because they never reach that
+perfect answer. Their design and their limited number of adjustable numbers make them smooth over
+the gaps between training pictures. As a result, their output can land between the examples instead
+of on top of one.
+
+The lab shows the two outcomes side by side. With the same static, the ideal denoiser lands exactly
+on one of its 64 references, while the network draws something that is none of them. The network
+never saw those 64, though, so the stronger test is against its own training digits. Measured
+beforehand, its pictures sit a little further from their nearest training digit than real test
+digits do, 4.45 against 4.11, so it is not copying those either. An ideal denoiser built on all
+60,000 training digits would copy one of them instead.
+
+### Using both ideas together
+
+In practice the two ideas are used together, in a design called **latent diffusion**. A VAE-like
+autoencoder first shrinks the picture about 8 times in each direction, so the grid ends up with 64
+times fewer positions, since 8 × 8 = 64. All the slow diffusion work then happens in that small
+space, and the decoder expands the result back to full-size pixels once, at the very end.
+
+The small space is still a grid with a few numbers at each position, unlike this lab’s VAE, which
+keeps only two numbers for the whole picture. Running every denoiser call on a much smaller grid
+costs far less, and that is most of why high-quality image generation became affordable.
+
+### Steering with words
+
+Text prompts join through attention, the part of a network that lets each piece look at other
+pieces, which the Attention lab covers. That way the denoiser guesses the static *given a
+description*. A trick called **classifier-free guidance** then makes the description count for
+more. At each step the model makes two guesses, one with the description and one without. The final
+guess is then pushed past the one with the description, even further in the direction that the
+description pulled it.
+
+A setting usually called guidance strength controls how far that push goes. Here it is with small
+numbers. Say that for one pixel the static guess without the description is 0.2, and with it is 0.5,
+so the description pulled the guess up by 0.3. With a guidance strength of 3, the model moves 3
+times that pull: 0.2 + 3 × 0.3 = 1.1, which goes well past 0.5.
+
+Too low a strength and the model ignores your description, while too high gives the scorched,
+over-contrasted look from Where it breaks.
+
+### Getting there in fewer steps
+
+The underlying math has been reworked too, and a newer approach called **flow matching** trains the
+network to follow a nearly straight path from static to picture. That straighter path needs fewer
+steps, and several recent image models, such as Stable Diffusion 3 and Flux, use it.
+
+Other tricks squeeze a many-step process down to 1 to 4 steps, closing much of the speed gap with a
+VAE. Each of those steps is still a full run of the network, though.
+
+### The lab’s denoiser design
+
+The lab’s note calls its denoiser a convolutional U-Net, which is the name of its design. It looks
+at the picture through small windows that slide across it, and it works at several sizes, from fine
+detail up to the overall shape of the digit.
+
+### Diffusion for text
+
+Diffusion has also been tried on text, refining every position of a passage at the same time instead
+of one piece after another. So far its quality has trailed the usual one-piece-at-a-time models, and
+it remains an area of active work.

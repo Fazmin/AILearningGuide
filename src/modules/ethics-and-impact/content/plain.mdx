@@ -1,0 +1,398 @@
+---
+objectives: ["Name at least two costs that never appear on a leaderboard","Explain why a benchmark score cannot finish an ethics question, using who the benchmark represents","Compare the one-time compute of training with the ongoing compute of serving","Name the fairness criterion the triage gap breaks, and say how a risk-based rule treats a deployment without deciding whether it is justified"]
+terms: ["Training data","Consent","Dual use","Externalities","Labor","Accountability","Disaggregated evaluation","Equal opportunity and equalized odds","Distribution shift","Provenance","Training compute","Inference compute","Risk-based regulation"]
+---
+
+## The big picture
+
+When a news story says a new AI model got the top score on a test, it is tempting to hear something bigger. It sounds as if the model is good, so people should start using it. This module is about the gap between those two ideas, and about the people who end up standing in that gap.
+
+Putting an AI system to work in a real place, for real people, is called a **deployment**. A school might deploy a tutor, and a clinic might deploy a tool that helps it sort patients. Every deployment brings benefits and costs, and they rarely land on the same people. A test score can measure a few of them, but most never show up in any score at all.
+
+### Where you have met it
+
+AI models are compared using fixed tests called **benchmarks**, and their scores are often ranked in public tables called **leaderboards**. Whenever you read that one chatbot beat another on some test, you are reading a benchmark result.
+
+You have also met the costs this module is about, even if nobody pointed them out. Chatbots and image generators learn from huge collections of writing and pictures, and much of that material was gathered without asking the people who made it. Every answer a chatbot gives takes computing power, and that cost comes back each time someone asks a question. An image generator can also make a realistic picture of a real person who never agreed to it.
+
+Lawmakers have started to respond to problems like these. The European Union's AI Act, for example, keeps a list of high-risk uses of AI, which have to follow extra rules. Two uses on that list are AI that sorts emergency patients and AI that judges how well students are learning.
+
+### Why it matters
+
+If you treat a top score as the end of the argument, you miss everything the score never looked at. A test that leaves out some of the people who will use a system can give a fine-looking score, even while those people are failed far more often. Nothing in that single number warns you that it is happening.
+
+The people who carry the costs are often not the people who chose the system or paid for it. Students whose old essays were used and workers who labeled data by hand never get a line on a leaderboard. Neither do readers who meet a confident mistake, or patients a test left out, so without a deliberate way to look for them, those costs stay out of sight.
+
+None of this means tests are useless, because a benchmark tells you something real about the one question it asks. This module helps you see how far that answer reaches and where it stops.
+
+### What you will be able to explain
+
+By the end of this lesson, you should be able to explain each of these in your own words:
+
+- At least two costs that never appear on a leaderboard, such as writing used without permission or the hidden work of data labelers, and who pays for each one.
+- Why a test score cannot settle whether a use of AI is right, by looking at who the test included and who it left out.
+- How the computing it takes to train a model once compares with the computing it takes to answer people every day, and why the daily cost can catch up.
+- Which fairness rule the lab's patient-sorting model breaks, and how a law that sorts AI uses by risk handles a case like this without deciding whether it should go ahead.
+
+### What the lab lets you do
+
+Nothing in this lab runs a real AI model or measures a real system. Everything you see was either written for teaching, worked out from made-up numbers, or calculated with a short formula. The lab is built from four cards, and each one shows a different side of the problem:
+
+- **Deployment** lets you pick one of four made-up places where an AI system might be used: `School tutor`, `Newsroom draft`, `Clinic intake` or `Image generator`. Each comes with five arguments for and against it, and its **Score** always reads none.
+- **Tension explorer** shows those arguments one at a time, along with who pays for each one and whether any test score could measure it.
+- **Who the benchmark represents** tests an invented patient-sorting model on two groups of patients, and lets you change the mix to see what one overall score hides.
+- **Training versus serving** compares the computing it takes to build a model once with the computing it takes to answer people day after day.
+
+## What it is
+
+### A debate with no judge
+
+Picture a class debate about whether your school should start using an AI tutor. One side says a tutor that never gets tired could help students in the evening, after the building closes. The other side asks whose essays the tutor learned from, and whether anyone asked those students first.
+
+Now give the debate an unusual rule: there is no judge, and nobody keeps score. Each speaker makes one point, and a note beside it says who would gain or pay if that point is right. That is how this lab works, and its second card is called **Tension explorer** because it lays out arguments that pull against each other.
+
+The analogy stops matching in two places. In a real debate, both teams choose to show up and speak for themselves. Many of the people who bear these costs were never in the room, such as the students whose old essays were used. A debate also ends with a winner, while this one stays open, because the lab cannot decide for the people affected.
+
+### Four deployments, five claims each
+
+The lab offers four made-up deployments, which you choose with the **Deployment** control: `School tutor`, `Newsroom draft`, `Clinic intake` and `Image generator`. Each one comes with five short arguments, which the lab calls **claims**. Some argue for the deployment and some argue against it, so the card sorts them into two columns headed For and Against.
+
+Every claim carries three tags, which you can read in **Tension explorer** once you pick that claim:
+
+- **Theme** names what the claim is about, such as access, consent, or energy and labor.
+- **Who bears it** names the people who carry that benefit or cost, such as students, past students or contractors.
+- **Can a benchmark measure it?** answers yes, partly or no, and then gives a one-line reason for that answer.
+
+Below the two columns, the **Deployment** card shows four readouts. **For claims** and **Against claims** count how many claims the lesson writers put on each side, which is not the same thing as counting votes. **A benchmark speaks to** counts how many claims a test score could cover fully, and how many it could cover partly. The last readout, **Score**, always says none, because nothing on the page weights the claims or adds them into a total.
+
+### Reading one claim, step by step
+
+Set **Deployment** to `School tutor`, then use the **Claim** control to pick `2 Against`. The claim reads: “The essays used to train it were collected without those students' consent.” Its **Theme** is consent and **Who bears it** says past students, while **Can a benchmark measure it?** says no, with the reason “no leaderboard measures this”.
+
+Read those three tags together as one complete thought. The cost is that people's writing was used without their permission, and the people paying it are students who wrote essays in earlier years. No test score could ever show that cost, so however well the tutor scores, those essays were still used without asking.
+
+Now step to `3 For`: “A published harness shows higher homework completion.” A **harness** is the setup that runs a test on a model and records its score, so this claim rests on a real number. Its **Theme** is measured benefit, **Who bears it** says district, and **Can a benchmark measure it?** says yes, with the reason “a benchmark number exists for this”. The district is the group of schools that would pay for the tutor.
+
+Claim `4 Against` answers it right away: “Completion is not learning, and the harness does not represent the district that would pay.” In other words, finishing more homework does not prove that students learned more, and the students in the test may not be like the students in this district. Its tag says partly, because a test could speak to this only in certain cases. It would have to report results for each group of students separately, test students like the ones who will use the tutor, or be built to test this exact case.
+
+### The costs no leaderboard counts
+
+The first goal of this lesson is to name costs that never show up in a test score. The lab's claims raise several of them, and each one below starts in plain words before giving the name the lab's glossary uses.
+
+#### Writing and pictures used without asking
+
+The examples a model learns from are called its **training data**. For chatbots and image generators, much of that data was collected from the web without asking the people who wrote it or appear in it. Permission to use someone's work or likeness is called **consent**, and a page being public on the web does not automatically mean its author gave consent.
+
+Picture a made-up artist who posts drawings on a public art site so that friends can see them. Later a company copies those drawings, along with a huge pile of other people's pictures, to train an image generator. The drawings were public, but nobody asked the artist, and no score the generator ever earns will mention them.
+
+The company may attach a license to the finished model, which is a set of rules for how other people may use it. That license covers the finished model itself, though, and it cannot give permission on behalf of the people whose work went in.
+
+#### Hidden human work
+
+Behind every polished AI product are people doing slow, careful work by hand. Some label examples with the right answers, while others try to make the model misbehave so its problems can be found and fixed, which is called red-teaming. Others review harmful material so that users never see it, which is called content moderation. Even the data that teaches a model to follow instructions and behave as intended is made this way.
+
+All of this is **labor**, and it is often low-paid and invisible behind the product. In the School tutor list, claim 5 says the labeling work “was billed to contractors”, which means outside workers hired for the job.
+
+#### Energy
+
+Training a model takes a huge amount of electricity once, and answering people takes more electricity every day after that. The same School tutor claim says “Serving energy is billed to the school”, where serving means running the model to answer people. The **Training versus serving** card, covered later in this section, works out how those two costs compare.
+
+#### Costs that land on people who had no say
+
+Some costs are paid by people who never chose the deployment. The school pays its own electricity bill, but making that electricity can affect people far away who were never asked. The writers whose work was copied were never asked either. Another example is a task a person used to do that the system now does instead, where the cost lands on that person. These are called **externalities**, and they never show up in a price or in a loss curve, which is the chart that tracks a model's errors during training.
+
+Newsroom draft claim 4 says it directly: “Cheap for the publisher is an externality for the people whose writing was scraped.” Scraped means copied off websites automatically by a program, so the writers paid part of the cost of every cheap article without ever being asked.
+
+#### Mistakes that sound sure of themselves
+
+A model's writing can be smooth and convincing even when it is wrong. Newsroom draft claim 2 says “Fluent errors can reach readers in the desk's own voice,” where the desk is the newsroom team that publishes the story. A mistake could go out sounding exactly like the newspaper itself, so the theme is misinformation, meaning false information that spreads, and the people who bear it are readers.
+
+#### Help that can also harm
+
+A tool that pulls facts out of a patient's notes can fill in an intake form, which saves the staff time. The same tool could also gather everything about one patient into a single file, which someone could misuse. A skill that can help and harm like this is called **dual use**, and the tool itself does not choose which way it gets used.
+
+Clinic intake claim 5 is the lab's example: “Dual use: the same extractor can compile a dossier on a patient.” An extractor is a tool that pulls facts out of text, and a dossier is a detailed file about one person.
+
+#### Faces and fake photos
+
+An image generator can make a realistic picture of a real person without that person's say, which the lab files under the theme likeness, meaning someone's face and appearance. A related problem is that readers may not be able to tell a generated picture apart from a real photograph.
+
+A record of where a picture came from, and how it was made or changed, is called **provenance**. One example is a mark inside the image file that a computer can read, saying the image was generated. A mark like that helps only while it survives editing and someone checks it, so it supports people's judgment instead of replacing it.
+
+#### Nobody to answer for it
+
+When something goes wrong, someone should be able to say who decided to use the system, on whom, and how people can get a mistake put right. Being able to answer those questions is called **accountability**. Newsroom draft claim 5 raises it: “Accountability is unclear when a wrong date ships under a byline,” where a byline is the line naming the reporter who wrote a story.
+
+Picture a made-up school newspaper that starts drafting stories with an AI tool. A story about the spring concert goes out under a student reporter's name with the wrong date, and families turn up on the wrong night. Was that the reporter's fault, or the editor's? Was it the teacher who chose the tool, or the company that built it?
+
+If nobody can answer, accountability is missing, and the families have nobody to complain to. A **model card**, which is a document describing a model and how it was tested, does not answer that question by itself. It describes the model, not the people who decided to use it.
+
+### Who the benchmark represents
+
+Picture a made-up teacher who announces that the class averaged 88% on a test, which sounds like great news. Twenty students sat near the front and scored 95%. The other five sat at the back where they could not read the board, and they scored 60%. The average is true, but it hides the five students who were struggling, and you only find them by splitting the results by group.
+
+The **Who the benchmark represents** card applies the same idea to a made-up clinic. When a clinic is busy, staff have to sort patients by how urgent each case is, so that the most serious ones are seen first. That sorting is called triage, and the card's invented model reads each patient's notes and either flags the case as urgent or leaves it alone. The card's small heading calls it a “synthetic triage model”, where synthetic means made up for the lab rather than trained on real patients.
+
+The patients belong to two groups, called A and B, and in both groups 1 patient in 5 has a truly urgent case. Group B stands for patients whose notes were under-represented in the labels. That means there were too few notes like theirs among the examples that people had marked with the right answer. The model learned what an urgent case looks like from those marked examples, so it learned much less about how urgent cases look in group B's notes.
+
+#### Working out each group's accuracy
+
+A model's **accuracy** is the share of all its calls, urgent or not, that turn out to be right. Take 1,000 patients from group A and follow them through the model, one step at a time:
+
+- One patient in five is urgent, which makes 200 urgent patients in the group.
+- The model flags 90% of these urgent patients, which means it catches 180 of them.
+- The remaining 20 urgent patients slip through without being flagged, and these are the misses that matter most in a clinic.
+- The other 800 patients are not urgent, and the model correctly leaves 95% of them alone.
+- Those correct “not urgent” calls come to 760, and adding the 180 urgent patients it caught gives 940 correct calls.
+- That gives group A an accuracy of 94.0%, because 940 out of 1,000 is 94%.
+
+Now take 1,000 patients from group B, who also include 200 urgent cases:
+
+- The model flags only 55% of the urgent ones, which means it catches 110 of them.
+- That leaves 90 urgent patients it misses, which is nearly half of all the urgent cases in the group.
+- Of the 800 patients who are not urgent, the model correctly leaves 93% alone, which is 744 patients.
+- Adding the 110 urgent patients it caught to those 744 gives 854 correct calls, so group B's accuracy is 85.4%.
+
+The two accuracies, 94.0% and 85.4%, are less than 9 percentage points apart, since 94.0 minus 85.4 is 8.6. The gap between two percentages is counted in percentage points, often just called points. A gap that small does not sound alarming. The misses tell a very different story from the accuracies. The model misses 10 urgent cases in every 100 for group A, but 45 in every 100 for group B, which is more than four times as often.
+
+Accuracy hides most of that difference because urgent cases are only 1 patient in 5. Most of each group's score comes from the other four patients in five, and the model handles those non-urgent patients about equally well for both groups.
+
+#### The test the model passed
+
+The model was tested on a **holdout**, which is a set of cases kept aside for testing instead of being used to build the model. In that holdout, only 10% of the patients were in group B. Out of every 1,000 holdout patients, that makes 900 from group A and 100 from group B.
+
+- Group A misses 20 urgent cases in every 1,000 of its patients, so its 900 patients produce 18 misses.
+- Group B misses 90 in every 1,000, so its 100 patients add 9 more misses on top of those.
+- That comes to 27 missed urgent cases per 1,000 patients, with an overall accuracy of 93.1%.
+
+#### The clinic that will use it
+
+Now suppose the clinic that will really use the model sees half of its patients from group B. Out of every 1,000 patients who walk through its doors:
+
+- Group A's 500 patients produce 10 missed urgent cases, which is half of the 20 that a full 1,000 would produce.
+- Group B's 500 patients produce 45, which is half of the 90 that a full 1,000 would produce.
+- That comes to 55 missed urgent cases per 1,000 patients, with an overall accuracy of 89.7%.
+
+If you compare the two clinics side by side, accuracy slipped only a few points, from 93.1% to 89.7%. Missed urgent cases per 1,000 patients went from 27 to 55, which is roughly double. Most of the extra misses landed on group B. In fact, 45 of the 55 misses, about 82%, are in group B.
+
+The accuracy for a mix of patients is a **weighted average**, where each group's accuracy counts in proportion to how many patients come from that group. With half the patients from each group, it is the ordinary average of the two. Adding 94.0% and 85.4% and dividing by 2 gives 89.7%, which is what the card shows. The holdout works the same way: 90% of 94.0 plus 10% of 85.4 is 84.6 plus 8.5, which rounds to 93.1%.
+
+So why does accuracy barely move while the misses double? Accuracy is a weighted average of two numbers that are already close, 94.0% and 85.4%. Missed cases per 1,000 are also a weighted average, but of 20 and 90, which are far apart. Shifting patients from group A to group B moves that average a long way, so the misses jump.
+
+#### Splitting the score by group
+
+Reporting a score separately for each group of people is called **disaggregated evaluation**. The card does this with its bars, under the headings “Patients per 1,000” and “Missed urgent cases per 1,000”. Each heading has one row for the holdout and one for the mix you chose. Group A is drawn as a solid bar, and group B is drawn with diagonal stripes, which the card calls hatched. A single accuracy number cannot show what those bars show.
+
+#### When the test and the real world differ
+
+Clinic intake claim 4 puts the problem in one line: “The holdout is last year's clinic, not the patients who walk in tomorrow.” A difference between the people a model was tested on and the people it meets in real use is called **distribution shift**.
+
+A shift like this does not announce itself, because the holdout score stays the same number it always was. Only a split by group shows that the errors have moved onto different people, and that more of them now fall on group B.
+
+#### Beating a lazy guesser
+
+Clinic intake claim 3 says “A documented harness beat a majority-class baseline on holdout notes.” A majority-class baseline is a lazy guesser that always gives the most common answer. Suppose 1 patient in 5 is urgent, as in the triage card. A guesser that always says “not urgent” is then right 80% of the time, while catching no urgent case at all.
+
+Beating that guesser is worth knowing, but it does not tell you which patients the remaining misses fall on. Accuracy alone can look respectable while the cases that matter most slip through.
+
+### Two fairness rules, and the one this model breaks
+
+The triage card also gives the gap between the groups a name. To see it, you need two rates, and the card shows both of them on its second row of readouts.
+
+The **true-positive rate** is the share of truly urgent cases that the model flags. It is 90% for group A and 55% for group B, which the card shows in **True-positive rate, A / B** as “90% / 55%”. The gap between them is 90 minus 55, which is 35 points, and the card shows it as **Equal-opportunity gap**.
+
+A fairness rule called **equal opportunity** asks that the true-positive rate be the same for every group. In plain words, among the people who really need help, each group should be caught at the same rate. A gap of 35 points means the model is far from that, so equal opportunity is the fairness rule the triage gap breaks.
+
+The **false-positive rate** is the share of non-urgent cases the model flags anyway, which are false alarms. It is 5% for group A and 7% for group B, so the **False-positive gap** is only 2 points.
+
+A stricter rule called **equalized odds** asks for two things at once: equal true-positive rates and equal false-positive rates. The model fails equalized odds as well, almost entirely because of the 35-point gap, since its false-alarm rates are close together.
+
+Each rate is worked out inside one group, as a share of that group's own urgent or non-urgent patients. Moving the slider changes how many patients are in each group, but not how the model treats any one of them. In this lab each group's rates are fixed, so both gaps stay the same however you move **Group B share of patients**. In real use, a group's rates can shift too, for example when its patients change. Accuracy and the number of missed cases do move with the mix, because they depend on how many patients come from each group.
+
+Meeting these rules would not settle everything either, because the rates are checked against the labels people wrote. If those labels were wrong, a model could match them equally well for both groups and still be wrong for both. Passing a fairness rule also does not show that using the model is justified.
+
+### Training versus serving
+
+Most of the claims so far were about costs that no test number captures. This card looks at a cost that can be counted, but often is not counted in full.
+
+A chatbot reads and writes text in small pieces called **tokens**, where a token is often a whole word or part of one. Inside, a model is a huge list of adjustable numbers called **parameters**, and training is the process that sets them. A model with 7B parameters has 7 billion of them.
+
+Making a model and using it are two separate jobs. **Training** means running the model over its training text while the training process adjusts its parameters, which takes an enormous amount of arithmetic, paid once for each training run. **Serving** means running the finished model to answer people, and every token it reads or writes takes more arithmetic, paid again every day the model is in use.
+
+The arithmetic for training is called **training compute**, while the arithmetic for serving is called **inference compute**, because running a finished model to get answers is called inference. The lab counts both in **FLOP**, short for floating-point operations, where one floating-point operation is one arithmetic step on numbers with decimals, such as a single multiplication.
+
+#### The formulas the card shows
+
+The note under the card's readouts gives three short formulas. These are rules of thumb, which means quick estimates that researchers use instead of exact counts. They say roughly how many arithmetic steps each parameter needs for each token. In them, N stands for the number of parameters, D stands for the number of training tokens, and the dot means “multiply”:
+
+- Training takes about `6·N·D` FLOP, and that amount is paid once for each training run.
+- Serving takes about `2·N` FLOP for each token, and that amount is paid again on every request.
+- The two totals become equal after `3·D ÷ T` days of serving, where T is the number of tokens served per day. That day is the break-even point.
+
+#### A worked example at the starting settings
+
+The card starts with **Parameters** at 7B and **Training tokens** at 2T, which means 2 trillion. **Tokens served per day** starts at 10B, which means 10 billion tokens a day.
+
+- For training, multiply the small numbers first: 6 × 7 × 2 is 84.
+- A billion has 9 zeros and a trillion has 12, so multiplying by both adds 21 zeros, which makes 84 followed by 21 zeros.
+- The readout writes big numbers with one digit before the decimal point. 84 is the same as 8.4 × 10, so writing 8.4 instead of 84 adds one more zero to the count.
+- That is why the **Training, once** readout shows 8.4×10²² FLOP, where ×10²² means “times 1 followed by 22 zeros”.
+- For serving, 2 × 7 × 10 is 140, and the two billions add 9 zeros each, which makes 140 followed by 18 zeros.
+- 140 is 1.4 × 100, which adds two more zeros, so the **Serving, per day** readout shows 1.4×10²⁰ FLOP each day.
+- For break-even, 3 × 2 trillion is 6 trillion, which is the same as 6,000 billion. Dividing 6,000 billion by 10 billion gives 600.
+- So the **Days to break even** readout says 600 days at the starting settings.
+
+At these settings, serving uses as much compute in 600 days, a little over a year and a half, as training used in one go. After that day serving has cost more than training did, and the difference keeps growing every day the model stays in use.
+
+The chart tells the same story, and its dashed line, “one training run”, stays flat because training is paid once. Its solid line, “serving, cumulative”, is a running total that climbs a little every day. The point where they cross is marked break-even, and the note below the chart says “The guide marks day 600, where serving has used as much compute as training.”
+
+#### Why model size cancels out
+
+Training costs 6 × N × D, and one day of serving costs 2 × N × T, where T is the number of tokens served per day. To find how many days of serving equal one training run, you divide the first amount by the second. N sits on both the top and the bottom of that division, so it cancels, and 6 divided by 2 is 3, which leaves 3 × D ÷ T.
+
+Picture a made-up class trip where the bus costs $30 per student, paid once. Lunch costs $10 per student each day, so lunch spending catches up with the bus fare after 3 days. That is true whether 20 students go or 200, because both costs grow with the number of students.
+
+The number of students plays the same part as N, and it cancels for the same reason. The analogy stops matching in what the costs are made of, because compute is arithmetic rather than money. The lab's break-even also depends on two settings, **Training tokens** and **Tokens served per day**, instead of two fixed prices.
+
+**A common mix-up:** a bigger model costs far more to train, so it seems serving should take longer to catch up. But a bigger model also costs more to serve every token. A model with twice the parameters costs twice as much to train and twice as much to serve, so the two costs grow together. Move **Parameters** from 1B to 405B, and both **Training, once** and **Serving, per day** grow while **Days to break even** stays at 600 days.
+
+#### Turning compute into energy
+
+The card's note also turns compute into electricity, using two assumptions about the hardware. It assumes the work runs on A100s, a kind of computer chip built for this arithmetic, running at 40% of their top speed and drawing 400 watts each.
+
+A watt measures how fast a device uses energy, and a watt-hour is the energy used at one watt for one hour. A **megawatt-hour**, written MWh, is a million watt-hours, which is enough to keep a 100-watt light bulb lit for 10,000 hours. With those assumptions, the default training run uses about 75 MWh for the chips alone. So 75 MWh would keep that bulb lit for 750,000 hours, which is more than 85 years.
+
+Serving at the same efficiency uses about 0.12 MWh a day, which looks tiny next to the training figure. It is paid every day, though, so after 600 days it matches the whole training run. The note adds that real decoding, the step where the model writes its answer, usually runs less efficiently than that. That means the chips stay switched on longer for the same amount of arithmetic, so they use more electricity for it. So serving's energy usually catches up even sooner than the compute chart suggests.
+
+### What a risk-based law does, and what it leaves open
+
+The last goal of this lesson is about how rules handle deployments like these. Think of the safety rules for a school science lab, where a risky experiment needs goggles, gloves and a teacher watching, while reading a thermometer needs none of that. The rules grow stricter as the danger grows, but they do not decide whether a particular experiment is worth doing.
+
+Some laws treat AI in the same way, giving more duties to uses that could cause more harm instead of giving every system identical rules. That approach is called **risk-based regulation**, and the main example is the European Union's AI Act. The European Commission, which runs the EU's day-to-day work, describes four levels of risk under it:
+
+- Unacceptable risk covers uses that are banned altogether.
+- High risk covers uses that are allowed but bring extra duties with them.
+- Transparency risk brings duties to be open about AI, such as marking content that was generated.
+- Minimal risk covers uses that add no extra rules at all.
+
+The Act sorts systems mostly by what they are used for, not by how they are built. Its high-risk list includes emergency healthcare patient triage, which is close to the lab's `Clinic intake`, and AI that evaluates learning outcomes in education. Whether a particular system falls under that list depends on what it is meant to be used for.
+
+A high score does not take a use off the list, because the list is about the use and not about the score. Landing on the list brings extra duties and processes that have to be followed.
+
+What the law does not do is decide whether a given deployment is justified. A clinic could follow every duty and still face the lab's open questions: who bears the costs, and who was left out of the benchmark. For a use the law allows, such as triage on the high-risk list, the law says how carefully to go ahead, not whether this particular deployment should go ahead. Only the short list of banned uses gets a flat no. That is where the goggles analogy stops matching, because the Act does ban a few uses outright. Triage is not one of them, so for the clinic the law works just like the goggles rule.
+
+## Why it’s here
+
+Every test asks one particular question, and its score is an honest answer to that question and to nothing else. The Image generator shows this clearly, because its claim 3 says “A published benchmark rates its images above the previous model's for matching the prompt.” That is a real and useful measurement, since it tells you how well the pictures match what people asked for.
+
+The other claims about the same generator ask different questions. Were the training pictures used with the artists' consent? Can the tool fake a real person's face? Can readers tell its pictures from photographs? No amount of skill at matching prompts answers any of those.
+
+Picture a made-up website that reviews phones only on battery life. A phone that scores 10 out of 10 really does have a great battery. But the score says nothing about the camera, or about how the workers who built the phone were treated. Nobody would read that number as the final word on buying the phone, yet a top leaderboard score often gets read in exactly that way.
+
+This lab follows on from **The ecosystem**, which showed that a model release is a bundle of separate parts. Those parts include the model's numbers, its code, information about its data, its license and its model card. A download, in other words, is not a finished product. This lab asks the next question: who pays for each of those parts, and who gets left out when the system is measured?
+
+The answer is often someone other than the buyer, as you can see by looking at who bears each claim across the four deployments:
+
+- In `School tutor`, the district gets the measured benefit, while past students bore the consent cost, contractors bore the labeling work, and the school pays the serving energy.
+- In `Newsroom draft`, the publisher pays for an API, which is a paid service that lets a program send text to someone else's model and get answers back. One more article looks cheap to the publisher, while scraped writers and misled readers carry the costs.
+- In `Clinic intake`, the clinic holds the measured benefit, while patients bear the representation gap, the distribution shift and the dual-use risk.
+- In `Image generator`, the vendor, which is the company selling the tool, holds the benchmark claim, and small studios get the access benefit. Illustrators, photographers, people depicted, readers and newsrooms carry the costs.
+
+You might wonder why the lab does not weigh the claims and give each deployment a score. Any weighting would itself be a choice about whose costs count for more, and that choice belongs to the people affected rather than to a formula. So the lab leaves every question open on purpose, because understanding what a score does and does not measure helps you ask better questions. It cannot choose the deployment for you.
+
+## How to play with it
+
+Work through the cards in order, because each step builds on the one before it.
+
+### 1. Pick a deployment
+
+Set **Deployment** to `School tutor`, and notice that **Score** reads none. **A benchmark speaks to** reads “1 of 5, 1 partly”, which means one claim a test fully covers and one it covers only partly. **For claims** reads 2 and **Against claims** reads 3, which counts the claims on each side and is not a vote.
+
+### 2. Walk the claims
+
+Move **Claim** from `1 For` through to `5 Against`, and read **Who bears it** and **Can a benchmark measure it?** each time. You can also click an entry in the For or Against column to pick it. Pay close attention to `3 For`, the harness claim, and then to `4 Against`, which says what that harness does not represent.
+
+### 3. Split the benchmark
+
+In **Who the benchmark represents**, the slider starts at 30%. At that setting, **Accuracy at 30% B** reads 91.4%, and **Missed urgent per 1,000** reads “27 → 41”, which compares the holdout with your chosen mix.
+
+**Try this:** In **Who the benchmark represents**, drag **Group B share of patients** down to 10%, then up to 50%. At 10%, the readout **Accuracy at 10% B** matches the holdout's 93.1%, and **Missed urgent per 1,000** reads “27 → 27”. At 50%, accuracy reads 89.7%, while **Missed urgent per 1,000** reads “27 → 55”, which is roughly double.
+
+While the slider sits at 50%, look at the “At 50% B” bar under “Missed urgent cases per 1,000”. The hatched group B part now takes up most of that bar, unlike the holdout bar above it. Then read **Equal-opportunity gap**, which says 35 points, and **False-positive gap**, which says 2 points. Move the slider anywhere you like and check that neither gap changes.
+
+### 4. Weigh serving against training
+
+In **Training versus serving**, leave **Parameters** at 7B and **Training tokens** at 2T, so that **Days to break even** reads 600 days.
+
+Next, raise **Tokens served per day** from 10B to 100B, and **Days to break even** falls from 600 days to 60. Push it all the way to 1T, and it falls to 6 days. Now drag it down to 1B, and it climbs to 16.4 years. The chart's note then says “Serving does not reach one training run's compute within ten years at this volume.”
+
+Set **Tokens served per day** back to 10B, then change **Parameters** from 1B all the way to 405B. **Training, once** and **Serving, per day** both grow, but **Days to break even** stays at 600 days. Finally, raise **Training tokens** from 2T to 4T, and the break-even time doubles to 1,200 days, which the readout shows as 3.3 years.
+
+### 5. Notice the missing score
+
+Switch **Deployment** to `Newsroom draft`, then `Clinic intake`, then `Image generator`. Switching resets **Claim** to the first entry, so step through all five claims each time. For each deployment, name two costs that no leaderboard measures and the people who bear them.
+
+## What to notice
+
+- At most one claim per deployment is on a leaderboard, and `Newsroom draft` has none at all, so its **A benchmark speaks to** reads “0 of 5, 1 partly”. In the other three deployments, claim 4 is an Against line that already answers the one benchmark claim beside it.
+- On `Image generator`, the only benchmark claim is about matching the prompt. Consent, likeness and provenance are each tagged as either not on a leaderboard or only partly measurable.
+- The costs fall on people other than the buyer, such as past students, contractors, writers, readers and patients. Meanwhile the district, the publisher and the clinic pay for the system, and the vendor profits from selling it.
+- One accuracy number is an average that can hide a group. At the starting setting of 30%, group B makes up 30% of the patients but 66% of the missed urgent cases, which only a disaggregated evaluation shows.
+- The **Equal-opportunity gap** stays at 35 points and the **False-positive gap** stays at 2 points at every share. In this lab both are fixed by the model's rates for each group, not by the mix of people who walk in.
+- Training energy is paid once, while serving energy keeps growing with use. At 100 billion tokens a day, a model trained on 2 trillion tokens matches its training compute in 60 days, whatever its size.
+
+## Where it breaks
+
+### What this lab fakes or simplifies
+
+- The four deployments, their twenty claims and their tags are teaching sentences written for this lesson. They are not findings from a survey or from interviews with the people affected, nothing ranks them, and the counts are not votes.
+- The triage model is invented, so nothing is trained and both groups' rates are made up and fixed. In real life, groups also differ in how often their cases are urgent, and not only in how often a model makes mistakes.
+- Only two fairness rules are named here, although others exist. One called demographic parity asks that each group be flagged at the same overall rate, whether or not its cases are urgent. Different rules can also disagree about the same model, so passing one does not mean passing the others.
+- The compute is an estimate from formulas, not a measurement. The formulas assume a dense model, meaning one where every parameter works on every token. The estimate also counts one training run only, leaving out the experiments and failed runs that came before it.
+- The formulas also leave out the extra arithmetic needed for very long inputs. They also skip models split into many smaller sections, where each token is sent to only a few of them and so uses only some of the parameters.
+- The energy figure covers the chips only, so it ignores cooling and where the electricity comes from. The 40% speed and the 400 watts are assumptions, not readings from a real data center.
+- How hard the chips really run depends on things like batching, which means handling many requests together, so the one fixed 40% figure is only a rough guess.
+
+### Where the real thing fails
+
+- A test score still cannot finish the question, however good the score gets. Externalities stay off the loss curve, a public web page is not consent, and a model card is not accountability by itself.
+- Published energy figures often cover only the final training run, leaving out the experiments and failed runs that came before it. Real energy use also depends on the hardware, how hard it runs, how efficient the data center is, and how the local electricity is made.
+- A model tested on last year's patients can be used on a different group next year. Distribution shift and missing groups change who bears the errors, and not only how many errors there are.
+- A provenance mark helps only while it survives editing and someone checks it. Meeting a fairness rule says nothing about whether the labels were right, and a risk-based law sets duties without deciding whether any given deployment is justified.
+
+People often treat a top score as a finished ethics argument. The score answered the test, and that answer can be true and useful. It says nothing about who was left out of the test, who labeled the data, whose work was used without asking, or who is accountable when it goes wrong.
+
+## Going deeper
+
+### Rules and frameworks, checked 30 September 2026
+
+Laws and standards now name deployments like the ones in this lab. Three are worth knowing by name: the EU AI Act, the NIST framework and ISO/IEC 42001. All three set duties and processes without deciding whether a deployment is justified.
+
+- The **EU AI Act's risk levels** are the risk-based regulation described above, with four levels running from banned uses down to uses with no extra rules. Its list of high-risk uses sits in a part of the law called Annex III, which includes emergency healthcare patient triage and AI that evaluates learning outcomes in education.
+- The **EU AI Act's transparency rules** sit in a part of the law called Article 50. It asks the makers of tools that generate audio, images, video or text to mark the results, so that a computer can detect them as generated.
+- Article 50 also says that people who publish deepfakes, which are realistic fake images, audio or video, have to say so. AI-written text published to inform the public must be disclosed too, unless a person has reviewed it and takes editorial responsibility for it.
+- The **NIST AI Risk Management Framework** comes from NIST, a US standards agency, and it is voluntary rather than a law. Released in January 2023, it is organized around four activities called Govern, Map, Measure and Manage, and a companion guide for generative AI, called a profile, followed in July 2024. Generative AI means AI that makes new text, images or sound.
+- **ISO/IEC 42001** is an international standard, published in 2023, that sets requirements for how an organization sets up and keeps improving the way it manages its own AI. It is about an organization's processes, not about how any one model behaves.
+
+The transparency rules connect to two of the lab's deployments. A provenance mark is the kind of mark Article 50 asks generator makers to add. The Newsroom draft, meanwhile, raises the question of who reviewed a story and takes responsibility for it.
+
+The schedule is the part that keeps moving. As the European Commission's timeline for the Act read on 30 September 2026, its parts apply from these dates:
+
+- The bans on unacceptable-risk uses applied from 2 February 2025.
+- The rules for general-purpose AI models, meaning large models built to be used for many different tasks, applied from 2 August 2025.
+- Most other rules, including Article 50, applied from 2 August 2026.
+- The Annex III high-risk rules apply from 2 December 2027.
+
+That last date was moved later by a change to the law called the Digital Omnibus on AI. Check the current text before relying on any of these dates, because one of them has already moved.
+
+### More about the fairness rules
+
+The names equal opportunity and equalized odds come from a 2016 research paper by Hardt, Price and Srebro. Both rules compare error rates group by group, which is why they can spot a problem that one overall accuracy number hides. Demographic parity is another rule from the same family of group-fairness rules, and because it asks a different question, it can give a different verdict on the same model.
+
+### More about the compute estimate
+
+The `6·N·D` and `2·N` formulas are rules of thumb for dense models, and real systems can differ from them in several ways. Very long inputs add extra work beyond the formula, and models split into many smaller sections, called mixture-of-experts models, use only some of their parameters for each token. The 40% figure for how hard the chips run is one fixed assumption, and real answering usually runs less efficiently than training, which brings the energy break-even sooner.
+
+### Where to go next
+
+**The ecosystem** is the lab to read first, because it shows the parts of a release that this lab asks about. **How we know a model works** and **Evaluation** explain how a test harness can look fine and still mislead. **Failure modes, safety, and security** treats dual use as a security problem, while here it stays a question for the people a deployment affects.

@@ -1,0 +1,226 @@
+---
+objectives: ["Relate width to model capacity, and show with real training a task where depth beats width at the same parameter count", "Explain hidden representations", "Show why a nonlinearity is required for depth to add anything", "Tell memorizing noisy labels from learning the pattern by comparing training and held-out accuracy"]
+terms: ["Hidden layer", "Representation", "Width and depth", "Nonlinearity", "Universal approximation", "Feature hierarchy", "Distributed representation", "Capacity", "Parameter count", "Forward pass and backpropagation", "Binary cross-entropy", "Gradient descent, momentum, and epochs", "Initialization", "Overfitting and held-out data"]
+---
+
+## The big picture
+
+*A single neuron* showed one unit splitting its input with one straight boundary. This module stacks
+units: side by side in a **hidden layer**, all reading the same inputs with their own weights, and
+layer on layer, each reading the one before. **Width** is the number of units in a layer; **depth**
+is the number of hidden layers.
+
+The question is what a stack can compute that one neuron cannot. Each hidden layer rewrites its input
+into a **representation**, a vector the next layer finds easier to use, and a nonlinear activation
+keeps the stack from collapsing into one **affine map**, a linear map plus a constant. The module
+also asks whether the shape of a fixed parameter budget matters, and how to tell learning a pattern
+from memorizing labels.
+
+### Where it shows up
+
+- **Every later architecture** answers "what should the layers be?" A transformer block is a hidden
+  layer with structure: one sublayer mixes information across positions, one transforms each
+  position independently.
+- **Convolutional, recurrent, and mixture-of-experts layers** are hidden layers that share or route
+  their weights.
+- **Feature hierarchies** form across depth: edges then object parts in vision models, surface form
+  then syntax in language models.
+- **Interpretability** has to work with **distributed representations**: a hidden vector spreads its
+  encoding across many units, so single units rarely mean one clean concept.
+
+### Why it matters
+
+One neuron gives one straight cut, so XOR, where each class holds one diagonal's pair of opposite
+corners, is out of reach. A hidden layer lets the next unit combine several cuts into a bent
+boundary, but only through a nonlinearity: without one, linear layers compose into one affine map
+however many you stack.
+
+**Capacity**, how complex a function a network can express, cuts both ways. Given enough epochs, a
+large network can fit wrong training labels along with the pattern, and training accuracy alone
+cannot tell memorized labels from a learned pattern.
+
+### What you will be able to explain
+
+- How width limits what one hidden layer can express and find, and a measured task where depth
+  beats width at the same parameter count.
+- What a hidden representation is, and how a trained hidden layer moves XOR's points so one straight
+  line separates them.
+- Why depth adds nothing without a nonlinearity between layers.
+- How comparing training and held-out accuracy separates memorized noisy labels from a learned
+  pattern.
+
+### What the lab shows
+
+A two-input network trains in the app for 300 epochs of full-batch gradient descent with momentum.
+Every accuracy and loss on every card is measured from real training on small, fixed synthetic
+datasets; the lab's seed, which **New initialization** changes, sets only the starting weights.
+Accuracy is on training points everywhere except **Held-out data**.
+
+- **Network training controls**: **Dataset**, **Hidden activation** (`tanh`, `ReLU`,
+  `none (linear)`), **Hidden layers**, **Neurons per layer**, **Training epochs** (replays the saved
+  run), **Train 50 epochs**, and **New initialization**.
+- **Decision surface** and **Network builder**: the output across the input square, and one tile per
+  unit, with **Probe x₁** and **Probe x₂** tracing the forward pass at one point.
+- **Depth against width**: two fixed 85-parameter shapes, one wide and one deep.
+- **Held-out data**: a narrow and a large network trained on the Ring and scored on 120 points they
+  never train on, with **Training labels** set to `Clean` or `20% flipped` and **Curves** set to
+  `Accuracy` or `Loss`; these networks always use tanh units.
+
+The key experiment: on `Checkerboard` with `tanh` and 300 epochs, two layers of 7 fit most of the
+board while one layer of 21 stays near chance. Switch to `ReLU` and the wide network ties or wins, so
+the result belongs to this task, activation, and training budget, not to depth in general.
+
+## What it is
+
+A **hidden layer** is a set of neurons reading the same inputs in parallel, each with its own
+weights and bias. A layer of `m` units over `n` inputs is `h = f(Wx + b)`, with `W` of shape
+`[m, n]`. Its output vector is the layer's **representation**: a rewriting of the input that
+the next layer finds easier to use.
+
+### What this lab runs
+
+A real network: 2 inputs, 1 to 3 hidden layers of 1 to 6 units, and one sigmoid output. It
+trains by full-batch gradient descent with momentum on mean binary cross-entropy, and every
+epoch's weights are kept so the **Training epochs** slider replays the run. Backpropagation is
+exact and checked against finite differences. Three datasets are available: XOR, Ring, and a 4 × 4
+Checkerboard of 64 points.
+
+Two more cards train fixed networks beside it. **Depth against width** compares two shapes with the
+same number of parameters. **Held-out data** scores networks on points they never trained on.
+
+Those training terms are defined in the glossary and taught in the next labs: Loss & gradient
+descent covers the loss, the step, and momentum, and Backpropagation covers where each
+weight's gradient comes from. Until then, read the training step as nudging every weight to
+lower one loss number.
+
+### Why the activation is load-bearing
+
+Compose two affine maps and you get `W₂(W₁x + b₁) + b₂ = W'x + b'`, still one affine map.
+Without a nonlinearity, depth buys nothing. In the lab, `none (linear)` leaves XOR at 50% and
+the loss at 0.693 = ln 2, the loss of answering 0.5 everywhere, even at 3 layers of 6.
+
+### How two units solve XOR
+
+At the defaults (one layer of 2 tanh units, seed 2) the trained units are
+`h1 = tanh(−4.11x₁ + 4.20x₂ + 1.97)` and `h2 = tanh(4.46x₁ − 3.82x₂ + 2.79)`. Both label-0
+clusters map near `(h1, h2) = (1, 1)`; the label-1 clusters map to `(1.00, −0.97)` and
+`(−0.99, 1.00)`. In that space one line separates them: the output `σ(−6.39h1 − 6.36h2 + 5.74)`
+fires only when `h1 + h2` is below about 0.9.
+
+### Depth against width at the same size
+
+Width alone solves XOR and Ring, so neither can separate depth from width. The Checkerboard can.
+**Depth against width** trains two fixed networks with 85 parameters each: one hidden layer of 21
+units, and two hidden layers of 7.
+
+With tanh units, at seed 2 and 300 epochs, the one-layer network ends at 56.3% and the two-layer
+network at 87.5%. Across seeds 1 to 6 the first ends between 46.9% and 57.8%, the second between
+81.3% and 100%. On XOR and Ring both shapes reach 100% at every seed.
+
+The claim is narrower than it looks. Switch **Hidden activation** to ReLU and the order turns around:
+the one-layer network ends between 85.9% and 100%, level with or ahead of the two-layer network (68.8%
+to 100%) on every seed. Nor does the lab show that one wide layer cannot represent the board. It shows
+that this optimizer, in 300 epochs, did not find it with tanh units.
+
+### Held-out data and label noise
+
+Every number above is scored on the points the network trained on. **Held-out data** are points it
+never trains on. The Held-out data card keeps the Ring's 60 training points and adds 120 fresh ring
+points. **Training labels** can be Clean or 20% flipped: 12 of the 60 labels are swapped, the same 12
+every time. That is label noise.
+
+A narrow network (1 layer of 3 units, 13 parameters) and a large one (2 layers of 6, 67 parameters)
+train on it. With clean labels both reach 100% on the training points and at least 99% on the
+held-out points at seeds 1 to 6.
+
+With flipped labels, at seed 2 and epoch 300, the large network scores 96.7% on its training points
+and 79.2% on the held-out points. Its training loss falls to 0.07 while its held-out loss bottoms out
+near 0.28 at epoch 71 and climbs to 0.99. The narrow network scores 90.0% and 91.7%.
+
+Across seeds 1 to 6 the large network's gap between the two is at least 15 points; the narrow network's
+is at most 7. That gap is **overfitting**: fitting wrong labels, which do not repeat on new points.
+
+## Why it’s here
+
+This is where "learning features" becomes concrete. A single neuron matches one template. A
+stack discovers intermediate quantities nobody specified, because the only pressure on them is
+that the final output be correct.
+
+It is also where the course first scores a network on points it did not train on, the habit that
+Training dynamics builds on.
+
+## How to play with it
+
+Set **Neurons per layer** to `1`: XOR stalls at 75%. Set it to `2`: the two first-layer lines
+appear on **Decision surface** and every point is correct from epoch 28. Drag **Training
+epochs** to `0` and press **Train 50 epochs** to watch the loss fall.
+
+Raise **Hidden layers** and compare tiles in **Network builder**. Move **Probe x₁** and
+**Probe x₂** and read each unit's value. Then try **Hidden activation** `none (linear)`,
+**New initialization**, and **Dataset** `Ring`.
+
+Set **Dataset** to `Checkerboard` and **Training epochs** to `300`. In **Depth against width**,
+compare the two 85-parameter networks, then switch **Hidden activation** to `ReLU` and press **New
+initialization** through a few seeds. In the main controls, try 1, 2, and 3 **Hidden layers** of 6
+neurons: at seed 2 with tanh they end at 54.7%, 93.8%, and 100%, with 25, 67, and 109 parameters.
+
+In **Held-out data**, drag **Training epochs** to `300` and switch **Training labels** between
+`Clean` and `20% flipped`. Set **Curves** to `Loss` and watch the dashed held-out curve of the large
+network turn upward.
+
+## What to notice
+
+- First-layer tiles are always split by one straight edge; second- and third-layer tiles bend.
+  Composition is visible.
+- Width changes what is expressible. On Ring, one layer of 2 units reaches 86.7% at seed 2;
+  3 units reach 100% from epoch 74.
+- Width also changes what is findable. With 2 units, seeds 1 and 3 stick at 62.5% and 68.8%
+  (loss about 0.35); with 3 or more, seeds 1 to 6 all solve XOR.
+- At the same size the shape can matter. On the Checkerboard with tanh, 2 × 7 beats 1 × 21 at every
+  seed from 1 to 6; with ReLU, 1 × 21 does at least as well.
+- With clean labels the gap between training and held-out accuracy is about zero. With 20% flipped,
+  the large network's training accuracy rises while its held-out accuracy falls behind.
+- `Parameters` counts `n_in × n_out + n_out` per layer: 9 at the default, 109 at 3 layers of 6.
+
+## Where it breaks
+
+### In this lab
+
+The network has two inputs, at most 64 training points, a fixed learning rate of 0.5 with
+momentum 0.9, and 300 epochs. **Decision surface** and the training controls report training
+accuracy only. Held-out points are scored only on **Held-out data**, on the Ring, with tanh units and
+one fixed set of 12 flipped labels; flipping a different 12 changes the size of the gap. The
+decision surface is drawable only because there are two inputs.
+
+**Depth against width** has one dataset where the shapes come apart, only with tanh, and only within
+300 epochs. A longer run might close the gap, and with ReLU the wide network does. Depth stacked on a
+one-unit layer does nothing, because every layer after it receives a single number.
+
+### In real systems
+
+More capacity does not reliably mean better results: past a point the network fits noise in
+its training set, which Held-out data shows and Training dynamics shows with polynomial fits. A
+held-out set also stops being held out once you use it again and again to choose models.
+
+Depth adds an optimization problem as well as expressive power. Gradients multiplied through many
+layers decay or blow up: in the Backpropagation lab's Gradient flow card, twelve layers of sigmoid
+units with sensible starting weights leave the first layer's gradient at 1.2e-7 of the last layer's.
+Plain deep stacks were hard to train until normalization and residual connections became standard.
+
+A hidden vector is a **distributed representation**. Unit 3 rarely means one clean concept;
+units often respond to several unrelated features, the superposition problem the
+interpretability labs take up.
+
+## Going deeper
+
+Universal approximation results say one hidden layer of sufficient width, with a
+non-polynomial activation, can approximate any continuous function on a bounded domain. They
+are existence proofs, silent on width, trainability, and data. For many functions a deep
+network needs far fewer units than a shallow one, because it reuses intermediate results; the
+Checkerboard comparison is one small case, with the caveats above.
+
+That reuse makes a **feature hierarchy** possible: edges then object parts in vision models,
+surface form then syntax then task structure in language models. Specialized layers share or
+route weights: convolutions reuse a filter across positions, recurrent layers reuse a layer
+across time, and mixture-of-experts layers send each token to a few of many sublayers. Loss &
+gradient descent, next, opens up the training step this lab ran for you.

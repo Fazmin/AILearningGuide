@@ -1,0 +1,227 @@
+---
+objectives: ["Explain what a chat template adds to raw completion data", "Identify which part of the sequence the model is asked to produce", "Predict what training without an end-of-turn marker does to a model's sense of where a reply stops", "Predict how serving a trained model with a format it did not train on changes what it does next"]
+terms: ["Supervised fine-tuning", "Chat template", "Special token", "System prompt", "End-of-turn token", "Loss masking", "Template mismatch", "Instruction following", "Role markers", "Packing", "Nats", "Pretraining", "Superficial alignment hypothesis", "Multi-turn data"]
+---
+
+## The big picture
+
+This module is about the format of supervised fine-tuning (SFT) data for chat. SFT keeps
+pretraining's next-token loss and changes two things: a chat template lays out each instruction and
+response with markers for the system prompt, each speaker's turn and the end of a turn, and a loss
+mask decides which parts are graded.
+
+The question is what that layout teaches that plain text cannot: where a reply starts, where it
+stops, and whose words are whose. It builds on *Fine-tuning & transfer*, which trained existing
+weights on new data, and *Post-training*, where SFT is the first stage after pretraining.
+
+### Where it shows up
+
+- **Model releases.** Models ship their template as code, usually a Jinja `chat_template` in the
+  tokenizer configuration.
+- **SFT recipes.** Most grade only the assistant turns, including every assistant turn of a
+  multi-turn conversation.
+- **Tokenizers.** Each marker gets a dedicated id, a special token, so it can mean only structure
+  as long as the serving stack never produces that id from user text.
+- **Serving stacks.** Inference libraries render the model's template and append the opening
+  assistant marker, so generation starts in the right place.
+
+### Why it matters
+
+Pretraining teaches a model to continue text, not to take turns, so answering a request instead of
+extending it has to be learned from formatted examples.
+
+The format also has to survive deployment. Serving a model with a format it did not train on raises
+no error, so the damage is easy to miss, and a marker that user text can forge undoes the system
+prompt's privilege.
+
+### What you will be able to explain
+
+- What a chat template adds to raw completion data.
+- Which part of the sequence the model is asked to produce, and which parts it only reads.
+- What training without an end-of-turn marker does to a model's sense of where a reply stops.
+- How serving a trained model with a format it did not train on changes what it does next.
+
+### What the lab shows
+
+Two tiny models train live on the same pairs, budget and loss rule: one on templated text, one on
+plain concatenation. Each is a character bigram, a 30 × 30 table of logits trained from zero, so it
+predicts from one preceding character. Every number is trained and measured. The default pairs, the
+system sentence and the held-out reply are fixed text, and markers are spelled in letters rather
+than reserved ids.
+
+In **Chat template editor**, **System block**, **Role markers** and **End-of-turn marker** edit the
+string, **Loss on** picks `Assistant reply only` or `Every character`, and the strip marks each
+character as graded or context only. **Supervised dataset editor** takes your own pairs and **SFT
+epochs**, and **Two models, two formats** compares the two runs.
+
+The key experiment is the stop signal. At the defaults, under **What follows the end of a turn**,
+the templated model puts most of its probability on `<` after a reply's full stop, while the plain
+model's row is untrained. With **Loss on** at `Assistant reply only`, switch **End-of-turn marker**
+off and the templated row is untrained too.
+
+Then, under **Serve the trained models**, switch **Serve with** between `Chat template`,
+`No template` and `Wrong role marker`, remembering that each model sees only the served string's
+last character.
+
+## What it is
+
+**Supervised fine-tuning** is next-token training on curated instruction-and-response pairs. The
+per-token loss is the same cross-entropy used in **pretraining**. Two things change: the text is
+formatted as a conversation, and usually only the reply is graded.
+
+A **chat template** is the exact string a list of messages becomes. The three switches in **Chat
+template editor** each add or remove one part: **System block** prepends a **system prompt**,
+**Role markers** wrap the turns in `<user>` and `<assistant>`, and **End-of-turn marker** closes
+every turn with `<end>`.
+
+### Which characters are graded
+
+**Loss masking** is the second half. With **Loss on** set to `Assistant reply only`, the loss
+counts only the reply and the `<end>` that closes it. The system text, the user's words and their
+markers are read as context — they condition the next prediction — but the model is never graded
+on predicting them. `Every character` switches the mask off, which is exactly pretraining's rule.
+
+The strip draws the first example one character per cell. At the defaults 52 of its 137 predicted
+characters are graded.
+
+### The markers are reserved symbols
+
+The vocabulary is 30 characters: space, `a`–`z`, a full stop, and `<` and `>`. The angle brackets
+appear in no corpus and are stripped from anything you type, so `<user>` and `<end>` can only ever
+mean structure. A real tokenizer gets the same property from dedicated **special token** ids.
+
+Here the markers are spelled in letters, so `<end>` shares the rows for `e`, `n` and `d` with
+ordinary text. A real marker is one id with its own row.
+
+## Why it’s here
+
+Scraped text does not say whose turn it is. Asked "how long should it simmer", a raw predictor may
+continue with another question, because that is what follows questions on a page. The template
+supplies two things plain concatenation cannot, and **instruction following** is the behaviour they
+make learnable.
+
+First, a boundary: after `<assistant>`, everything is the model's own output, and that is exactly
+the span the mask grades. Second, an **end-of-turn token** for the decoder to stop on. Without it
+generation does not end; the model keeps writing, often inventing the next user turn.
+
+## How to play with it
+
+Toggle **System block**, **Role markers** and **End-of-turn marker** one at a time and watch the
+strip. Then find where the graded cells begin: right after `<assistant>`.
+
+Compare the three readouts under the strip. At the defaults the graded characters average 2.11
+**nats** of surprise and the context-only ones 2.92. Switch **Loss on** to `Every character`: all 137
+are graded, averaging 1.99.
+
+Write your own pair in **Supervised dataset editor**, then move **SFT epochs** and watch **Reply
+log-prob per char, templated**. Then switch **End-of-turn marker** off and compare the two lists
+under **What follows the end of a turn**.
+
+### Serve a different format
+
+Under **Serve the trained models**, switch **Serve with** between `Chat template`, `No template`
+and `Wrong role marker`. The box shows the exact string sent. Under the chat template, the first
+reply character `t` gets 18% from the templated model and 3% from the plain model: the plain model
+never saw a bracket in front of anything, so its row is untrained and every character gets 1/30.
+With `No template` the two read 22% and 25%.
+
+Now set **Loss on** to `Every character` and serve the chat template again. The templated model
+puts 37% on `<` after the bracket, and its sample opens with a marker instead of a reply. Grading
+the prompt taught it that a bracket is followed by a marker.
+
+## What to notice
+
+- With the full template and the mask, the templated model puts 54.4% on `<` after a reply's full
+  stop. The plain model puts 3.3% on every character there: nothing ever followed a full stop in its
+  data, so that row never trained.
+- Switch **End-of-turn marker** off, keeping the mask, and the templated model falls to 3.3% too.
+  The only thing that taught it to expect a marker was the graded `<end>`.
+- With `Every character`, the end marker off still leaves 55% on `<`. The model learned it from the
+  system prompt's `plainly.` followed by `<user>` — a boundary it was never meant to be graded on.
+- The mask changes what is learned about the prompt. Context characters stay surprising, 2.92 nats
+  against 2.11, because the model is not trained to write user turns.
+- The template still costs a little on the reply: −2.228 per character against −2.168 for plain
+  under the mask, and −2.425 against −2.129 without it. The marker letters compete with the
+  reply's letters for the same rows.
+- A plain-trained model served the chat template does not error. It answers from a row nobody
+  trained, so its next-character bars are flat at 3.3%.
+- Dropping the template barely touches the templated model: 22% on `t` against 18%. That is an
+  accident of one-character context, because its space row was trained on the replies' own words.
+  It does not show that templates are optional.
+- `Chat template` and `Wrong role marker` give identical bars. Both strings end in `>`, and a
+  one-character model cannot tell `<user>` from `<assistant>`. A model with real context reads the
+  whole marker.
+- The held-out reply scores −2.86 per character against −2.23 for the first trained reply. A score
+  on the data a model trained on flatters it.
+
+## Where it breaks
+
+**In this lab.** Every number is trained and measured. The model conditions on one preceding
+character through 900 logits, so "knowing a turn ended" means one thing: the row for `.` points at
+`<`. Four examples is not a dataset, both models start from zero rather than from a pretrained
+base, and markers are characters, not ids.
+
+Serving is probed, but only through one character. Each model reads the last character of the
+served string, so a template mismatch shows up as one different table row. The cost real models
+pay, reading a whole unfamiliar prompt at every position, cannot appear. Each sample is one seed at
+one temperature, and the held-out reply is a single sentence.
+
+The two reply scores cover the same characters, divided by the same count, each conditioned on its
+own format. That makes them comparable, but they still come from two differently formatted
+datasets, so read the gap as a hint.
+
+**In real systems.** **Template mismatch** is the common failure and it is silent: the model
+receives a string from a distribution it never trained on, and quality sags. A serving stack that
+builds prompts by string concatenation can also tokenize `<end>` as ordinary characters instead of
+the reserved id, which looks identical in a log.
+
+Forgeability is the security version. A **system prompt** is privileged only because the template
+and the training data agreed to treat it that way. If the tokenizer turns a typed marker into the
+real id, user text can claim to be a system turn. Reserved ids close that hole only when the
+serving stack keeps them out of user text.
+
+## Going deeper
+
+Models ship their template as code, usually a Jinja `chat_template` in the tokenizer
+configuration, and inference libraries render it. At generation time the template also appends the
+opening assistant marker, so the model starts in the right place.
+
+Masking is a choice, not a law. Most SFT recipes grade only assistant turns. Some work finds that
+also grading the instruction helps when replies are short and data is scarce, so treat the mask as
+a hyperparameter.
+
+### What SFT data teaches
+
+The **superficial alignment hypothesis** is the proposal that a model's knowledge and capabilities
+are learned almost entirely in pretraining, and that alignment teaches which format of response to
+use with users. Zhou et al. (2023, "LIMA: Less Is More for Alignment", arXiv 2305.11206) tested it
+by fine-tuning a 65B-parameter LLaMA model on 1,000 curated prompt-and-response pairs.
+
+Their ablations on a 7B model point the same way. Filtering 2,000 Stack Exchange examples for
+quality moved a ChatGPT-graded helpfulness score by about 0.5 points on a six-point scale, while
+doubling the amount of data did not improve response quality. Read this as evidence for a
+hypothesis about format and style, graded by a model, not as proof that SFT adds no knowledge.
+
+### Multi-turn data
+
+The lab's examples have one instruction and one reply. Real chat data has several turns, and the
+template repeats: a user block, an assistant block, a user block again. The masking rule extends
+directly: train the conversation as one sequence, grade every assistant turn, and read every user
+turn as context.
+
+**Multi-turn data** matters because single-turn tuning can lose the thread. In the LIMA paper, a
+model tuned on 1,000 single-turn examples failed to follow the prompt within three interactions in
+6 of 10 test conversations. Adding 30 multi-turn chains raised the share of excellent responses
+from 45.2% to 76.1%.
+
+### Packing
+
+**Packing** fills the context window by concatenating short examples into one sequence. It saves
+compute: Krell et al. (arXiv 2107.02027) found that up to 50% of the tokens in common NLP datasets
+can be padding.
+
+It also needs care. Each example still needs its own end marker, and unless the attention mask
+blocks attention across the boundary, one example can read the one before it. Here every example is
+its own sequence, so nothing is packed and no transition crosses from one example into the next.
+
+A new marker needs a new token id and a new embedding row, so adding one resizes the model.

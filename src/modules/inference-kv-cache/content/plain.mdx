@@ -1,0 +1,534 @@
+---
+objectives: ["Separate prefill from decode", "Explain the KV cache memory-speed trade-off", "Predict how draft length and draft quality set the tokens one verification pass yields in speculative decoding"]
+terms: ["Prefill", "Decode", "KV cache", "Grouped-query attention", "Time to first token", "Inter-token latency", "Memory bandwidth bound", "Compute bound", "Arithmetic intensity", "Roofline model", "Batching", "Continuous batching", "PagedAttention", "Speculative decoding", "Prefix caching", "Quantization"]
+---
+
+## The big picture
+
+When you send a message to a chatbot, there is usually a short pause before the reply appears a few
+words at a time, as if someone were typing. This module is about what happens during that pause and
+that typing. It shows how a trained model reads your message and writes its answer, and how the whole
+process is kept fast and cheap enough to be useful.
+
+The work happens in two stages: first the model reads your entire message in one go, and then it
+writes the answer one small piece at a time. Every one of those pieces needs another full trip through
+the model. The pause before the first word comes mostly from the reading, while the speed of the text
+streaming in afterward comes from the writing.
+
+Writing one piece at a time hides a trap. Each new piece looks back at every piece before it, so
+without a shortcut the model would redo the whole conversation's work every time it added one piece.
+Long answers would then slow to a crawl. The shortcut is to save some numbers for every earlier piece
+and reuse them, a store called the **KV cache**. It saves a huge amount of time but costs memory, and
+on a real model serving many people, the saved numbers can take more room than the model itself.
+
+You have met the effects of these two stages and the cache even if you have never seen the names. The
+reading stage is the reason a very long document makes a chatbot pause before its first word. The
+split between reading and writing explains why AI price lists charge less for the words you send than
+for the words you get back. And the cache's memory decides how many people one machine can serve at
+the same time.
+
+One more trick speeds up the writing stage: a small, quick model drafts a few pieces ahead, and the
+big model checks the whole draft at once. Keeping the pieces that pass often gets more than one piece of
+text out of each slow trip through the big model, and the trick is called **speculative decoding**.
+
+By the end of this module you will be able to:
+
+- tell the reading stage, called **prefill**, apart from the writing stage, called **decode**, and say
+  why one can handle the whole message at once while the other cannot;
+- explain what the KV cache saves, what it costs in memory, and why that makes it a trade of memory
+  for speed;
+- predict how many pieces of text one check by the big model produces in speculative decoding, from
+  how long the draft is and how good the drafting model is.
+
+In the lab, a small grid shows exactly which pieces of work each step does, with the cache switched on
+or off. Its counts are exact for that tiny example. Next, a memory bar and a set of timing bars work
+out estimates for a real model on a real chip. They use the model's published size and the chip's
+advertised top speeds, so nothing is actually run or timed. There you can watch the saved numbers
+outgrow the model and see why writing is slow. The last card runs a tiny practice model that writes
+one letter at a time, so you can watch a drafting model's guesses being kept or refused.
+
+## What it is
+
+### Tokens, layers and passes
+
+A chatbot does not write in whole words but in **tokens**, small chunks of text that are often a whole
+word and sometimes only part of one. The model itself is a tall stack of **layers**, and each layer
+does its own round of arithmetic on the text. That arithmetic uses billions of numbers that were set
+during training, called **weights**. One trip of the text through every layer, from the bottom of the
+stack to the top, is called a **pass**.
+
+### Prefill: reading the whole prompt at once
+
+Picture your class reading a printed paragraph together: every word is already on the page, so
+different students can work on different words at the same time.
+
+A model reads your prompt, the message you sent it, the same way. Since the prompt is complete before the model starts, all of
+its tokens travel through each layer together, side by side, in a single pass. This stage, called
+**prefill**, ends by predicting the first token of the answer, which is why the first word can appear
+as soon as prefill is done. In the lab, a prompt of 7 tokens goes through as one pass, and you will
+see all of its work light up at once.
+
+### Decode: writing one token per pass
+
+Now picture the same class writing a story in a group chat, where each person adds one word and nobody
+can add the next word until the previous message arrives. However fast everyone types, the story grows
+by one word per message, because each new word depends on the one before it.
+
+Writing an answer works like that group chat, because each new token needs its own full pass through
+the model. That pass cannot start until the token before it exists, since the newest token is exactly
+what the next pass takes in. This stage is called **decode**, and it is why answers stream in piece by
+piece. A reply of 20 tokens therefore needs the prefill pass, which gives the first token, followed by
+19 decode passes, one after another.
+
+Where the classroom picture stops matching: prefill and decode are not two different machines. They
+use the very same layers and the very same rules, and the only difference is whether the tokens
+already exist when the pass begins.
+
+### Why writing is slow: a delivery problem
+
+The chip that runs the model has two parts that matter here: a calculating section that does
+arithmetic astonishingly fast, and a large memory that holds the weights. During every pass the
+weights must travel from memory to the calculators, and the connection between them can carry only so
+much data per second, a limit called **memory bandwidth**.
+
+Computer memory is counted in **bytes**, where a byte is a group of 8 tiny on-off switches, each
+called a **bit**. The lab's real model, Llama 3 8B, has about 8 billion weights and stores each one in
+2 bytes, using a 16-bit number format called bf16. A gigabyte (**GB**) is a billion bytes, so its
+weights fill 16.1 GB, and the chip it runs on, an H100 SXM, has 80 GB of memory in total.
+
+Picture a delivery truck that has to bring the model's weights to the calculators for every single
+pass. One part of the weights is a table of about 1 GB that turns each token into its starting list of
+numbers. A pass only looks up one row of that table for each token, so the truck really carries about
+15 GB, the other weights, on every trip.
+
+A real chip also usually serves many people's conversations at the same time. One delivery of the
+weights can then be shared by all of them, as you will see later. During prefill, one delivery serves
+every token of the prompt, so the calculators have a whole prompt's worth of arithmetic to do, and
+they become the slow part. For prompts longer than a few hundred tokens, that makes prefill **compute
+bound**: its time is set by the arithmetic, and the lab tags it `compute-bound`.
+
+During decode, the same full delivery produces only one new token for each conversation. The
+calculators finish that small job almost instantly and then sit idle until the next truck arrives.
+That makes decode **memory bandwidth bound**: its time is set by how fast memory can deliver, and the
+lab tags it `memory-bound`. Writing is slow not because the math is hard, but because every new token
+needs the weights delivered all over again.
+
+The lab's numbers, given in milliseconds (ms), or thousandths of a second, show how lopsided this is.
+One decode step for one conversation takes 4.8 ms, yet the arithmetic alone would take only 0.02 ms,
+so almost the whole step is spent waiting for the delivery. Where the truck picture stops matching:
+nothing gets used up, and the very same weights are fetched again, unchanged, for every pass.
+
+One arithmetic step, such as a single multiplication, is called a **FLOP**. **Arithmetic intensity**
+is the number of FLOP the chip does for each byte that memory delivers. This chip can do about 295
+FLOP in the time its memory delivers one byte. So it keeps its calculators busy only when the work
+does at least about 295 FLOP per byte, which the timing card calls the switch point.
+
+Decode falls far short of that. Each weight takes 2 bytes to deliver, and for one new token it is used
+for one multiplication and one addition. That is about 2 FLOP for every 2 bytes, or close to 1 FLOP
+per byte. Attention's work on the saved notes, which you will meet next, pushes a decode step for one
+conversation up to about 1.2 FLOP per byte. That is about 250 times too little, which is why the
+calculators spend most of their time waiting.
+
+### The KV cache: notes that never change
+
+To see what can be saved, you need one idea from attention, the step where tokens gather information
+from each other. In every layer, each token turns itself into three lists of numbers. A **query** (Q)
+describes what the token is looking for, and a **key** (K) is a label describing what it offers. A
+**value** (V) is the information it hands over when it is picked.
+
+Each token compares its query with the key of itself and of every earlier token. A comparison
+multiplies the two lists number by number and adds up the results to give one score, and a high score
+means a good match. With tiny three-number lists, (1, 2, 0) and (3, 1, 5) give 1 × 3 + 2 × 1 + 0 × 5,
+which is 5. Real lists in Llama 3 8B hold 128 numbers, so one comparison takes 128 multiplications and
+the additions that go with them. The lab counts each whole comparison as one `Q·K` product. The token
+then blends together the values of the tokens that matched best.
+
+There is one strict rule: a token may look only at itself and at tokens before it, never at tokens
+after it. This backward-only rule is called the **causal mask**, and it applies during prefill too,
+which is why the lab's grid only ever fills a triangle.
+
+Because of the causal mask, a token's key and value depend only on that token and the ones before it,
+so nothing that comes later can ever change them. That means they can be worked out once and kept, and
+the store that keeps one key and one value for every token is the **KV cache**. The scores are not
+kept, though: each one is used once and thrown away, since every new token needs fresh scores for its
+own query.
+
+Picture a long meeting where every speaker, on finishing, sticks a note on the wall. The note has a
+short label saying what they talked about and a summary of what they said. When someone new stands up,
+they read the wall instead of calling every earlier speaker back to repeat themselves. Nobody ever
+rewrites a note, because what was said cannot be unsaid. The labels are the keys, the summaries are
+the values, and the wall is the KV cache.
+
+Where the meeting picture stops matching: the notes are lists of numbers rather than sentences, and a
+real model keeps a separate wall in each of its layers. Llama 3 8B has 32 layers, and each one keeps 8
+sets of notes side by side, for a reason explained a little further on.
+
+To see the saving in the lab, take 7 prompt tokens and 4 generated ones, so the fourth decode step has
+11 tokens in all. With the cache, that step works out a new query, key and value for the newest token
+only. It compares that query with all 11 keys, its own included, which makes 11 products, and it reads
+the 10 stored keys and values. Without the cache, the same step reworks all 11 tokens and computes the
+whole triangle. Token 1 makes 1 comparison, token 2 makes 2, and so on up to token 11. Adding 1 + 2 +
+3 and so on up to 11 gives 66 products.
+
+### The price: memory
+
+The cache trades memory for time, and the memory is not small. The lab works out the size for one
+token of Llama 3 8B with this line:
+
+```text
+2 × 32 layers × 8 KV heads × 128 × 2 bytes = 131,072 bytes per token
+```
+
+Reading from the left, the 2 counts one key and one value, and the 32 is the number of layers. The 8
+needs one more idea. Attention in each layer runs several times side by side, and each copy, called a
+**head**, is free to look for a different kind of connection. Llama 3 8B stores keys and values for 8
+heads per layer, each key or value is a list of 128 numbers, and each number takes 2 bytes.
+
+Multiplying one step at a time, 2 × 32 makes 64, and 64 × 8 makes 512. Then 512 × 128 makes 65,536,
+and doubling that for 2 bytes per number gives 131,072 bytes. The **KV per token** readout shows this
+as `131 kB (128 KiB)`, two labels for the same amount in slightly different units. A kilobyte (kB) is
+1,000 bytes, while a KiB is 1,024 bytes, a size computers like because 1,024 is ten 2s multiplied
+together.
+
+The 8 is smaller than it could have been, because Llama 3 8B actually runs 32 query heads in each
+layer. Those query heads work in groups of four that share one set of keys and values, so only 8 key
+and value heads need storing. This sharing is called **grouped-query attention**, and it makes the
+cache four times smaller than giving every query head its own keys and values. Without the sharing,
+each token would need 524 kB.
+
+Even so, the notes add up fast, because one conversation of 8,192 tokens holds about 1.1 GB of them.
+Sixteen such conversations hold 17.2 GB, which is more than the 16.1 GB of weights. The weights stay
+the same size however busy the chip gets, while the cache grows with every token of every
+conversation.
+
+### Speculative decoding: draft, then check
+
+Decode's weakness is that each pass produces one token, and each pass needs a full delivery of the
+weights. **Speculative decoding** can get more than one token out of each pass of the big model. A small,
+quick model called the **draft** guesses the next few tokens, and the big model, called the
+**target**, checks all of those guesses in a single pass. The weights are delivered once either way,
+so checking several known tokens together costs the target about as much as writing one.
+
+In this module's lab, each token is a single letter, so the picture below uses letters too.
+
+Picture a careful expert writing with a quick helper, who pencils in the next four letters for the
+expert to read in one look. In that one look, the expert also forms their own opinion about every
+position, including the spot just after the last guess. So the check always ends with one letter of
+the expert's own. Starting from the first, the expert keeps letters for as long as they pass.
+
+At the first one that fails, the expert crosses it out, writes their own letter in its place, and
+throws away the rest of the draft. If all four pass, the expert's own letter goes at the end instead.
+So one check always gives the kept guesses plus exactly one letter from the expert: at least one new
+token, and at most the number of guesses plus one.
+
+Where the expert picture stops matching: the expert does not keep a letter only when it matches the
+expert's own first choice. A model does not always write its single favorite letter. It gives every
+possible letter a chance, then picks one at random using those chances, like spinning a spinner whose
+slices are different sizes. Both models give chances for every possible next letter, and the check
+compares the two. If the target gives the guessed letter at least as much chance as the draft
+did, the letter is always kept. If the target gives it less, the letter is kept only part of the time,
+in proportion. When the target says 30% and the draft said 60%, for example, the letter survives half
+the time.
+
+When a guess is refused, its replacement is picked at random from the target's left-over odds. Those
+are the share of chance the target gave each letter beyond what the draft gave it. So they come only
+from letters the target liked more than the draft did. This careful rule has a remarkable result: the
+finished text follows the target's own odds exactly, as if the target had written every letter by
+itself. A weak draft gets refused more often, which costs tokens per pass, but it never changes what
+kind of text comes out.
+
+The average chance that one guess is kept is called the **acceptance rate**, written α (the Greek
+letter alpha). A later guess counts only if every guess before it was kept, so each extra guess is
+reached less often than the one before it. That is why making the draft longer helps less and less,
+which you can test in the lab.
+
+## Why it’s here
+
+### The problem the cache solves: redoing the past
+
+Picture a friend writing an essay who, before adding each new sentence, rereads the whole essay from
+the first line and rewrites every note in the margin. The first few sentences go quickly, but each one
+costs a little more than the one before, and a long essay turns into a slog. A model writing without a
+cache is in exactly that position.
+
+Without stored keys and values, the only way to get them back is to run every earlier token through
+every layer again. Those earlier tokens cannot be skipped, because each layer's results for every
+token feed the next layer's keys and values. So each decode step redoes a whole triangle of work, and
+triangles grow fast: ten tokens make 55 comparisons, while twenty make 210.
+
+In the grid, doubling the length makes each step's comparisons roughly four times as many. That is
+what people mean when they say the work grows with the square of the length. With the cache, each step
+adds a single row, and each new row is only one comparison longer than the last.
+
+On a real model, comparisons are not the biggest part of a step without the cache at everyday lengths.
+Most of the cost is running every earlier token back through the weights, and that part only doubles
+when the length doubles. In the lab, with one conversation, halving **Context length** from 8,192 to
+4,096 cuts the recompute panel's step from 142 ms to about 67 ms. Even so, every step reruns all the
+earlier tokens, and a long answer has many steps. Added up over the whole answer, the work without the
+cache still grows with the square of its length.
+
+At real scale the gap is enormous, because at the lab's default settings a decode step takes 9.6 ms
+with the cache but 2.27 seconds without it. That is more than 200 times longer, paid again for every
+single new token.
+
+### The two waits you notice
+
+A person using a chatbot feels two different waits. The first is **time to first token**, the delay
+before anything appears, which is mostly prefill and grows with the length of the prompt. The second
+is **inter-token latency**, the gap between one token and the next while the answer streams in, where
+latency means waiting time. It is set mostly by how fast memory can deliver the weights and the notes
+during decode.
+
+The cache shortens the second wait enormously but does nothing for the first. The only exception is
+when the same opening text was already read and stored for an earlier request, which you will meet in
+"Going deeper".
+
+### The bill and the crowd
+
+The same split explains the prices: sending tokens in costs less per token than getting tokens back,
+because prefill shares one delivery of the weights across the whole prompt. Every output token, by
+contrast, needs a pass of its own.
+
+It also sets how many people one chip can serve, because a decode step spends most of its time waiting
+for the weights. The chip can therefore push many conversations through on the same delivery, a trick
+called **batching**. Every conversation still brings its own notes, though, so cache memory, not
+arithmetic, caps how many conversations can run at once. That is the memory side of the trade, and the
+memory card works it out.
+
+## How to play with it
+
+### The triangle
+
+**Causal attention work** shows a grid with one row and one column for each token. Each row is a
+token's query and each column is a key it might compare against, which the corner label `q ↓ k →` sums
+up. Prompt tokens are labeled `t1`, `t2` and so on, generated tokens are labeled `+1`, `+2` and so on,
+and a dashed line separates the two groups. Cells above the diagonal are faint outlines, because the
+causal mask stops a query from looking at later keys.
+
+Under the grid sit two strips labeled `K` and `V`, with one slot per token, which show the cache
+itself. The controls live on the **KV cache controls** card, where **KV cache** switches between `Use
+cache` and `Recompute`. **Prompt tokens** runs from 3 to 14, and **Generated tokens** runs from 0
+to 10.
+
+**Try this:** set **Generated tokens** to `0`, where the readout says `0 · prefill`. The prompt's
+whole triangle lights up at once, since prefill handles every prompt token in one pass. At the default
+7 prompt tokens that is 28 products, because token 1 compares with 1 key, token 2 with 2 keys, and so
+on up to token 7. Adding 1 + 2 + 3 + 4 + 5 + 6 + 7 gives 28.
+
+Now raise **Generated tokens** one step at a time, keeping **KV cache** on `Use cache`. Each step
+lights only the newest row, and the **New Q, K, V** readout stays at 1. Meanwhile the `K` and `V`
+strips gain one slot per step, while the older slots are only read. At `1`, the caption says the pass
+"feeds +1 at position 8 and predicts +2". Prefill already produced token +1, so the first decode step
+feeds that token back in and predicts the one after it.
+
+Then switch **KV cache** to `Recompute`, and the whole triangle lights up again on every step. The
+dashed cells are exact repeats of work the previous pass already did. At 7 prompt tokens and 4
+generated, **Q·K this pass** jumps from 11 to 66. Push **Prompt tokens** to 14 and **Generated
+tokens** to 10, and **Q·K whole run** reads 2,145 without the cache, against 300 with it.
+
+### The memory bar
+
+**Memory budget** switches from the toy grid to real arithmetic for Llama 3 8B on an 80 GB chip.
+**Context length** sets how many tokens each conversation holds, doubling at each step from 512 up to
+131,072. **Concurrent sequences** sets how many conversations, which the lab calls sequences, the chip
+serves at once, from 1 to 64. The bar shows the weights and the KV cache side by side, with a marker
+at 80 GB for the chip's memory.
+
+At the defaults of 8,192 tokens and 16 conversations, **KV cache total** reads 17.2 GB, already more
+than the weights. **Sequences that fit** reads 59, the number of 8,192-token conversations whose notes
+would fit in the memory left after the weights. Now push **Context length** to 131,072 with
+**Concurrent sequences** at 1. That single long conversation holds 17.2 GB of notes on its own, and
+only 3 of them would fit.
+
+Finally, set **Concurrent sequences** to 64 at 8,192 tokens, and the cache runs past the 80 GB marker
+and turns red. At the same time, **Memory left** changes into **Over by**, which reads 4.8 GB.
+
+### The timing bars
+
+**Prefill versus decode** estimates how long three kinds of pass take on this chip, using the context
+length and conversation count from the memory card. Each panel has an `arithmetic` bar, showing how
+long the calculations alone would take, and a `memory` bar, showing how long the delivery alone would
+take. Whichever is longer sets the time and is drawn solid, and the panel is tagged `compute-bound` or
+`memory-bound` to match.
+
+The bars use a stretched scale where each equal step along a bar means ten times more time, so compare
+the printed times rather than the bar lengths. The heading also names the chip's top speeds. For
+arithmetic it is 989 TFLOP/s, where a TFLOP/s is a trillion FLOP each second. For memory it is 3.35
+TB/s, where a TB/s is a trillion bytes each second. Dividing 989 by 3.35 gives the switch point of
+about 295 FLOP per byte.
+
+At the defaults, prefill of one 8,192-token prompt is compute-bound at 142 ms, and the panel notes
+that this is the time to first token. A decode step with the cache for all 16 conversations is
+memory-bound at 9.6 ms, and one step writes one new token for each of the 16. Since 1,000 ms ÷ 9.6 ms
+is about 104 steps a second, each conversation gets about 104 tokens per second.
+
+Set **Concurrent sequences** to 1, and the step drops to 4.8 ms, or about 208 tokens per second. The
+third panel shows the cost of skipping the cache: at the defaults, a decode step that recomputes
+everything takes 2.27 seconds.
+
+### Speculative decoding
+
+The **Speculative decoding** card runs the draft-and-check idea on a tiny model that writes one
+character at a time, so here each token is a single letter or a space. **Draft length** sets how many
+guesses the draft makes per pass, from 1 to 8. **Draft quality** runs from 0.20 to 1.00, where 1.00
+makes the draft the target itself. Lower values make the draft spread its chances more evenly over all
+letters, as if it were guessing more blindly. Then fewer of its guesses are kept, and the acceptance
+rate α falls. **Seed** picks which random draws the simulation uses, so the same seed always replays
+the same run.
+
+The pass lines show the first six checks as text, with each space drawn as `␣`. At the defaults, Pass
+1 reads: the draft proposed `orbs`, the target kept 0 of 4, refused `o` and wrote `t` instead, for +1
+token. Pass 2 goes better, because the draft proposed `␣tha` and the target kept 3 of 4, which were
+`␣th`. It then refused `a` and wrote `e` instead, for +4 tokens. Together those two passes turn the
+prompt `the␣` into `the␣t␣the`.
+
+The first of the four readouts under the pass lines, **Acceptance rate α**, reads 0.831, so a single
+guess is kept about 83 times in 100. **Without drafting** always reads 1 token per pass, the rate of
+ordinary decode, for comparison. **Closed form, tokens per pass** reads 3.57, the prediction from a
+formula; "closed form" means a formula you can work out directly, without simulating anything.
+**Simulated, tokens per pass** reads 3.60 ± 0.02, the average over 4,000 seeded passes.
+
+The note under the readouts writes the formula as `(1 − α^(γ+1)) ÷ (1 − α)`, where γ (the Greek letter
+gamma) is the draft length. Here `α^(γ+1)` means γ + 1 copies of α multiplied together, so 5
+copies when γ is 4. The formula is clearer when you write it out as a sum. Each check gives 1 token for certain, plus 1 more for each
+guess that is kept, and a guess counts only when every guess before it was kept too.
+
+At the defaults, think of 100 checks. The first guess is kept in about 83 of them. Among those 83, the
+second guess is also kept about 83% of the time, so both survive in about 69 checks out of 100. That
+is why the chances multiply: 0.83 × 0.83 is about 0.69. Multiplying again gives about 0.57 for the
+first three and about 0.48 for all four.
+
+These steps use the readout's full value of 0.831, so if you multiply the rounded 0.83 four times you
+get 0.47 instead. A guess kept in 83 checks out of 100 adds 0.83 of a token to each check on average,
+so adding up the chances adds up the average tokens. That gives 1 + 0.83 + 0.69 + 0.57 + 0.48 = 3.57,
+the same as the formula.
+
+The simulation actually plays out 4,000 random checks, so its average wobbles a little from one seed
+to another. The ± 0.02 is the typical size of that wobble, called the **standard error**.
+
+Now set **Draft quality** to 1.00, and every pass yields 5 tokens, because all 4 guesses are kept and
+the target adds one more. Drop it to 0.30 and the closed form falls to 2.21. The chart below plots
+tokens per verification pass against draft length γ, with the closed form drawn solid, the simulation
+dashed, and no drafting dotted.
+
+## What to notice
+
+- With the cache, a whole run costs exactly one triangle, because every product is computed once.
+  Without it, every step pays for a whole triangle again, which comes to 2,145 products instead of 300
+  at 14 prompt tokens and 10 generated ones.
+- `Recompute` changes the cost, never the answer: the recomputed keys and values are exactly the
+  numbers the cache would have held.
+- The `K` and `V` strips only ever grow, and no slot is ever rewritten. That is the causal mask at
+  work, since later tokens cannot change the keys and values of earlier ones.
+- The cache does nothing for prefill, so at **Generated tokens** `0` the `Use cache` and `Recompute`
+  settings draw the same triangle. Its savings begin at the first decode step.
+- Attention is not the whole job, because even with a perfect cache each decode step still fetches the
+  weights. At one conversation, the 4.8 ms step goes almost entirely on fetching about 15 GB of
+  weights. That is the 16.1 GB minus the lookup table, which is only read one row at a time.
+- The detail line under that decode panel reads 16.1 GB, because it adds the conversation's own 1.1 GB
+  of notes to those 15 GB of weights. It only happens to match the full size of the weights.
+- Prefill is the opposite, with the arithmetic bar as the long one at 142 ms for 8,192 tokens. One
+  delivery of the weights feeds thousands of tokens at once, so the calculators set the pace.
+- Batching shares the delivery of the weights but not the notes. With 16 conversations, the chip
+  writes about 1,665 tokens per second in total, eight times its rate for a single conversation.
+- Yet each of those 16 conversations gets only about 104 tokens per second, half of what one
+  conversation gets alone, because every conversation adds its own notes to each delivery.
+- Each speculative pass yields at least 1 token and at most the draft length plus 1. The extra one is
+  the target's own token, added after the last guess when it keeps them all.
+- Longer drafts help less and less: at the default quality, raising **Draft length** from 1 to 4 adds
+  almost two tokens per pass, from 1.83 to 3.57.
+- Raising it further, from 5 to 8, adds less than one token per pass, from 3.97 to 4.79.
+- The chart's footnote gives the ceiling: at the default quality the closed form can never pass 5.91
+  tokens per pass, however long the draft gets.
+- Change **Seed** and the simulated value moves by about one standard error, while the closed form
+  stays put, because the formula has no randomness in it.
+- The text written follows the target's own odds whatever the **Draft quality**, so a poor draft costs
+  tokens per pass, not correctness.
+
+## Where it breaks
+
+### What this lab simplifies
+
+The grid is a toy that tops out at 24 tokens and shows one head in one layer. Its counts are exact for
+that toy, but no scores are actually computed, so the cells carry no values.
+
+The real-scale cards use Llama 3 8B's published shape, meaning its numbers of layers and heads. They
+also use the H100 SXM's advertised top speeds of 989 TFLOP/s for arithmetic and 3.35 TB/s for memory.
+Nothing is actually run on a chip.
+
+Each time on those cards is whichever is longer, the arithmetic time or the delivery time, worked out
+as if the chip ran at 100% of its top speed. This kind of estimate is called the **roofline model**.
+The cards also leave out three things: the in-between results the model produces as it works, the
+small start-up delay before each calculation, and picking the next token. Real chips never reach their
+top speed, so treat the times as a best case from a formula, not a stopwatch reading.
+
+**Sequences that fit** ignores those in-between results, the serving software's own memory, and gaps
+of wasted space, so real capacity is lower. The 80 GB is also the chip's advertised size, not what is
+free in practice.
+
+The **Speculative decoding** card is a toy too, because its target is a tiny model that predicts each
+character only from the one before it. Because it only looks at the one letter before, the whole model
+is a table of odds for each pair of letters, called a **character bigram**. So checking the guesses
+"in one pass" is a table lookup, and nothing is timed. The draft is the target with its odds
+flattened, standing in for a weaker model.
+
+The closed form also assumes every guess has the same chance of being kept. Here the chance depends on
+the letter before it, so the formula is off from the true average by at most about 0.02 tokens.
+
+### Where the real mechanism struggles
+
+The cache shares the chip's memory with the weights and the in-between results. Nobody knows in
+advance how long a conversation will get. So handing each one a block big enough for the longest
+possible conversation leaves much of it unused, a problem called **fragmentation**.
+
+**A common mix-up:** the cache does not make long prompts free. Reading a very long prompt is real
+work that has to finish before the first token comes out, and prefill's attention work grows with the
+square of the prompt's length. In this lab's estimate, a prompt of 131,072 tokens takes about 6.5
+seconds before the first token can appear. The cache removes repeated work during *writing*, not the
+one-time cost of *reading*.
+
+Storing the notes with fewer bits, such as 8 or 4 instead of 16, is called **quantization**. Going
+from 16 bits to 8 halves the cache, but the rounded numbers can measurably change the output. That
+makes it a trade of quality for memory rather than a free saving.
+
+Throwing away the oldest notes to make room is riskier than it looks. Some heads park a large share of
+their attention on the very first tokens of the text, which act as **attention sinks**. Deleting those
+notes makes the output noticeably worse.
+
+Real speculative decoding has its own costs. A real draft is a small model, or extra prediction parts
+added to the big model, and how often its guesses are kept changes with the text. Each pass costs the
+target's check plus the draft's own steps, one per guess, so tokens per pass is only half of the
+speed-up story. The other half is how cheap the draft is to run.
+
+## Going deeper
+
+Because decode spends most of its time waiting for deliveries, **batching** raises the total output
+cheaply until cache memory runs out. **Continuous batching** goes further by letting new conversations
+join and finished ones leave at every decode step, instead of waiting for a whole group to finish
+together. That keeps the chip busier under real traffic.
+
+**PagedAttention** stores the cache in small fixed-size blocks, with a table for each conversation
+listing which blocks hold its notes, much like the pages of a binder. This nearly removes the wasted
+gaps, and it lets conversations that start with the same text share the same blocks.
+
+That sharing is called **prefix caching**, where a prefix is the opening part of a text. It is why a
+long system prompt, the set of instructions a service places at the start of every request, is read by
+prefill once rather than every time.
+
+Other designs shrink the notes directly, as in multi-query attention, where every query head shares
+one set of keys and values. Grouped-query attention, which Llama 3 8B uses, sits between that and one
+set per head. Latent-attention designs store a squeezed version of the notes, while sliding-window
+layers keep notes for only a fixed number of recent tokens. The **Modern attention at scale** module
+covers these.
+
+Chunked prefill cuts a long prompt into pieces and slips them in between other users' decode steps, so
+one long prompt does not freeze everyone else's streaming text.
+
+The draft-and-check rule, the left-over replacement and the tokens-per-pass formula come from
+Leviathan, Kalman and Matias (2023, arXiv 2211.17192). They report a speed-up of two to three times on
+a large model called T5-XXL. The **Deployment & serving** module uses the same formula and gets 3.36
+tokens per pass with an acceptance rate of 0.8 and 4 guesses.
+
+Two measurements sum up this whole module: **time to first token** is set mostly by prefill, and
+**inter-token latency** mostly by how fast memory delivers during decode. **Structured and constrained
+decoding** adds one more job to every decode step: blocking which tokens are allowed to come next.

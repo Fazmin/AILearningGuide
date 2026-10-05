@@ -1,0 +1,678 @@
+---
+objectives: ["Explain superposition and sparse feature extraction", "Treat feature labels as hypotheses: check where their examples come from and score them as precision and recall", "Use steering as a causal test of a feature, judged against a random direction of the same length"]
+terms: ["Superposition", "Sparse autoencoder", "Polysemantic neuron", "Monosemantic feature", "Dictionary learning", "Sparsity penalty", "Reconstruction loss", "Feature splitting", "Dead feature", "Auto-interpretability", "Activation threshold", "Steering vector", "Window-start artefact", "Null control"]
+---
+
+## The big picture
+
+A language model, the kind of AI behind a chatbot, works by turning text into long lists of numbers
+and passing them along from step to step. In the end those numbers decide what it writes next, yet
+nobody wrote down what any of them means. They were set automatically during **training**, the long
+process in which the model learned from example text, rather than chosen by a person.
+
+This module is about looking inside those lists and asking what they stand for. That kind of work is
+called **interpretability**: trying to explain what happens inside a model, not only what comes out
+of it.
+
+Researchers have already done this with large models. A team at Anthropic found a **feature**, a
+pattern inside the numbers, that was linked to the Golden Gate Bridge in a model called Claude 3
+Sonnet. When they turned that feature up, the model's replies to most questions began to mention the
+bridge, even when the question had nothing to do with bridges.
+
+Why does this matter? Without a way to read the inside of a model, you can only watch what goes in
+and what comes out. Its own numbers are too mixed to name one by one, so there is no part you can
+point to and say what it means.
+
+There is also a quieter danger, which this module spends most of its time on. A name for a feature can sound right and still be
+wrong, so every name needs testing.
+
+By the end, you will be able to explain:
+
+- how a model can carry far more things than it has numbers, an idea called **superposition**, and
+  why that makes one number react to many unrelated things;
+- how a tool called a **sparse autoencoder** unpacks those numbers into separate features, with only
+  a few of them switched on at a time;
+- why a feature's name, its **label**, is only a guess, and how to test it by checking where its
+  examples come from and scoring it with two numbers. **Precision** is how often the feature is
+  right when it switches on, and **recall** is how many of the real cases it catches;
+- how **steering**, turning a feature up on purpose inside the model, tests what the feature does,
+  and why that result has to beat a random push of the same size.
+
+The lab runs a real, small model that was trained on text from Shakespeare's plays, along with a
+real sparse autoencoder that was trained on that model. It has four cards, which you will work
+through in this order:
+
+- **Residual to sparse code** shows the model's list of 256 numbers, called its residual, at any
+  character you click, and the same list rewritten as a few active features.
+- **Sparsity and superposition** rebuilds that list from fewer features and measures how much
+  the features overlap with each other.
+- **Feature evidence** shows a feature's best examples, lets you choose a label for it, and scores
+  that label on the lab's text, which you can change.
+- **Steer with a feature** adds a feature to the model while it predicts the next character, and
+  compares the result with random pushes of the same size.
+
+Most of what the cards show is worked out live from the text you type. Two parts were fixed ahead
+of time, though. A feature's best examples were found in advance and stored for only 128 of the
+1,024 features. And the labels you can test are simple rules written by this module's author, not
+names the model gave itself.
+
+On screen, **Feature evidence** sits above **Sparsity and superposition**, so you will scroll past it
+and come back to it.
+
+## What it is
+
+### A list of 256 numbers for every character
+
+The model in this lab reads text one character at a time, and at each character it predicts which
+character comes next. For every character it reads, it keeps a list of 256 numbers that describes
+the text so far. A list of numbers like this is called a **vector**.
+
+The model is built from two layers, called **blocks**, and each block reads the list and adds its
+own changes to it. That running list is called the **residual stream**, or the **residual** for
+short. This lab looks at it after the second and last block, right before the model turns it into a
+guess about the next character.
+
+The model reads text in chunks of up to 64 characters, called **windows**, and a character's place
+in its window is its **position**, counted from 0. So the character at position 4 is the fifth one,
+and by then the model has read 5 characters.
+
+### Why reading one number at a time fails
+
+The most direct way to understand a model would be to watch its units, the single numbers it
+computes, which are often called **neurons**. You would note what makes each one go up and then give
+it a name. People have tried this, and it works badly, because one unit tends to react to several
+things that have nothing to do with each other.
+
+A unit like that is called a **polysemantic neuron**, from Greek words meaning "many meanings". This
+is not a fault in one unlucky model but the normal case, and the reason is a shortage of space.
+
+### Superposition: a mixing board with too few sliders
+
+Picture the 256 numbers as the sliders on a sound mixing board. The model needs those sliders to
+carry far more than 256 different things about the text. They might need to show that the last
+character was a space, that a name is being written in capitals, or that a line is about to end.
+
+There are not enough sliders to give each thing its own one, so each thing gets its own **recipe**
+instead: a pattern of small moves spread across all 256 sliders. One recipe might be "slider 3 up a
+little, slider 40 down a lot, slider 200 up a bit". Whenever a thing is present in the text, its
+recipe is added to the board. At any moment, the board shows the total of the recipes for everything
+present right then.
+
+Researchers call a recipe a **direction**, because turning it up moves the whole board further along
+the same pattern. To see how two directions can overlap, imagine a board with only two sliders.
+Each recipe is then an arrow on an ordinary graph, pointing to the spot given by its two slider
+moves. For example, "slider 1 up 2, slider 2 up 1" is an arrow from the middle of the graph to the
+point (2, 1).
+
+Two directions overlap when their arrows point partly along each other, either the same way or the
+opposite way. They share nothing when their arrows sit at right angles, which mathematicians call
+being **orthogonal**. The simplest case is two recipes that move different sliders, such as "slider
+1 up 1" and "slider 2 up 1". Their arrows run along the two edges of the graph.
+
+Recipes that move the same sliders can share nothing too. The arrow for "slider 1 up 1, slider 2 up
+1" points up and to the right. The arrow for "slider 1 up 1, slider 2 down 1" points down and to the
+right. The angle between them is a right angle, so these two recipes share nothing, even
+though both move both sliders.
+
+On a flat graph, you can fit only two arrows that are all at right angles to each other. With three
+sliders, picture the corner of a room, where two edges of the floor meet the upright edge between
+the walls. Those are three arrows, each at right angles to the other two, and there is no room for
+a fourth.
+
+Each slider is one **dimension**, so a board with 256 sliders has 256 dimensions. The same rule
+holds there, so 256 sliders allow at most 256 recipes that share nothing at all.
+
+You can fit far more recipes than that, though, if each one is allowed to share a small sliver with
+the others. The recipes are then **nearly orthogonal**: almost, but not quite, at right angles. This
+trick works poorly with two or three sliders, but it works far better as the number of sliders
+grows. Later, the lab measures 1,024 recipes on these same 256 sliders. They were learned by a
+second model, introduced in the next section, and on average each pair overlaps by only a small
+amount.
+
+Packing more directions than there are dimensions in this way, keeping them nearly orthogonal, is
+called **superposition**.
+
+Those slivers of overlap would cause trouble if many things were present at once, because they would
+pile up into noise. Superposition works because almost none of the things are present at the same
+time: at any one character only a handful are, so the overlap costs very little.
+
+Superposition also explains the problem from the last section, because each slider takes part in
+many recipes and so moves whenever any of those things is present. Watched on its own, it seems to
+react to many unrelated things. The same packing happens in the model's neurons, the numbers it
+computes inside each block. This lab does not show those neurons, though, so it shows the packing
+in the residual's 256 numbers instead.
+
+The analogy stops matching in one important way: on a real mixing board, a person designed every
+control and labelled it. In the model, nobody designed the recipes or wrote labels for them, because
+training found them, and they are hidden in the mix of all 256 numbers.
+
+### Unpacking with a sparse autoencoder
+
+If many things are packed on top of each other, the fix is to unpack them. A **sparse autoencoder**
+is a second, separate model that is trained to do exactly that. Stay with the mixing board, and
+picture a much bigger control panel beside it with 1,024 knobs, where each knob moves all 256
+sliders by its own recipe.
+
+The autoencoder looks at one snapshot of the 256 sliders and uses what it learned in training to work
+out, in one quick pass, knob settings that recreate it closely. It follows a strict rule: at every
+character, exactly 32 of the 1,024 knobs are turned, and all the rest stay at zero.
+
+Each knob is called a **feature**, and how far it is turned at a character is that feature's **activation**. A list that is mostly zeros, like these 1,024
+activations, is called **sparse**.
+
+Before it starts, the autoencoder rescales the 256 numbers into its own units. It takes away a
+typical value for each slider and then divides by one fixed number, so that it always works with
+numbers of a similar size. After that, it works in two halves:
+
+- The **encoder** reads the 256 numbers and gives each of the 1,024 features a score. It turns any
+  negative score into zero, a rule called **ReLU**, and keeps only the 32 biggest, a rule
+  called **TopK**, where k is the number kept.
+- The **decoder** rebuilds the 256 numbers by adding up the recipe of each active feature, scaled by
+  how far that feature is turned. The rebuilt list is called the **reconstruction**.
+
+The whole set of 1,024 recipes is called a **dictionary**, because every snapshot gets spelled out
+with a few entries from it. Finding a set like this is called **dictionary learning**, and a sparse
+autoencoder is one way of doing dictionary learning on a model's insides.
+
+The autoencoder learned its recipes from the model's numbers on 1,600 windows of text, over 10,000
+training steps, where each step is one small adjustment to make it better. Two pressures shaped that
+training, and they pull against each other:
+
+- The **reconstruction loss** scores how far the rebuilt list is from the real one, and training
+  pushes that score down.
+- The **sparsity penalty** is a pressure to keep few features on. Here the TopK rule does nearly all
+  of that job, with a small extra penalty added on top (Going deeper has the details).
+
+Fewer features make a rougher rebuild, so choosing a balance between the two pressures is a judgment
+call. Through all of this the original model is never changed, because the autoencoder only reads
+copies of its numbers. That makes the autoencoder a measuring tool rather than a change to the
+model.
+
+### Measuring a rebuild
+
+The lab writes the original list as x and the rebuilt list as x̂, which you say as "x-hat". The
+leftover is the difference between them, x − x̂. To sum up a whole list in one number, square every
+number in it and add the squares together, which the lab writes as `‖x‖²`. Squaring turns every
+number positive, so a miss in either direction counts.
+
+The readout `‖x − x̂‖² / ‖x‖²` divides the leftover's sum of squares by the original's sum of
+squares. The result is the share of the list that the rebuild fails to capture, which this lesson
+calls the **unexplained share**.
+
+Here is the idea with three sliders instead of 256:
+
+1. Say the original list is 4, −2 and 1, and the rebuild is 4, −1 and 1.
+2. The leftover is 0, −1 and 0, so its sum of squares is 0 + 1 + 0 = 1.
+3. The original's sum of squares is 16 + 4 + 1 = 21.
+4. The unexplained share is 1 ÷ 21, which is about 4.8%, so the rebuild captures all but about 5% of
+   the list.
+
+In the lab, at the first space of the default text, all 32 active features together leave only 1.0%
+unexplained.
+
+### Labels, examples and the cache
+
+Nobody tells you what a feature means, so to find out, you look at where it switches on and propose
+a name for it. That name is called a **label**, such as "fires on spaces". A feature **fires** at a
+character when its activation rises above a cut-off that you choose, called the **activation
+threshold**.
+
+The hope is that each feature stands for one clear thing, which would make it a **monosemantic
+feature**, from words meaning "one meaning". That is a goal rather than a promise, because many
+features fall short of it. So a label is a **hypothesis**: a guess that you can test, and that could
+turn out to be wrong.
+
+To help with labels, the lab scanned 1,800 windows of text, which is 115,200 characters in all. It
+picked the 128 features that reached the largest activations and stored each one's eight best
+examples, meaning the characters where its activation was highest. Each example also records its
+position in the window, and this stored set is called the **cache**.
+
+### Three questions about one feature
+
+The lab asks three questions about a feature, in order, and each one can come back "no":
+
+- **Where do its examples come from?** If its best examples all sit at the start of a window, where
+  the model has read almost nothing, they may say more about the window than about language.
+- **Does its label hold up on new text?** You turn the label into a rule and score how well it
+  predicts where the feature fires on text that is not in the examples.
+- **Does turning it up do what the label says?** You add the feature's recipe to the model and
+  compare the change with what a random recipe of the same size does.
+
+## Why it’s here
+
+A model's residual is a wall of busy numbers. At the first space of the default text, nearly all 256
+of them are non-zero, and each one is a blend of many things at once. There is no single number you
+can point to and say "that one means a space". So you cannot read the residual directly, test an
+idea about it, or push on one thing without also pushing on others.
+
+Rewriting each snapshot as 32 active features out of 1,024 is what makes the three questions above
+possible. You can read where one feature switches on, test a label for it, and push on it alone.
+
+Each of those steps makes a claim, and each claim can be wrong. A good rebuild does not back any of
+them up, because it only shows that the features can recreate the numbers. It does not show that the
+model itself is built from those features, since a different set of recipes might recreate the
+numbers too.
+
+Picture a jigsaw puzzle that you could finish with two different sets of pieces cut in different
+shapes. A finished picture tells you the pieces fit, but not which set the puzzle maker actually
+cut. In the same way, a good rebuild tells you the features fit the numbers, but not that the
+model thinks in those features.
+
+That is why the lab keeps hunting for evidence that could prove a label wrong. Its first two
+questions only check what a feature goes along with, which is called a **correlation**. Only the
+third tests what the feature causes when you change it, which is a stronger kind of evidence, so it
+comes last.
+
+## How to play with it
+
+The lab starts with the probe text "hath the king a good horse? KING HENRY: aye, he hath.", which is
+53 characters long. You can type your own text into the **Probe text** box, up to 64 characters,
+but the lab readouts quoted in this lesson come from the default text.
+
+Figures marked as held-out, or taken from the cache, were measured ahead of time on a large batch of
+Shakespeare text, so typing your own text does not change them. The lab draws a space as ␣ and a
+line break as ↵, and the steps below take the cards in the same order as the lab's steps.
+
+### Residual to sparse code
+
+1. In **Residual to sparse code**, each character of the probe text is a button, and the lab starts
+   on position 4, the first space.
+2. Compare the two panels: the top one shows the 256 numbers as bars, with a dash on each bar
+   marking the rebuild. The one below shows all 1,024 feature slots, with a spike for each active
+   feature.
+3. Read **Active features (L0)**, which counts the features that are switched on (L0 is the math
+   name for that count). Then read the `‖x − x̂‖² / ‖x‖²` readout, which is the unexplained share.
+4. Look at the list of the largest active features. A `window start` mark means at least half of a
+   feature's eight best examples come from the first four positions of a window. At the first space,
+   `#121` is the biggest feature, and the second, `#499`, carries that mark.
+5. Now click position 0, the first h, where the six largest features all carry the mark. Then click
+   position 1, the a, where the two largest, `#876` and `#356`, still carry it.
+6. Finally, click the K of KING at position 28, where none of the six largest carries the mark.
+
+### Sparsity and superposition
+
+1. In **Sparsity and superposition**, drag **Keep top k features** from 1 up to 32. The lab rebuilds
+   the same snapshot from only the k biggest features and plots how much is left unexplained.
+2. Compare the readouts **Keep 1** and **Keep all 32** under the chart.
+3. Lower down, read **Most similar pair** and **Their cosine (signed)**. They name the two features
+   whose recipes overlap the most and say which way those two recipes point. A cosine is a score
+   for how much two recipes overlap, explained under What to notice, and "signed" means it keeps
+   its plus or minus sign.
+
+### Feature evidence
+
+**Try this:** In **Feature evidence**, keep feature `#876`, the first one in the **Feature** menu.
+Each of its eight best examples has a badge giving its position in the window, so read those badges
+first. Then switch **Examples shown** to **Top 8 from position 4 on**, and compare the characters
+and their activations.
+
+Then test a label on another feature:
+
+1. Choose `#121` in the **Feature** menu, or click it in the list in the first card, and set **Label
+   to test** to **Space**.
+2. Drag **Activation threshold** from 5 down to 2, then up to 8, and watch **Precision**
+   and **Recall** under the text. These are two scores for how well the label fits, explained under
+   What to notice.
+3. Choose `#511`, set **Label to test** to **Same character**, which here means the comma, and set
+   **Activation threshold** to 3. The default text has one comma, and `#511` fires on it, so recall
+   is 100%. But it also fires on more than a dozen other characters, so precision drops to about 6%.
+4. Raise the threshold to 5, and `#511` misses the comma altogether.
+
+The line under the controls spells out the hypothesis you are testing, such as "feature #121 fires
+on spaces", along with the threshold it uses.
+
+### Steer with a feature
+
+1. In **Steer with a feature**, keep **Feature to steer** on `#160`, **Steering position** on 43,
+   which is the comma after "aye", and **Steering strength** on 10.
+2. Read the three lists, which show the six most likely next characters before the push, after it,
+   and with a random push instead. The label's character is marked (label).
+3. Read **Change in log p**, which says how much more or less likely the label's character became.
+   Compare it with the range in **20 random: min · median · max**, where the median is the middle
+   value.
+4. Press **Continue 12 characters** to see the model write the next 12 characters three ways:
+   without steering, with the feature added, and with a random push. Continue adds the same push
+   again at each new character, so the steered text gets 12 separate pushes, not one that the model
+   carries forward.
+5. Move **Random control direction** to see that the random push shown is one draw out of 20.
+6. Choose `#683` in **Feature to steer**, set **Steering strength** to 5, and compare which
+   characters rise with what its label predicts.
+
+## What to notice
+
+### A few features carry most of the list
+
+- At the first space, the 32 active features rebuild the residual so well that only 1.0% is left
+  unexplained.
+- With **Keep top k features** at 1, the single biggest feature leaves 53.5% unexplained, which is
+  more than half. With 8 it leaves 4.6%, so the curve falls steeply at first and then flattens,
+  because the biggest few features carry most of the list.
+- The rebuild is uneven across the text. It runs from 0.0% at the first character to 22.3% at the K
+  of KING, and it averages 7.0% over the default text.
+- On 200 windows that the autoencoder never trained on, called **held-out** text, it leaves 5.1%
+  unexplained. Held-out text works like a test with new questions rather than the ones you
+  practised.
+- The curve is not perfectly smooth: at the first space, adding the 29th feature nudges the
+  unexplained share up, from 1.00% to 1.03%. That can happen because the 32 features were fitted to
+  work as a team, not to be added one at a time.
+
+### Overlap: superposition you can measure
+
+The lab scores how much two recipes overlap with a number called the **cosine**, which comes from
+the angle between their arrows. A cosine of 1 means two recipes point the same way, 0 means they are
+at right angles and share nothing, and −1 means they are exact opposites.
+
+A readout marked `|cos|`
+ignores the sign and only asks how big the overlap is. From here on, "overlap" means `|cos|`: how
+closely two recipes lie along the same line, in either direction.
+
+- The readout **All: mean · max** shows that across all 1,024 recipes, the average overlap is 0.069:
+  close to zero, but not zero. That small overlap is superposition, measured in the autoencoder's
+  own dictionary, and it has to be there because 1,024 recipes cannot all be orthogonal on 256
+  sliders.
+- The biggest overlap is a surprise: **Most similar pair** shows `#108` and `#499`, with a `|cos|`
+  of 0.992, so their recipes lie along almost exactly the same line. **Their cosine (signed)** is
+  negative, so they point opposite ways along that line, like "slider 3 up" and "slider 3 down".
+- **Pairs with |cos| above 0.9** shows that seven pairs overlap by more than 0.9. The lab's
+  measurements find that all seven are negative too, though the card shows the sign only for the
+  top pair.
+- On 768 held-out characters, `#108` and `#499` are never on together, and one of the two is on for
+  734 of them.
+- They split the text between them. From position 4 on, away from the window start, `#499` is on for
+  101 of the 111 spaces, while `#108` is on for only 6 of them.
+- Among the 181 lowercase vowels the pattern flips, with `#108` for 132 of them and `#499` for
+  only 41.
+
+Why would two features point opposite ways and never be on together? Remember that the encoder turns
+any negative score into zero, so an activation can never go below zero, and each knob can only turn
+up from zero. If the model's numbers sometimes move one way along a recipe and sometimes the other
+way, one knob cannot cover both. The autoencoder needs a "more of this" knob and a "less of this"
+knob, with recipes pointing in opposite directions.
+
+That reading is called a **sign split**: two features for the two sides of one direction, which is
+why only one of them is on at a time.
+
+It is not **feature splitting**, which happens when a bigger
+dictionary breaks one feature into several narrower ones. As a made-up example, a small dictionary
+might have one feature for punctuation, while a bigger one might split it into separate features for
+commas, full stops and question marks. Seeing feature splitting needs dictionaries of different
+sizes, and this lab trains only one.
+
+### Where a feature's examples come from
+
+At the start of a window the model has read almost nothing, so its numbers there look unlike those
+for running text. A feature can then reach its biggest activations at the window's edge, for reasons
+that have nothing to do with language. A feature like that is called a **window-start artefact**,
+where an artefact is something produced by the way you measure rather than by the thing you are
+measuring.
+
+Picture timing how loud a classroom gets, minute by minute, and keeping the eight loudest minutes.
+If every one of them is the first minute of a lesson, when everyone is still arriving, your top
+eight describe the start of class rather than the lessons.
+
+- The cache marks 21 of its 128 features as window-start artefacts, 18 of them position-0 artefacts,
+  whose best examples are mostly at the very first character.
+- Across all 1,024 features, not only the cached ones, no feature fires only at position 0, but 24
+  are dominated by it. That means far more of their firing happens at position 0 than chance would
+  give, since only 1 in 64 positions is a first character.
+- The strongest feature in the cache, `#876`, reaches 56.9 and carries the `window start` mark. All
+  eight of its best examples sit at positions 1 and 2, and they are a jumble of different
+  characters, from a semicolon to a capital H.
+- What those examples share is their place in the window, so the label **First 4 characters**
+  matches 8 of 8.
+- Yet `#876` is not only a start-of-window feature. It is on for 31.6% of all scanned characters,
+  about 1 in 3, and its biggest example from position 4 on is 36.3, at position 19, on an ampersand
+  (`&`).
+- On held-out passages it averages 13.3 at position 1 but only 0.64 from position 8 on. It is big at
+  the start and small later, so its best examples describe the window's edge rather than how it
+  behaves in running text.
+
+The model's own numbers are unusually large at the start too. You can measure the overall size of
+the 256-number list, called its **length**, by squaring each number, adding the squares and taking
+the square root. It is the same idea as finding the long side of a right-angled triangle.
+
+Measured after the autoencoder rescales the numbers into its own units, the length averages 32.5 at
+position 0 and 21.5 at position 1, against 15.0 from position 4 on. At the very first character,
+the list is more than twice its usual size.
+
+### Scoring a label: precision and recall
+
+Picture a smoke alarm in a kitchen, which you can judge with two different questions. Of all the
+times it beeped, how often was there real smoke? And of all the times there was real smoke, how
+often did it beep? An alarm set to be very sensitive catches every wisp of smoke, but it also beeps
+at steam from the kettle. One that is hard to trigger rarely gives false alarms, but it can miss a
+small fire.
+
+A feature's label gets the same two questions. **Precision** asks: of the characters where the
+feature fires, what share match the label? **Recall** asks: of the characters that match the label,
+what share does the feature fire on? The **Activation threshold** works like the alarm's sensitivity
+setting, and a lower threshold makes a more sensitive alarm.
+
+- The default text has 10 spaces. With **Label to test** on **Space** and the threshold at 5.0,
+  feature `#121` scores 100% precision and 70% recall: it fires on 7 of the spaces and on nothing
+  else. The line under the readouts counts this as 7 hits, 3 misses and 0 false alarms.
+- Lower the threshold to 2.0 and it scores 90% and 90%. It now catches 9 of the 10 spaces, but it
+  also fires on one character that is not a space.
+
+On 768 held-out characters, the same label shows the trade-off clearly. Each pair below gives
+precision first, then recall:
+
+- At 5.0, it scores 96% and 91%: nearly every firing is a space, and it catches about nine spaces in
+  ten.
+- At 2.0, it scores 63% and 97%: it catches almost every space, but more than a third of its firings
+  are false alarms.
+- At 8.0, it scores 100% and 56%: every firing is a space, yet it misses almost half of them.
+
+Lowering the threshold lets false alarms in, while raising it adds misses and can hide the cases
+that would show a label is wrong. Neither setting is neutral, so when someone reports how good a
+label is, it is fair to ask what threshold they used.
+
+The next feature shows why a feature's best examples can mislead you. Picture a friend who only ever
+posts photos of their eight best-looking meals. From those photos you would call them a great cook,
+but you have never seen the burnt toast.
+
+- Feature `#511`'s eight best examples are all commas, each with an activation of about 14, so
+  "fires on commas" looks like a perfect label.
+- On held-out text at a threshold of 5.0, it fires on 18 of 19 commas, which is excellent recall.
+  But it also fires on 102 other characters.
+- Out of its 120 firings, only 18 are commas, which is 15% precision. The examples looked perfect,
+  and yet the label is poor on ordinary text.
+
+The cache has one more trap. Its excerpts show every line break as a space, so feature `#53`'s eight
+examples all appear to show a space. Yet on held-out text, the **Space** label scores 0% precision
+and 0% recall at 5.0, while **Line break** scores 41% precision and 62% recall. The label that fits
+the examples you can see scores nothing, most likely because those "spaces" were line breaks in
+disguise.
+
+### Steering: does turning a feature up do what its label says?
+
+Steering adds a feature's recipe to the model's residual at one position while the model predicts
+the next character. In mixing-board terms, you reach over and move the sliders along that feature's
+recipe yourself.
+
+The direction you add is called a **steering vector**, and **Steering strength** sets how hard the
+push is. A strength of 10 raises the feature's activation by about 10. At position 43, that push is
+about 40% as long as the model's own list there, which is a big shove. That share is measured in the
+model's units, before the autoencoder rescales the list.
+
+Keep in mind what the push changes. The residual at a position is about to become the model's guess
+about the **next** character, so steering changes that guess. A feature's label, though, describes
+the character the model has just read, so the two can point to different characters.
+
+The lab reports the result as **Change in log p**, where p is the chance of the label's character.
+Log is short for logarithm, but you do not need logarithms to read it. A change of 0 means no
+change, a positive number means more likely, and a negative number means less likely. Each step
+of +1 multiplies the chance by about 2.7, and each step of −1 divides it by the same amount.
+
+Any push this big changes the prediction a little, in some direction, because it shifts the model's
+numbers right before its final step. So the lab also tries 20 random recipes of the same length, one
+at a time. The readout **20 random: min · median · max** shows the smallest, middle and largest of
+their effects.
+
+This comparison is called the **null control**: it shows what "no real effect" looks like, so you
+can see whether the feature beats it.
+
+Picture a friend who swears their lucky socks make them play better basketball. In the first game
+wearing them, they score 14 points instead of their usual 10. Before you believe in the socks, you
+would want to know how much their score jumps around in ordinary socks. If it often swings between 6
+and 15, a score of 14 tells you nothing.
+
+Even a 16 would not convince you after only a few games in
+ordinary socks. Their best so far is only a rough edge, and the next ordinary game might reach 16
+too.
+
+The same goes for the random pushes: with only 20 tries, the largest random result is a rough edge,
+not a hard limit. So the lab also gives a second way to judge how far the feature's change sits from
+the random ones.
+
+A **standard deviation**, or SD, is a common way to measure how spread out a set of results is. Here
+is an example with made-up numbers. Picture the 20 random changes averaging 0.2, with a typical
+random change landing about 0.3 away from that average, so that typical distance is one SD.
+
+- A feature change of 2.3 sits 2.1 above the average, which is 7 of those 0.3 steps, or 7 SDs. That
+  is far outside what random pushes do.
+- A feature change of 0.5 sits only 0.3 above the average, which is 1 SD. Random pushes land that
+  far out all the time.
+
+The readout **Feature vs random, in SDs** counts those steps for the real results. At 3 or more, the
+lab calls the change far outside the random spread, so it is unlikely to be chance. Between 2 and 3,
+it calls it weak evidence, and under 2 it cannot be told apart from chance.
+
+- Feature `#160` fires on hyphens. At position 43 and strength 10, the chance of a hyphen goes from
+  1.3% to 43.0%, which makes it about 34 times as likely and the top choice.
+- Its log probability rises by 3.53, while the random pushes move it by anywhere from −0.53
+  to +1.36. That is far outside the random range, and **Feature vs random, in SDs** reads +6.9.
+- Press **Continue 12 characters** and the three versions differ: without steering, the model
+  follows "aye," with " my lord," and a new line. With `#160` added at every new character, it
+  writes a row of hyphens, while random direction 1 writes " where is no".
+- At strength 5, `#160` raises a hyphen's log probability by +2.09, more than any other of the 1,024
+  recipes does. The next best gives +1.68.
+- Feature `#683` fires on y, and its eight best examples all show a y. Yet at strength 5, adding it
+  makes a y about a quarter as likely, from 0.55% to 0.14%, while o rises the most.
+- That drop is real, not chance. The log probability of a y falls by 1.38, outside the random range
+  of −0.62 to +0.85 and 3.8 SDs from their average. It is a real effect, just not the one the label
+  seemed to promise.
+- Line up all 1,024 recipes by how much they raise a y, and `#683` comes 1,011th of 1,024, near the
+  very bottom. The recipes that raise a y the most belong to features whose examples are b, m and t.
+
+Why can this happen? The lab shows the result but not the reason, so here is one possible reading.
+A feature that fires on y switches on when the character the model has just read is a y. Pushing
+`#683` may be a bit like telling the model "you just read a y", and the next character after a y is
+rarely another y.
+
+That reading would fit o rising, as in "you", and features for b and m raising y, as in "by" and
+"my". It is still only a reading, and the lab does not test it. Either way, a label tells you where
+a feature switches on, and steering tests a separate claim about what it does.
+
+- Feature `#122` fires on m. At strength 5 it changes the log probability of an m by +0.39, about
+  one and a half times as likely. That is only just above the largest of the 20 random pushes,
+  which reached +0.37.
+- Like a 16 from the lucky socks, that edge is too thin to trust. The result is only 1.6 SDs from
+  the random average, under 2, so it cannot be told apart from chance. The change looks like an
+  effect but is not evidence of one.
+
+## Where it breaks
+
+### What this lab simplifies
+
+- There is one autoencoder, trained once, on one layer of a small model that reads characters and
+  has 1.4 million parameters, the adjustable numbers set during its training. Nothing here shows
+  that a second training run would find the same features.
+- The labels were written by this module's author and checked on 768 held-out characters, which is a
+  small test.
+- Labels here are simple rules, like **Same character** or **First 4 characters**, so the lab can
+  score them automatically. A real label such as "speaker names" carries meaning that no rule like
+  that can capture.
+- The cache records each example's window position and flags start-of-window cases across 1,800
+  scanned windows. It does not promise that an unflagged feature is a good one: `#511` is unflagged
+  and still a poor comma label.
+- Only 128 of the 1,024 features have stored examples, and they were picked for their largest
+  activations, not at random. Excerpts also show line breaks as spaces.
+- Your probe text is read as one window starting at position 0, so its first characters are always
+  window-start positions, whatever you type.
+- **Keep top k features** cuts a finished 32-feature code down to fewer features. That is not the
+  same as training an autoencoder to use fewer, which would learn different, broader features.
+- The sign-split reading of `#108` and `#499` rests on their opposite recipes and on never being on
+  together. The lab does not test it further, for example by removing one of them and checking the
+  rebuild.
+- Steering here is a direct push only. Because the push is added after the model's last block, the
+  only work left is turning the numbers into next-character chances. So the lab sees what the
+  feature does to one guess, at the position where the push is added. It cannot see how the push
+  might change the model's later thinking, because there is no later block to change.
+- Twenty random pushes are a rough control that is not hard to beat, and a tougher one would compare
+  against other features' recipes. The five features you can steer were also picked because their
+  labels measured cleanly, while most of the 1,024 have no label this good.
+- A feature switching on alongside something is only a correlation, and nothing here shows that the
+  model uses a feature to produce its output. The steering card tests one direct effect at the last
+  layer, not how the model works inside.
+
+### Where the real technique struggles
+
+- Train the same kind of autoencoder again from a different random starting point, called a random
+  seed, and you get different features. In one setting with a large model called Llama 3 8B, only
+  about 30% of the features were shared between runs (Paulo and Belrose, 2025).
+- How many features you find depends on how big a dictionary you ask for, because a bigger one
+  splits a feature into narrower ones. That is feature splitting, and it means there is no single
+  correct number of features.
+- Some dictionary entries never fire on any input at all, which wastes space, and these are
+  called **dead features**. This lab's autoencoder has none in 1,800 scanned windows.
+- A feature can fail to fire where its label says it should, because a narrower feature has taken
+  over that case. This is called **absorption** (Chanin and colleagues, 2024), and it makes labels
+  harder to trust.
+- A tidy, sparse rebuild does not prove that the autoencoder found the model's own building blocks.
+- Steering with these features is not a settled method. On a standard set of tests called AxBench,
+  steering with autoencoder features did worse than **prompting**, which means writing instructions
+  into the question itself (Wu and colleagues, 2025).
+- A later paper reports a way of choosing and labeling features with supervision, meaning guidance
+  from examples with known answers (Jørgensen and Hansen). On the same AxBench tests, it gets close
+  to a fine-tuned reference, a model trained further to do that steering job, so the picture is
+  still changing.
+
+**A common mix-up:** A feature's label says where the feature switches on, not what it does when you
+turn it up. Turning it up changes the guess about the next character, which can be a different
+character from the one the label names. Feature `#683` fires on y, and its eight best examples all
+show a y, but pushing it makes the model write y less often and o more often.
+
+A change also only counts once you compare it with a random push of the same size. Measured that way, the change from `#122` looks like an effect but is not evidence of one.
+
+## Going deeper
+
+### Other ways to keep features few
+
+There is more than one way to enforce "only a few features on at a time", and each one gives a
+different dictionary from exactly the same snapshots:
+
+- An L1 penalty adds a cost for the total of all the activations. It pushes most of them to zero,
+  but it also shrinks the ones that stay on, which skews the rebuild.
+- TopK, the method used here, fixes the count directly. Exactly 3.125% of the features, 32 of the
+  1,024, were on at every logged training step.
+- A third method lets each feature learn its own cut-off.
+
+This autoencoder also carries a small L1 penalty, but it barely matters. The **loss** is the
+training score of how wrong the autoencoder still is. At the end of training, the L1 term added only
+9.7 × 10⁻⁵, which is 0.000097, to a final loss of 0.0471, so the penalty made up about 0.2% of it.
+
+### From labels to tests of cause
+
+Labeling features by hand is slow, so researchers often have a language model read each feature's
+best examples and propose a label. That label is then scored on held-out text, and the whole method
+is called **auto-interpretability**. It makes labeling possible at a large scale, but it carries
+over the labeling model's leaning toward tidy explanations, and it still only checks where a feature
+fires.
+
+The test of cause is the steering vector: add the feature's direction while the model writes, and
+check whether its output changes the way the label predicts. The Golden Gate Bridge result from the
+start of this lesson was a test like this, run on a large model. What makes such a result convincing
+is the null control, because if a random push of the same size does as much, the feature has earned
+nothing.
+
+### Beyond one layer
+
+Related tools go further than one layer. A transcoder imitates one of the model's busy layers using
+a wider layer in which only a few parts are on at a time (Dunefsky and colleagues, 2024). A
+crosscoder finds features that are shared across several layers, or even across different models
+(Anthropic, 2024).
+
+The next lab, on circuits, asks the same kind of question about the model's own parts: not what goes
+along with a behavior, but what causes it. Until then, treat every feature label, in this lab and in
+research papers, as a hypothesis with evidence behind it, not a finished fact.

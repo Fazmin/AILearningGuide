@@ -1,0 +1,29 @@
+{
+  "assets": [
+    {
+      "path": "assets/mnist-diffusion-denoiser.onnx",
+      "bytes": 4759933,
+      "sha256": "29e9c0931c949d3c265bfb9499328e459ff5762fa704d2ce1f9ba775f403fc39"
+    },
+    {
+      "path": "assets/mnist-diffusion-schedule.json",
+      "bytes": 2084,
+      "sha256": "80902151b23f760bc993be18ee5a2c3310a39b48831a223e97145ea24fe6d2bb"
+    },
+    {
+      "path": "assets/mnist-models.metadata.json",
+      "bytes": 21341,
+      "sha256": "92038ca7d2b9d224e2af8ea1227145124581793bac19a983addb71446d559e81"
+    },
+    {
+      "path": "assets/mnist-vae-decoder.onnx",
+      "bytes": 908143,
+      "sha256": "5203b7aeacfe4bf8c66f9227141d557b4281c20bdae5c05f58f214c58608ae6f"
+    },
+    {
+      "path": "assets/mnist-vae-encoder.onnx",
+      "bytes": 905711,
+      "sha256": "d42e75c78f519cc38d1ca27beee76a48f619ddf85f41e11a3f8a9d2507096d59"
+    }
+  ]
+}

@@ -1,0 +1,304 @@
+---
+objectives: ["Name the failure modes a cleaning pipeline removes", "Explain why held-out text must be separate from every training set", "Judge a dataset change by its validation loss rather than its size", "Explain when a model recites its training text, and why personal data, licences, and consent need checks that deduplication does not give"]
+terms: ["Boilerplate", "Exact deduplication", "Near-duplicate", "MinHash", "Trigram diversity", "Train/validation/test split", "Held-out loss", "Leakage", "Decontamination", "Data quality", "Data mixture", "Memorization", "Personal data", "Data governance"]
+---
+
+## The big picture
+
+This module is about the text a model trains on: building it from a web scrape by removing site
+boilerplate, copies, and evaluation text, then checking whether the result is better. The
+question it answers is how to tell a better dataset from one that is merely smaller.
+
+*Anatomy of a training run* followed one character model from batch to checkpoint. Here that loop
+stays fixed and only the training text changes, so **held-out loss**, cross-entropy on text that
+never entered training, is the verdict on every change. The last part asks when a model recites
+its training text, and which questions about a dataset no filter can answer.
+
+### Where it shows up
+
+The first three are pipeline stages that run on real crawls at far larger scale, and the lab has
+small versions of them. Mixture and governance are decisions and records kept around the data,
+not filters, and have no control here.
+
+- **Deduplication.** Exact hashing first, then MinHash signatures, short fingerprints whose
+  agreement estimates how much two documents overlap, to find near-copies at web scale.
+- **Filtering.** Trained boilerplate extractors, quality filtering that usually uses a
+  classifier, and further stages for language, personal data, licensing, and toxicity.
+- **Decontamination.** Training documents that share a long word n-gram with a benchmark item are
+  removed before training.
+- **Mixture and governance.** A **data mixture** sets each source's share of the training budget,
+  and the EU AI Act asks providers of general-purpose AI models to publish a summary of their
+  training content.
+
+### Why it matters
+
+Raw scraped text is full of site furniture and copies, and a model with a fixed parameter budget
+spends part of it fitting them. Yet a filter that deletes junk can still cost accuracy, so a
+dataset's size says nothing on its own about its quality. Without held-out text kept out of
+training, no dataset change has a verdict you can trust.
+
+Duplication also shapes what a model recites, since memorization grows with the number of times
+an example was duplicated. Deduplication is not enough, though. Text seen once can still be
+extracted, and whether a dataset is allowed to hold a person's details, a licensed work, or an
+opted-out site's pages is not visible in the text, so no filter can settle it.
+
+### What you will be able to explain
+
+- The failure modes a cleaning pipeline removes: boilerplate, exact repeats, near-duplicates,
+  low-signal fragments, and text that overlaps an evaluation set, and which filter catches each.
+- Why held-out text must stay separate from every training set, and what **leakage**, evaluation
+  text inside training data, does to a held-out score.
+- How to judge a dataset change by its validation loss rather than its size, and when a gap is
+  too small to resolve.
+- When a model recites its training text verbatim, and why personal data, licences, and consent
+  need checks that deduplication does not give.
+
+### What the lab shows
+
+The scrape is fixed: 20 hard-coded lines, each given one verdict, which **Show** filters to
+**All lines** or **Kept only**. **Cleaning stages** holds four switches, **Strip boilerplate**,
+**Drop exact duplicates**, **Drop near-duplicates**, and **Decontaminate**, plus a **Minimum line
+length** slider. Each change updates the verdicts, the **Survival funnel**, and **Dataset
+statistics**.
+
+The comparison is measured. The same character bigram, which predicts each character from the
+one before it, is trained for 25 epochs on the raw scrape and again on the kept lines, and both
+are scored on three held-out sentences. **Raw held-out** and **Cleaned held-out** are real
+cross-entropy, and **Difference** is their gap, all from one fixed shuffle seed, so none carries
+an error bar.
+
+The key experiment: find which filters lower **Cleaned held-out**, then press **Leak a held-out
+sentence into the scrape** and watch the score improve for the wrong reason until
+**Decontaminate** removes the copy.
+
+The **Regurgitation probe** swaps in two tables of counts instead of trained networks, one built
+from the raw scrape and one from the kept lines, and **Context length** sets how many characters
+each conditions on. Each model writes one fixed-seed, 300-character sample that starts from its
+training text's opening characters, and **Copied verbatim** reports how much of that sample sits
+in runs of 16 or more characters copied from the training text.
+
+Some parts are simplified. Boilerplate detection is five hard-coded phrases, the near-duplicate
+stage compares character-trigram sets exactly while the MinHash note only estimates that
+similarity, and the train/validation/test split bar is a display that neither trains nor scores a
+model.
+
+## What it is
+
+A cleaning pipeline is a sequence of filters, each deleting documents by a stated rule. This
+lab holds 20 lines from a small scrape. Every line gets exactly one verdict — kept,
+boilerplate, exact repeat, near-duplicate, or too short — and **Show** switches between
+**All lines** and **Kept only** so you can read the verdicts before trusting them.
+
+The scrape carries four distinct kinds of junk, all of which occur in real crawls:
+
+- **Boilerplate**: copyright, subscribe, and share lines that belong to the site rather than to
+  any document. Nine of the 20 lines are this.
+- An exact repeat of a real sentence, which **exact deduplication** catches.
+- A spelling variant — one line writes `harbour` where an earlier line writes `harbor`. Same
+  content, different bytes, so only a **near-duplicate** test finds it.
+- Two fragments, `ok.` and `yes.`, carrying almost no signal for their length.
+
+Then the lab does the part that arguments about data usually skip. It trains the same character
+bigram model twice — once on all 20 lines joined, once on the kept lines — for 25 epochs each,
+and scores both on 194 characters of text in neither training set. Those scores are
+**Raw held-out** and **Cleaned held-out**, and **Difference** is the only claim it makes. The
+**Survival funnel** counts what each stage removed, in lines and in encoded characters.
+
+A last card, **Regurgitation probe**, changes the model. It builds a table of counts from the
+raw scrape and from the cleaned set, lets each write 300 characters, and measures how much of
+the output is a verbatim copy. The bigram that the rest of the track trains cannot do that, and
+the probe shows what changes when the model sees more than one character of context.
+
+## Why it’s here
+
+Repetition is not neutral. Every training pair produces a gradient, so a line appearing four
+times pulls the weights four times as hard. The model has 900 parameters to spend, and capacity
+spent predicting `all rights reserved` is capacity not spent on anything else. That is the
+mechanism behind **data quality**, a phrase that means nothing on its own.
+
+Held-out text is here for a second reason: **leakage**. If evaluation text also sits in the
+training data, the score measures recall of a memorized string rather than generalization, and
+it improves without the model improving. The passage scored here is outside both training sets
+on purpose, which is why the comparison carries information at all — until you press
+**Leak a held-out sentence into the scrape**.
+
+## How to play with it
+
+Set **Show** to **All lines** and read all 20 verdicts before touching a filter. Then walk the
+settings and record **Cleaned held-out** at each stop:
+
+- All filters off: 20 lines, 899 **Characters**, 2.365 nats per token. The curves lie on top of
+  each other and **Difference** reads +0.000. That is the control condition.
+- **Strip boilerplate** only: 11 lines, 580 characters, 2.306.
+- Boilerplate plus **Drop exact duplicates**, the defaults: 10 lines, 516 characters, 2.300,
+  and **Difference** reads −0.065.
+- Add **Drop near-duplicates**: 9 lines, 451 characters, 2.312. Worse.
+- Add **Minimum line length** at 20 chars: 2.316. Worse again.
+- Now turn **Strip boilerplate** off and leave only **Drop exact duplicates**: 13 lines, 623
+  characters, 2.292 — the best score available in this lab.
+
+That last result is not a trick. The repeated boilerplate lines are byte-identical, so
+**exact deduplication** already removes all but one copy of each. The extra 107 characters are those
+three surviving footer lines; at one copy each, their ordinary English letter pairs cost the model
+nothing measurable here.
+
+Finally, return to the defaults and press **Leak a held-out sentence into the scrape**. It
+copies "the fog returns in the morning and the pattern repeats." into the page. **Cleaned
+held-out** improves from 2.300 to 2.245, and the contamination check flags a 10-word run shared
+with the held-out text. Turn on **Decontaminate** and the score returns to 2.300.
+
+Last, open **Regurgitation probe** and drag **Context length** from 1 to 8. At 1 character,
+**Copied verbatim** reads 0 percent for both models and the samples are gibberish. At 3 the raw
+model copies 52 percent of its sample and the cleaned one 39 percent. At 4 it is 98 and 93
+percent, and at 8 both read 100 percent.
+
+The raw sample at 8 is also 21 percent footer text, the `copyright` and `subscribe` lines; the
+cleaned sample has none.
+
+## What to notice
+
+- Watch the badge on **Drop exact duplicates**. With **Strip boilerplate** on it reads −1
+  lines; with boilerplate off it reads −7. The filters overlap heavily, so neither one's value
+  can be judged in isolation.
+- The **Survival funnel** reads 20, 11, 11, 10, 10, 10 lines and 899 to 516 characters at the
+  defaults. Boilerplate removes 9 of 20 lines but only 319 characters: counting documents and
+  counting tokens tell different stories.
+- Cleaning removes about 40 percent of the characters and the held-out score improves: size helps
+  only when the added text carries new signal. But the direction is not automatic.
+  **Drop near-duplicates** and **Minimum line length** each cost a little accuracy here, even
+  though both remove text a human would call junk.
+- The filters are not independent. **Minimum line length** at 20 makes the score slightly worse
+  when **Drop near-duplicates** is on (2.312 to 2.316) and slightly better when it is off
+  (2.300 to 2.296). A filter's effect depends on which others are already running.
+- **Distinct trigrams** falls from 366 raw to 285 cleaned while **Repetition** falls from a
+  **Raw repetition** of 60 percent to 45 percent. Fewer distinct sequences and less repetition
+  at once: **trigram diversity** measures signal per character, not signal in total.
+- The **train/validation/test split** bar reads 7 / 2 / 1 lines at the defaults, drawn by line
+  so no sentence lands in two slices. The scored held-out passage is separate again.
+- **Leakage** looks like progress. With the leak on, the cleaned model's loss on the two held-out
+  sentences that were not copied gets worse, 2.397 to 2.422, while the headline score improves.
+  The same happens at every seed from 1 to 8.
+- Without the leak, the longest word run shared with the held-out text is two words, "the
+  morning". Ordinary phrases are short and a copied sentence is long, which is why an 8-word
+  **decontamination** check catches the leak and nothing else.
+- **Memorization** switches on over a narrow range of context. Nothing is copied at 1 or 2
+  characters of context, and at 5 almost every character is. Of the contexts the raw model has
+  seen at length 8, 541 of 555 have only one possible next character, so it has no choice but to
+  continue the text it saw.
+- The duplicated footer is what the raw model recites first. Repeated lines carry more counts, so
+  they are sampled more often: 21 percent of the raw sample at length 8, against none of the
+  cleaned one. But cleaning does not stop the cleaned model copying its own sentences.
+
+## Where it breaks
+
+**In this lab.** Both models are trained for real and both scores are real cross-entropy on text
+neither model saw. The limits are size and what is not adjustable. Twenty lines is not a corpus,
+and the gaps between the good settings are a few thousandths of a nat — smaller than the spread
+a different shuffle order would produce.
+
+The shuffle seed is fixed and has no control, so every number arrives without an error bar.
+Across seeds 1 to 8 the raw-to-cleaned gap ranges from 0.065 to 0.085, so treat it as real; the
+gap between 2.292 and 2.300 changes sign between seeds, so treat it as unresolved.
+
+The filters are cruder than they look: boilerplate detection is five hard-coded substrings, and
+the near-duplicate test is exact character-trigram Jaccard at 0.7 applied to single lines rather
+than documents. The **MinHash** note computes a real 64-hash estimate of the harbour pair (0.922
+against an exact 0.915), but the stage itself compares sets directly, which only works because
+there are twenty lines.
+
+The validation chart's model is a bigram over 30 characters, so it cannot show verbatim
+regurgitation of long passages. It can only show capacity being spent in the wrong place. The
+**Regurgitation probe** uses a different model for that: a table of counts over 516 to 899
+characters, where almost every long context is unique, so reciting is guaranteed. A real model
+generalizes where this table cannot, and memorizes only part of what it saw.
+
+**In real systems.** Exact hashing still runs at web scale, but it misses near-copies, and
+comparing every pair of billions of documents is impossible. So near-duplicate search uses
+MinHash or SimHash signatures with locality-sensitive hashing, which only compares documents
+whose signatures collide, and it is one of the most expensive stages in the pipeline.
+
+Boilerplate removal is a trained extractor, not a substring list. Quality filtering usually
+means a classifier scored against a reference corpus, which imports that reference's biases.
+Separate stages handle language identification, personal data, licensing, and toxicity, each a
+policy decision as much as an engineering one.
+
+**Leakage** is harder there too. Benchmark contamination is checked by n-gram overlap against
+every evaluation set (GPT-3's report used 13-grams) and still happens, because benchmark items
+get quoted in posts that the next crawl collects, and paraphrases slip past exact n-gram
+matching. A held-out set is held out until someone publishes it.
+
+**Tokenization** interacts with all of this. Near-duplicate and contamination checks run on
+normalized text, and the same page can yield very different token counts under different
+tokenizers, so a funnel reported in tokens is specific to the tokenizer that counted it.
+
+## Going deeper
+
+**Mixture weights are the other half of the job.** Filtering decides what is admissible; the
+**data mixture** decides what fraction of the training budget each source receives. Upsampling a
+small high-quality source a few times is standard practice, so controlled duplication gets
+reintroduced deliberately after deduplication removed the accidental kind. The rule is not
+"duplicates are bad" but "you should be the one choosing which text gets seen twice".
+
+**What a held-out score settles.** **Held-out loss** answers one question well: did this
+dataset change help the model predict text like the held-out sample? It cannot tell you whether
+that sample is the text you care about. A step that strips code blocks looks fine on prose and
+disastrous on a coding benchmark, which is why production pipelines score against several
+held-out sets and expect them to disagree.
+
+**Why the split has three parts.** Validation is touched repeatedly while you tune, so it
+slowly stops being held out — every decision fits it a little. The test slice is what you keep
+for a single measurement at the end. Drawing the **train/validation/test split** by document
+rather than by sentence is what makes any of it work, because two sentences from one page share
+enough phrasing to leak across a sentence-level split.
+
+### Memorization and regurgitation
+
+**Memorization** is a model reproducing a stretch of its training text when given a prefix of
+it. Carlini and colleagues measured it across model families and found it grows log-linearly
+with model capacity, with the number of times an example was duplicated, and with the number of
+tokens of context used to prompt the model (arXiv 2202.07646). The probe isolates the third.
+
+Duplication is the part a pipeline controls. Lee and colleagues found that over 1 percent of the
+unprompted output of language models trained on standard datasets was copied verbatim from the
+training data, and that one 61-word sentence was repeated over 60,000 times in C4. Their
+deduplication produced models that emitted memorized text ten times less frequently (arXiv
+2107.06499).
+
+Deduplication is not enough. Carlini and colleagues extracted hundreds of verbatim sequences from
+GPT-2, including names, phone numbers, and email addresses, even though each sequence appeared in
+just one document, and they found larger models more vulnerable (arXiv 2012.07805).
+
+### Data governance: personal data, licences, consent
+
+Three questions about a dataset cannot be answered by reading its text, so no filter in this lab
+can answer them.
+
+- **Personal data.** Whether a document names a person is a detection problem, and whether it may
+  be used is a legal one. The extraction result above is why a single occurrence still matters.
+- **Licences.** An audit of more than 1,800 text datasets found licence information omitted in
+  over 70 percent of cases on the hosting sites it examined, and miscategorized in over 50
+  percent (Longpre et al., arXiv 2310.16787).
+- **Consent.** Websites state their preferences in terms of service and `robots.txt`. A 2024 audit
+  of 14,000 web domains found that restrictions rose enough in one year that, if respected, over
+  5 percent of all tokens in C4 are fully restricted, and 45 percent by terms of service
+  (Longpre et al., arXiv 2407.14933).
+
+Rules are arriving. Article 53(1) of the EU AI Act, Regulation (EU) 2024/1689, asks providers of
+general-purpose AI models to keep a policy for complying with Union copyright law, including
+rights reservations, and to publish a sufficiently detailed summary of the content used for
+training. Each of these needs a record kept with the data, not a better filter.
+
+### Toy versus real
+
+- **Scale.** The lab's scrape is 20 lines and 899 characters, and its most repeated line is the
+  copyright footer, four times. Lee et al. found one 61-word sentence repeated over 60,000 times
+  in C4.
+- **Overlap checks.** The lab flags an 8-word run shared with the held-out text. GPT-3's report
+  flagged any test example sharing a 13-gram with its pretraining data (Brown et al., arXiv
+  2005.14165). Lee et al. found train-test overlap affecting over 4 percent of the validation
+  sets of standard datasets.
+- **Recitation.** The probe copies everything at 8 characters of context because the text is
+  tiny. In the models Lee et al. trained, over 1 percent of unprompted output was copied
+  verbatim, and Carlini et al. found memorization grows with model capacity.
+- **What real pipelines add.** Language identification, trained quality classifiers, personal-data
+  detection, licence and opt-out records, and a log of why each document was dropped.

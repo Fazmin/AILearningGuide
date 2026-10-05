@@ -1,0 +1,24 @@
+{
+  "assets": [
+    {
+      "path": "assets/bigram.json",
+      "bytes": 94833,
+      "sha256": "b14e3352c36770ad0ecd13578bf33adc547c4649da18eb9269eedf7d1a900057"
+    },
+    {
+      "path": "assets/character-rnn.onnx",
+      "bytes": 1883584,
+      "sha256": "78f771e1c974c7073aa5e00e28e011a2f2f782830f855ca0c7d4b694414dc8b4"
+    },
+    {
+      "path": "assets/language-models.metadata.json",
+      "bytes": 37312,
+      "sha256": "ad17ce4e7d441976231d63875e50731f0aef1976fc50c1267daeec93dc875dc9"
+    },
+    {
+      "path": "assets/transformer-vocab.json",
+      "bytes": 1553,
+      "sha256": "56492239eeda70ff9c3081f484dff205443203ec514b493d20ec18b6b690b2e3"
+    }
+  ]
+}

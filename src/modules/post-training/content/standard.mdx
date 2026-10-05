@@ -1,0 +1,256 @@
+---
+objectives: ["Differentiate pretraining, supervised fine-tuning, reward modeling, and KL-regularized policy optimization", "Fit a Bradley–Terry reward model from pairwise preferences and read what it actually learned", "Identify reward hacking as a proxy score rising while true quality falls", "Explain alignment as the gap between what can be measured and what is wanted, and name the problems RLHF does not fix"]
+terms: ["SFT", "Reward model", "RLHF", "DPO", "KL divergence", "KL penalty", "Bradley-Terry", "Reward hacking", "Constitutional AI", "Alignment", "Goal misgeneralization", "Scalable oversight", "Sycophancy", "Dangerous-capability evaluation"]
+---
+
+## The big picture
+
+This module covers post-training, the training that follows pretraining and shapes a base model
+into an assistant. Every stage of it faces one question: how do you move a model toward what people
+intend, when intent only arrives through proxies such as demonstrations, comparisons, and scores?
+
+The module runs all three stages on one prompt: supervised fine-tuning (SFT) on curated
+demonstrations, a reward model (a learned scorer) fitted to pairwise comparisons, and optimization
+against that scorer under a KL penalty, a charge for drifting from the SFT model. In real systems,
+SFT reuses the next-token cross-entropy loss from **Next-token prediction**, and optimization
+usually treats each sampled response as one action that gets one score, the bandit setup from
+**Reinforcement learning foundations**.
+
+### Where it shows up
+
+Post-training sits between a pretrained base model and the assistant people talk to. RLHF
+(reinforcement learning from human feedback) optimizes against a reward model with PPO (proximal
+policy optimization), a policy-gradient method that clips each update so the policy moves in small
+steps. DPO (direct preference optimization) trains on preference pairs with no separate reward model.
+
+### Why it matters
+
+A base model predicts how a page continues, and the continuation of a question is often not an
+answer. Demonstrations move it toward answering, but they are expensive to write and comparisons
+are cheap, so the pipeline turns next to comparisons and a scorer learned from them.
+
+That scorer is a proxy, and optimizing hard against it rewards its mistakes along with the intended
+behavior. The proxy score keeps rising while true quality falls. This failure, reward hacking, shows
+up only against an independent score, and a KL penalty slows it but does not stop it.
+
+### What you will be able to explain
+
+- How pretraining, supervised fine-tuning, reward modeling, and KL-regularized policy optimization
+  differ.
+- How a Bradley–Terry reward model is fitted from pairwise preferences, and how to read what it
+  actually learned.
+- Why reward hacking shows up as a proxy score rising while true quality falls.
+- Alignment as the gap between what can be measured and what is wanted, and the problems RLHF does
+  not fix.
+
+### What the lab shows
+
+Everything runs on one prompt, "Explain why the sky is blue," and six fixed responses, A to F, so
+every distribution in the lab, SFT's included, is over six whole responses rather than over tokens.
+**Post-training pipeline** shows each response's base, SFT, and tuned probability; **SFT steps**
+takes real cross-entropy gradient steps toward the demonstrations B and F.
+
+**Preference pairs** holds six comparisons. Five come labelled by default, and in each one the
+preferred response is also the longer one. **Pair 5**, a long answer that never names the mechanism
+against a short one that does, starts unlabelled. **Reward model fit** refits a three-weight
+Bradley–Terry scorer to the current labels, the defaults or yours, with 200 gradient steps.
+
+The key experiment is on **Optimize against the reward model**. With the default labels, lower
+**KL coefficient β** from 20 to 0.02 and watch **Reward-model score** rise the whole way while
+**Gold score** peaks and falls. Then label **Pair 5** for B, the short answer that names the
+mechanism, and sweep again.
+
+The tuned policy is the exact closed-form optimum, with no sampling and no PPO. Word count and
+praise are measured from the text; the base logits, the "names mechanism" flag, and the gold scores
+are authored, and gold stands in for what you meant.
+
+## What it is
+
+Pretraining produces a text predictor, not an assistant. Given "Explain why the sky is blue," a
+raw predictor's likely continuation might be more exam questions, because that is what follows
+such a line in web text. It is behaving correctly and uselessly.
+
+**Post-training** is the set of stages that turn that predictor into something that answers. This
+lab runs all of them on one prompt with a deliberately tiny policy: a probability distribution over
+six complete responses. Each response is one action, the bandit view from Reinforcement learning
+foundations.
+
+### Stage one: supervised fine-tuning
+
+**SFT** is ordinary next-token cross-entropy on curated demonstrations, usually counted only on the
+response tokens. The loss is the pretraining loss; the data changed. Here the authored base model
+puts 50% on A, another exam question. **SFT steps** takes real gradient steps toward the
+demonstrations B and F; eight steps move them to 38% and 36%.
+
+Real SFT also teaches the **chat template**: special tokens that delimit system, user, and
+assistant turns, so the model can tell instructions from content.
+
+### Stage two: a reward model from comparisons
+
+Writing an ideal response is slow; choosing the better of two is fast and more consistent. Those
+choices train a **reward model** with the **Bradley-Terry** objective: `P(A ≻ B) = σ(r_A − r_B)`.
+
+Here `r(y) = w·φ(y)`, where φ is three numbers: words ÷ 10, whether the response names the
+scattering mechanism, and whether it opens with praise. **Reward model fit** runs 200 gradient steps
+on the pairs you label.
+
+### Stage three: optimize under a KL leash
+
+The policy is then tuned to maximize `E[r] − β·KL(π‖π_SFT)`. The **KL penalty** charges it for
+drifting from the SFT model. **KL divergence** is that drift, measured:
+
+```text
+KL(π‖π_SFT) = Σ π(y) · ln( π(y) / π_SFT(y) )
+```
+
+It is the expected log-ratio of the tuned probabilities to the SFT probabilities, averaged over the
+tuned policy's own responses. It is never negative, it is zero only when the two distributions are
+identical, and it is not symmetric: swapping the arguments gives a different number. The lab's
+**KL from SFT** readout is this sum in nats; with the default labels the gold score peaks near 0.20 nats.
+
+The full objective has an exact optimum, `π(y) ∝ π_SFT(y)·exp(r(y)/β)`,
+which this lab computes directly.
+
+**RLHF** approximates the same optimum by sampling responses and updating with PPO. That
+reward-after-acting signal is the reinforcement learning that **What AI actually is** sorted from labels
+and raw text, and **Reinforcement learning foundations** runs the basic policy-gradient update on a
+bandit. **DPO**
+rearranges the optimum so the reward is `β·log(π/π_SFT)` plus a constant, and trains the policy on
+pairs directly.
+
+## Why it’s here
+
+Most traits people call a model's personality are set here: helpfulness, verbosity, hedging,
+formatting habits, refusals, and willingness to say "I don't know." Two products built on the same
+base model can feel completely different.
+
+It is also where a model is optimized directly against an imperfect measurement, so the reward
+hacking previewed above is post-training's case of Goodhart's law: push hard on a measure, and it
+stops tracking what you wanted. That gap between a measure and what you meant is the **alignment**
+problem. This lab shows one small piece of it, and the subsection under Where it breaks says which
+pieces it leaves out.
+
+## How to play with it
+
+1. Move **SFT steps** from 0 to 8 and watch A's base-model lead collapse as B and F grow.
+2. Read the default labels on **Preference pairs**. Pairs 1 to 3 prefer the answer that names the
+   mechanism; pair 4 prefers the longer of two answers that both name it, and pair 6 the longer of
+   two that neither names. Pair 5 starts unlabelled, and every preferred answer is also the longer
+   one. **Reward model fit** reports
+   **Words ÷ 10** at +1.255 and **Agrees with gold** at 9 of 15.
+3. Move **KL coefficient β** from 20 to 0.02. **Gold score** starts at 0.49, peaks at 0.56 near
+   KL 0.20 nats, then falls to 0.10 as the policy moves onto E. **Reward-model score** rises the whole
+   way.
+4. Label **Pair 5** for B and sweep β again. **Words ÷ 10** falls to +0.456, and gold now peaks at
+   0.91.
+
+## What to notice
+
+- **Labels fitted** reads 5 of 5 while **Agrees with gold** reads 9 of 15. Fitting your data is not
+  the same as learning your criterion.
+- When every preferred answer is longer, the scorer cannot tell whether you liked length or
+  correctness. It picks the feature with the larger differences.
+- The reward-model curve never bends down. It cannot; the tilt maximizes it. Only an independent
+  score can show **reward hacking**.
+- A larger β keeps the policy close to SFT and gives up part of the gain. There is no β that is
+  correct in general.
+
+## Where it breaks
+
+**In this lab.** Six fixed responses stand in for everything a model could write. The base logits,
+the "names mechanism" flag, and the gold scores are authored; word count and praise are measured
+from the text. The reward model sees only three features. The tuned policy is the exact optimum,
+so there is no sampling noise, no PPO clipping, and no value function.
+
+**In real systems.** Reward models read the whole response and still learn shortcuts. They have been
+measured favoring longer answers, confident phrasing, and agreement with the user. The last is a
+driver of **sycophancy**: a model abandoning a correct answer after mild pushback.
+
+Optimizing hard against such a scorer produces the curve in this lab. Gao et al. (2022) measured it
+against a larger "gold" reward model: the proxy kept rising while the gold score peaked and fell. A
+KL penalty slows that; it does not remove it.
+
+Two further limits. Post-training can suppress a behavior without removing the capability, which
+is why jailbreaks work. And alignment can cost some benchmark performance, an **alignment tax**.
+
+Finally, preference data encodes whoever produced it. Annotator instructions, demographics, and
+incentives shape what "better" means, and there is no neutral setting.
+
+### What alignment is, and what RLHF does not fix
+
+Alignment is getting a model's behavior to match what its developers and users actually intend.
+Intent is never handed to a model directly. It arrives through proxies: demonstrations, comparisons,
+a written rule, a score. The alignment problem is the gap between those proxies and what we want.
+
+Researchers split it in two. *Outer alignment* asks whether the specified objective is the right
+one. *Inner alignment* asks whether the trained model actually pursues that objective.
+
+**What this lab shows.** The reward model is a proxy fitted to your labels, and the gold score stands
+in for what you meant. As **KL coefficient β** falls, the reward-model score rises the whole way
+while the gold score peaks, near 0.56 at 0.20 nats on the default labels, and then falls to 0.10.
+That is Goodhart's law in miniature, and the KL leash only slows it.
+
+Every failure here sits in the objective. The tuned policy is the exact optimum of the reward model,
+so it does precisely what the proxy says. That is the outer half of the problem, and only that half.
+
+**What it does not show.** Four problems sit outside this lab. Each carries its status, because the
+evidence is uneven.
+
+- **Goal misgeneralization.** A policy can learn a goal that matches the training reward wherever it
+  was trained and differs from the intended goal elsewhere. In one reinforcement-learning
+  demonstration (Langosco et al., 2022), an agent trained on levels where a coin always sat at the far
+  right kept running right after the coin was moved. *Status:* shown in small environments; how far
+  it explains language-model behavior is open. This lab cannot show it, because its policy is defined
+  by the reward.
+- **Scalable oversight.** Both reward-model steps need a person who can say which answer is better.
+  For a long program or a subtle argument, they may not be able to. Proposed remedies include
+  model-written critiques that help raters find flaws, debate between models, and feedback against
+  written principles, as in Constitutional AI. *Status:* some help in controlled studies; none is
+  established as enough for a model that outperforms its overseers.
+- **Sycophancy.** This one is measured. Studies (Perez et al., 2022; Sharma et al., 2023) found that
+  assistants trained with human feedback sometimes tailor answers to a user's stated view or drop a
+  correct answer after pushback, and that preference data sometimes rates agreeable answers above
+  correct ones. It is the length shortcut again, with a different feature. *Status:* established as a
+  behavior; each training stage's share of it is still being worked out.
+- **Deceptive behavior.** The worry is a model that behaves well when it seems to be observed, or
+  underperforms on purpose, called sandbagging, to hide a capability. The evidence comes from
+  constructed settings: models trained to carry a hidden backdoor kept it through standard safety
+  training (Hubinger et al., 2024), and models can be prompted or fine-tuned to underperform on
+  evaluations (van der Weij et al., 2024). *Status:* whether such behavior arises unprompted in
+  ordinary training is open.
+
+**How developers check before release.** Developers run **dangerous-capability evaluations**: tests of
+whether a model can do things that would be seriously harmful if misused or if it acted on its own,
+such as giving real uplift toward weapons or carrying out cyber operations. Published frameworks, such
+as Anthropic's Responsible Scaling Policy, OpenAI's Preparedness Framework, and Google DeepMind's
+Frontier Safety Framework, tie results to safeguards the developer commits to.
+
+A failed test shows that one attempt failed, not that the capability is absent, so evaluators also try
+fine-tuning and scaffolding to draw it out. The tests and thresholds are each developer's own
+commitments, and they are still young.
+
+**Where this leaves RLHF.** It is the best-tested way to make a model's behavior match intent on the
+cases people can check. The problems above are mostly about the cases they cannot, or about what a
+proxy leaves out. Keep three kinds of statement apart: what this lab computes, what has been measured
+elsewhere, and what is still open.
+
+## Going deeper
+
+**Less human labeling.** In **Constitutional AI**, a model critiques and revises its own drafts
+against written principles to make fine-tuning data, then judges pairs of outputs against those
+principles to make preference data. Human effort moves from labeling to writing the principles.
+
+**No learned scorer where a checker exists.** For math and code, a **verifiable reward** comes from
+tests or an answer key, which removes the exploitable reward model. It only applies where checking
+is possible.
+
+**Simpler optimizers.** DPO removed the separate reward model. Group-based methods such as GRPO score
+several sampled responses to the same prompt against each other instead of training a value
+function.
+
+**Instruction tuning & templates** builds the SFT stage on a real tiny model, and **Preference
+optimization in practice** runs DPO on it. Small open models are also often distilled from a larger
+model's answers, which is why they inherit its habits and mistakes.
+
+**Failure modes, safety, and security** covers attacks on deployed systems, and **Ethics and impact**
+asks who bears the costs and how regulation treats them. Both sit beside alignment rather than inside it.

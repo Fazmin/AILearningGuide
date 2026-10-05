@@ -1,0 +1,341 @@
+---
+objectives: ["Match convolution, recurrence, and attention to the reuse pattern each one assumes","Treat a transformer as one architecture among several that map sequences to predictions","Separate the weights a model stores from the weights each input actually uses"]
+terms: ["Architecture","Inductive bias","Dense layer","Weight sharing","Convolution","Receptive field","Recurrent network","Vanishing gradient","LSTM","Transformer","Causal","KV cache","State-space model","Mixture of experts"]
+---
+
+## The big picture
+
+Before anyone trains an AI model, somebody has to decide how its parts are connected. They decide which pieces of the input each part is allowed to look at, and which stored numbers get reused from place to place. This module is about those decisions, and the lab lets you compare six different sets of them side by side.
+
+All six are versions of the same basic machine, a neural network, which is the kind of program behind chatbots and image recognition. A neural network turns input numbers into output numbers by multiplying them by stored numbers called **weights** and adding up the results, round after round. Training is the long process of nudging those weights until the outputs come out right.
+
+The way the parts are connected is called the network's **architecture**, and it is fixed before training starts, so training never changes it. Each architecture makes its own guesses about the input, such as "nearby pixels belong together" or "the order of the words matters". Built-in guesses like these are called the **inductive bias**, where "bias" means a starting assumption, not a prejudice.
+
+The six wirings in this lab are:
+
+- a **dense layer**, where every output has its own weight for every input and nothing is reused;
+- a **convolution**, which slides one small window of weights across the whole input;
+- a **recurrent network**, which reads one step at a time and carries a running summary forward;
+- **attention**, where each position, such as each word, looks directly at every position it may see, which for a model that writes text is itself and every earlier one;
+- a **state-space model**, a close cousin of the recurrent network that is built to train faster;
+- a **mixture of experts**, which stores many small networks but runs only a few of them on each piece of input.
+
+### Where you have met it
+
+A language model, the kind of program behind a chatbot, writes its reply one small piece at a time. Each new piece may look back at what came before it but never ahead, and that one-way rule is called **causal**. Most chatbots today are built on a wiring called attention. While such a model writes, it has to keep notes about every earlier piece, and those notes grow as the reply gets longer. You will meet them later in this lesson as the **KV cache**, and you will also meet wirings whose notes stay the same size however long the text gets.
+
+You have probably heard the word **transformer**. It names one particular wiring: attention, which moves information between positions, plus a small network that works on each position by itself. People often say "transformer" as if it meant any AI model, but it is one design among several, and many real systems combine designs.
+
+The other wirings have real, named versions too:
+
+- the **LSTM**, a recurrent design from 1997, built so that early inputs keep affecting learning over far more steps than in a plain recurrent chain;
+- Mamba, a state-space model from 2023;
+- Mixtral 8x7B, a mixture of experts that sends each token, a small piece of text, to 2 of its 8 experts;
+- convolutions, the core of networks that recognise images.
+
+When a model that writes text from left to right uses convolutions, they are built so that they never see later positions.
+
+### Why it matters
+
+The wiring decides what is cheap for a model to learn before it has seen a single example. Get it wrong, and a model may need far more weights, far more memory, or far more examples to learn the same thing. It may even be unable to connect two parts of its input at all, because no path joins them.
+
+No wiring is cheap at everything, so choosing one means choosing which cost you are willing to pay. Some wirings need huge numbers of weights, some let early inputs fade away, and some need more memory as the text gets longer. One wiring, the mixture of experts, even lets a model store many more weights without each token needing more arithmetic.
+
+### What you will be able to explain
+
+By the end of this lesson, you should be able to explain the three ideas below. In them, a **sequence** means an ordered list, such as the words of a sentence or the columns of a drawing. A **hop** is one layer or step that information passes through on its way from an input to an output.
+
+- what kind of reuse a convolution, a recurrent network and attention each build in, and how many hops each needs to link two positions that are far apart;
+- why a transformer is one wiring among several that can read a sequence and turn it into predictions, and which of its two parts moves information between positions;
+- the difference between the weights a model stores and the weights that one piece of input actually uses, and why adding more experts grows only the first number.
+
+### What the lab lets you do
+
+Nothing in this lab is trained, so every number you see is worked out directly from a formula. The filters and the recurrent weights are picked by hand. The mixture of experts has a router, the part that decides which experts each piece of input goes to, and it uses fixed, random-looking numbers instead of trained ones. At the top is **Drawn digit**, an 8×8 grid of squares, called pixels, with a blocky 3 already inked in. You can click squares to add or remove ink, and three of the cards below read your drawing.
+
+- **Live filter** slides a small 3×3 window of hand-picked weights across your drawing and shows the result at every square.
+- **Unrolled RNN** reads the columns of your drawing from left to right, and shows how much the first column still matters by the end. RNN is short for recurrent neural network.
+- **Who sees whom** shows six wirings: the ones listed earlier except the mixture of experts, plus the **Per-position MLP** found inside a transformer. That is a small network that works on each position by itself. MLP is short for multilayer perceptron, an old name for a small stack of dense layers, and the card's name for the dense layer is Dense MLP. For each one it shows which inputs each output can use and how many hops it takes, with a table of costs underneath.
+- **Sparse experts** sends each column of your drawing to a few experts and counts the weights stored against the weights actually used.
+
+The two comparisons that teach the most are Recurrent against Attention in **Who sees whom**, and raising **Experts** while **Experts per token** stays the same.
+
+## What it is
+
+### Weights and layers
+
+Most parts of a network do the same basic job: it multiplies each of its input numbers by its own weight, then adds the results together into one output number. A whole row of these jobs running side by side is called a **layer**. A network stacks many layers, so that each one works on the outputs of the one before.
+
+Training adjusts the weights a tiny bit at a time until the outputs come out right. What training cannot do is change which inputs each output is allowed to use, because that was settled when the network was designed.
+
+### What an architecture decides
+
+An **architecture** answers two questions before training begins: which inputs is each output allowed to use, and which weights get reused in more than one place?
+
+Think of it like planning the pipes in a building before any water flows, with the inputs as tanks and the outputs as taps. The pipes decide which taps can draw from which tanks, and how many bends the water passes through on the way. Training is like turning the valves, because it changes how much flows through each pipe but never adds a pipe or takes one away. If a tap has no pipe to a tank, no amount of valve-turning will ever connect them.
+
+The picture stops matching when it comes to reuse, because in a network a single weight can sit on many pipes at once. Adjusting that weight changes all of those pipes together, which real valves cannot do. This kind of reuse turns out to be one of the biggest differences between wirings.
+
+Each wiring also builds in a guess about the input before it sees any data. A convolution guesses that nearby pixels belong together and that the same small pattern matters everywhere, while a recurrent network guesses that order matters. These guesses are the architecture's **inductive bias**, and they make some patterns cheap to learn and others expensive.
+
+### Reusing weights
+
+The most straightforward wiring, called a **dense layer**, gives every output its own separate weight for every input, so nothing in it is shared. On the 8×8 drawing, with 64 pixels coming in and 64 outputs going out, a dense layer needs one weight for every pixel and output pair. That is 64 times 64, which is the 4,096 that the lab shows beside **Dense layer, 64 → 64**.
+
+The other choice is to reuse the same few weights at every position, which is called **weight sharing**. It has two big payoffs: it needs far fewer weights, and a pattern learned in one place works everywhere else without being learned again.
+
+Picture a lifeguard who has learned what trouble in the water looks like. They do not need separate lessons for each end of the beach, because they carry the same trained eye from one patch of water to the next. A layer with shared weights works like that lifeguard, while a dense layer is more like hiring a different guard for every patch and training each one from scratch.
+
+**A common mix-up:** sharing weights does not mean every input gets an equal say in the answer. The weights are the same everywhere, but how much an input affects an output still depends on where that input sits and how many steps lie between them. You will see this clearly in the recurrent network, which uses one weight at every step and yet ends up barely affected by its first input.
+
+### Convolution: one small window, slid everywhere
+
+Picture a square of card with a 3×3 grid of numbers written on it. You lay it over the drawing, where each inked pixel counts as 1 and each blank one as 0. Then you multiply each pixel underneath by the number written above it, add up the nine results and write the total down. Next you slide the card one square along and do it again, until you have a total for all 64 positions.
+
+That small grid of numbers is called a **kernel**, or a filter, and sliding it across the input is a **convolution**. The lab's **Filter** control picks one of three hand-made kernels, called vertical edge, horizontal edge and center blob. All 64 outputs come from the same 9 weights, which is why the **Live filter** card says "9 weights reused at 64 positions".
+
+Each kernel looks for a different shape:
+
+- **horizontal edge** has −1 along its top row, 0 along its middle row and +1 along its bottom row. So it subtracts any ink above the centre square and adds any ink below it;
+- **vertical edge** does the same thing sideways, subtracting ink on the left and adding ink on the right;
+- **center blob** gives +4 to ink in the middle square and −1 to ink in the four squares directly above, below, left and right of it. The four corner squares count 0. So it scores highest for a lone dot with no ink beside it.
+
+For a worked example, set **Filter** to horizontal edge and move the **Selected cell** slider to r2 c4, which means row 2, column 4. You can also click that square in the grid of totals on **Live filter**, but not on the drawing itself, because clicking the drawing adds or removes ink. The window around that cell covers rows 1 to 3. Row 1 holds the top bar of the 3, so three inked pixels sit under the kernel's row of −1 weights.
+
+The formula row in **Live filter** shows `Σ pixel × weight = 1·(−1) + 1·(−1) + 1·(−1)`, and the total is −3. The Σ sign means "add all of these up", and each `1·(−1)` is one inked pixel times one weight. Blank pixels count as 0, so they add nothing and the lab leaves them out of the list.
+
+Now move to r8 c4, the square underneath the bottom bar. Its window holds the same shape of ink in the same spots, so the same 9 weights give it the same total of −3. Nobody had to teach the filter about the bottom bar separately, and that is weight sharing paying off.
+
+The outlined 3×3 box on **Drawn digit** shows the only pixels that the selected output can see. That set of inputs is called the output's **receptive field**, and the **Receptive field** readout sums it up as "3×3 per layer". A pixel outside the box has no effect at all, while a pixel inside it can change the output, unless it sits under a 0 weight in the kernel.
+
+One layer only sees a pixel's nearest neighbours, but layers can be stacked. Each output of a second layer sees a 3×3 patch of first-layer outputs, and each of those saw its own 3×3 patch of pixels. Picture a pixel two squares to the left of the selected one. The first-layer output just left of the selected square can see that pixel, and the second-layer output can see that first-layer output, so the pixel now counts. The same happens on every side, which turns the 3×3 view into a 5×5 one. Every extra layer widens the view by one pixel in each direction, which means pixels that are far apart only meet after enough layers.
+
+### Recurrent network: one step at a time
+
+Picture a row of eight desks and a note that gets passed from desk to desk. Each student reads one new piece of information, rewrites the note to include it, and hands the note on. The note never gets any bigger, so each rewrite has to squeeze the old news and the new news into the same small space. Every student follows exactly the same rewriting rule, and that one shared rule is what makes this a single network rather than eight. Here the picture stops matching, though. A real student could choose to copy part of the note unchanged. A plain recurrent network instead rewrites and squeezes the whole note at every desk, and that is where old news starts to fade.
+
+A **recurrent network** works the same way: it reads a sequence one step at a time while carrying a fixed-size note, called the **hidden state**. It applies the same update, with the same weights, at every step, so its reuse is reuse over time.
+
+The **Unrolled RNN** card runs a tiny one on your drawing, where RNN is short for recurrent neural network. It reads the eight columns from left to right, and the input for each column is the fraction of its 8 pixels that are inked, shown as **Column mean**. On the default 3, column 1 is blank, so its input is 0, while column 7 has 4 of its 8 pixels inked, so its input is 0.5.
+
+Its hidden state is one single number: h0 is the state once column 1 has been read, h1 once column 2 has been read, and so on up to h7. The lab starts counting at 0, so every label is one less than its column number. For example, t=0, x0 and h0 all belong to column 1, and h7 belongs to column 8.
+
+At each step the net multiplies the number it is carrying by the **Recurrent weight**, written w, and then adds the new column's input. Finally it squashes the total so it always stays between −1 and 1. The squash leaves small totals almost unchanged but flattens big ones. A total of 0.25 becomes about 0.245, 1 becomes about 0.76, and 3 becomes about 0.995, so the result never quite reaches 1.
+
+Here are the first two steps. The net starts with nothing, and column 1 is blank, so h0 is 0. For column 2, it multiplies 0 by 0.9, adds column 2's input of 0.25 and squashes 0.25 to about 0.245, which is h1. Carrying on this way to the end, with the default w of 0.90, the last state, h7, comes out at about 0.634.
+
+Because each step needs the note from the step before, the steps cannot all run at the same time, and they have to happen in order. A recurrent network also only ever sees the past, because when it reaches column 3 it has read columns 1 to 3 and nothing to their right.
+
+### Why early steps fade
+
+How much does column 1 still matter by the time the net reaches h7? The lab answers with a number written `∂h7/∂x0`, where x0 is column 1's input and the curly ∂ means "a tiny change in". Read the whole thing as a ratio: if you nudged column 1's input up by a tiny amount, how far would h7 move, compared with the size of the nudge?
+
+A number like this is called a **gradient**, and training uses gradients to decide how much to adjust each weight. Training works backwards from the answer. When h7 is wrong, a correction is sent back along the same chain of steps, and it gets multiplied by the same factors you are about to see. If the chain shrinks column 1's effect to almost nothing, almost none of the correction gets back to the step that read column 1. So column 1 gets almost no credit or blame, and the network learns almost nothing about how it should have used column 1.
+
+To get from column 1 to h7, the effect has to pass through every later step, and each step multiplies it by its own factor. The lab prints each factor on the arrow between two boxes, and it works out as `w·(1 − h²)`, where h is the state at that step.
+
+Take the factor beside h1 as an example, where h1 is about 0.245, as the **Hidden h1** readout shows when **RNN step** is at t=1. Squaring 0.245 gives about 0.06, and taking that away from 1 leaves 0.94. Multiplying 0.94 by w, which is 0.9, gives about 0.85, the factor printed on that arrow.
+
+The `(1 − h²)` part comes from the squashing, and it measures how freely a nudge can pass through that squash. When h sits near 0 there is plenty of room, so `(1 − h²)` is close to 1 and a nudge passes through almost whole. When h gets close to 1 or −1, the squash is already pressing against its limit, so `(1 − h²)` drops toward 0 and a nudge barely gets through.
+
+The formula row for column 1 starts with `(1 − h0²)`, which equals 1 here because h0 is 0. This first part has no w, because column 1's input goes straight into the first squash without being multiplied by w, so only the squash's `(1 − h²)` applies. After that, the effect is multiplied by seven factors in a row, all of them below 1. Here is each factor, with how much of the effect is left after it:
+
+- hop 1 multiplies by 0.85, which leaves about 0.85;
+- hop 2 multiplies by 0.73, which leaves about 0.62;
+- hop 3 multiplies by 0.61, which leaves about 0.37;
+- hop 4 multiplies by 0.45, which leaves about 0.17;
+- hop 5 multiplies by 0.37, which leaves about 0.06;
+- hop 6 multiplies by 0.28, which leaves about 0.017;
+- hop 7 multiplies by 0.54, which leaves about 0.009.
+
+So column 1 reaches h7 with a gradient of about 0.009, while column 8, which needs no hops at all, reaches it with 0.598. Column 8 has no arrows to cross, but its input still passes through the squash once, and 1 − 0.634² is about 0.598. The last column has more than 60 times as much say over the final state as the first. This shrinking is called a **vanishing gradient**, and in a long sentence it means the early words barely shape what the network learns.
+
+The factors can be bigger than 1, too, and then the effect grows instead of fading. If the drawing is blank, h stays at 0, so with w set to 1.5 every factor is exactly 1.5. Seven factors of 1.5 multiply to about 17, so column 1's effect is blown up rather than faded. That opposite problem is called an exploding gradient.
+
+Real recurrent networks fight fading with **gates**, small learned switches that let some information ride forward almost untouched instead of being squashed at every step. The best-known gated design is the **LSTM**, short for long short-term memory, and it keeps gradients alive across far more steps than the plain chain in this lab.
+
+### Attention: one direct look back
+
+Go back to the row of desks, where news from desk 1 reaches desk 8 only by passing through every desk in between. Now change the rule, so that every student leaves their notes on their own desk and each student can turn around and read the notes on every earlier desk directly.
+
+That is **attention**. In a network, each position compares what it is looking for with a short label offered by every position it is allowed to see. In a model that writes text, that means itself and every earlier position. Each position then takes in a blend of content from the positions that match best. Because every earlier position is one hop away, distance stops costing extra steps, and position 1 is reached as directly as the position right before it.
+
+Picture the made-up sentence "Maya dropped her phone because she was running." In a trained model, the position for "she" might be looking for a person, and the label offered by "Maya" might say that it is a name. So "she" would take most of its blend from Maya's content, and only a little from "phone" or "dropped".
+
+How much each earlier position counts in that blend is not a stored weight. It is worked out fresh from the match scores every time, so the blend changes from one sentence to the next. The stored weights only turn each position into its label, what it is looking for, and its content, and those same weights are used at every position.
+
+That is the difference from a convolution, which always mixes the same few neighbours using the same fixed numbers. It is also how attention can link every position to every earlier one in a single hop with only 16,384 weights in the lab's table. A dense layer joining all 8 positions in one hop, the table's Dense MLP row, needs 262,144. Attention's weight count does not grow with the length of the text either. And because it scores every earlier position directly, it builds in no guess that nearby positions matter most.
+
+In a language model, each position may look back but never ahead, and that one-way rule is called **causal**. Picture a practice quiz where you have to guess the next word of a sentence, but the answer is printed right after the blank. You would score perfectly and learn nothing, so a fair quiz hides everything after the blank. A causal model is trained under the same rule, and that is what lets it write text from left to right afterwards, one piece at a time.
+
+The price of looking back in one hop is memory, because every earlier position's label and content have to be kept for later positions to read. They are stored as two lists of numbers for each position, called a key, which is the label, and a value, which is the content. The store of all of them is the **KV cache**, K for key and V for value, and it grows with every new position.
+
+A **transformer** is built from blocks that pair attention with a small network that works on each position by itself, which the lab calls **Per-position MLP**. MLP is short for multilayer perceptron, an old name for a small stack of dense layers. It is dense inside one position, where every output has its own weight for every input, but the same MLP is reused at every position. Inside each block, attention moves information between positions, while the per-position MLP reworks the numbers at one position without looking at any other. A transformer stacks many of these blocks, one on top of another.
+
+### State-space model: a recurrent network built for speed
+
+A **state-space model** reads in order and carries a fixed-size state, like a recurrent network, so in **Who sees whom** its picture looks exactly like Recurrent. The difference is inside the update, because a state-space model's update only multiplies and adds, leaving out the squashing step.
+
+That small change unlocks a shortcut for training, because a multiply-and-add followed by another multiply-and-add can always be folded into a single multiply-and-add. For example, "double it, then add 3" followed by "double it, then add 1" is the same as "multiply by 4, then add 7". Start with 5 and you get 13 and then 27 the first way, or 27 straight away the second way.
+
+So the computer can merge the steps in pairs, then merge the pairs, and keep going. Eight steps become four, then two, then one. All the merges in one round can happen at the same time, which suits a GPU, a chip that can run many multiplications at once. So the computer waits for three rounds instead of eight steps in a row.
+
+The **Who sees whom** table shows this in its Sequential steps column as "8 as a loop, 3 as a scan". Here a **scan** means this pair-by-pair merging. A recurrent network cannot use the trick, because a squash followed by another squash does not fold into one simple step.
+
+When it writes text, a state-space model keeps a state of the same size no matter how long the text gets, which is 1,024 numbers in the lab's table. Mamba, a state-space model from 2023, goes a step further and lets the update change depending on the input.
+
+### Mixture of experts: many stored, few used
+
+Picture a tutoring centre with 8 tutors on its staff and a receptionist at the door. Each student who walks in is sent to the 2 tutors who seem the best fit, while the other 6 stay free. The centre has to keep all 8 tutors on the books, but any one student only takes up 2 tutors' time.
+
+A **mixture of experts** works the same way. In a transformer block, it replaces the one per-position MLP with many MLPs, called experts, plus a small scoring layer called a **router**. A **token** is one piece of input, such as a word or part of a word. For each token, the router scores every expert and sends the token to the top few. The token's result is then a blend of the answers from the experts it was sent to.
+
+In **Sparse experts**, each column of your drawing plays the part of a token, written as the list of its 8 pixels. **Experts**, labelled E on its slider, sets how many experts exist, anywhere from 2 to 16. **Experts per token**, labelled k, sets how many experts each token is sent to, from 1 to 4.
+
+Each expert in the lab is a small MLP with 32,768 weights. With the default 8 experts, the layer stores 262,144 weights in total, which the lab shows as **Total expert weights**. Each token runs through only 2 of the 8 experts, so it uses 65,536 weights, shown as **Active per token**. That is 25% of the expert weights, matching the line at the top of the card.
+
+Real models use the same trick at a far larger size: Mixtral 8x7B also sends each token to 2 of its 8 experts. It stores 46.7 billion parameters, the stored numbers that include its weights, but uses only about 12.9 billion of them for each token. That is a little over a quarter, not exactly 2 out of 8. Only the expert MLPs are split up, while shared parts such as attention run for every token. The name suggests 8 times 7 billion, but those shared parts are stored once, not 8 times, which is why the total is less than 56 billion.
+
+The tutoring picture stops matching in an important way. Human tutors have subjects, like maths or history, but nothing in this lab says what an expert is good at. This lab's router is not trained either, because its choices come from fixed, random-looking numbers, so it shows how routing works rather than what a real router would learn.
+
+## Why it’s here
+
+The previous module, **Why GPUs**, showed that a big, even block of multiplications suits a GPU, a chip that can run many multiplications at the same time. This lab shows that the multiplications are only half the design. The same multiply-and-add can be wired to look nearby, to read in order, or to look everywhere at once, and each choice changes what the network can learn cheaply.
+
+### The problem of size
+
+A network that never shares weights has to learn every pattern separately at every position, which takes huge numbers of weights and examples. In a real model, each position, such as a word, is first turned into a list of numbers that describes it, and the lab's table assumes 64 numbers per position. In the **Who sees whom** table, the Dense MLP row is a dense layer that reads all 8 positions at once, and it needs 262,144 weights. That is 512 numbers in and 512 numbers out, and 512 times 512 is 262,144. Its size also depends on the length of the input, so the input length is locked in, and doubling it would make the layer four times as big.
+
+Every other wiring in the table reuses its weights at each position. Their weight counts stay the same whether the text has 8 positions or 8,000, so the same layer works for a short input or a long one.
+
+### The problem of distance
+
+In a sentence, a word often depends on another word far back, such as a name mentioned near the start. Each wiring reaches far back in its own way, and each way has a cost:
+
+- a convolution reaches only its neighbours, so linking position 1 to position 8 takes 7 stacked layers;
+- a recurrent network reaches back through a chain of 8 steps that must run in order, and the effect fades along the way;
+- attention reaches every earlier position in one hop, but it has to keep a KV cache that grows as the text gets longer.
+
+### The problem of growth
+
+Storing more weights gives a model more room to learn, but if every weight runs for every token, each token needs more arithmetic as the model grows. A mixture of experts breaks that link, because it can store more experts while each token still runs through the same small number of them.
+
+### Keeping "transformer" in proportion
+
+The transformer is one wiring in this zoo, so its strengths came with costs. Seeing the wirings side by side shows what it gave up and what it gained. By choosing attention, it gained one-hop reach to every earlier position, and steps that do not have to wait for each other. In return it took on a KV cache that keeps growing with the text, where a recurrent network or a state-space model would carry a note of fixed size. That trade is exactly what the table in **Who sees whom** lays out.
+
+## How to play with it
+
+The lab follows five steps from top to bottom, and each one compares two settings, so make a guess before you move a control and then check it.
+
+### 1. Draw the digit
+
+Click squares on **Drawn digit** to add or remove ink, or move the **Selected cell** slider, which names a square by its row and column, such as r3 c5. Pressing **Flip selected cell** then switches the selected square on or off.
+
+The outlined 3×3 window around the selected square is everything that one filter output can see. Flip a pixel inside the window that sits under a nonzero kernel weight, and watch that output's number change in **Live filter**. A pixel under a 0 weight changes nothing, and that includes the selected square itself under vertical edge, because both edge kernels have 0 in the middle. Then flip a pixel outside the window and see that the output stays put.
+
+### 2. Pick a filter
+
+**Try this:** with the default 3 on the pad, switch **Filter** from vertical edge to horizontal edge, and then to center blob. The drawing did not change, yet the grid of totals in **Live filter** did, because the 9 weights changed.
+
+Under vertical edge the right-hand stroke of the 3 lights up, while under horizontal edge the three bars light up instead. The bands just below the top bar and the bottom bar both read −3 in the middle, because the same weights score the same shape of ink. The bottom bar also gets a +3 band above it. The top bar has none, because the pad ends above row 1 and there is no row there to show it. You can click any square in the grid of totals to select it and read its formula.
+
+### 3. Walk the RNN
+
+Move **RNN step** from t=0 to t=7, which selects column 1 through column 8, and read the bars labelled `∂h7/∂x0` up to `∂h7/∂x7`. The formula row multiplies out the selected column's chain of factors, and **Hops to h7** counts how many arrows lie between that column and the end.
+
+**Try this:** at the default **Recurrent weight** of 0.90, compare column 1 with column 8. Column 1 reaches h7 with about 0.009, while column 8 reaches it with about 0.6.
+
+Then slide **Recurrent weight** up to 2.00, and you might expect the bigger weight to keep the early columns alive. Instead, the states get pushed close to 1, so the `(1 − h²)` part shrinks toward 0 and column 1's gradient gets smaller still. The lab writes such tiny numbers in a short form, so 5.1e−5 means 5.1 divided by 100,000, or 0.000051.
+
+For the exploding case, click each of the 16 inked squares to clear the pad, then set **Recurrent weight** to 1.50. Every factor becomes exactly 1.5, and column 1's gradient grows to 17.086. When you are done, the **Reset interactive** button brings back the 3, which the experts card in step 5 also reads.
+
+### 4. Compare wirings
+
+Unlike the cards above it, **Who sees whom** does not read your drawing but imagines a sequence of 8 positions. It draws a grid where each row is an output position and each column is an input position. A number in a square says how many layers or steps lie between that input and that output, and a dot means the output cannot use that input at all.
+
+Switch **Wiring** through Dense MLP, Per-position MLP, Convolution, Recurrent, Attention and State-space, and watch the grid change shape. With Convolution selected, raise **Conv layers** from 1 to 7 and watch the band of reachable squares widen by one position on each side for every layer you add.
+
+**Try this:** switch **Wiring** between Recurrent and Attention and look at row 8, column 1. Both wirings let output 8 use input 1, but Recurrent gets there in 8 steps and Attention in 1.
+
+The table underneath counts the cost of each wiring for one layer. In it, n is the number of positions, and d = 64 is the length of the list of numbers that describes each position. The kernel width is k = 3, and N = 16 is how many numbers the state-space model keeps for each of the 64 numbers that describe a position.
+
+- **Weights / layer** is how many weights the layer stores.
+- **Sequential steps** is how many steps must run one after another.
+- **Longest path** is the most hops any input needs to reach any output.
+- **Kept to extend** is how many numbers must stay in memory to add one more position, shown for 8 positions and for 4,096.
+
+The Convolution row shows 12,288 weights, not 9, because here each position carries 64 numbers in and 64 out, so the kernel needs 3 × 64 × 64 weights. The **Live filter** card reads just one number per pixel, which is why it needs only 9.
+
+### 5. Route to experts
+
+In **Sparse experts**, the table has one row for each column of your drawing, labelled col 1 to col 8. It has one column for each expert, labelled E1, E2 and so on. A percentage in a square means the token is sent to that expert, and it shows how much that expert's answer counts in the blend. The percentages in each row add up to 100%. For example, with the defaults, col 7 gives about 81% of its blend to E1 and the rest to E7.
+
+Set **Experts per token** to 1, then raise **Experts** from 8 to 16, and watch **Total expert weights** double while **Active per token** stays the same. Each token still runs through one expert's 32,768 weights, however many experts are stored. The third readout, **Router weights**, counts the router's own weights, 64 for each expert, which is tiny next to the experts themselves.
+
+## What to notice
+
+### Sharing on the filter card
+
+- The filter uses the same 9 numbers at all 64 places, while a dense layer from 64 pixels to 64 outputs would need 4,096.
+- Under horizontal edge, r2 c4 and r8 c4 both read −3, because they sit under bars with the same shape and are scored by the same weights.
+- Only pixels inside the outlined window can change the selected output, which is locality built in before any training.
+
+### Fading on the RNN card
+
+- Every factor on the arrows is `w·(1 − h²)`, and the bars for the early columns shrink because those columns have more factors to pass through.
+- Column 1's gradient of about 0.009 against column 8's of about 0.6 shows a vanishing gradient in action, even though every step uses the same weight.
+- Flipping a pixel in column 1 barely moves h7, which is what a vanishing gradient means for learning: early inputs get very little credit.
+- A larger w does not always help, because squashed states near 1 or −1 make `(1 − h²)` almost 0, and the chain goes quiet.
+- **Hops to h7** says 7 for column 1, while **Who sees whom** says 8 steps for the same trip. The difference is that the grid also counts the step that first reads input 1.
+
+### Reach and memory on the wiring card
+
+- Recurrent and Attention are both **causal**, so each position uses only itself and earlier positions, never later ones. They can see the same squares, but Attention reaches every one in 1 hop while Recurrent needs up to 8.
+- Attention pays for that one hop with its **KV cache**, and the table's formula for it is `2·n·d`. That means 2 lists, keys and values, for each of the n positions, with d numbers in each list.
+- At 8 positions that is 2 × 8 × 64, or 1,024 numbers. At 4,096 positions it is 524,288 numbers, which is 512 times as many, because the text is 512 times longer.
+- Recurrent keeps only 64 numbers. That is because the table imagines a recurrent net whose note holds one number for each of the 64 that describe a position. The note on the RNN card holds just one. State-space keeps 1,024, which is 64 times 16. Neither number grows, however long the text gets.
+- Recurrent and State-space draw exactly the same grid, so their difference shows up only in the table, where State-space can be run as a scan.
+- Per-position MLP fills only the diagonal, from top left to bottom right, so each output sees only its own input, and the table says it "never mixes". In a transformer block, mixing between positions is attention's job.
+- Convolution is the only wiring here, apart from Dense MLP, that can see later positions, because its window is centred on each position. The card's heading line says "can see later positions" when it is selected.
+
+### Stored against used on the experts card
+
+- Going from 8 to 16 experts doubles **Total expert weights**, from 262,144 to 524,288, while **Active per token** stays at 65,536 when **Experts per token** is 2.
+- Only **Experts per token** changes the work each token does: moving it from 2 to 1 halves **Active per token** to 32,768.
+- Columns with identical pixels always go to identical experts, because the router's choice depends only on the token itself. On the default 3, col 3 and col 4 hold the same pixels, so their rows match exactly.
+- The bottom row, labelled load, counts how many tokens each expert gets. With the defaults, E2, E4, E5 and E6 get none: they are stored but never used.
+
+**A common mix-up:** an expert with a load of 0 is not useless, and the experts that do get tokens have not specialised in anything. This router is untrained, so which experts get tokens is an accident of its fixed numbers. Real routers are trained, with an extra penalty during training, called a load-balancing loss, that pushes them to spread tokens more evenly. Here a loss is a score that training tries to make smaller.
+
+## Where it breaks
+
+### What this lab fakes or simplifies
+
+- **Nothing is trained:** the three filters are written by hand, the recurrent net's weights are set by hand, and the expert router uses fixed, random-looking numbers instead of trained ones.
+- **The numbers come from formulas:** the grid and table in **Who sees whom** come from counting rules, not from trained models.
+- **The recurrent net is tiny:** its hidden state is one number, while a real one carries a long list of numbers. It also has none of the gates that an LSTM uses.
+- **The convolution sees the future:** its window is centred, so it covers positions on both sides. Convolutions used for text shift the window so it covers only the current and earlier positions.
+- **The experts never answer:** only the routing and the weight counts are worked out, so the lab cannot tell you what any expert would do with a token. The counts, for the experts and **Router weights** alike, also assume tokens of 64 numbers, even though the tokens routed here are lists of 8 pixels.
+- **The images are toys:** the input is an 8×8 grid of on-or-off pixels that you draw, with no photos, no colour and no real dataset.
+
+### Where the real mechanisms fall short
+
+- Weight counts and hop counts do not decide which wiring learns best. That depends on the data, the size of the model and how it is trained.
+- Plain recurrent chains really do fade, but gated designs such as the LSTM and a similar one called the GRU carry gradients far longer than the chain in this lab.
+- Real models add extra parts that change what each wiring can learn in practice. Shortcuts let information skip around a layer, other steps keep the numbers in a steady range, and many models run several attention patterns side by side.
+- Real convolution networks learn their kernels from data instead of having them written by hand. Even so, faraway pixels still meet only after enough layers have been stacked, or through tricks. One trick is pooling, which shrinks the image by summarising each small patch. Another is dilated kernels, which skip squares so one window covers a wider area.
+- Attention's KV cache keeps growing with the text, reaching 524,288 numbers per layer at 4,096 positions in this lab's table. That is why later modules look at ways to cut it down.
+- A mixture of experts saves arithmetic, not storage, because every expert must still be stored even when most of them sit idle for a given token.
+
+**A common mix-up:** people say "transformer" as if it meant any AI model. It is one wiring: attention to move information between positions, plus a per-position MLP to rework each position on its own. Convolutions, recurrent networks, state-space models and mixtures of experts are other choices, and many real systems combine them.
+
+## Going deeper
+
+- **Attention** and **The transformer block** open up the one-hop mixing drawn here, using a real trained model, and show how attention and the per-position MLP stack together.
+- **Modern attention at scale** looks at the costs this table only hints at, including the KV cache and two designs that cut its cost, called grouped-query attention and sliding-window attention.
+- **Inference & KV cache** measures how the `2·n·d` column grows while a model generates text.
+- Each expert in **Sparse experts** takes in 64 numbers, widens them to 256 in the middle, then narrows them back to 64. That is two sets of 64 × 256 weights, or 32,768 in all.
+- The squash used in the **Unrolled RNN** is a curve called tanh, which is why you may see a plain recurrent chain called a "tanh chain".
+- Convolutions can reach farther with dilated kernels, which skip over squares so that one window covers a wider area.
+- Some named designs and the year each was first described: the LSTM in 1997, and both the transformer and sparsely gated experts in 2017. The Switch Transformer, another mixture of experts, and the state-space model S4 came in 2021, and Mamba followed in 2023.

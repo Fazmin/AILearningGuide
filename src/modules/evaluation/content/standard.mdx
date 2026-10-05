@@ -1,0 +1,243 @@
+---
+objectives: ["Score a model with an explicit rule instead of an impression, and see how the choice of rule changes the ranking", "Read a benchmark score together with its uncertainty", "Recognize contamination from the gap between benchmark and control", "Choose what to measure for an application: golden sets for regressions, task metrics for retrieval, agents, and safety, and a checked judge"]
+terms: ["Held-out set", "Perplexity", "Likelihood scoring", "Margin", "Confidence interval", "Contamination", "Control", "Scoring rule", "Pass@k", "Golden set", "Regression suite", "LLM-as-judge", "Human evaluation", "Attack success rate"]
+---
+
+## The big picture
+
+This module is about **evaluation**: scoring a trained model on items it never saw, under a rule
+fixed in advance, and reading the score as an estimate with an error bar. The question is when a
+leaderboard rank reflects what the models learned, and when it is an artefact of the test.
+
+It builds on *Train one from scratch*, which judged a run by its held-out loss. The same kind of
+character bigram is now scored on two-option multiple-choice items, and the lesson then widens
+from models to applications.
+
+### Where it shows up
+
+- **Multiple-choice benchmarks.** **Likelihood scoring** is one rule for them: pick the option
+  the model gives the highest log-probability, in total or divided by length, with nothing
+  generated. Lettered options, generated answers, and graders are other rules, and each can order
+  the same models differently.
+- **Generated answers checked by tests**, scored by **pass@k**: the chance that at least one of k
+  samples passes.
+- **Leak defences** against **contamination**: test text that leaked into training. Real leaks
+  arrive as paraphrases, translations, and scraped mirrors. Private test sets close that path, and
+  canary strings, unique markers planted in a test set, let you check later whether a model
+  ingested it.
+- **Applications**: regression suites that re-run a golden set (fixed cases with known good
+  outcomes) on every change; task metrics for retrieval, agents, and safety; and LLM judges or
+  human votes for free text.
+
+### Why it matters
+
+Training data, settings, and checkpoints are chosen by scores, so a misread score steers each of
+those choices. Keep selecting by one benchmark and its score drifts away from the ability it was
+meant to measure, even with no leak; that is **overfitting the benchmark**. In a product, scores
+decide which change ships, and whatever they do not cover can get worse unnoticed.
+
+### What you will be able to explain
+
+- How an explicit scoring rule replaces an impression, and why changing the rule can reorder the
+  same checkpoints.
+- How to read a benchmark score together with its confidence interval.
+- How to recognize contamination from a benchmark gain out of proportion to the change on a
+  **control**, an unseen corpus no leak touches.
+- What to measure for an application: golden sets for regressions, task metrics for retrieval,
+  agents, and safety, and a judge checked against human labels.
+
+### What the lab shows
+
+Nothing on the page is a stored result. The lab trains its own character bigram at 3, 10, 30, and
+80 epochs, one seed each, on the harbor corpus minus its last three sentences. Those sentences are
+the held-out benchmark source, and the Proverbs corpus is the control. Log-probabilities,
+**margins** (correct score minus distractor score), and perplexities are measured; standard
+errors, 95% intervals, and **Items for ±5 pts** are closed-form.
+
+- **Benchmark editor** holds the items, one per line as `context | correct | plausible distractor`
+  (six fixed defaults you can rewrite), and **Training budget multiplier**, which scales all four
+  budgets.
+- **Leaderboard** ranks the four checkpoints under **Scoring rule**: Length-normalised, Raw
+  log-probability, or Sample and check. Changing the rule re-scores them without retraining.
+  Sample and check adds **Attempts allowed (k)** and makes 20 seeded draws per item, each a choice
+  between the two options rather than free text.
+- **Item-level results** shows every item's margin for the largest checkpoint, or its draw count
+  and pass@k under Sample and check.
+- **Contamination control** holds the switch **Add the benchmark source sentences to the corpus**,
+  which appends the three held-out sentences to the training text.
+
+The key experiment: under the default rule, press that switch, then compare **Margin shift** with
+**Control shift**. The benchmark moves far more than general text does. Nothing in the application
+half of the lesson runs here.
+
+## What it is
+
+A benchmark is a **scoring rule** applied to a **held-out set**, and a score is an estimate with
+an error bar. This lab makes all three visible, and lets you change the rule.
+
+The default rule is **likelihood scoring**. Each line in **Benchmark editor** is
+`context | correct | plausible distractor`. The model scores the continuation “ candidate” —
+the space plus every character — and the candidate with the higher mean log-probability per
+character wins. Nothing is generated, so decoding settings cannot move the result.
+
+Dividing by length is **length normalization**. Raw log-probability favours the shorter
+candidate, because every extra character multiplies in another probability below one. Dividing
+by the continuation's length in bytes is the idea behind lm-evaluation-harness's `acc_norm`.
+
+### Three scoring rules
+
+**Scoring rule** re-scores the same trained checkpoints without retraining them:
+
+- **Length-normalised** is the default above: mean log-probability per character.
+- **Raw log-probability** compares totals instead of means.
+- **Sample and check** has each checkpoint answer by sampling one of the two options in
+  proportion to the probability it gives each full continuation, 20 seeded draws per item. An
+  item scores **pass@k**: the chance that at least one of k attempts picks the key, estimated
+  from those draws.
+
+### The held-out half
+
+The items were written from the last three sentences of the harbor corpus, and those sentences
+are removed from training. The Proverbs corpus is the **control**: unrelated text no leak
+touches. Four checkpoints train for 3, 10, 30, and 80 epochs, scaled by **Training budget
+multiplier**. A model that learned nothing scores `ln(30) = 3.401` nats per character, a
+**perplexity** of 30.
+
+### The error bar
+
+With `n` items and pass rate `p`, the standard error is `√(p(1 − p)/n)`. Six items at 50% give
+±20 points. The **Leaderboard** draws each pass rate with a 95% **confidence interval**
+(Wilson's, which unlike `p ± 1.96·SE` does not collapse at 0/6 or 6/6), and each mean
+**margin** with a t interval.
+
+## Why it’s here
+
+Every capability claim is a held-out measurement, and it means something only if the held-out
+text was absent from training and the sample of items was large enough to separate the models.
+Neither condition shows in the number itself, and neither does the rule that produced it. Here
+you can break all three on purpose.
+
+## How to play with it
+
+Read the six items first: every distractor is wrong but ordinary — “evening” against
+“morning”, “trails” against “sails”. Then read the **Leaderboard** at the defaults. The 80- and
+30-epoch checkpoints both pass 3 of 6, both with interval 19%–81%, and their mean margins are
+0.012 and 0.011. The callout's paired difference is +0.002, with an interval from −0.220 to
++0.224.
+
+Now change **Scoring rule**. Raw log-probability gives every checkpoint two more passes: 80
+epochs goes from 3 of 6 to 5 of 6, and the 30-epoch checkpoint edges ahead of it. Sample and
+check at Attempts allowed 1 puts the 10-epoch checkpoint first and the 80-epoch one third.
+Raise Attempts to 5 and the 3-epoch checkpoint leads at 94% while the 80-epoch one is last at
+83%.
+
+Open **Item-level results**. At 80 epochs “the boats stay in | port | town” fails by −0.840:
+after a space, this bigram expects “t”. “the water stays | warm | wide” passes by +1.213 on the
+letters inside the two words.
+
+Then press **Add the benchmark source sentences to the corpus** and compare **Margin shift**
+with **Control shift**.
+
+## What to notice
+
+- Six items cannot rank these checkpoints. All three other intervals overlap the leader's, and
+  a ±5-point interval at 50% would need 385 items.
+- The rule is a design decision. The two extra raw passes per checkpoint come from the two
+  items whose correct answer is shorter, “sails” against “trails” and “repeats” against
+  “retreats”. No checkpoint learned anything between the two views.
+- **Pass@k** measures coverage. The 3-epoch checkpoint spreads probability over both options,
+  so a few attempts nearly always include the key. The 80-epoch one is confidently wrong on
+  “port” against “town” and stays near zero on it however many attempts it gets.
+- Under all three rules every interval still overlaps the leader's. Changing the rule moves the
+  ranking by more than the data can resolve.
+- A paired comparison is sharper than two separate intervals: both checkpoints answer the same
+  items, so item difficulty cancels. Here it still cannot separate the top two.
+- **Contamination** moves the benchmark hard. At 80 epochs the leak adds +0.519 margin per item
+  (interval +0.220 to +0.817), takes the leaderboard to 6 of 6, and drops benchmark perplexity
+  from 9.33 to 5.83. At 30 epochs, 3/6 becomes 5/6 and perplexity falls from 10.08 to 6.65.
+- The control moves too, by −2.8% at 80 epochs and −5.7% at 30. The leak added real English.
+  The signature is the disproportion, not a frozen control.
+- At 6 of 6, **Leader's standard error** reads ±0.0 points. Six perfect answers do not make a
+  certain score; the Wilson interval still runs from 61% to 100%.
+
+## Where it breaks
+
+**In this lab.** Training, scoring, perplexities, and intervals are all computed. The model is
+a bigram that sees one character of context, so “water” and “harbor” are invisible to it; a pass
+is not comprehension. Each checkpoint is one run at one seed, so the intervals cover the choice
+of items, not training noise. The leak is a verbatim copy, the easiest kind to catch.
+
+Sample and check draws a choice between the two options, not free text, because this bigram
+almost never writes a whole target word by chance. Its pass@k therefore measures coverage over
+two options. The 20 draws per item add sampling noise that the interval does not include.
+
+**In real systems.** Leaks arrive as paraphrases, translations, forum answers quoting the test,
+and scraped mirrors; exact-match and n-gram checks miss most of them. **Overfitting the
+benchmark** needs no leak at all: choosing data, settings, and checkpoints by one score slowly
+fits the benchmark's quirks.
+
+You have just seen the scoring rule change a ranking. Lettered-option prompts, generated answers,
+and graders each order the same models differently again, so a number means something only with
+its rule, harness, and version beside it.
+
+## Going deeper
+
+### Evaluating applications, not just models
+
+A benchmark scores a model on fixed questions. A product is a model plus retrieval, prompts,
+tools, and guardrails, and each piece can fail alone. The leaderboard's habits carry over:
+fixed cases, a named rule, and an interval on every rate. Nothing in this section runs in this lab; it is
+the mechanism for what you would build around it.
+
+**Golden sets and regression suites.** A **golden set** is a fixed list of cases with known good
+outcomes, taken from real traffic and past failures. A **regression suite** re-runs it on every
+change to the model, prompt, retriever, or tools, so a fix in one place cannot silently break
+another. Size still limits resolution: 27 passes out of 30 is 90%, with a Wilson interval from
+74% to 97%. Compare runs on the same cases, as the paired callout does.
+
+**Retrieval pipelines.** Score the stages separately. *Context recall* asks what share of the
+facts needed to answer reached the prompt. *Faithfulness* asks whether each claim in the answer
+is supported by the retrieved text. *Answer correctness* asks whether the final answer matches
+the key. Full recall with a wrong answer is a generator failure; low recall is a retrieval
+failure. The Retrieval-augmented generation lab computes context recall, correctness, and a crude
+support check that stands in for faithfulness, on five questions.
+
+**Agents.** Score the outcome and the path: *task success rate* over a fixed task set, checked
+on the end state; *steps* taken; and *cost* in tokens, tool calls, or time. Success without cost
+hides a looping agent, and cost without success rewards giving up. Runs vary, so repeat each
+task and report the rate with an interval.
+
+**Safety.** Run a fixed suite of attack prompts and report the **attack success rate**: the share
+that elicit the prohibited behaviour. Pair it with the *false-refusal rate*, the share of
+ordinary requests wrongly refused, because a model that refuses everything scores 0% on the
+first. Neither covers attacks outside the suite.
+
+**LLM-as-judge.** When answers are free text, a second model grades them against a rubric. That
+is cheap and scalable, and **LLM-as-judge** is biased toward the first-listed answer, longer
+answers, and its own style. To check one, have people label a sample, measure how often the judge
+agrees with them against how often two people agree, swap the answer order, and see whether
+verdicts flip. Trust it only where it agrees about as well as humans do.
+
+**Human and arena evaluation.** In **human evaluation**, people compare two anonymous answers,
+and pairwise votes become Elo ratings. After each vote the winner gains `K × (1 − E)`, where `E`
+is the win chance the ratings predicted, `1 / (1 + 10^((rB − rA)/400))`. With equal ratings and
+K = 32 the winner gains 16 points. A 400-point favourite who wins gains under 3. People catch
+what rules miss; they also prefer length, confidence, and formatting.
+
+### Scoring generated answers
+
+When answers are generated and checked by tests, success depends on the sampling budget.
+**Pass@k** is the chance at least one of k samples passes. From n samples with c passing, the
+unbiased estimate is `1 − C(n − c, k) / C(n, k)`. With n = 10, c = 3, k = 5 it is 0.917; the
+plug-in `1 − (1 − c/n)^k` gives 0.832. The Reasoning models lab plots this ceiling.
+
+### Keeping benchmarks honest
+
+Private test sets never publish labels, which closes the leak path and costs reproducibility.
+Canary strings planted in a test set let you check later whether a model ingested it. Harness
+name and version belong next to any number, because rule variants are not comparable. And
+report intervals: a gap smaller than about two standard errors is not evidence.
+
+Neither defence helps a saturated benchmark. Once the best models cluster near the ceiling, the
+remaining items are mostly ambiguous or mislabelled, and the ranking measures label noise. That
+is when a benchmark is retired.

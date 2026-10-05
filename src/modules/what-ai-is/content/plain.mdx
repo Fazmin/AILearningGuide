@@ -1,0 +1,395 @@
+---
+objectives: ["Place machine learning, deep learning, and large language models inside AI rather than treating them as synonyms","Name the learning problem as a hypothesis class, a loss, a search over parameters, and a generalization gap","Separate symbolic methods, statistical fitting, and deep stacks, and say what those objects are not","Name where a model's training signal comes from (human labels, structure in raw data, labels made from the data itself, or reward) and tell classification from regression by the kind of output"]
+terms: ["Artificial intelligence","Machine learning","Deep learning","Generative model and large language model","Hypothesis class","Loss","Generalization","Model, training, and inference","Parameter and hyperparameter","Supervised learning","Unsupervised learning","Self-supervised learning","Reinforcement learning","Classification and regression"]
+---
+
+## The big picture
+
+People use the word “AI” for many different things, from a chatbot that writes a poem to a filter that sorts email into spam or not spam. A chess program that follows rules a person typed in gets called AI as well, even though it works in a completely different way from the other two. Calling all three by one name hides more than it tells you, because the name says nothing about how each one actually works.
+
+This module sorts out those words, starting with the idea that AI is a large family of methods with smaller groups nested inside it. Those groups fit together the way your street sits inside your town, and your town sits inside your country. The module also shows you what “learning from examples” really means, by letting you fit a straight line to three dots on a graph, one step at a time.
+
+### Where you have met it
+
+If you have ever typed a question into a chat assistant, you have used the smallest and most specific group in this module, called a large language model. That assistant also belongs to every larger group around it, all the way out to AI itself, which is the largest group of all.
+
+Some of the lab’s other examples are close to everyday tools, such as sorting emails into spam or not spam, or predicting a house’s sale price from past sales. Others are less familiar, such as repairing a photo that has a patch blanked out, but all of these are jobs a model can learn from examples. A list of chess rules typed in by a person counts as AI too, even though it never learned anything at all.
+
+### Why it matters
+
+When these words get mixed up, claims about AI turn into mush, because you can no longer ask the questions that matter. Those questions include which numbers inside the model were adjusted, which examples they were adjusted to match, and where the right answers came from. Asking them is how you check a claim about a model instead of taking it on trust.
+
+There is a second reason, which is that smooth, confident writing can make a program seem as if it has a mind of its own. This module shows you what is actually inside “learning”: a handful of numbers being adjusted to shrink a score for how wrong the answers are. Once you have seen that, you can separate what the math really does from things it never claims, such as having a mind.
+
+### What you will be able to explain
+
+By the end of this lesson, you should be able to explain each of these ideas in your own words:
+
+- Why AI, machine learning, deep learning and large language models are not four names for one thing, and how each one fits inside the one before it.
+- What “learning from examples” means, broken into four parts that you will name and try for yourself. Those parts are a menu of allowed rules, a score for how wrong a rule is, a search for better numbers, and a gap that practice scores cannot show.
+- How three families of methods differ, from rules people wrote to numbers fitted to examples to deep stacks of layers. You will also say what none of them claims, such as having a mind.
+- Where a model’s right answers come from while it trains. They can be answers people wrote down, patterns found in data that has no answers, answers hidden inside the data itself, or a reward for how things turned out. You will also tell apart a model whose answer is a category from one whose answer is a number.
+
+### What the lab lets you do
+
+The lab has six cards, and each one lets you try out a different piece of the idea for yourself:
+
+- **Nested methods** draws the five groups as rings, one inside the next, so you can select each ring and read what it adds.
+- **Learning problem** gives you three dots and a straight line with two sliders, plus a button that nudges the line toward a better fit.
+- **What the word hides** cuts the word “AI” five different ways and shows you what the math does not claim.
+- **Era timeline** walks through eleven moments from 1956 to 2022, and for each one it names the big idea and the reason that idea stalled.
+- **Sort leftover terms** asks you to place five kinds of systems in the smallest ring that still fits each of them.
+- **What is the learning signal** asks you to sort eight training situations by where their right answers come from.
+
+Almost everything on these cards was written by hand for teaching, including the three dots, the eras, the scenarios and the correct answers. The one thing the lab really works out as you go is the line fit, where the score and the downhill steps come from actual arithmetic.
+
+## What it is
+
+### Five rings, one inside the next
+
+Think about how a mailing address works: your home is on a street, the street is in a town, and the town is in a country. Your home is in all of those places at once, but the most useful part of the address is the smallest one, because it says the most.
+
+The **Nested methods** card draws AI in the same way, as five rings nested one inside the next, and here is what each ring adds from the outside in:
+
+- **AI**, short for **artificial intelligence**, is the outer ring, and it names a goal rather than one particular method. That goal is getting a machine to do a task that used to need human judgment, so even a list of written rules can count.
+- **ML**, short for **machine learning**, is the part of AI where nobody writes the rule by hand. Instead, the method keeps adjusting some numbers to fit a set of examples. Often that means making its answers match the answers the examples came with, but it can also mean grouping similar examples together.
+- **DL**, short for **deep learning**, is the part of machine learning that stacks many layers of adjustable steps, so later layers can build on what earlier ones picked out.
+- **Gen** stands for **generative** models, which are trained to produce new samples, meaning new text, pictures or sounds that resemble the examples they learned from. In this lab, the Gen ring holds only the generative models that are also deep learning models.
+- **LLM**, short for **large language model**, is the innermost ring, a generative model trained to predict the next **token**. A token is a small piece of text, such as a whole word or part of a word.
+
+A layer in the deep learning ring is one step that turns a list of numbers into a new list of numbers, using adjustable numbers of its own. To see why that helps, think about a photo, which reaches a computer as a long list of numbers. Each number gives the brightness of one tiny colored dot in the photo, called a **pixel**.
+
+In a model that sorts photos, the first layer might turn those numbers into a list that marks where the edges are. The next layer might combine edges into shapes such as circles and corners, and a later one might combine shapes into something like an eye or a wheel. Nobody tells the layers to look for edges. Training adjusts their numbers, and looking for edges turns out to help.
+
+The lab also calls these stacked-layer models neural networks, or neural nets for short, which is why it describes the Gen ring as holding neural generative models.
+
+On its own, an LLM is not yet the chat assistant you talk to, because people train it further afterward so that it answers in a helpful style. That is why the lab’s note for the LLM ring says assistant behavior is added later.
+
+### One product, several rings
+
+Because the rings nest, one product can sit in several of them at once, the same way your home is in your street and in your country. A next-token chat assistant is an LLM, so it is also generative, deep learning, machine learning and AI, all at the same time.
+
+The smallest ring that still holds a method is called its **tightest ring**, and it is the ring that tells you the most about how the method works. Here are the five systems the lab asks you to sort, with the tightest ring for each one:
+
+- **Hand-written chess rules** belong in AI and nowhere smaller, because a person wrote every rule and nothing was fitted from examples.
+- **Linear regression on house prices** belongs in ML, because it fits a straight-line rule to past sales, much like the line you will fit below. It has no stack of layers, though, so it is not deep.
+- The **Convolutional image classifier** belongs in DL. A classifier sorts things into categories, here photos into labels such as cat or dog. “Convolutional” means its stacked layers slide small learned filters across the photo, each one looking for a pattern such as an edge or a stripe. It labels pictures rather than making new ones, so it is not generative.
+- **A GAN that samples faces** belongs in Gen. GAN is short for generative adversarial network, a deep learning model that learns to draw new pictures, and this one draws faces. It is not an LLM, though, because it never predicts the next token of text.
+- **A next-token chat assistant** belongs in LLM, because predicting the next token is its training job, and the assistant style comes from further training added afterward.
+
+### Where the rings stop matching
+
+The address picture works because every street lies inside exactly one town, and every town lies inside exactly one country. Now think about a label such as “by the sea”, which is true of some towns in one country and some towns in another. You cannot draw “by the sea” as one ring inside a single country, because the label cuts straight across the borders.
+
+The word “generative” cuts across the rings in the same way, and an older method called an **n-gram** shows why. An n-gram counts which words tend to follow which, and then picks each next word from those counts. Those counts are numbers it gets from example text rather than rules a person wrote, so it belongs in machine learning. It makes new text, so it is generative, but it has no stack of layers, so it is not deep learning.
+
+The Gen ring sits entirely inside DL, so putting the n-gram there would wrongly claim that it is deep. Instead, the lab marks the n-gram with a small dot inside the ML ring and outside the DL ring, and a note under the rings explains why. The rings are a common way to describe today’s methods, then, and not a law of nature.
+
+### Learning from examples, with one straight line
+
+In science class you may have drawn a line of best fit, which is the straight line that passes as close as it can to some plotted dots. Machine learning does the same job, but instead of judging by eye, it scores how wrong the line is and then searches for a better score.
+
+The **Learning problem** card gives you three dots, at (0.5, 1.4), (1.5, 2.1) and (2.5, 3.2). Each dot is one example, made of an input x and its right answer y, and you fit them with a straight line written as ŷ = wx + b. Here ŷ, read “y-hat”, is the line’s guess for y, so the line does well when ŷ comes out close to y.
+
+In math class you may have seen this written as y = mx + b, where m is the slope. Here the slope is called w, the **weight**, and the height of the line where x is 0 is called b, the **bias**. This use of “bias” only means a starting height, and it has nothing to do with the unfair kind of bias you will meet later. You set these two numbers with the sliders labeled **Weight w** and **Bias b**, and the line on the left-hand plot moves as you drag them.
+
+### The menu of allowed rules
+
+Every line those two sliders can draw is one possible rule, and the full set of them is called the **hypothesis class**. A hypothesis here is one guess about the rule, so the hypothesis class is the menu of every rule the method is allowed to pick. On this card the menu is every straight line, which means no setting of the sliders can ever bend the line into a curve. A different menu, such as curves or a tree of yes-or-no questions, would be a different search with different possible answers.
+
+### Scoring a line
+
+To score a line, you first measure how far it misses each dot, which is ŷ − y, the line’s guess minus the right answer. The lab calls this miss a **residual**, and it draws each one as a short vertical stroke from the dot up or down to the line. Then you square each miss, which makes every miss positive and makes a big miss count far more than a small one. A miss of 2 becomes 4, while a miss of 1 stays 1, so the bigger miss now counts four times as much instead of twice.
+
+The average of the three squared misses is the **loss**, written L. This kind of loss is called the **mean squared error**, or MSE for short, and “mean” is another word for average. The card draws each squared miss as a shaded square beside its dot, so L is the average area of those three squares. A smaller L means the line fits these three dots better, and a perfect fit would make L zero.
+
+Under the plots, a table has one row for each dot. It lists the dot’s x, its right answer y, the line’s guess ŷ, the miss ŷ − y and the squared miss, so the worked example below matches its rows.
+
+Here is the score worked out for the line the card starts with, where w is 1.00 and b is 0.90:
+
+1. For the first dot, at x = 0.5, the line’s guess is 1 × 0.5 + 0.9, which works out to 1.4. That matches the right answer of 1.4 exactly, so this miss is 0 and so is its square.
+2. For the second dot, at x = 1.5, the line guesses 2.4, but the right answer is only 2.1. That is a miss of 0.3, and squaring it gives 0.09, which is the area of the second shaded square.
+3. For the third dot, at x = 2.5, the line guesses 3.4, but the right answer is 3.2. That is a miss of 0.2, and squaring it gives 0.04, a smaller square than the second one.
+4. Adding up the three squares gives 0.13, and dividing by 3 gives about 0.043, which is the L the card shows when it opens.
+
+### Model, training and inference
+
+The two numbers w and b are the line’s **parameters**, which are the numbers inside a rule that training sets from data. This line has only two parameters, while a large language model has billions of them, but the idea is the same.
+
+A **model** is the rule with its parameters fixed, so that every input x gets exactly one answer ŷ. **Training** is the search that picks the parameters by shrinking the loss on examples. **Inference** is using the finished rule on a new input, while its numbers stay fixed.
+
+For example, suppose training settled on the best line, which you will meet below, where w is 0.90 and b is about 0.88. If you then asked that line about a new input of 2, it would answer about 2.68, and asking would not change w or b at all.
+
+In math, a rule that turns each input into exactly one output is called a **function**, so a model is a function with its numbers set. Searching for numbers that make a function’s answers land close to the right answers is called **function approximation**. Most of modern AI is this kind of search, and none of it is a model of a mind.
+
+A setting you choose before the search starts, which training never changes, is called a **hyperparameter**. On this card the step size of 0.12 is a hyperparameter, and it sets how far each downhill step moves, as you will see shortly.
+
+### The map seen from above
+
+The right-hand plot, labeled “Parameter space · every point is a line”, shows the same search from above. Each spot on this map is one pair of numbers, with w across and b up, so each spot stands for one whole line on the left-hand plot.
+
+A filled dot on this map shows where your current line sits, like a “you are here” pin on a mall map. It moves whenever you drag a slider or press the downhill button. This you-are-here dot is a different thing from the three data dots on the left-hand plot.
+
+Now imagine working out L for every spot and treating it as a height, like the height of the ground on a map. You would get a bowl-shaped valley, high at the edges where the lines miss badly and low in the middle where they fit well.
+
+The map draws that valley the way a hiking map shows hills and valleys, using **contour** lines. Each oval line joins all the spots that share the same L, and the number printed on it tells you that L.
+
+The green × marks the bottom of the bowl, which is the best line these three dots allow, at w = 0.90 and b ≈ 0.88. The **Minimum L** readout shows that this best line still has a loss of about 0.0089, which is small but not zero. Even the best line misses a little, because the three dots do not lie on one straight line.
+
+### Walking downhill
+
+Picture standing on a hillside in thick fog, where you cannot see the bottom of the valley but can feel which way the ground slopes under your feet. You take a small step downhill, feel the slope again, and repeat, and the **Take a downhill step** button does exactly that on the map.
+
+The two readouts **∂L/∂w** and **∂L/∂b** are the slopes under your feet, one for each parameter. You can read ∂L/∂w as “how fast L changes when you nudge w up a tiny bit”. If it is negative, raising w lowers L, so the step raises w, and if it is positive, the step lowers w instead. Together the two slopes are called the **gradient**, which the lab writes as ∇L.
+
+The Optimization stage of the card prints the rule for one step as θ ← θ − η ∇L. Here θ, the Greek letter theta, is a short way to write both parameters at once, and η, the letter eta, stands for the step size of 0.12. The arrow means “becomes”, so in words, each parameter becomes its old value minus 0.12 times its own slope. That moves it downhill as long as the step size is small enough, and 0.12 is small enough for this bowl. With too big a step size, a step could jump right past the bottom and land higher up the other side.
+
+Here is one step worked out, starting from the flat line where w is 0 and b is 0:
+
+1. That line lies along the bottom of the graph and misses all three dots badly, so L reads about 5.54.
+2. The slope ∂L/∂w reads −7.900, and because it is negative and large, raising w would lower L quickly.
+3. The step changes w to 0 − 0.12 × (−7.9), and since subtracting a negative number adds, that comes to about 0.95.
+4. The ∂L/∂b readout shows about −4.47, so the same rule gives b = 0 − 0.12 × (−4.47), which comes to about 0.54.
+5. With this new line, L drops to about 0.086, so a single press has taken the you-are-here dot most of the way down the bowl.
+
+The step is set by a formula rather than by guessing, and this nudge of two numbers is the whole of what “learning” means on this card.
+
+The fog picture stops matching in one way, because this card can draw the whole map for you. That works only because there are two numbers, one for across and one for up. A model with billions of numbers would need a map with billions of directions, which nobody can draw or fill in. Real training therefore feels its way by the slopes alone, just like the hiker in the fog.
+
+### Practice scores and new examples
+
+Picture a friend who memorizes the answer key to a practice quiz, all ten answers in order. On that exact quiz they score perfectly, but the moment the teacher swaps in new questions, the memorized answers are no help at all.
+
+A model can fall into the same trap, which is why the score that really matters is how it does on examples it has never seen. Doing well on new examples that come from the same source as the training examples is called **generalization**. The difference between how a model does on its training examples and how it does on new ones is the **generalization gap**.
+
+The Learning problem card names this gap in its Generalization stage, but it never tests a fourth dot, so the gap is never measured. A small L tells you the line fits these three dots, but it does not tell you how far off the line would be at a new x. A wigglier menu of rules could even pass exactly through all three dots and still be badly wrong at a fourth one. A later lab, How we know a model works, measures the gap by scoring examples the fit never saw.
+
+### Three families of methods
+
+Picture two friends who both want to sort apples into fresh ones and bruised ones, each in their own way. The first writes a list of rules, such as “if there is a soft brown spot bigger than a coin, the apple is bruised”. The second studies hundreds of apples someone has already sorted, measures a few things about each one, and keeps adjusting some numbers until the sorting matches.
+
+Those two friends are using two of the three families of methods that **What the word hides** names when **Distinction** is set to `family`:
+
+- **Symbolic** methods use rules, search or logic that a person wrote, so the decision is written down rather than fitted from examples. There are no parameters to learn, which makes these methods AI but not machine learning.
+- **Statistical ML** methods (statistical here means working out numbers from many examples) start with **features**. Features are the measurable things a person chooses to look at, such as an apple’s color or a house’s floor area. The method then fits its numbers so its answers match examples that already carry the right answer, and linear regression belongs to this family.
+- **Deep learning** methods fit a whole stack of layers, so they learn which features to look at and how to combine them, both at once. They can start from raw inputs, such as the pixels of a photo, the way the photo-sorting layers did earlier.
+
+All three families count as AI, but only the last two are machine learning, because only they fit numbers from examples. Rule-based methods did not disappear when fitting took over, either. A spelling checker or a route planner built from written rules is still AI, with no learned numbers at all.
+
+### What the word does not claim
+
+Setting **Distinction** to `not` shows three tiles, called Not consciousness, Not folk understanding and Not a verdict on use. Nothing in the line, the loss or the downhill steps stands for feelings or awareness, so fitting numbers is not the same as being conscious. Folk understanding means the everyday kind of understanding a person has, and matching the answers on some examples does not show that kind of grasp. Finally, a well-fitted model can still be the wrong tool, trained on the wrong answers, or unsafe to use.
+
+The other settings come at the same point from different sides, and each one is easier to see with an example.
+
+Under `scope`, a chat assistant looks general because you can ask it about almost anything in words. A spam filter, by contrast, only ever answers one question about emails. The assistant is still a next-token predictor, though, with further training added on top to give it an assistant style.
+
+Under `job`, predicting is kept apart from reasoning. Predicting means giving one quick answer, such as guessing the next word. Reasoning means working through steps, like a chess program that tries several moves ahead and checks where each one leads. A predictor can be one part of that search, for instance by scoring each board position it reaches, but the predictor alone is not the search.
+
+The same setting warns that a smooth answer can read like a careful argument without anything having been proved. Sounding sure is not the same as checking the work, the way a confident classmate’s answer still needs checking. A fluent paragraph may only be blending patterns from the text the model learned from.
+
+Under `memory`, fitting the training examples is kept apart from working on new ones, which is the generalization gap from earlier. The answer-key friend fits the practice quiz perfectly, and that says nothing about the next quiz.
+
+AGI, artificial general intelligence, is a word for a system that could do any thinking task a person can. People define it in different ways and there is no agreed test for it, so it is a goal rather than something anyone has measured. Nothing in these labs claims it, and fluent text is not evidence of it.
+
+### Before the neural thread
+
+The **Era timeline** starts before neural nets, with a proposal written in 1955 by four researchers: McCarthy, Minsky, Rochester and Shannon. They asked for a two-month summer study of artificial intelligence at Dartmouth College, and that workshop is the timeline’s first stop, in 1956. Their bet was that any feature of intelligence could be described precisely enough for a machine to copy it.
+
+The proposal listed seven open problems and hoped for a big step forward on one or more of them within a single summer. It named problems rather than a method for solving them, which is why the timeline counts it as a stall.
+
+Then came two **AI winters**, which is the name for long stretches when money and interest for AI research dried up. In 1973 Sir James Lighthill, a British scientist, wrote a review of AI for a UK research council. He reported that in no part of the field had discoveries made the big impact that had been promised. Funding fell after his report, and the first AI winter lasted from roughly 1974 to 1980.
+
+The timeline’s Why it stalled note for that 1974 stop gives the deeper reason. Methods that worked on small, tidy problems, such as puzzles with a few fixed pieces, did not grow to handle realistic ones. A realistic problem needed so much detailed knowledge that nobody could type it all in by hand.
+
+Next came **expert systems**, which stored a specialist’s knowledge as written rules shaped like “if this is true, then do that”. One of them, XCON, helped the computer maker Digital Equipment Corporation fill orders, and it was first used in 1980. Its knowledge was written rather than fitted, so it was AI without being machine learning.
+
+Picture a help desk that answers every question from a binder of written rules, where each new product means new rules. Each new rule can clash with an old one, so keeping the binder correct takes more and more work as it grows. Expert systems ran into that kind of problem, because they cost too much to keep up to date and broke on cases their authors had not foreseen.
+
+Lisp machines were special computers built to run AI programs written in a programming language called Lisp. By 1987 cheaper ordinary computers could do the same job, so the market for Lisp machines collapsed. That collapse, along with the cost of keeping rule binders up to date, began a second AI winter. Both winter dates are approximate, so read them as rough landmarks rather than exact start and end points.
+
+### The neural thread
+
+The other seven stops on the timeline follow **neural nets**, the family of models that grew into the stacked layers of the DL ring. These stops are mixed in by year with the rule-based ones, and each has its own stall.
+
+- **1958, Perceptron.** The perceptron was a single layer of numbers learned from labeled examples, much like your line. It said yes or no by drawing one straight boundary between the two kinds of example. Its stall was **XOR**, a rule that says yes when exactly one of two switches is on. Draw the four on/off combinations of the two switches as the corners of a square. XOR’s two yes cases then sit in opposite corners, so no single straight line can split them from the two no cases.
+- **1969, Perceptrons critique.** A book called Perceptrons, by Minsky and Papert, proved what a single layer cannot work out, with XOR among them. Money and attention then moved away from neural nets to rule lists and search for over a decade.
+- **1986, Backpropagation.** Three researchers showed how to train a stack of layers by sending the slopes backward from the loss through each layer. A stack can handle XOR, but there was not yet enough computing power or labeled data for deep nets to win.
+- **1997, LSTM memory.** An LSTM, short for long short-term memory, carried information along a text from one word to the next. It read one piece at a time, though, so training could not work on a whole text at once, and very distant words still faded.
+- **2012, AlexNet.** A deep network called AlexNet won a big photo-sorting contest by a wide margin. It was trained on about 1.2 million labeled photos, using two graphics chips, the kind of chip built to draw video-game scenes fast. Its stall was that each new task still needed its own big labeled set and its own design.
+- **2017, Transformer.** A transformer uses **attention**, which lets every word in a text look at every other word at the same time. Its cost grows with the square of the text’s length, though, so doubling the length makes that cost about four times as large.
+- **2022, Assistants.** Extra training, including feedback from people, turned next-token models into tools that people can talk to. Fluent text is still not a check on whether something is true.
+
+### Where the right answers come from
+
+When a model trains, something has to tell it how it is doing, and whatever supplies the right answers or the score is called the **learning signal**. With no answers at all, the score can measure how well the model describes the patterns in the data. Four signals cover most of this course, and the **What is the learning signal** card shows them as four tiles, one for each signal.
+
+### Supervised: answers from people
+
+Picture a workbook where a teacher has already written the correct answer beside every question. In **supervised learning**, each example comes with its answer, called a **label**, which a person wrote down or which was kept in a record. The model is then scored against those labels, so it gets better by matching them more closely.
+
+The House sale prices scenario is supervised, because every sale record already lists the price the house sold for. Spam emails are supervised too, because people marked each email as spam or not spam. The three dots on the Learning problem card are also supervised, since each y is the label for its x.
+
+Because the labels decide what counts as correct, a biased set of labels makes a biased rule. If the people marking emails kept marking one harmless newsletter as spam, for example, the model would learn to do the same. **Semi-supervised learning** is the same idea when only some of the examples carry labels and the rest do not.
+
+### Unsupervised: patterns with no answers
+
+Picture tipping a jar of mixed buttons onto a table and grouping them by size and color, with no list saying which groups are right. Now think of the data as a table with one row for each example: supervised data has a column holding the answers, and unsupervised data has no such column.
+
+In **unsupervised learning**, then, the model looks for structure in the inputs themselves, such as which records sit close together or which readings are far from the usual pattern. The Customer records scenario groups customers by similar behavior, and the Sensor readings scenario flags readings that look unusual.
+
+The k-means method in the Classical machine learning lab works this way, grouping records without ever reading a label. Because there is no answer to check against, a person still has to decide whether the groups mean anything useful.
+
+### Self-supervised: answers hidden in the data
+
+Picture playing fill-in-the-blank with a book: you cover the next word, guess it, then uncover it to check. The book is its own answer key, so nobody has to write any answers for you. In **self-supervised learning**, part of the data is hidden and the model has to restore it, so the hidden part becomes the label.
+
+In the Raw sentences scenario, the next word of each sentence is the label, and it is already sitting in the text. In the Blanked-out photos scenario, the label is the hidden patch of pixels, which were part of the original photo all along.
+
+The model still trains against labels, but nobody has to write them, so the practice set can be as big as the raw pile of data. That is how language models can train on far more text than any team of people could ever label by hand.
+
+### Reinforcement: a reward after acting
+
+Picture a friend learning a new video game with no tutorial, where the only feedback is a “You win” or “Game over” screen at the very end. They have to work out for themselves which of their earlier moves actually earned the win.
+
+In **reinforcement learning**, no example ever shows the right move, so the learner acts first and receives a reward or a penalty afterward. It then has to work out which earlier choices earned that reward, much like the friend with the game. In the Charger robot scenario, for instance, the robot gets +1 for reaching its charger and −1 for bumping into a wall.
+
+A reward scores how things turned out rather than labeling each step, and it often arrives late and only now and then. That makes this signal harder to train with than labeled pairs, where every example has its own answer. The Reinforcement learning foundations lab runs it later, and the Post-training lab shows how assistants are tuned with rewards based on which answers people preferred.
+
+### Two kinds of answer
+
+What kind of answer a model gives is a separate question from where its right answers came from during training. **Classification** means the model picks one category from a fixed set, such as spam or not spam. **Regression** means the model gives a number on a scale, such as a house price, so the line you fit on the Learning problem card is regression too.
+
+The answer to one question does not decide the answer to the other, which the two self-supervised scenarios show. Predicting the next token is classification, because the model picks one token from its **vocabulary**, the fixed list of every token it knows. The card describes this with whole words, which keeps the example simple without changing the idea. Repairing a blanked photo is regression, because the answer is a number for each hidden pixel, so the two share a signal but not a kind of answer.
+
+The card’s **Output type** readout names the kind of answer for each scenario, and it has two more options besides these. It reads “no target” for the unsupervised scenarios, because they predict no answer, and “an action” for the reinforcement ones, because their output is a move.
+
+## Why it’s here
+
+This is where the guide starts, and every later lab uses these words as exact mechanisms rather than as labels on a box. Suppose someone tells you that “the AI learned to spot bad reviews”, which sounds clear until you try to check it. To test that claim, you need to know which menu of rules was searched, which loss was shrunk, on which examples, and with which learning signal. If “AI”, “machine learning” and “chatbot” stay interchangeable, there is nothing definite left to check.
+
+The line fit sits beside the rings so that “learns from examples” becomes something you can move with your own hands. Two sliders, a score and a button make up the entire learning process on that card, so nothing important is hidden behind the word.
+
+The timeline sits beside both so that history reads as a series of stalls rather than a parade of winners. Each era hit a limit that a later idea had to work around, and the stalls make a chain, listed here by year:
+
+- A goal with no method yet, at Dartmouth in 1956.
+- A single straight boundary that cannot handle XOR, from 1958 to 1969.
+- Results that did not grow from tidy problems to realistic ones, which led to the first winter in 1974.
+- Rule binders too costly to keep up to date, from the 1980 expert systems on, which led to the second winter in 1987.
+- Too little computing power and labeled data for stacked layers, after 1986.
+- Reading one word at a time, which made LSTM training slow from 1997.
+- A new labeled set and a new design for every task, even after AlexNet in 2012.
+- Attention whose cost grows with the square of the text’s length, from 2017.
+- Fluent assistants whose words are still not a check on truth, in 2022.
+
+Each link in that chain explains why the next idea mattered. Stacking layers got past XOR. Graphics chips and big labeled sets got past the shortage of computing power and labeled data, and attention got past reading one word at a time.
+
+The learning-signal sort is here because the four signals decide where a model’s right answers come from, and the course keeps using their names. The Classical machine learning, Next-token prediction and Post-training labs each lean on a different signal, so knowing which is which now saves confusion later.
+
+## How to play with it
+
+### Inspect the rings
+
+On **Nested methods**, use **Inspected method**, or click a circle or a row of the key, and read what that ring actually learns. Select AI first and then LLM, and watch the note under the rings narrow from a broad goal down to next-token prediction. Then find the small n-gram dot, and say which rings it sits inside and which ones it stays outside.
+
+### Fit a line by hand
+
+**Try this:** On Learning problem, set **Weight w** to 0 and **Bias b** to 0, which lays the line flat along the bottom of the graph. The **L MSE** readout now shows about 5.54, because the line misses every dot badly. Press **Take a downhill step** a few times, and watch three things change together:
+
+1. On the left, the three shaded squares shrink as the line swings up toward the dots.
+2. On the right, the you-are-here dot walks down across the contour lines toward the green ×, and a dotted path traces its recent steps. The path keeps only about the last 30 steps, so if you press many times, the oldest ones drop off the start of it.
+3. Below the plots, ∂L/∂w shrinks toward zero as the ground flattens out near the valley floor.
+
+The first press drops L to about 0.086, and the second press brings it down to about 0.027. After that each press helps only a little, because the slopes are now gentle and each step is 0.12 times a small slope.
+
+If you keep pressing, something surprising happens. After the third press, ∂L/∂w turns slightly positive. The line is now a bit too steep for how low it sits, because b is still only about 0.62 instead of 0.88. So this slope says to lower w a little, while b keeps rising. From then on the dot creeps slowly along the bottom of a long, narrow valley toward the ×, and reaching it takes dozens of presses.
+
+Next, drag one of the sliders yourself and watch the you-are-here dot jump to a new spot on the map. Dragging starts a fresh dotted path, because the path records only presses of the downhill button.
+
+The **Learning object** row above the sliders has five stages: Data, Hypothesis class, Loss, Optimization and Generalization. Click each stage to read a short paragraph about that piece, and notice that clicking changes only the paragraph, not the arithmetic. The formula row lower down, **Hypothesis and empirical loss**, prints the current line and the three squared misses, so you can check one against the table by hand. “Empirical” means measured on the actual examples in front of you.
+
+### Cut the word five ways
+
+On **What the word hides**, set **Distinction** to `family` and read the three tiles, then switch it to `not` and compare. The first setting names families of methods, while the second refuses extra claims about minds and understanding. Then try `scope`, `job` and `memory`, and for each one, find the idea from this lesson that its tiles match.
+
+### Scrub the timeline
+
+Move **Era** from 1956 to 2022 one stop at a time, reading the Idea note and the Why it stalled note before you move on. Stop on 1980, Expert systems, and notice that this stop is AI with nothing fitted at all. Then compare it with 2012, the AlexNet stop, and read what held each of them back.
+
+### Sort the leftovers
+
+On **Sort leftover terms**, select Hand-written chess rules in the **Leftover terms** list, and notice that it is marked Unplaced. Set **Place in ring** to AI and press the Place button, which names the term you selected. Then select Linear regression on house prices, place it in DL, read the correction in the note, and place it again in ML.
+
+A guess in an outer ring still counts as wrong here, because the card scores only the tightest ring. The **Placed** readout counts how many of the five terms you have placed so far, and **Tightest-ring matches** counts the correct ones. **Nesting depth** shows how many rings deep the right answer sits.
+
+### Sort the learning signals
+
+Last, open **What is the learning signal** and select Raw sentences in the Learning scenarios list. Set **Learning signal** to `supervised` and press Place to read the correction, then set it to `self-supervised` and place it again.
+
+Now select Blanked-out photos and compare its **Output type** with the one for Raw sentences, since they share a signal but not a kind of answer. Finish by placing Customer records and the Charger robot, and read what Output type says for each of them.
+
+## What to notice
+
+- The same product can sit in several rings at once, because an assistant is an LLM, which is a generative model, which is deep learning.
+- A spelling checker built from written rules can be AI without being machine learning, because nobody fitted it from examples.
+- The table, the shaded squares and L all come from the same three squared misses, so they always agree with each other.
+- The downhill button moves the line using the slopes printed in the readouts, not some separate trick.
+- The first downhill step from the flat line covers most of the distance, and later steps shrink because each is sized by a slope that flattens.
+- Every era has a stall, and even the 2022 stop is still next-token prediction plus later training, not a claim that the field is solved.
+- The n-gram dot sits in ML and outside DL, because it is generative without being deep, so it cannot sit inside the Gen ring.
+- The Expert systems stop is AI with nothing fitted, and both winters followed results that did not scale or methods that cost too much to keep up.
+- Raw sentences and Blanked-out photos are both self-supervised, yet one answer is a category and the other is a number.
+- Customer records and Sensor readings have no answer column, so their Output type reads no target.
+- Placing Raw sentences under supervised draws a correction, because the next word is already in the text and no person had to label it.
+
+## Where it breaks
+
+### What this lab simplifies or makes up
+
+- The five rings, their captions and the position of the n-gram dot were written by hand for this lab, so nothing on the card sorts a real product.
+- The eleven eras were written for the timeline card, and their dates, including the approximate winter dates, are landmarks rather than a complete history.
+- The timeline follows only two threads, rule-based AI and neural nets, and no model from any era is actually trained on the card.
+- The five leftovers and the eight learning-signal scenarios were written by hand too, and each one has a single best answer chosen by the card.
+- A wrong placement is corrected by looking up a table, not by a model that judges your answer.
+- The three dots were chosen by hand and the card never tests a fourth one, so the generalization gap is named but never measured.
+- The downhill step is one small update to a two-number line with one fixed step size, and each slider stops its number at the edge of its range.
+- The slopes come from a formula written by hand for this one line, rather than from the automatic method that real training uses for any model.
+- The tiles under **Distinction** are written explanations, so no system on the card is scored as conscious, general or understanding.
+
+### Where the real ideas break
+
+Product descriptions still blur these words together, and a chatbot demo does not make every method underneath it accurate or safe. Real products also mix methods, so a search tool plus an LLM plus a rule-based filter is still three different rings working side by side.
+
+Labels still decide what counts as correct in supervised learning, so biased labels still make a biased rule. A tiny training loss still does not mean the rule works on new cases, because the generalization gap has to be measured separately.
+
+Real training uses the same parts you met here: a menu of rules, a loss, a search, and a hope that the result generalizes. The differences are that it uses billions of numbers instead of two, and often a loss that is not squared error.
+
+The learning signals blend in real systems, too, so one product is not one box. A chat assistant is first trained self-supervised on raw text and then tuned on answers that people wrote. After that, it is trained further with rewards based on which of its answers people preferred.
+
+History is messier than any timeline, because a method can stall for lack of money, data or computing power, or because of a hard mathematical limit. A newer idea also does not erase an older problem, and fluent text is still not a check on truth. AGI still has no agreed test, so no lab here can say that a system has reached it.
+
+**A common mix-up:** people often treat a chat assistant as the definition of AI, or treat a low training loss as a sign of understanding. A large language model is one generative method deep inside the rings, and a low L on the training sample is a fit, not a mind.
+
+People also read “unsupervised” as “no human involved”, and “self-supervised” as another word for “unsupervised”, but neither reading is right. Unsupervised learning has no target at all, while self-supervised learning still trains against labels that come free from the data itself. A person is still involved in unsupervised learning, too, because someone has to decide whether the groups it finds mean anything.
+
+## Going deeper
+
+### The slopes, written out
+
+The slopes on the Learning problem card come from exact formulas rather than from trial and error. The slope ∂L/∂b is the average of 2 × (ŷ − y) over the three dots, and ∂L/∂w is the average of 2 × (ŷ − y) × x.
+
+At w = 0 and b = 0, the three misses are −1.4, −2.1 and −3.2, which add up to −6.7. Doubling that gives −13.4, and dividing by 3 gives about −4.467, which matches the ∂L/∂b readout at that spot.
+
+Each guess wx + b changes in a straight-line way as you change w or b, and L adds up the squares of those misses. Together, those two facts make this L an exact bowl with one smooth bottom, and every contour line is an oval. Squared error on a deep network does not give such a simple bowl, because its guesses do not change in a straight-line way. The exact bottom is the line w = 0.90 and b ≈ 0.883, and it is called the **least-squares** line. No other straight line gives a smaller mean squared error on these three dots, which is why the legend labels the green × as the least-squares bottom.
+
+### Other settings you will meet
+
+The step size of 0.12 is the hyperparameter this card names, and later labs add others. Two of them are the batch size, meaning how many examples each step looks at, and the epoch count, meaning how many times training passes through the data.
+
+### Sources for the early stops
+
+The early stops follow the Dartmouth proposal, which was reprinted in AI Magazine in 2006, and the Wikipedia articles on the Lighthill report, on AI winters and on XCON.
+
+### Where to go next
+
+The math you need opens the arithmetic these methods share, which is lists of numbers, slopes and probabilities. Classical machine learning runs k-means with no labels, Next-token prediction trains on answers the text supplies itself, and Reinforcement learning foundations trains from reward. Tokens & embeddings then shows the numbers an LLM actually reads in place of words. Why GPUs explains how graphics chips gave deep nets the computing power they had lacked, around 2012. The architecture zoo explains why attention replaced models that read one step at a time.

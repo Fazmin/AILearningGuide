@@ -1,0 +1,222 @@
+---
+objectives: ["Explain what soft labels carry that one-hot labels do not", "Say what distillation temperature controls", "Distinguish unstructured, 2:4, and structured pruning by what each one actually saves", "Read perplexity and stored size after each stage of distil, prune, and quantize, and compare importance scores by what they keep and what they cost to compute"]
+terms: ["Distillation", "Soft labels", "Temperature", "Dark knowledge", "Student capacity", "Magnitude pruning", "Unstructured pruning", "Semi-structured sparsity", "Structured pruning", "Sparsity", "Importance score", "Sparse format", "Compression pipeline", "Activation-weighted score"]
+---
+
+## The big picture
+
+This module measures two ways to get a smaller model from a trained one: train a small **student**
+to imitate the large **teacher** (distillation), or delete some of the teacher's weights
+(pruning). It then chains distillation, pruning, and quantization, and prices each stage in bytes
+saved and perplexity added.
+
+The questions are what a student gains from the teacher's whole distribution rather than the
+labels, what each pattern of zeros actually saves, and which stage of the chain costs the most
+quality per byte. It builds on Quantization, whose rounding becomes the last stage, and on
+Interpretability II: circuits, whose ablation becomes one way to score which weights to prune.
+
+### Where it shows up
+
+- **Distillation recipes.** Production recipes usually mix the soft-label loss with ordinary
+  cross-entropy on the labels. Sequence-level distillation exists because matching next-token
+  distributions does not by itself transfer multi-step behaviour.
+- **Sparse hardware.** NVIDIA's sparse tensor cores, Ampere and later, skip the zeros of an exact
+  2:4 pattern (two zeros in every four consecutive weights) for up to about twice the matmul
+  throughput.
+- **Pruning large models.** Wanda and SparseGPT both prune large models one-shot, without
+  retraining, using more than a weight's magnitude: Wanda its input activations, SparseGPT
+  second-order information.
+- **Compression pipelines.** The usual order prunes or distils, fine-tunes to recover, and
+  quantizes last, because quantization assumes the weights are final.
+
+### Why it matters
+
+A smaller model is worth having only if the saving is real and the quality cost is known. A
+student trained on one-hot labels sees one sampled answer per position. At the lab's default size
+and temperature (rank 6, T = 1) it ends about twice as far from the teacher as a same-size
+soft-label student, with nearly the same cross-entropy on the labels.
+
+Zeroed weights still sit inside a dense matrix multiply, so scattered zeros save storage only in a
+**sparse format**, a layout that records where the surviving values are, and save little time.
+Each stage of a pipeline also inherits the error of the one before, so only a reading after every
+stage shows which step spent the quality.
+
+### What you will be able to explain
+
+- What soft labels carry that one-hot labels discard: the teacher's ranking of the wrong answers.
+- What distillation temperature controls: which errors the loss weighs, not where the optimum
+  lies for a student that can match the teacher.
+- How unstructured, 2:4 semi-structured, and structured pruning differ in what each actually saves:
+  storage, matmul throughput, or the size of the matrices.
+- How to read perplexity and stored size after each stage of distil, prune, and quantize, and how
+  to compare importance scores by the quality they keep and the passes they cost to compute.
+
+### What the lab shows
+
+Every loss, KL divergence, and perplexity is computed from trained weights on one small corpus,
+each from a single seed. The teacher is the 900-weight bigram table from the tiny language-model
+labs. A soft-label student and a one-hot student of the same size retrain whenever **Student
+size**, **Distillation temperature**, or **Student epochs** changes; **Training target** only picks
+which of the two the metrics and later cards use.
+
+**Student controls** sets **Training target** (`Teacher distribution` or `One-hot labels`),
+**Student size**, **Distillation temperature**, and **Student epochs**, and reports **KL to
+teacher**. The **Distillation** card draws both students' loss curves and KL, and **Soft targets**
+shows the next-character distributions after one **Context character**.
+
+**Pruning controls** sets **Pruned share** and **Pruning mode** on the teacher, and the **Pruning**
+card plots perplexity against the share removed and draws the mask of kept weights. **Compose the
+three steps** adds **Importance score**, **Share pruned from the student**, and **Final bit
+width**, and lists stored size and perplexity for each stage, from **Teacher** to **Quantized**.
+Nothing is timed, and stored sizes are idealized bit counts, not a file format.
+
+The key experiment: at rank 6 and T = 1, flip **Training target**. The loss curves nearly overlap,
+yet **KL to teacher** roughly doubles with `One-hot labels`. Then switch **Importance score** at a
+70% share and weigh perplexity after pruning against **Passes to score**.
+
+## What it is
+
+Two ways to end up with a smaller model, both measured on the same trained weights.
+**Distillation** trains a small model against a large one's output distribution. Pruning
+deletes weights from the large model and keeps what is left.
+
+The teacher is the 900-weight logit table from the tiny language-model labs, trained for 80
+epochs to loss 1.887 and perplexity 6.600. Each student is a rank-limited factorization `U · V`,
+so **Student size** at rank `r` holds `2 × r × 30` weights: 360 at rank 6.
+
+### The distillation objective
+
+```text
+L_soft = T² · KL( softmax(z_teacher / T) ‖ softmax(z_student / T) )
+```
+
+**Soft labels** are the teacher's full next-character distribution. Their gradient with respect
+to the student's logits is `T · (p_student,T − p_teacher,T)`; the `T²` factor keeps step sizes
+comparable across temperatures. `Teacher distribution` trains on `L_soft` alone; `One-hot
+labels` trains on ordinary cross-entropy. Production recipes usually mix the two.
+
+### Temperature and dark knowledge
+
+**Temperature** divides both models' logits inside the loss. It does not move the optimum — a
+student that can match the teacher's logits up to a constant matches it at every T — but it
+changes which errors the loss weighs. High T lifts small probabilities, where the ranking of
+wrong answers, the **dark knowledge**, lives.
+
+### Three shapes of pruning
+
+**Magnitude pruning** removes the weights nearest zero. **Pruning mode** picks the pattern:
+`Unstructured` (**unstructured pruning**, zeros anywhere), `2:4 semi-structured`
+(**semi-structured sparsity**, two of every four weights down each column), and `Structured
+rows` (**structured pruning**, whole context rows by L2 norm).
+
+### Running the three steps together
+
+The **Compose the three steps** card runs a **compression pipeline** on one student. It stores the
+student as its two factors, prunes them with an **importance score** you choose, then quantizes
+what survives, and reports stored size and perplexity after each stage. The size counts bits: 32
+per value, plus one mask bit per position once anything is pruned, which is a **sparse format**.
+
+## Why it’s here
+
+The next lab budgets memory and speed from a parameter count; these are the two levers that
+change it without training from scratch. Many small open models learned from a larger model's
+outputs, and pruning suits a model that is nearly the right size already.
+
+## How to play with it
+
+At rank 6 and T = 1, flip **Training target**. Soft labels reach loss 2.119 and **KL to teacher**
+0.1348; one-hot labels reach 2.175 and 0.2577. KL is measured at every corpus position, so each
+context counts as often as the data uses it.
+
+Sweep **Distillation temperature**: KL reads 0.4037 at T = 0.5, 0.1348 at 1, 0.1340 at 1.5,
+0.1407 at 2, 0.2193 at 4, and 0.2737 at 6. Then open **Soft targets** on “h”: the teacher puts
+4.8% on characters that never follow “h” at T = 1, 39.3% at T = 2, 64.6% at T = 4.
+
+Raise **Pruned share** on `Unstructured`: 6.60 unpruned, 6.61 at 30%, 6.65 at 50%, 6.84 at 70%,
+8.07 at 90%. At 50%, `2:4 semi-structured` gives 7.15 and `Structured rows` 8.22.
+
+In **Compose the three steps**, at rank 6 with a 50% share and 4 bits, the **Teacher** is 3,600 B at
+perplexity 6.600; the **Distilled student** 1,440 B at 8.326; **Pruned** 765 B at 8.560; and
+**Quantized** 159 B at 8.619. That is 22.6 times smaller for +30.6% perplexity.
+
+Raise **Share pruned from the student** to 70% and switch **Importance score**. After pruning,
+`Magnitude` reads 9.682, `Activation-weighted` 9.999, and `Measured ablation` 9.480, for 0, 1, and
+360 **passes to score**.
+
+## What to notice
+
+- Soft labels win at every rank: 0.4200 against 0.4668 KL at rank 2, 0.0722 against 0.1295 at
+  rank 12. Each soft update carries the whole distribution; a one-hot update carries one sampled
+  character, so the hard student averages noisier signals.
+- The loss curves nearly overlap while KL differs twofold. Fitting the labels and matching the
+  teacher are different questions.
+- **Student capacity** decides how much a student can match at all: rank 12 gets nearly six times
+  closer than rank 2.
+- Temperature has a shallow optimum near 1 to 1.5 here. At T = 4 and above, the rank-6 student
+  spends its capacity on the tail.
+- On “␣” with `One-hot labels`, the hard student gives “a” 46.2% where the labels say 14.1%; the
+  soft student gives 14.6%.
+- 2:4 sits between the curves: a forced pattern costs more than free choice, less than deleting
+  rows.
+- The stages are not equally priced. In the 4-bit run distilling saves 2,160 B for +1.73
+  perplexity, pruning 675 B for +0.23, and quantizing 606 B for +0.06. At 2 bits quantizing costs +1.34.
+- The best score here is the expensive one. `Measured ablation` zeroes each value in turn and
+  asks the loss; it needs one pass per value, 360 here, and ranks first at 70%.
+- The cheap proxy loses. **Activation-weighted scores** do worse than magnitude on this toy:
+  in a one-hot bigram an input's activation is only how often its context occurs, which ignores
+  how much the softmax cares about each logit.
+
+## Where it breaks
+
+**In this lab.** Every loss, KL, and perplexity is computed. The scale is a toy: 900 weights,
+one character of context, no layers. This teacher learned almost exactly the corpus's bigram
+frequencies — 76.6% for “e” after “h” against 76.0% in the labels — so its dark knowledge is a
+thin smoothing tail. KL skips the four context rows the corpus never visits.
+
+The student is a low-rank copy of the teacher's own shape, not a different architecture.
+Pruning is one-shot with no recovery fine-tune, and nothing is timed: the speed claims below
+come from how kernels work, not from measurement. Each result is one seed.
+
+The compose card has no fine-tune between stages, removes the same share from both factors, and
+uses one corpus for the scores and the perplexity, which flatters any score calibrated on it. Its
+sizes are bit counts, not a file format.
+
+**In real systems.** Zeroed weights still sit inside a dense matrix multiply, so unstructured
+**sparsity** saves storage only with a sparse format, and little time. NVIDIA's sparse tensor
+cores (Ampere and later) skip the zeros of an exact 2:4 pattern for up to about twice the matmul
+throughput. Structured pruning shrinks the matrices themselves.
+
+Magnitude is the crudest **importance score**. Wanda scores each weight by its magnitude times
+the norm of its input activation, compared per output, and its authors report that it
+significantly outperforms magnitude pruning on LLaMA models. SparseGPT instead solves a
+layer-wise reconstruction with second-order information. Both prune large models one-shot,
+without retraining (arXiv 2306.11695 and 2301.00774, abstracts checked 30 September 2026).
+
+The toy reverses the first result, for the reason in What to notice. Students inherit their
+teacher's mistakes, and matching next-token distributions does not transfer multi-step
+behaviour on its own, which is why sequence-level distillation exists.
+
+## Going deeper
+
+Two accounts explain soft targets. The information account: each position carries a whole
+distribution instead of one sampled answer. The regularization account: the teacher's
+distribution is smoother than the labels. This lab mostly shows the first, since this teacher
+barely differs from its labels.
+
+### Composing the steps
+
+Compression steps compose, and order matters. The usual pipeline prunes or distills, fine-tunes to
+recover, then quantizes last, because quantization assumes the weights are final. Each stage
+inherits the error of the one before: here the 4-bit quantize stage adds only +0.06 on top of a
+pruned student, but the same stage on the full student at 2 bits costs +1.76.
+
+The Quantization lab prices that last step; Deployment & serving turns the result into memory and
+tokens per second.
+
+### Importance scores beyond magnitude
+
+An **activation-weighted score** needs data: one pass over calibration text to measure the inputs.
+A measured ablation is the causal version, the ablation of the interpretability labs applied to
+weights. It is exact for one weight at a time, misses interactions between weights, and costs a
+pass per weight, which is out of reach when a model has billions of them. That is the gap
+proxies such as Wanda are built to close.

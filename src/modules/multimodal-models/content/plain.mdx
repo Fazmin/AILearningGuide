@@ -1,0 +1,301 @@
+---
+objectives: ["Compute how many patch tokens an image becomes from its size and the patch size, including the optional CLS token","Describe a patch embedding as a linear map from a patch's pixels to a vector, plus a position code","Compare what CLIP, LLaVA-style and Flamingo-style designs hand on — one pooled vector, projected tokens inside the text sequence, or 64 resampled vectors read by cross-attention — and what each costs in context","Explain how a contrastive loss over a batch of image–caption pairs rewards the labelled pairs and penalizes the other pairings, and how the temperature sharpens or flattens each softmax"]
+terms: ["Modality","Patch","Patch embedding","Position embedding","CLS token","Vision encoder","Contrastive learning","Projector","Cross-attention","Image token","Temperature","Negative pair","Spectrogram","Image-borne injection"]
+---
+
+## The big picture
+
+Picture asking a chat model a question about a photo, such as “Which digit is this?” Before the model can work on an answer, it has a problem to solve. A language model reads text as a line of small pieces called **tokens**, which are usually whole words or parts of words. Each token is stored inside the model as a list of numbers, but a photo is a grid of tiny coloured dots, not a line of words.
+
+Text, pictures and sound are different kinds of input, and each kind is called a **modality**. A model that takes in more than one kind is called a **multimodal model**, and this module shows how it gets a picture into its line of tokens. The usual recipe cuts the picture into small square tiles, turns each tile into a short list of numbers, and lines those lists up beside the words of your question. In the most direct design, the model then reads the picture’s tiles in much the same way that it reads words.
+
+### Where you have met it
+
+Ideas from this module show up in several places you may have come across:
+
+- A model that answers questions about a picture has to turn that picture into tokens first. One design in this lab, called LLaVA, does exactly that, and the lab’s own example asks “Which digit is this?” about a drawing.
+- Finding the picture that best fits a phrase you type is a matching job. A design called CLIP is built for matching, because it scores how well a picture and a caption go together.
+- Speech, video and scanned pages can be handled in the same way, by cutting them into pieces and turning each piece into numbers, as Going deeper shows.
+- This app has its own local assistant, which belongs to a family of models that can accept images. The copy in this app still cannot see anything, and Where it breaks explains why.
+
+### Why it matters
+
+Without a step like this, a language model could only ever read text, so a photo, a chart or a screenshot would be invisible to it. The step also has a price, because a model can hold only a fixed number of tokens at once. Every tile that enters the line takes up room, so a single photo can fill a large share of the space that your words also need. The way a picture is cut and passed on decides how much detail the model receives and how much room is left over.
+
+There is a second problem hiding underneath the first, because the part that reads pictures and the part that reads words have to agree. A photo of a dog and the words “a dog” should end up with lists of numbers that count as a match. A model gets its numbers through **training**, a long process in which it looks at many examples. Each time, its numbers are nudged a little so that it makes fewer mistakes. The training method that builds this agreement is called **contrastive learning**, and the last card in the lab shows how it scores a match.
+
+### What you will be able to explain
+
+By the end of this lesson, you should be able to explain these ideas in your own words:
+
+- how many tokens a picture becomes, worked out from the size of the picture and the size of each tile, plus one optional extra summary token;
+- how a tile’s pixels become a list of numbers through one fixed recipe of multiplying and adding, with a small code for the tile’s position added on top;
+- what three common designs, called CLIP, LLaVA and Flamingo, pass on to the rest of the system, and how much of the model’s room each one uses;
+- how contrastive training scores a batch of pictures against their captions, rewarding the labelled matches and penalizing every other pairing;
+- how each picture splits 100% into shares among the captions, how a setting called the temperature makes those shares sharper or flatter, and why that changes the result.
+
+### What the lab lets you see and try
+
+The lab has five cards, and each one shows a single step of the process:
+
+- **Image to patches** gives you an 8×8 drawing pad, already holding a blocky 5, which you can cut into tiles of three different sizes.
+- **Patch embedding** shows the multiply-and-add recipe working on one tile, number by number, so you can check every answer yourself.
+- **Token sequence** lays the picture’s tiles in a line between the words of a short question, the way one of the three designs does.
+- **Real-scale arithmetic** repeats the counting at the picture sizes real models use, and shows where the picture ends up in each of the three designs.
+- **Contrastive pairs** scores three pictures against three captions and shows how a training score, called the loss, rewards the right matches.
+
+Everything in the lab is worked out exactly, from your drawing or from small numbers that were made up by hand. A person wrote the four filters and the six lists of numbers for the pictures and captions. Nothing is trained, and no real picture reader or language model runs.
+
+## What it is
+
+### A picture is a grid of numbers
+
+A digital picture is made of tiny squares of colour called **pixels**. Each pixel in a colour photo holds three numbers, which say how much red, green and blue light it gives off. A photo that is 224 pixels on each side has about 50,000 pixels, so with three numbers for every pixel it comes to about 150,000 numbers.
+
+The lab keeps things much smaller so that you can see every number. Its pad is 8 pixels on each side, 64 pixels in all, and each pixel is either ink, stored as 1, or blank, stored as 0. When the lab opens, the pad holds a blocky 5 drawn with 17 inked pixels.
+
+The language models in this course are **transformers**, and a transformer reads a line of tokens in which every token is a list of numbers, called a **vector**. A grid of pixels is not a line of vectors, so before a transformer can read a picture, something has to cut the picture up and convert it.
+
+The standard way to do that comes from a design called the Vision Transformer, or **ViT**, and it has three steps:
+
+1. **Cut** the picture into small square tiles called **patches**, using the same grid of cuts whatever the picture shows.
+2. **Turn** each patch into a short list of numbers, its **patch embedding**, using one fixed recipe of multiplying and adding.
+3. **Add** a **position embedding**, a small code that records where the patch came from, so that tiles in different places stay different.
+
+Each patch then becomes one token, and the sections below take the three steps one at a time.
+
+### Step 1: cut the picture into patches
+
+Picture cutting a photo into a grid of square tiles, like a sheet of stamps. The cuts always fall in the same places whatever the photo shows, so a cat, a page of writing and a blank wall are all cut alike. Each tile is called a **patch**, and each patch will become exactly one token.
+
+To count the patches, divide the side of the picture by the side of one tile, which tells you how many tiles fit along each edge. Then square that number, because the tiles fill a square grid with the same count along both edges. The lab writes this out in its **Patch tokens** readout, which shows (8 / 4)² = 4 for the 8×8 pad cut into 4×4 tiles. Two tiles fit along each edge, so 2 × 2 = 4 tiles cover the pad.
+
+The same rule works at real sizes, where a picture 224 pixels on each side, cut into 16-pixel tiles, fits 224 / 16 = 14 tiles along each edge. That gives 14 × 14 = 196 patches, so the picture becomes 196 tokens.
+
+Some picture readers add one extra token at the front of the line, called the **CLS token**, which brings the 224-pixel picture to 197 tokens instead of 196. The CLS token holds no pixels of its own, but by the end of the reader its numbers often serve as a summary of the whole picture.
+
+Smaller tiles mean more tokens and bigger tiles mean fewer, so on the lab’s pad, 2×2 tiles give 16 tokens of 4 pixels each. At the other end, a single 8×8 tile turns the whole picture into one token.
+
+### Step 2: turn each patch into a list of numbers
+
+Now picture filling in the same short form for every tile, with four questions on it. The form asks how much ink the tile holds, and whether that ink leans to the left or to the right. It also asks whether the ink leans toward the top or the bottom, and whether it runs along one diagonal more than the other. Each answer is a number, so every tile ends up as a list of four numbers.
+
+In the lab, those four questions are four **filters**, named **ink**, **left − right**, **top − bottom** and **╲ − ╱**. A filter is a small grid of numbers called weights, with one weight for each pixel in the tile. The **Patch embedding** card draws each filter as a little grid of + and − cells, so you can see which pixels count for the answer and which count against it.
+
+To get a filter’s answer, you multiply each pixel by the weight in the same spot and add up all the results. A blank pixel is 0, so only the inked pixels count toward the answer.
+
+The lab numbers the patches in reading order, with #1 at the top left. The count goes left to right along each row of tiles, then moves down to the next row. Before any filter works, the lab lays the tile’s pixels out in a single line, reading row by row the way you read a page. For a 4×4 tile, that line holds 16 numbers, each one a 0 or a 1. The lab calls this line **x**, and the **Image to patches** card shows it as a strip labelled “patch #2 flattened, row by row: x”.
+
+Take patch #2 at the 4×4 tile size, which is the top-right quarter of the pad. It holds the right end of the 5’s top bar and the right end of its middle bar, so 3 of its 16 pixels are inked. Two of them sit in the tile’s top row and one sits in its bottom row, and all three are on the tile’s left half. With those three pixels in mind, here is how each of the four filters scores the tile:
+
+- **ink** gives every pixel a weight of 1/16, so its answer is 3 × 1/16, about 0.19, which is the share of the tile that holds ink.
+- **left − right** gives each pixel on the left half a weight of +1/8 and each pixel on the right half a weight of −1/8. All three inked pixels are on the left, so the answer is 3 × 1/8 = 0.375, which the lab rounds to 0.38.
+- **top − bottom** works the same way, with +1/8 for the top half and −1/8 for the bottom half. Two inked pixels are on top and one is on the bottom, so one pixel’s worth, 1/8, is left over, and the lab rounds it to 0.13.
+- **╲ − ╱** gives +1/4 to each pixel on one diagonal and −1/4 to each pixel on the other. One inked pixel lies on each diagonal, so the two cancel out and the answer is 0.00.
+
+Each answer is a **weighted sum**, which means every pixel is multiplied by its own fixed weight and the results are added up. A step built only from weighted sums like this is called a **linear map**. The **Patch embedding** card writes the full step in its heading as `z = W·x + position`. There, W·x is the linear map, and the position code is added on top as a separate step, explained below. In that line, x is the tile’s 16 pixels, and W is the four filters stacked one above another. The card’s table calls each filter a “row of W” for that reason. The dot in W·x means “multiply each pixel by its weight and add up the results”, done once for each filter, so W·x is the list of four answers.
+
+This multiply-and-add step is called the **patch embedding**, and the same name is often used for the list of numbers it produces. One sign that the step is linear is that its answers add up neatly. In patch #2, the two top pixels alone give 2/8 on left − right and the bottom pixel alone gives 1/8, so together they give 3/8.
+
+The same four filters are used on every tile in the picture. That matters, because it means two tiles with exactly the same pixels always get exactly the same W·x, wherever they sit.
+
+**Where the form picture stops matching:** a person wrote the form’s four questions, and a person also set this lab’s four filters so you can read every number. A real picture reader learns its filters during training instead, starting from random weights that are nudged over many examples, and it uses far more of them. A reader called ViT-B/16 uses 768 learned filters, each covering a 16×16 tile in three colours, so each of its tokens is a list of 768 numbers. Those learned filters come without names, so nobody wrote down which question each one asks.
+
+### Step 3: add a position code
+
+Turning tiles into numbers creates a new problem, because nothing in a tile’s four numbers says where the tile was. Set **Patch size** to 2×2 and look at patches #2 and #3, which sit side by side in the top row. Each one holds the same two inked pixels across its top, so both get exactly the same W·x. Both read 0.50 for ink and 1.00 for top − bottom, with zeros for the other two filters. A 2×2 tile has only 4 pixels, so the filter weights are bigger than before: 1/4 for ink, and 1/2 for each half. Two inked pixels give 2 × 1/4 = 0.50 for ink, and because both sit on top, 2 × 1/2 = 1.00 for top − bottom.
+
+That would be a real problem, because the step that comes later has no built-in sense of order. That step is **attention**, where each token gathers information from the other tokens, and on its own it treats them like a bag of pieces. Two identical tokens would look like the same piece twice, with no sign of which one came first.
+
+The fix is to add a small code to each token that depends only on the tile’s row and column. This code is the **position embedding**, and the lab calls it the position code and shows it in the “+ position” column of the **Patch embedding** table. In this lab the code is a fixed pattern of small numbers that rise and fall like a smooth wave as you move across the rows and columns. Mathematicians call this wave shape a sine wave, so the lab calls it a sine pattern. A real ViT usually learns its position codes during training instead of using a fixed pattern.
+
+Back at the 4×4 tile size, patch #2’s position code adds 0.07 to each of the first three answers and subtracts 0.07 from the last one. The table on the card has one row for each filter, with columns headed “W·x”, “+ position” and “= token”. Reading across each row gives these sums:
+
+- ink: 0.19 + 0.07 = 0.26
+- left − right: 0.38 + 0.07 = 0.45
+- top − bottom: 0.13 + 0.07 = 0.20
+- ╲ − ╱: 0.00 − 0.07 = −0.07
+
+So patch #2 enters the model as the four numbers `[0.26, 0.45, 0.20, −0.07]`. At the 2×2 size, the tokens for the twin patches #2 and #3 now end in 0.04 and −0.04, while their first three numbers match. The position code is the only thing that tells them apart.
+
+### What happens next: the vision encoder
+
+In a real model, the tokens now pass through a **vision encoder**, which is a transformer built to read pictures. A transformer works in **layers**, where each layer is one round of processing that every token passes through, and a vision encoder stacks many of these rounds one after another. Inside it, attention lets each tile’s token gather information from the other tiles, so each token ends up carrying something about its neighbours as well as its own pixels. A vision encoder is usually trained on its own first, often with the contrastive method described below, and only then connected to a language model. This lab stops before this point, so no encoder layers run here.
+
+### Three ways to hand a picture to a language model
+
+A language model can hold only a fixed number of tokens at once. Picture a notebook with a fixed number of lines, where every token fills one line and nothing more can be written once the pages run out. The notebook stops matching in one way. In a real notebook, each new line takes the same effort as the last. In a model, every token is compared with every other token, so each extra token adds more work than the one before, as Why it’s here explains. That limit is called the model’s **context**, or context window, and this lab assumes a context of 4,096 tokens.
+
+Three common designs join a vision encoder to a language model, and they differ in what they pass on and in how much of the notebook they fill.
+
+- **CLIP** trains a picture reader and a caption reader side by side, using contrastive learning, until a matching picture and caption get a high score together. Its picture reader first makes one vector for each tile, like the other designs, and each one is 1,024 numbers long in the lab’s starting setup. CLIP then boils all of those down into a single vector for the whole picture, a step called **pooling**, and converts it to 768 numbers. That one vector is compared with caption vectors, so CLIP is good for search but does not write sentences, and none of its output enters a language model.
+- **LLaVA** takes the patch vectors from a CLIP picture reader and passes each one through a small converter called a **projector**. The projector converts each vector to the length the language model uses for its words, from 1,024 numbers to 4,096 in a version called LLaVA-1.5. This 4,096 is the length of each token, and it just happens to match the 4,096-token notebook size above, though the two numbers measure different things. The results go straight into the prompt as **image tokens**, where the model treats them like any other tokens, and they fill the context like any other tokens too.
+- **Flamingo-style** models squeeze all of a picture’s vectors down to a fixed set of 64, whatever the picture’s size. They then add extra layers to the language model so that the words can read those 64 vectors, which is called **cross-attention**. Ordinary attention lets each word gather information from its own line, while cross-attention lets it gather information from a separate set of vectors outside the line.
+
+One way to keep them apart is to ask where the picture goes. LLaVA pastes the picture into your message tile by tile, and Flamingo-style keeps 64 summary vectors beside the message for the words to read. CLIP never writes a message at all, because it only rates how well a picture fits a caption.
+
+Those choices decide the cost. A picture 336 pixels on each side, cut into 14-pixel tiles, makes 576 patch tokens. A LLaVA-style model puts all 576 of them into its 4,096-line notebook. That is about one seventh of the notebook for one picture, while the other two designs keep the picture out of the line entirely.
+
+### How contrastive learning works
+
+CLIP’s picture reader and caption reader start out unmatched, so the numbers one gives a dog photo have no link to the numbers the other gives the words “a dog”. Contrastive learning is how the two are trained to line up, and it works on a **batch**, a group of pictures that each come with their own caption. The method runs in five steps, and the **Contrastive pairs** card lets you check each one with real numbers.
+
+**Step 1:** every picture and every caption becomes a vector. In the card, these vectors were written by hand with four numbers each, one for each of four named topics: vehicle, animal, sky and structure. Picture A, a ferry at a dock, gets 0.9 for vehicle and 0.7 for structure, with small numbers for the other two. Caption 1, “a ferry tied up at the dock”, gets 0.8 for both vehicle and structure and almost nothing for animal and sky.
+
+**Step 2:** every picture is scored against every caption, using a score called the **cosine similarity**. It checks whether two vectors have the same mix, meaning the same topics in roughly the same proportions. A score near 1 means nearly the same mix, and a score near 0 means almost nothing in common. Only the mix counts, not the size. For example, [1, 0, 0, 1] and [2, 0, 0, 2] score exactly 1, even though one list is twice as big as the other. Picture A and caption 1 both lean heavily on vehicle and structure, so they score 0.97. Caption 2, “a dog waiting on the pier”, shares little with picture A beyond the structure part, so that pair scores 0.41.
+
+Laid out as a grid, with pictures as rows and captions as columns, the three true pairs sit on the diagonal from top left to bottom right. Every other cell holds a **negative pair**, which is a picture and a caption from the same batch that do not belong together. Three pairs make 3 × 3 = 9 cells, so 6 of them are negative pairs. The count grows fast, because a batch of 100 pairs would have 100 × 100 − 100 = 9,900 negative pairs.
+
+**Step 3:** each row is turned into shares. For each picture, the card asks “which caption fits this picture?” and splits 100% among the three captions, giving the biggest share to the highest score. It also asks the reverse question down each column, which is “which picture fits this caption?” The step that turns a row of scores into shares that add up to 100% is called a **softmax**. Bigger scores get bigger shares, and the wider the gap between two scores, the more lopsided their shares become. A small gap on its own gives fairly even shares, which is why the temperature, described next, stretches the gaps first.
+
+Before the softmax, every score is divided by a setting called the **temperature**, written τ, which is the Greek letter tau. The temperature controls how far apart the scores are when the softmax sees them, and the section after these five steps shows why that matters so much.
+
+**Step 4:** the card gives a penalty that grows as the labelled match’s share shrinks, and it is zero only at 100%. The labels say which caption truly belongs to each picture, and for every row and every column the card turns the labelled match’s share into a penalty. The penalty climbs faster and faster as that share shrinks:
+
+- If the labelled match gets the full 100%, the penalty is 0, because nothing could be better.
+- If it gets 81% of the share, the penalty is about 0.21, which is still small.
+- If it gets one third, which is an even three-way split, the penalty is about 1.10.
+- If it gets only 5% of the share, the penalty is about 3, which is large.
+
+A **loss** is a training score where lower is better, and the card builds its loss from these penalties in two directions. It averages the penalties across the three rows to get **Image → caption**, and averages them down the three columns to get **Caption → image**. The **Contrastive loss** is the average of those two, so the loss is low only when every labelled match takes a big share of both its row and its column. At the starting temperature of 0.20, the rows give 0.241 and the columns give 0.229, so the loss comes to 0.235.
+
+The **Chance loss, ln 3** readout shows 1.099, the penalty for an even three-way split. It is the loss you would get if every score in a row were equal, so nothing told the candidates apart. The “ln” in the label is short for natural logarithm, the math function that the lab uses to turn a share into a penalty. So ln 3 is the penalty for a one-third share. You only need the pattern in the list above, not the function itself.
+
+**Step 5:** during training, each small change to the two readers is chosen to lower the loss. In practice, that raises the scores of the labelled pairs and lowers the scores of every other pairing in the batch. The paper that introduced CLIP, by Radford and colleagues in 2021, describes the goal in the same terms. The goal is to raise the scores of the real pairs and lower the scores of every incorrect pairing. Over a very large number of pairs, that steady pressure is what makes the true pairs come out on top. The card in this lab trains nothing, though, because it scores six fixed vectors so that you can see what the loss measures.
+
+### How the temperature changes the shares
+
+Dividing by the temperature changes how far apart the scores are before the softmax sees them. Dividing by 0.20 is the same as multiplying by 5, so every score and every gap becomes five times bigger. Dividing by 0.05 multiplies them by 20 instead, while dividing by 1.00 changes nothing at all. The softmax cares about the gaps between scores, so stretching the gaps hands more of the share to whichever score leads.
+
+Picture C, a ship under storm clouds, shows this best, because one rival caption scores close to its own. Its own caption, “dark clouds over the water”, scores 0.93, but the ferry caption scores 0.74, because a ship is a vehicle too. The gap between those two scores is only about 0.18, though the rounded scores make it look like 0.19, and the temperature decides how much that small gap counts.
+
+- At a temperature of 0.20, the gap is stretched five times, to almost 1. The labelled caption gets 70% of the row, and the ferry caption gets 28%.
+- At 0.05, the gap is stretched twenty times, to almost 4. The labelled caption now gets 98%, and the ferry caption only 2%.
+- At 1.00, the gap stays at about 0.18, so the two shares come out close together. The labelled caption gets 43%, and the ferry caption gets 36%.
+
+A low temperature makes every row sharp, so the leader takes nearly everything, while a high temperature makes every row flat, so the shares spread out. When the labelled caption is already the leader, sharpening helps it and the loss falls. When the labels point at a caption that is not the leader, sharpening works against it and the loss rises.
+
+This temperature shares its name with the temperature that sets how random a chatbot’s replies are, but it is a separate setting with a different job. Here it only decides how sharply the scores are turned into shares while the loss is worked out.
+
+## Why it’s here
+
+A plain language model has one way in, which is a line of tokens, each one a vector of the same length, inside a context of fixed size. LLaVA-style models push the picture through that door as image tokens. Flamingo-style models build a second door instead, made of added cross-attention layers, so the picture reaches the words without joining the line. CLIP does not feed a language model at all, because it only matches pictures with captions. Whichever route a design takes, the goal is to get the picture in without losing what matters about it, and the job breaks into three smaller problems.
+
+The first problem is turning pixels into something a transformer can use, and you have met a close cousin of the answer before. In The architecture zoo, a 3×3 filter of 9 weights slid across the drawn digit one square at a time, so the same filter was used at all 64 places. A patch embedding is close to that, because it applies a set of filters once per tile. It jumps a whole tile at a time instead of one square, though, so the tiles never overlap and each tile gives one answer per filter. That is how the filter idea from the zoo connects to the transformers you have studied since.
+
+The second problem is cost, because image tokens use the same context, the same attention and the same computing work as words. Attention compares every token in the line with every other token. If the line doubles, there are twice as many tokens, and each one has twice as many others to compare with. So the attention work grows about 2 × 2 = 4 times. That is why the picture size and the tile size matter so much.
+
+The third problem is agreement, and the designs share that work instead of each starting from nothing. LLaVA, for example, does not train its own picture reader from scratch, because it reuses one that CLIP already trained with contrastive learning. Its picture numbers therefore already carry meanings learned from captions, so the projector only has to learn to translate them into the language model’s own numbers.
+
+## How to play with it
+
+### Cut the grid
+
+Start on **Image to patches**, where the pad already holds the blocky 5. Click any cell to flip it between ink and blank, and that cell’s patch becomes the selected one. If you prefer the keyboard, pick a cell with **Selected pixel**, which marks it with a dashed outline, and then press **Flip selected pixel**. Heavy lines mark the borders between patches, and the cells of the selected patch are tinted.
+
+**Try this:** set **Patch size** to 2×2, then to 8×8, and watch **Patch tokens**. At 2×2 it reads (8 / 2)² = 16, and at 8×8 it reads (8 / 8)² = 1, because one tile now covers the whole pad. Keep an eye on the **Token sequence** card at the same time. Its row of picture chips shrinks from 16 to 1, while the 7 text tokens around the picture stay exactly the same. Those 7 are the two tags that mark whose turn it is and the five tokens of the question.
+
+### Read one token
+
+Set **Patch size** back to 4×4, which also sends **Selected patch** back to the first patch, so move it to “#2 of 4”. The **Patch embedding** card should now show the numbers from the worked example, with “3 of 16 inked” under the tile. Its “= token” column should read 0.26, 0.45, 0.20 and −0.07.
+
+Now move to patch #1, the top-left quarter of the pad, which holds 8 inked pixels, half the tile, so **ink** reads 0.50. The other three filters all read 0.00, because its ink is balanced. It has as much ink on the left as on the right and as much on top as on the bottom, with the same amount on both diagonals.
+
+Then change patch #2 yourself by clicking the cell in row 2, column 8, counting rows from the top and columns from the left, starting at 1. That cell lies in the right half of the tile. The **left − right** answer drops from 0.38 to 0.25, because the new pixel brings a weight of −1/8. Click the same cell again to put the pixel back where it was.
+
+Last, set **Patch size** to 2×2 and step **Selected patch** between “#2 of 16” and “#3 of 16”. The W·x column stays the same for both. The “+ position” column changes only in its last row, from 0.04 to −0.04, and that is the only difference in the “= token” column.
+
+### See the line of tokens
+
+In **Token sequence**, the line starts with the tag USER:, which marks the person’s turn, then shows one chip for each picture tile. After the chips come the words of the question, and the line ends with the tag ASSISTANT:, after which the model’s reply would go. This is the layout a LLaVA-style model uses, with the picture’s tokens placed between the user tag and the question. The chips are numbered in reading order, left to right and top to bottom, and clicking any chip selects that patch. In this lab each token is still only 4 numbers long, while LLaVA-1.5 converts its picture vectors from 1,024 numbers to 4,096.
+
+### Scale it up
+
+Move to **Real-scale arithmetic**, which does the same counting at real sizes. Set **Image side** to 224px, where px is short for pixels, and **Encoder patch** to 16×16, and **Patch tokens** reads (224 / 16)² = 196. With **CLS token** set to “+1 CLS”, **Encoder sequence** reads 197. If you switch it to “none”, the extra summary token disappears, leaving 196, so switch it back to “+1 CLS” before going on.
+
+Next, set **Image side** to 336px and **Encoder patch** to 14×14, which is the lab’s starting setup. There are 336 / 14 = 24 tiles along each edge, so Patch tokens reads 576. **Values per patch** reads 14·14·3 = 588, where the dot just means times, so 14 × 14 × 3 = 588. That is the count of numbers in one colour tile before any filter sees it, because each pixel has three colour numbers. The card’s heading names the picture reader, ViT-L/14, and the number after the slash is its tile size.
+
+Two more settings are worth a look, and the first is 448px with 14×14 tiles. There a single picture makes 1,024 tokens, which is a quarter of the whole 4,096-token context. At 336px with 32×32 tiles, the tiles do not fit evenly, because 336 / 32 = 10.5. The lab rounds up to 11 tiles per side, as if the picture were resized or padded with a blank border to 352 pixels. Patch tokens then reads (352 / 32)² = 121, and the **Pixels** stage, first in the list of stages described next, says this.
+
+### Compare the three designs
+
+First set **Image side** back to 336px, **Encoder patch** back to 14×14 and **CLS token** to “+1 CLS”, because the shapes below are for that setup. Then switch **Connector** between “CLIP (contrastive)”, “LLaVA (projector)” and “Flamingo-style (cross-attn)”, and read the list of five stages each time. Each stage shows a shape, such as “576 × 588”, which means 576 tiles with 588 numbers each. The first three stages are the same for all three designs. The third one, **ViT-L/14 encoder**, is the vision encoder, and its shape of 577 × 1,024 counts the 576 patches plus the CLS token, each now 1,024 numbers long.
+
+- With **LLaVA (projector)**, the **MLP projector** stage drops the CLS token and converts each of the 576 patch vectors to 4,096 numbers. The label MLP names this kind of small converter, which here has two layers. The last stage, **LLM sequence**, where LLM is short for large language model, puts 576 image tokens into the line beside the text. **Context share of 4,096** reads 14.1%, the same one-seventh share you met earlier.
+- With **CLIP (contrastive)**, the **Pooled + projected** stage turns the whole picture into one vector of 768 numbers. Pooled means the tile vectors are combined into one, and projected means that one is converted to a new length. The **Contrastive score** stage then compares it with each caption, giving one number per caption, and the context share reads “0% (not in the sequence)”.
+- With **Flamingo-style (cross-attn)**, the **Perceiver resampler** stage turns the picture into 64 vectors, shown as 64 × d, where the letter d stands for the length of each vector. The **Gated cross-attention** stage lets the text read those 64 vectors, and the context share again reads 0%.
+
+### Match pictures to captions
+
+Finish on **Contrastive pairs**, whose rows are three pictures: A, a ferry at a dock; B, a dog on a pier; and C, a ship under storm clouds. Its columns are the three captions, numbered 1 to 3, and each caption was written to match one of the pictures. Each cell shows the similarity score in bold, then the share that caption gets in its row and the share that picture gets in its column. A cell is tinted more strongly as its row share grows, and the cell the labels call the match is outlined and marked “labelled match”.
+
+A badge on the card reads “hand-authored vectors”, and the table at the bottom lists all six vectors by topic. That table lets you see why each pair scores the way it does. Each picture’s highest score sits on its own caption, so **Images that rank their match first** reads 3 of 3. It looks only at the scores, so it stays at 3 of 3 at every temperature, and only the labels can change it. At the starting temperature of 0.20, **Contrastive loss** reads 0.235, far below the **Chance loss, ln 3** of 1.099.
+
+Now drag **Temperature τ** down from 0.20 to 0.05, and Contrastive loss falls to 0.006, because each row’s share piles onto its labelled caption. Then drag it up to 1.00, and the shares flatten so that each labelled caption holds less than half of its row: 44%, 46% and 43%. With the rows that flat, the loss rises to 0.813, much closer to the chance loss.
+
+Then set **Which pairs count as matches** to “shuffled captions”, and notice that not a single score changes. The only difference is that the labels now say picture A goes with caption 2, B with caption 3, and C with caption 1. At τ = 0.20, the loss jumps from 0.235 to 2.582, well above the chance loss, and Images that rank their match first drops to 0 of 3.
+
+While the labels are still shuffled, lower the temperature again, and this time the loss climbs, passing 9 at 0.05. The sharper rows pour their share onto the captions that the labels now call wrong.
+
+## What to notice
+
+- **The grid ignores what is drawn:** at the 4×4 size, the 5’s top bar crosses the border between patches #1 and #2, so each of them holds part of it. Nothing is lost, because later attention layers can bring the pieces together, but no single token holds the whole bar.
+- **A balanced tile can score 0 without being blank:** patch #1 is half inked, yet it reads 0.00 on all three contrast filters, because its ink is spread evenly. Only the ink filter shows that the tile is not empty, with a reading of 0.50.
+- **Identical tiles differ only by their position code:** the same W is used on every tile, so twin tiles get the same W·x wherever they sit.
+- **Doubling the side makes four times as many tokens:** with 16×16 tiles, a 224-pixel picture makes 196 tokens and a 448-pixel picture makes 784. The grid grows along both edges at once, so twice the side means 2 × 2 = 4 times the tiles.
+- **Attention work grows faster still:** that work grows with the square of the line’s length, so four times as many tokens means about sixteen times as much attention work.
+- **Only LLaVA spends context:** it is the only one of the three designs that puts the picture into the language model’s own line of tokens.
+- **The loss compares scores with labels:** shuffling the captions changes no score at all, yet the loss jumps. The loss measures how well the scores agree with the labels, not how similar the pictures and captions are.
+- **A close rival costs the most:** picture C’s ship scores 0.74 with the ferry caption, because a ship is a vehicle too. At 0.20 that rival leaves C’s own caption only 70% of the row, the smallest share of the three, so C adds the most to the loss. A lower temperature shrinks the rival’s share, but it also makes any wrong label cost far more.
+
+Picture a matching quiz where you pair three baby photos with three classmates’ names and get every one right, but the teacher’s answer key was shuffled before marking. Your mark collapses even though your answers never changed, because the mark only measures how well your answers agree with the key. The contrastive loss works the same way. The quiz stops matching at one point, though, because your answers stay put while in training the readers are changed to lower the loss. With a shuffled key, they would be pushed to match the wrong pictures and captions, which is why wrong labels in the training data are so costly.
+
+## Where it breaks
+
+### What this lab fakes or simplifies
+
+- The picture is only 8×8, with one black-and-white **channel**, meaning one number per pixel. Real readers see three colour channels, the red, green and blue numbers, at hundreds of pixels per side.
+- The four filters in W were set by hand, the position code is a fixed sine pattern, and nothing is trained. No vision encoder layers run, so the tokens never mix with their neighbours.
+- **Token sequence** shows each word as one whole token so that you can read it at a glance. A real tokenizer, the tool that splits text into tokens, often breaks words into smaller pieces.
+- **Real-scale arithmetic** uses fixed vector lengths for each family of picture readers and a single 4,096-token context, and it computes only shapes. CLIP appears there only as the shape of its output, and cross-attention only as the place where the 64 vectors go.
+- The original Flamingo used a different kind of picture reader, called NFNet, rather than the ViT that the card shows for every design.
+- **Contrastive pairs** uses six hand-written lists of four numbers, not the output of real picture and caption readers. The scores, shares and loss are computed for real, but nothing is trained, so the card shows what the loss measures and not how real readers learn to lower it.
+- With only three pairs, each picture in **Contrastive pairs** has only two negative pairs to beat, while a real batch gives each picture many more.
+
+### Where the real mechanism fails
+
+- **A reader sees only what survives resizing:** when a large photo is shrunk to a 336-pixel square before it is cut, small text or fine detail can vanish. That is why newer models split a big picture into several smaller pictures, or accept pictures of different sizes.
+- **Training makes features useful, not perfect:** contrastive training and later training on instructions make picture features useful for chosen tasks. How well that works is measured, not guaranteed, and models can still miscount objects, mix up left and right, or misread text inside a picture.
+- **Every other pairing counts as wrong:** picture a batch holding two different photos of dogs waiting on piers, each with the caption “a dog on a pier”. That caption fits both photos, yet the loss treats it as a wrong answer for whichever photo it was not paired with. This is one reason the labels in a dataset matter, especially in one scraped together automatically from the web.
+- **Pictures are untrusted input:** any text printed inside a picture becomes part of what the model reads. The model has no reliable way to tell those printed words apart from the request itself. That includes instructions someone has hidden there. This attack is called **image-borne injection**, because the instructions travel inside the image.
+
+Picture a friend who asks a model to describe a poster, where tiny print on the poster tells the model to ignore your friend and do something else instead. The model may follow those printed words, because to the model they are just more input to follow. [Failure modes, safety, and security](#/failure-modes-safety) shows the same attack through retrieved text, meaning text that a model pulls in from documents or searches. This lab has no picture attack, but the route is the same.
+
+### The model in this app
+
+**A common mix-up:** it is tempting to assume that if a model family can read images, every copy of it can. This app’s local assistant is Qwen3.5 2B, where the 2B means it has about 2 billion learned numbers. It belongs to a family that accepts images, but its picture reader and projector come as a separate file, often named `mmproj`. The app downloads only the language-model file and never sends images, so the local assistant cannot see this pad or anything else.
+
+## Going deeper
+
+### Where the designs came from
+
+- The tile idea comes from the Vision Transformer, or ViT, in a 2020 paper titled “An Image is Worth 16x16 Words”. The title makes the same point as this lab, since each 16×16 tile becomes one token, much like a word.
+- CLIP, from 2021, trained its picture reader and caption reader together on 400 million picture–caption pairs.
+- Flamingo, from 2022, took a language model whose own settings were kept fixed and added two new parts. One is a Perceiver resampler that squeezes the picture into 64 vectors, and the other is a set of gated cross-attention layers. A gate here is a learned dial that sets how strongly the new layers can change what flows through the language model.
+- LLaVA, from 2023, connected a CLIP picture reader to a language model with a single linear projector. LLaVA-1.5 switched to a two-layer MLP projector and a CLIP reader called ViT-L/14, working at 336 pixels.
+
+### Beyond still pictures
+
+Sound, video and documents reuse the same ideas: cut the input into pieces, turn each piece into numbers, and let attention mix them. What changes is how many tokens that takes, and so what it costs.
+
+For sound, the input is first turned into a **spectrogram**, which is a picture of sound. Time runs along one edge, and frequency, meaning how high or low a pitch is, runs along the other. Brightness shows how much energy the sound has at each moment and pitch. Whisper, a speech model from 2022, first resamples audio to 16,000 Hz, which means 16,000 measurements of the sound every second.
+
+Whisper works on 30-second segments and starts a new spectrogram column every 10 milliseconds, where a millisecond is a thousandth of a second. That makes 100 columns per second, and each column holds 80 numbers, one for each band of pitch. Each column also describes a slice of sound 25 milliseconds long, so neighbouring slices overlap. A 30-second segment therefore comes to 3,000 columns. Whisper’s encoder then halves that count once, leaving 1,500 tokens, which is 50 for every second of sound.
+
+For video, the input is a stack of frames, the still pictures that play one after another to make a clip. Say a model took one frame per second and cut each frame like the 336-pixel picture in Real-scale arithmetic. One minute would then be 60 × 576 = 34,560 tokens, which is more than eight times this lab’s 4,096-token context. That rate of one frame per second is a made-up example. Real models bring the count down by skipping frames, merging them, or pooling them, which means combining several into one.
+
+For documents, a model can read a page by pulling out the text first and passing it on as ordinary text tokens. It can do that with OCR, short for optical character recognition, or with a tool that reads the page layout. Or the model can take the page as a picture, and at 448 pixels with 14-pixel tiles that is (448 / 14)² = 1,024 tokens. That count stays the same whether the page is full of writing or blank, and small print can vanish in the resize.
+
+Sources: Radford et al., “Learning Transferable Visual Models From Natural Language Supervision” (CLIP, arXiv 2103.00020); Radford et al., “Robust Speech Recognition via Large-Scale Weak Supervision” (Whisper, arXiv 2212.04356).
+
+The Attention lab shows how all of these tokens mix with each other. Diffusion & VAEs covers models that make pictures instead of reading them.

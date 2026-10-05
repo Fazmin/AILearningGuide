@@ -1,0 +1,103 @@
+---
+objectives: ["Name the supervised loop as encoding, split, hypothesis class, loss, and optimization, then a holdout reading, and say why a split is drawn at random and what train, validation, and test slices are for","Show that changing only encoding, algorithm, or loss can move the holdout number while the other stages stay put","Read a falling train loss against a rising holdout loss as extra capacity memorizing the train slice","Show that a holdout drawn from a different process can collapse the score of an unchanged fit, so a holdout only estimates performance on rows like the training rows"]
+terms: ["Hypothesis class","Loss","Optimization","Training set","Holdout","Random split","Validation and test sets","Encoding","Capacity","Generalization","Distribution shift","Log-loss","Decision boundary"]
+---
+
+## The big picture
+
+This module runs one small table through the whole supervised loop: encode each row, freeze a **holdout** (rows no gradient step or tree split may read), choose a **hypothesis class** H (the family of functions the fit may search), drive a training loss down, then read the holdout. It asks what that last reading can and cannot tell you about rows the fit never saw.
+
+It follows **Classical machine learning**; three of its eight methods return here, and their function families (a linear score, its logistic sigmoid and an axis-aligned tree) become the choices of H. Encoding, hypothesis class and loss are separate choices, so you can swap one and see which number moves.
+
+### Where it shows up
+
+- **Any supervised model.** Real systems keep the same stages, whatever H is.
+- **Splitting data.** Real projects shuffle with a fixed seed before cutting, and may stratify to fix each slice's class share.
+- **Model selection.** A **validation** slice is for choosing settings; a **test** slice is scored once and seen by no choice.
+- **After deployment.** **Distribution shift** (new rows coming from a different process than the training rows) that arrives after the holdout was drawn is a job for monitoring new data, not for the holdout.
+
+### Why it matters
+
+The holdout reading is the loop's estimate of performance on unseen rows like the training rows, and it is easy to misread:
+
+- **Train loss is not generalization.** Extra **capacity** (how flexible H is) can memorize a train-only exception while holdout loss climbs.
+- **A cut by order reads a corner** of a sorted table, such as its newest or dearest rows.
+- **Choosing on the holdout makes it optimistic**, and fitting encoding statistics or early stopping on it is leakage.
+- **Losses on different scales cannot be ranked**, because a new loss changes the fit and the yardstick together.
+- **A same-process holdout cannot see shift.** When the rule linking inputs to labels moves, an unchanged fit can do worse than answering 0.5 for every row.
+
+### What you will be able to explain
+
+- How the loop runs as encoding, split, hypothesis class, loss and optimization, then a holdout reading; why a split is drawn at random; and what train, validation and test slices are for.
+- How changing only the encoding, the algorithm or the loss can move the holdout number while the other stages stay put.
+- Why a falling train loss against a rising holdout loss reads as extra capacity memorizing the train slice.
+- Why a holdout from a different process can collapse the score of an unchanged fit, so a holdout only estimates performance on rows like the training rows.
+
+### What the lab shows
+
+The lab runs real classical-scale fits on authored data: sixteen apartments, each with a room count, a color, a park flag and a high-price label, and an authored split of 12 train and 4 holdout rows, not a shuffle. Every loss and accuracy is computed from authored rows: these sixteen, or the four replacement holdout rows described below.
+
+**Supervised loop** exposes three independent knobs (**Encoding**, **Algorithm**, **Loss**) plus **Fit step**, which scrubs the computed gradient path of linear and logistic, and **Tree depth**, which caps how deep the tree grows. **Decision view** shades the fitted rule over the rooms × park plane, sampled on a 28×28 grid; when the encoding includes color, the plane is a slice at the selected row's color.
+
+**Loss over the fit** plots train against holdout loss, with a dotted closed-form least-squares line on linear + MSE. **Worked example** expands the selected row into the same arithmetic the loss curve averages over a slice.
+
+The key experiment is on **Train versus holdout**: with rooms + park, logistic and log-loss, switch **Holdout drawn from** to *a different process*. Four authored rows with a reversed price rule replace the holdout. **L train** stays 0.45 while **Holdout acc** falls from 100% to 25%.
+
+## What it is
+
+Supervised learning is a loop, not a single algorithm. A table row becomes a vector x. A frozen holdout is set aside. You choose a hypothesis class H — here a linear score, a logistic sigmoid of that score, or an axis-aligned tree — and a loss on the training slice. Optimization searches inside H. The holdout is then read, not fitted.
+
+On this page the table is sixteen apartments that reuse rooms, color, park, and a high-price label. Encoding is rooms + park, integer color codes, or one-hot color. Linear and logistic take real gradient steps from (w, b) = 0. A tree grows Gini or entropy splits. The 50% contour of logistic is the hyperplane w·x+b = 0.
+
+### Why the split is random, and what each slice is for
+
+The sixteen apartments hold 8 high-priced and 8 low-priced rows. This lab's split is authored and simply takes the last four rows: 12 train (6 high, 6 low) and 4 holdout (2 high, 2 low). A real project shuffles the rows with a fixed seed and then cuts, so nobody chooses what lands in the holdout and the seed makes the cut repeatable.
+
+A cut by order is risky. If the table were sorted by price or by date, the last four rows would be the dearest or the newest, and the holdout score would describe that corner of the data rather than the whole table. Shuffling spreads that risk evenly across the rows.
+
+A shuffle is safer, not perfect. There are C(16,4) = 1,820 ways to pick four holdout rows. In 140 of them (7.7 percent) all four share a price label, in 784 (43.1 percent) the holdout is two and two like this lab's, and in 896 (49.2 percent) it is three and one. Stratifying fixes the class share in each slice and removes the unlucky draws. Four rows also read accuracy in steps of 25 points.
+
+Three slices do three jobs. Train fits the parameters. Validation is what you look at to choose encoding, algorithm, and tree depth. Test is scored once, at the end. This lab has only train and holdout, and you pick settings by watching the holdout, so it acts as a validation set and its numbers are optimistic. A real project keeps a test slice that no choice has seen.
+
+### A holdout from a different process
+
+A holdout only estimates performance on rows from the process that produced the train rows. Set Holdout drawn from to a different process: the four holdout rows become Quay 3, Reed 5, Slate 7, and Tarn 11, whose prices follow the opposite rule, high when rooms ≤ 2. The fit never read those rows, so it and L train (0.45) do not move.
+
+On rooms + park with logistic and log-loss, holdout accuracy falls from 4 of 4 to 1 of 4, and holdout log-loss rises from 0.31 to 1.39. That is 4.5 times higher, and worse than the 0.69 of answering 0.5 for every row. This is distribution shift in its extreme form, and a same-process holdout can never see it coming.
+
+## Why it’s here
+
+The last four labs named the pieces: a function class, the arithmetic of w·x+b, a feature map, and eight classical methods. None of them ran one labeled problem through encode, split, fit, and a holdout reading. This page is that hinge. Later evaluation will ask how to read the holdout. Later deep labs will keep the same objects at a different scale.
+
+## How to play with it
+
+Encoding, Algorithm, and Loss are independent. Fit step scrubs the computed path. Tree depth is capacity.
+
+Keep logistic and log-loss and switch only Encoding. Keep rooms + park and switch only Loss. Then set Encoding to integer codes, Algorithm to tree, and move Tree depth from 1 to 5.
+
+Click Alder 12, then Rowan 9, then Laurel 2. The worked row is the same arithmetic the curve averages. Last, on Train versus holdout, switch Holdout drawn from between the same process and a different process, and read the two table rows.
+
+## What to notice
+
+- The decision wash is the current parameters evaluated on a 28×28 grid. The line is the level set of those parameters, not a decoration.
+- Rooms + park makes the plane the whole feature space. Integer codes and one-hot add color; the wash is then a slice at the selected apartment's color.
+- Holdout circles are open. They never enter ∇L or a split.
+- Linear + MSE has a dotted closed-form train loss. GD starts at the origin and is a different object until it meets that line.
+- With logistic and log-loss, switching only Encoding from rooms + park to one-hot color lowers train loss (0.45 to 0.26) and raises holdout loss (0.31 to 0.75). Color tracks price only on the train slice: 4 of the 5 red train rows are high-priced, and neither red holdout row is.
+- Switching only Loss changes the fit and the yardstick together, so a holdout MSE and a holdout log-loss are on different scales and cannot be ranked against each other.
+- On integer codes a depth-5 tree isolates Rowan 9 through its color and drives train loss to 0 while holdout log-loss climbs from 0.48 to about 10. That is capacity, not a new metric.
+- On rooms + park, Rowan 9 and Cedar 9 share the vector (3, 1). No tree can split them, train loss stalls above 0, and depth does not hurt the holdout.
+- Switching Holdout drawn from to a different process leaves the fit and L train at 0.45 and drops holdout accuracy from 100 percent to 25 percent. The fit did not get worse; the rows it is scored on stopped following its rule.
+- Every holdout reading is a count of four rows. One row is 25 points, so a four-row holdout is a coarse estimate even when it is drawn from the right process.
+
+## Where it breaks
+
+In this lab the sixteen rows and the split are authored; there is no shuffle. Park is binary, so points sit on two rails; stacked marks are nudged only on the plot. GD is forty-eight full-batch steps on the exact gradient of the mean loss. Least squares uses a ridge of 10⁻⁴ so one-hot plus a bias is invertible. There is no validation slice and no neural net.
+
+The different-process holdout is one extreme case: four authored rows whose price rule is reversed. Real shift is usually partial and gradual, in the inputs, the labels, or the rule that links them.
+
+In the real mechanism the same stages remain. Encoding statistics fitted on the holdout, or early stopping on the holdout curve, are leakage — the next lab. A two-point or four-point holdout is a noisy estimate of generalization. No holdout can reveal a shift that happens after it was drawn; that is caught by monitoring new data.
+
+## Going deeper
+
+How we know a model works reads a confusion matrix, names leakage, and contrasts authored learning curves with a holdout you have already met. Loss & gradient descent later keeps the same update on a deeper, differentiable H.

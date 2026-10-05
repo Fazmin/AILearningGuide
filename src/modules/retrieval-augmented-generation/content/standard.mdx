@@ -1,0 +1,164 @@
+---
+objectives: ["Describe RAG as chunk, retrieve, assemble a prompt, then generate — a pipeline over your index, not a model that looked something up by itself","Explain how chunk size and overlap decide whether an answer can be retrieved whole","Name three retrieval failures — a split answer, a stale index, a vocabulary mismatch — and why each still yields a fluent, cited answer","Compare BM25, dense and hybrid retrieval by what each misses — synonyms for BM25, words the encoder has no vector for for dense — and how reciprocal-rank fusion keeps either one’s hit","Score a pipeline with context recall, a support check and correctness, and use recall to tell a retrieval failure from a reader failure","Use a retrieval-score threshold to make a pipeline abstain, and read the coverage and precision trade-off — a score measures how well a chunk matches the question, not whether it answers it"]
+terms: ["Retrieval-augmented generation","Chunk","Index","Retriever","BM25","Dense retrieval","Hybrid retrieval","Reciprocal rank fusion","Top-k","Context window","Citation","Context recall","Faithfulness","Abstention","Precision and coverage","Stale data"]
+---
+
+## The big picture
+
+Retrieval-augmented generation (RAG) lets an unchanged model answer from documents outside its training data. A pipeline cuts the documents into chunks, retrieves the chunks that best match the question, pastes them into the prompt, and has a model answer from that prompt, ideally citing the passage it used.
+
+Embeddings for search and retrieval ranked passages against a query. This module puts those passages into a prompt and asks what happens to the answer: when a fluent, cited answer is wrong, which stage failed, and when should the pipeline decline to answer at all?
+
+### Where it shows up
+
+Typical RAG corpora are product manuals, internal policies, support tickets and company wikis. Production versions chunk along document structure, fuse keyword and dense rankings, rerank with a cross-encoder that reads the question and chunk together, and filter or boost chunks by metadata such as dates, sources and permissions.
+
+### Why it matters
+
+Without retrieval, a model has only its weights to answer from and nothing to cite, so documents it never trained on are out of reach. RAG closes that gap and opens another: a retrieval miss is silent, and the generator usually still answers.
+
+Every wrong quote in this lab is real corpus text with a real citation, so a citation shows only where a quote came from. Checking a RAG system means locating each failure in a stage and deciding when it should abstain instead of quoting a weak match.
+
+### What you will be able to explain
+
+- Describe RAG as chunk, retrieve, assemble a prompt, then generate: a pipeline over your index, not a model that looked something up by itself.
+- Explain how chunk size and overlap decide whether an answer can be retrieved whole.
+- Name three retrieval failures (a split answer, a stale index, a vocabulary mismatch) and explain why each still yields a fluent, cited answer.
+- Compare BM25 (a keyword score), dense retrieval (the cosine between embeddings) and hybrid retrieval by what each misses: synonyms for BM25, words the encoder has no vector for in dense retrieval. Explain how reciprocal rank fusion, which merges ranks rather than scores, keeps either one’s hit.
+- Score a pipeline with context recall (the share of the gold evidence that reached the prompt), a support check and correctness, and use recall to tell a retrieval failure from a reader failure.
+- Use a retrieval-score threshold to make a pipeline abstain, read the trade-off between coverage (questions answered) and precision (answers that are right), and explain why a score measures how well a chunk matches the question, not whether it answers it.
+
+### What the lab shows
+
+Nothing here is trained or sampled. The inputs are three fixed documents about a harbor and its ferry and five fixed questions. Each question has a hand-marked answer span (the corpus words holding its answer) and a hand-written fact a correct answer must contain, such as 16:00. *Closed for wind now?* has neither: the corpus does not answer it. Every score and grade is computed exactly from that text, the Dense retriever’s fixed hand-authored word vectors and your settings.
+
+**Chunk the documents** sets **Question**, **Chunk size**, **Overlap** and **Index built**, before or after a June ferry notice. **Retrieval** sets **Top-k** and the **Retriever**: BM25, Dense or Hybrid (RRF). Dense reuses the hand-authored toy encoder from Embeddings for search and retrieval.
+
+**Assembled prompt** shows the prompt. **Reader output** stands in for the generator with a fixed extractive rule: it quotes the retrieved sentence piece (text between sentence marks, so possibly a fragment) that shares the most distinct question terms, and cites its `[n]`. No language model is called. **Score the pipeline** grades all five questions under every retriever, and **Grounding check** adds an **Abstain below** threshold with **Coverage**, **Precision** and **Handled correctly**.
+
+Two experiments carry the lesson. At Chunk size 12 and Overlap 0 the Sunday answer splits across two chunks, and under BM25 the reader quotes the weekday time. At Chunk size 20, Overlap 0 and Index built after, a BM25 threshold that rejects the wind question also rejects *Changed in June*, whose answer is in the corpus.
+
+## What it is
+
+Retrieval-augmented generation (RAG) puts retrieved text into the prompt before a model answers. The model's weights do not change. Only its input does.
+
+The pipeline has four stages, and this page computes each one:
+
+1. **Chunk.** Documents are cut into windows, and each window is stored in an **index**.
+2. **Retrieve.** A **retriever** scores every chunk against the question and keeps the **top-k**. The score is **BM25**, **dense retrieval** with the toy encoder from the embeddings lab, or both merged by **reciprocal rank fusion**.
+3. **Assemble.** The kept chunks are numbered and pasted between an instruction and the question.
+4. **Generate.** A model reads that prompt and writes an answer, ideally citing `[n]`.
+
+### What stands in for the generator
+
+Stage 4 on this page is an extractive reader, not a language model. It quotes the retrieved sentence piece that shares the most distinct query terms and cites its prompt number. That makes every failure traceable. It also means the reader never paraphrases and never invents a fact, and on its own it never refuses.
+
+### A gate before the reader
+
+A **grounding check** can sit between stages 2 and 4. If nothing was retrieved, or the best chunk scores below a threshold, the pipeline **abstains**: it answers “The sources do not say.” instead of quoting its best match. Whether that helps depends on what a retrieval score can tell you, and the last two steps of the lab test it.
+
+## Why it’s here
+
+A language model's weights hold whatever was in its training data, frozen at training time. They do not hold your harbor's handbook, and they do not know that the ferry changed in June. RAG supplies that text at question time. It can be updated by rebuilding the index, with no retraining, and it gives each answer a passage to check against.
+
+That makes retrieval the right tool when facts change or answers must be cited. It is the wrong tool for a style, a format or a behaviour: those live in the weights, and changing them is fine-tuning, which is in turn a poor way to store facts that change. Fine-tuning & transfer covers when training is worth it.
+
+## How to play with it
+
+### Follow one question
+
+Leave **Question** on *North dock, Sunday*. With **Chunk size** 20 and **Overlap** 0 the index holds 5 chunks. The answer span — “north dock closes at 18:00 on weekdays and at 16:00 on Sundays.” — sits inside the first handbook chunk, which BM25 ranks first. The reader quotes that sentence with `[1]`.
+
+### Cut the answer in half
+
+Set Chunk size to 12. The index now holds 8 chunks, and the span straddles two of them. The chunk with *north*, *dock* and *closes* still wins, but it ends at “weekdays”. The reader quotes “The north dock closes at 18:00 on weekdays” — fluent, cited, and wrong for Sunday. Context recall reads 58%: 7 of the 12 span words reached the prompt.
+
+### Overlap the windows
+
+Keep Chunk size 12 and raise Overlap to 7. Windows now start every 5 words, so one starts exactly at “north” and holds the whole span. The reader returns 16:00 again. Chunks in index rises from 8 to 15.
+
+### Refresh the index
+
+Set Chunk size 20, Overlap 0, Question *Afternoon ferry*. With **Index built** before the June notice, the only source is the 2025 timetable, and the answer is 15:40. Switch to after: the short notice outranks the timetable and the answer is 16:10. At **Top-k** 2 both times are in the prompt.
+
+### Ask what the corpus lacks
+
+With **Retriever** on BM25, *Dog on the ferry* retrieves only timetable chunks, on the word “ferry”. The handbook says “Pets may travel”, which shares no term with the question. *Closed for wind now?* has no answer anywhere; the reader quotes the 40-knot rule anyway, because on its own it always quotes something. The last step gives the pipeline a way to decline.
+
+### Switch the retriever
+
+With Chunk size 20 and Overlap 0, set Index built to before, Question to *Dog on the ferry* and Top-k to 2, then switch **Retriever** to Dense. The handbook's pets chunk now arrives as `[2]`: *dog* and *pets* both load the encoder's animals dimension, so the chunk matches with no shared word. At Top-k 1 it still loses to a timetable chunk.
+
+Context recall now reads 100%, yet the reader still quotes the ferry sentence. The pets sentence shares no word with the question, and this reader matches words.
+
+Next set Index built to after and Question to *Changed in June*. BM25 retrieves the notice, because *june* is a rare word. Dense retrieves nothing: the encoder has no vector for *changed* or *June*, so the question's vector is all zeros and every cosine is 0. Hybrid keeps the notice.
+
+### Score the pipeline
+
+Set Chunk size 20, Overlap 0, Index built to after and Top-k to 3, with every **Abstain below** slider off, then read **Score the pipeline**. Each cell grades one question under one retriever. Hybrid reaches 100% mean context recall, BM25 and Dense 75%. BM25 and Hybrid answer 3 of the 4 answerable questions correctly, Dense 2.
+
+The question Hybrid still misses is *Dog on the ferry*, with full recall. That is a reader failure. Under BM25 the same question is a retrieval failure.
+
+The *Closed for wind now?* row reads *wrong: no answer exists* in all three columns, because answering it at all is the error. That puts **Wrong with confidence** at 2 of 5 for every retriever, wind and dog. **Handled correctly** counts right answers and right abstentions out of all five: 3 for BM25, 2 for Dense, 3 for Hybrid.
+
+### Set an abstention threshold
+
+Keep those settings, choose Retriever BM25 and Question *Closed for wind now?*, and open **Grounding check**. Raise **Abstain below** from off to 2.4. Wind's best chunk, the 40-knot rule, scores 2.28 on “harbor” and “wind”, so the pipeline now answers “The sources do not say.” and the outcome is *correctly abstained*.
+
+Now pick *Changed in June*. Its best chunk, the notice, scores 1.87 on the rare word “june” alone. That is below the threshold, so it is *wrongly abstained*: the answer was in the corpus. Coverage has fallen from 100% to 40%, precision has risen from 60% to 100%, and **Handled correctly** is still 3 of 5. The check traded one right answer for one right refusal.
+
+Drag the slider through BM25's range and watch the chart. Coverage only falls. Precision goes 60%, 75%, 67%, 100%, because the answers that drop first are not all wrong ones.
+
+Switch Retriever to Dense and set 0.9. Wind scores 0.843, below the Sunday and ferry answers at 0.981 and 1.000, so this time the check separates them: Handled correctly rises from 2 to 3. Back on Hybrid, the fused score is 2.00 for most questions, and wind's 1.984 is separable only by a threshold of exactly 2.00, which also drops *Changed in June*.
+
+## What to notice
+
+- Every wrong answer on this page is a real sentence from the corpus with a real citation. A citation shows where a quote came from, not that it answers the question.
+- Chunking is a retrieval decision. A fact cut across two windows can be unretrievable even when the right document is ranked first.
+- Overlap buys coverage with storage and scoring. At size 12, overlap 7 nearly doubles the number of chunks.
+- Freshness comes from the index, not from the model. Adding a document does nothing until the index is rebuilt.
+- More retrieved chunks can add a contradiction. BM25 has no idea that 16:10 supersedes 15:40.
+- BM25 and dense retrieval fail in opposite places. BM25 cannot match *dog* to *pets*; dense cannot use a word the encoder does not know. Hybrid keeps either one's hit, and admits either one's distractors too.
+- Reciprocal rank fusion merges ranks, not scores, so BM25 scores and cosines need no common scale. A chunk earns 1/(60 + rank) from each list that holds it: first in both lists scores 2/61, first in one list scores 1/61.
+- Context recall locates a failure. A wrong answer with recall below 100% is a retrieval failure. A wrong answer with full recall is a reader failure.
+- Support is not correctness. Every quote in the table is supported by the passage it cites, including the wrong ones.
+- A retrieval score measures how well a chunk matches the question, not whether it answers it. Wind's best chunk scores higher under BM25 than the right answer to *Changed in June*, so no threshold can keep one and drop the other.
+- A threshold lowers coverage by construction. Whether it raises precision depends on whether the answers it drops were wrong, and it never fixes a stale answer: with Index built before, the 15:40 chunk scores 4.38 under BM25 because it matches the question as well as a right source would.
+- The same slider position means different things under different retrievers. A BM25 score, a cosine and a fused rank score are not on one scale, which is why each retriever keeps its own threshold.
+
+## Where it breaks
+
+### In this lab
+
+- Chunks are whitespace-word windows that ignore sentences, so they start and end mid-sentence.
+- BM25 uses a crude plural stripper, so “dog” can never match “pets”. The dense retriever can, but the reader cannot use what it finds.
+- The dense retriever is the hand-authored toy encoder: eight topic dimensions and a small lexicon. It ignores any word outside that lexicon, which is why *Changed in June* returns nothing, and it gives every clock time the same token.
+- Answer spans and the facts that count as correct are authored per question.
+- The reader is extractive: it cannot combine two chunks, paraphrase, or hallucinate, and it abstains only because a score rule stops it before it runs. No language model is called.
+- Score the pipeline covers five questions. Its support check is a substring test that the reader cannot fail, and nothing judges meaning. The counts illustrate the idea; they are not rates with error bars.
+- Grounding check tunes a threshold on the same five questions it grades, with one question that has no answer. The abstention line is fixed text, and Hybrid's 1/61 scale is this lab's own unit.
+
+### In the real mechanism
+
+- **Retrieval misses are silent.** If the right chunk is not retrieved, the generator never sees it and usually still answers.
+- **Dense retrieval has blind spots too.** Learned encoders rarely ignore a word, but they blur exact identifiers, numbers and rare names. That is why hybrid search exists.
+- **Generators can ignore the context.** A model may answer from its weights, blend two passages, or add details that no passage supports.
+- **Citations can be wrong.** A model can cite a passage that does not support the sentence it wrote. Faithfulness is checked claim by claim, with an entailment model, a judge model or a person.
+- **Context has a budget and a shape.** Everything shares the context window, and models tend to use information at the start and end of a long context better than information in the middle.
+- **A score is not truth.** A BM25 score or a cosine measures similarity to the question. A stale passage, a topically close passage that answers nothing, and a right passage can all score alike, so a threshold cannot separate right from wrong. Scores are also not calibrated across queries, retrievers or index versions.
+- **Abstaining too much is a failure too.** Every threshold buys precision with coverage, and users feel the refusals.
+- **Retrieved text is untrusted input.** A chunk can contain instructions. Failure modes, safety, and security picks this up.
+
+## Going deeper
+
+The name comes from Lewis et al. (2020), who trained a dense retriever and a generator together. Today the term usually means any retrieve-then-prompt pipeline around an unchanged model.
+
+Production pipelines differ from this lab at every stage:
+
+- **Chunking** follows document structure — sentences, headings, table rows — and often prefixes each chunk with its document title or a short summary.
+- **Retrieval** fuses keyword and dense rankings, as the Hybrid retriever does, then reranks the candidates with a cross-encoder that reads the question and chunk together. At scale the dense side uses an approximate index such as IVF or HNSW; Embeddings for search and retrieval measures what that costs in recall.
+- **Metadata** such as dates, sources and permissions filters or boosts chunks before ranking, which is how a notice can supersede a timetable.
+- **Evaluation** scores retrieval and generation separately, as Score the pipeline does: retrieval against labelled passages, generation for correctness and for support. Either can fail alone. The Evaluation lab covers how few cases a rate can rest on.
+- **Abstention** in production does not rest on a raw score alone. Teams calibrate a threshold on labelled questions, including ones the corpus cannot answer, and re-tune it when the index or encoder changes. They add a verifier, such as an entailment check or a judge model, or use a model trained to say “I do not know”. Failure modes, safety, and security points back to Grounding check as one defence against hallucination.
+
+Tools and function calling replaces pasted text with structured calls to a host. Agents repeat retrieval and tool calls in a loop.

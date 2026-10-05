@@ -1,0 +1,40 @@
+[package]
+name = "the-ai-guide"
+version = "0.1.0"
+description = "An interactive field guide to modern AI"
+authors = ["Discover AI contributors"]
+edition = "2021"
+
+[lib]
+name = "the_ai_guide_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+rusqlite = { version = "0.37", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+flate2 = "1"
+fs2 = "0.4"
+futures-util = "0.3"
+hex = "0.4"
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+rusqlite = { version = "0.37", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tar = "0.4"
+tauri = { version = "2", features = [] }
+tokio = { version = "1", features = ["time"] }
+zip = { version = "5", default-features = false, features = ["deflate"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3.6", features = ["apple-native"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+keyring = { version = "3.6", features = ["windows-native"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3.6", features = ["sync-secret-service"] }

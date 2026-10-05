@@ -1,0 +1,19 @@
+{
+  "assets": [
+    {
+      "path": "assets/tiny-transformer.metadata.json",
+      "bytes": 37312,
+      "sha256": "ad17ce4e7d441976231d63875e50731f0aef1976fc50c1267daeec93dc875dc9"
+    },
+    {
+      "path": "assets/tiny-transformer.onnx",
+      "bytes": 5508501,
+      "sha256": "58a0c1d029b8bd3cee297c35d9c198e6148651c209f4077b00806bd64e8fe770"
+    },
+    {
+      "path": "assets/transformer-vocab.json",
+      "bytes": 1553,
+      "sha256": "56492239eeda70ff9c3081f484dff205443203ec514b493d20ec18b6b690b2e3"
+    }
+  ]
+}

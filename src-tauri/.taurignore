@@ -1,0 +1,5 @@
+resources/content-index.sqlite
+resources/content-index.sqlite-journal
+resources/content-index.sqlite-wal
+resources/content-index.sqlite-shm
+resources/content-index.sqlite.stamp

@@ -1,0 +1,278 @@
+---
+objectives: ["Name each stage of a training loop and what it produces", "Distinguish an epoch, a step, and a batch", "Use a checkpoint to inspect a model partway through training", "Read what one optimizer step changes: which rows move, and how the loss on its own batch differs from the whole-corpus loss", "Estimate training memory from parameters, precision, and optimizer, and say why large runs split it across devices"]
+terms: ["Epoch", "Step", "Minibatch", "Dataloader", "Forward pass", "Cross-entropy", "Perplexity", "Backward pass", "Optimizer step", "Checkpoint", "Nats per token", "Optimizer state", "Mixed precision", "Sharding"]
+---
+
+## The big picture
+
+A training run cuts text into training pairs, then turns untrained weights into a model by
+repeating one cycle over them: draw a batch, predict, score the prediction, compute a gradient,
+update the weights, and now and then save them. This module names those seven stages and asks
+what each hands to the next, how many updates a run really makes, and what it costs in memory.
+
+It builds on **Next-token prediction**, which showed what a trained character model outputs,
+and **Training dynamics**, which showed how loss curves respond to settings. Here the loop
+underneath both is taken apart one stage at a time.
+
+### Where it shows up
+
+A frontier run keeps the same stage order as the lab's toy run, plain SGD on a 900-weight
+character model, and differs from it in scale, in the optimizer, and in the machinery around
+checkpointing.
+
+- **Pretraining.** Llama 2 reports 2.0 trillion tokens at a global batch of 4 million tokens,
+  which works out to about 500,000 updates. Runs that large are counted in tokens seen, not
+  epochs (passes over the data).
+- **Memory.** Under Adam, weights, gradients and **optimizer state** (what the optimizer keeps
+  between steps) cost 16 bytes per parameter: 120 GB at 7.5 billion parameters in the ZeRO
+  paper. ZeRO **shards** all three across devices so each holds a slice, and PyTorch's FSDP,
+  motivated by ZeRO, shards the parameters.
+- **Recovery.** When a production loss curve spikes, the standard response is to roll back to
+  the last checkpoint and skip the offending batches.
+- **Fine-tuning.** LoRA and QLoRA, which train a small adapter beside frozen weights, follow
+  from the same accounting: only parameters that are trained need a gradient and optimizer
+  state.
+
+### Why it matters
+
+The **optimizer step**, which uses the gradient to update each weight (in this lab, by
+subtracting the gradient times the learning rate), is the only stage that changes the weights.
+A final loss does not say how many updates produced it; that takes the step count, not the epoch
+count.
+
+Without checkpoints, a run that fails has nothing to roll back to. Without a memory estimate, you
+cannot tell in advance whether a run fits: at 70 billion parameters under Adam, model state alone
+is 1.12 TB.
+
+### What you will be able to explain
+
+- The seven stages of a training loop, from Dataset to Checkpoint, and what each produces.
+- How an epoch, a step and a batch differ, and how **Batch size** links epochs to steps.
+- How a checkpoint lets you inspect a model partway through training.
+- What one optimizer step changes: which rows move, and how the loss on its own batch differs
+  from the whole-corpus loss.
+- How training memory follows from parameters, precision and optimizer, and why large runs
+  split it across devices.
+
+### What the lab shows
+
+The lab trains a real character bigram, which predicts each character from the one before it:
+a 30 by 30 table of next-character scores, 900 weights, fitted by minibatch SGD to the
+499-character **Harbor weather notes** corpus at a fixed **Learning rate** of 0.6. Changing
+**Batch size** or **Epochs** retrains it. Every loss is scored on the training text; there is no
+held-out set.
+
+- **One pass through the training loop** walks the **Training loop stages**; click each stage
+  to read what it reports for this run.
+- **Measured training loss** plots the batch loss, the whole-corpus loss, and the dotted "knows
+  nothing" line at ln 30.
+- **Run controls and checkpoint timeline** holds those two sliders and **Checkpoint**, which
+  reloads a saved copy of the weights and samples text from it.
+- **Step one batch** applies one real optimizer step to that checkpoint's weights, using the
+  batch the run drew next. From the final checkpoint, the default, it draws the next epoch's
+  batch, a step the saved run never took.
+- **Where the memory goes** is closed-form arithmetic over **Model size**, **Precision** and
+  **Optimizer**: nothing is allocated or measured, activations are left out, and sharding is
+  described, not simulated.
+
+The first four cards are computed from the run, not illustrated. The key experiment holds
+**Epochs** at 12 and moves **Batch size**: across its range, a larger batch generally means
+fewer **Total steps** and a higher **Final loss**, though neighbouring sizes can tie on steps.
+
+## What it is
+
+A training run is one cycle repeated until you stop it. The **Training loop stages** flow walks
+that cycle once: Dataset, Batch, Forward, Loss, Backward, Optimizer step, Checkpoint. Each
+stage consumes exactly what the stage before it produced.
+
+The model is a character bigram — a 30 by 30 table of logits, where the row for the current
+character holds the scores for the character that comes next. **Weights** reads 900, and that
+is the entire model.
+
+- **Dataset** cuts text into pairs: one context character, and the character after it.
+  **Characters** and **Training pairs** differ by exactly one, because every character except
+  the last begins a pair.
+- **Batch** shuffles the pairs with a seeded generator and slices them. That is the
+  **dataloader**'s work. The shuffle makes each batch a fair sample of the whole text, so
+  consecutive updates do not all pull toward one passage.
+- **Forward** reads one row and softmaxes it into 30 probabilities. A **forward pass** changes
+  nothing.
+- **Loss** averages the negative log-probability of the character that actually followed over
+  the **minibatch**. That is **cross-entropy**, reported in **nats per token**.
+- **Backward** produces one number per weight. For softmax cross-entropy a row's gradient is
+  the predicted distribution minus a one at the correct character. The Backward stage draws it
+  for one real pair, `o` followed by `g` in "the fog".
+- **Optimizer step** subtracts that gradient scaled by the **Learning rate**, held at 0.6.
+- **Checkpoint** copies the weights so you can return to them.
+
+**Vocabulary** is 30 symbols: space, `a` to `z`, a full stop, and two reserved angle brackets
+that only a later lab uses. Spread probability evenly across 30 and you score ln 30 = 3.401
+nats per token — the **Uniform baseline** and the dotted "knows nothing" line.
+
+Two cards below the loop zoom in on what the stages hide. **Step one batch** replays a single
+real **optimizer step** from the checkpoint you select and shows the rows it moved. **Where the
+memory goes** counts the bytes a training run needs per parameter, for a model of any size.
+
+## Why it’s here
+
+Every claim about a trained model rests on this loop having run.
+
+The loop is also where two units get conflated. An **epoch** is one pass over the data; a
+**step** is one weight update. Steps per epoch are the pair count divided by **Batch size**, so
+the same **Epochs** setting buys very different amounts of learning at different batch sizes.
+**Total steps** is the number worth comparing across runs. Checkpoints matter for a separate
+reason: without them a run reports one number at the end and nothing else.
+
+Two more facts about the loop get lost at scale. A step is a noisy estimate built from one
+batch, so it can help the batch and hurt everything else. And the bytes a run needs are set by
+the optimizer as much as by the model: the weights are the smallest part of what training holds.
+
+## How to play with it
+
+Click all seven stages and read the detail line at each. The default run is 12 epochs at
+**Batch size** 16: 32 **Batches / epoch**, **Total steps** 384, **Final loss** 2.277 nats per
+token, **Perplexity** 9.75.
+
+Hold **Epochs** at 12 and move **Batch size**. At 2 the run takes 2988 steps and ends at 1.877
+nats; at 16, 384 steps and 2.277; at 64, 96 steps and 2.808. Same corpus, same epoch count,
+same learning rate — the only change is how many updates the run was allowed. Then move
+**Epochs** alone: one epoch ends at 3.166, sixty epochs reach 1.921.
+
+Finally scrub **Checkpoint** from step 0 to step 384 and watch **Its loss**, the large dot on
+the loss chart, the sample text, and the `Next character after "the fo"` ranking move together.
+Open the Backward stage while you do: the bar at `g` reads −0.967 at step 0, where every
+character has probability 1/30, and −0.957 at step 384, because the model still gives `g` only
+4.3 percent after "o".
+
+Then open **Step one batch**. With **Checkpoint** at step 0, press the button once. The run's
+first batch, 16 pairs, is applied to the untrained table. **Batch loss** goes 3.401 → 3.362 and
+**Batch gradient norm** reads 0.2567, but **Whole-corpus loss** moves only 3.401 → 3.396.
+**Weights changed** reads 270 of 900: nine rows, one for each character that began a pair in
+that batch. Press twice more and watch a different set of rows move.
+
+Now set **Batch size** to 2, put **Checkpoint** at step 1492, and press again and again.
+**Batch loss** still falls on every press, but **Whole-corpus loss** rises on 17 of the first
+24. At batch size 16, 24 presses from the checkpoint at step 192 never raise it.
+
+Last, scroll to **Where the memory goes**. At **Model size** 7.5 billion with **Mixed 16-bit**
+and **Adam**, the total is 120 GB: 15 GB of weights, 15 GB of gradients, and 90 GB of
+**optimizer state**. That is 16 bytes per parameter. Switch **Precision** to fp32 and the total
+does not move. Switch **Optimizer** to SGD and it falls to 8 bytes per parameter, 60 GB.
+
+## What to notice
+
+- The thin batch-loss line stays jagged while the thick whole-corpus line falls smoothly: each
+  batch point estimates the loss from a few batches of 16 pairs. 32 batches over 498 pairs also
+  leaves a final batch of only 2 pairs per epoch, the noisiest point of each pass. The ticks
+  under the axis mark those epoch boundaries, every 32 steps.
+- Checkpoint losses run 3.401, 3.068, 2.816, 2.641, 2.530, 2.438, 2.374, 2.320, 2.277. The
+  first 48 steps buy more than the last 48. Diminishing returns start immediately.
+- **Rows updated** reads 26 / 30. Four symbols — `j`, `x`, and the two reserved angle brackets
+  — never appear as a context character here, so those rows get no gradient.
+- **Peak in the run** reads 0.749 at **Batch size** 16 and about 1.09 at 2. Averaging over more
+  pairs shortens the gradient as well as steadying it.
+- **Better than chance by** reads 33 percent, the same fact as **Perplexity** falling from 30
+  effective options to 9.75.
+- The Forward stage prints the context "the fo" but uses only the final `o`: a bigram
+  conditions on one character and discards the rest. **Top prediction** is `r` at 23.5 percent
+  — `harbor`, `morning`, `storm`, `before`. At step 0 all 30 options read 3.3.
+- The sample uses a fixed sampling seed, so consecutive checkpoints print nearly the same
+  string with a few characters swapped. Even at step 384 most of it is nonsense with real
+  fragments inside — `the`, `and`, `thin`.
+- One step improves the batch it was fitted to by about ten times what it improves the corpus:
+  0.039 against 0.005 nats at step 0. Because only rows that began a pair move, the other rows'
+  pairs are barely touched.
+- A step can hurt the corpus. Over the 12-epoch run, the whole-corpus loss rises on 1,174 of
+  2,988 steps at batch size 2, on 5 of 384 at batch size 16, and on none of 96 at batch size 64.
+  The loss on the step's own batch fell on every one of them. The run improves on average, not
+  at every step.
+- **Mixed 16-bit** does not shrink model state under **Adam**: 16 bytes per parameter in both
+  precisions. In mixed precision the optimizer state is six times the weights; in fp32, twice.
+- At 70 billion parameters the state alone is 1.12 TB, which fills 35 devices of 32 GB before
+  a single activation is stored.
+
+## Where it breaks
+
+**In this lab.** Everything on screen is computed: the pairs, the shuffle, the softmax, the
+cross-entropy, every gradient, every update, and nine genuine copies of the weights. What is
+missing is structure — one character of context, 900 parameters, no hidden layers, no
+tokenizer, a 499-character corpus. The **Learning rate** is fixed at 0.6 and has no control.
+
+Read the stage panel with the timeline in mind: the Forward and Loss stages both describe the
+**Checkpoint** you selected, while the counts, gradient norms and step totals describe the whole
+run. And the loss is measured on the training text: there is no held-out set here, so nothing in
+this lab separates learning from memorizing.
+
+**Step one batch** is a replay, not a second run. It rebuilds the batch the seeded shuffle gave
+the run at that step and applies the trainer's own arithmetic, so pressing it again gives the
+same numbers. The update has no momentum, no clipping, and no weight decay.
+
+**Where the memory goes** is multiplication. Nothing is allocated or measured, and it leaves out
+activations on purpose, so its totals are a floor. The only real buffers here are the trainer's
+own: 3,600 bytes of fp32 weights and 3,600 bytes of gradient, with no optimizer state under
+plain SGD. Data, tensor, and pipeline parallelism and ZeRO sharding are described, not simulated.
+
+**In real systems.** Large runs are counted in tokens seen rather than epochs, and the largest
+make a single pass, so the epoch stops being a useful unit. The **dataloader** becomes a real
+bottleneck.
+
+Memory is more than the three bars. The ZeRO paper counts the activations of a 1.5 billion
+parameter model at sequence length 1,000 and batch size 32 at about 60 GB, more than twice its 24
+GB of model state, and about 8 GB with activation recomputation. It also names temporary buffers
+and memory fragmentation as costs that appear at scale.
+
+Optimizer state can be twice the size of the weights, or six times in mixed precision, so a
+**checkpoint** that can restart a run must save the optimizer, the dataloader position, and the
+random state, not just the parameters.
+Production loss curves also throw spikes no smooth toy run reproduces; the standard response is
+to roll back to the last checkpoint and skip the offending batches, which is only possible
+because checkpoints exist.
+
+## Going deeper
+
+**Optimizer step.** Adam divides each coordinate by a running estimate of its own gradient
+magnitude, which makes a single learning rate workable across parameters whose gradients differ
+by orders of magnitude, at a cost of two extra numbers per weight.
+
+**Batch.** A large effective batch is usually assembled by gradient accumulation: several
+forward and backward passes, gradients summed, then one **optimizer step**. The loss curve
+responds to the step count, not to how many passes fed it.
+
+**Checkpoint.** At scale, saving is asynchronous and sharded across ranks, because a
+synchronous write of a large optimizer state would stall every accelerator in the job.
+Retention becomes policy: a few for restart, a sparse history for analysis, and a record of
+which one a released model came from.
+
+**Memory and parallelism.** The 16 bytes per parameter are needed somewhere, so large runs
+divide them rather than shrink them. Data, tensor, and pipeline parallelism split the work: the
+batch, each layer's matrices, or the stack of layers. Narayanan and colleagues show how the three
+compose to reach thousands of GPUs (arXiv 2104.04473). Data parallelism on its own leaves each
+worker with a full copy of the state.
+
+**Sharding.** ZeRO partitions the optimizer state, gradients, and parameters across the workers
+(arXiv 1910.02054), and PyTorch's FSDP, motivated by ZeRO, shards model parameters (arXiv
+2304.11277). The per-parameter figures above follow the ZeRO paper, which gives 120 GB for 7.5
+billion parameters, the number the card reproduces.
+
+**Why this justifies LoRA.** Only parameters that are trained need a gradient and optimizer state.
+Training a small adapter beside frozen weights removes most of those two rows. The LoRA paper
+reports 10,000 times fewer trainable parameters and 3 times less GPU memory than fine-tuning
+GPT-3 175B with Adam (arXiv 2106.09685).
+
+QLoRA also stores the frozen weights in 4 bits, and its paper reports fine-tuning a 65 billion
+parameter model on a single 48 GB GPU (arXiv 2305.14314). The **LoRA & adapters** lab trains one.
+
+### Toy versus real
+
+- **Updates.** This run takes 384 steps of 16 pairs. Llama 2 reports 2.0 trillion pretraining
+  tokens at a global batch of 4 million tokens (Touvron et al., arXiv 2307.09288, Table 1), which
+  is 2.0 trillion ÷ 4 million, about 500,000 updates of that size.
+- **Step size.** The toy uses plain SGD at 0.6. Adam-style runs use far smaller rates, and they are
+  not comparable with SGD's. GPT-3 lists learning rates from 6.0 × 10⁻⁴ at 125 million parameters
+  to 0.6 × 10⁻⁴ at 175 billion, with batches of 0.5 to 3.2 million tokens (Brown et al., arXiv
+  2005.14165, Table 2.1). Llama 2 lists 3.0 × 10⁻⁴ for its 7B and 13B models and 1.5 × 10⁻⁴ for
+  its 34B and 70B models.
+- **Memory.** The lab's whole model is 3.6 KB. At 16 bytes per parameter, 7.5 billion parameters
+  is the card's 120 GB, before activations.
+- **What the loop adds.** Both papers wrap these seven stages in a warmup-and-decay learning-rate
+  schedule, gradient clipping at a norm of 1.0, and weight decay of 0.1.

@@ -1,0 +1,771 @@
+---
+objectives: ["Separate the attention scoring rule from the memory layout used to compute it","Explain what grouped-query and sliding-window attention trade away","Explain why FlashAttention gives the exact same output, and which costs it leaves in place","Read rotary position embedding as a rotation whose query-key score depends only on the distance between positions"]
+terms: ["Multi-head attention","Grouped-query attention","Multi-query attention","KV cache","Sliding-window attention","Receptive field","Flash attention","Online softmax","HBM and SRAM","Rotary position embedding","RoPE base","Context length","Context extension"]
+---
+## The big picture
+
+This module is about what happens to attention when a model reads a very long text. In the
+**Attention** lab you met the rule itself. Each piece of text checks how well it matches the earlier
+pieces, then takes in a blend of information from the best matches. That rule stays exactly the same
+here. What changes is everything around it: how much gets stored, what gets thrown away, the order
+of the work, and how the model tracks each piece’s position.
+
+Language models read text in small pieces called **tokens**, where a token is usually a word or part
+of a word. Suppose you paste a long document into a chatbot and ask about something near the start.
+The model has to hold on to information about every earlier token while it writes its reply. This
+lab works out the costs for one real model’s shape, up to 131,072 tokens. It writes that as 128K,
+because in computing a K often means 1,024 rather than 1,000.
+
+### Where you have met it
+
+Each idea you will try in this lab is used in real models today:
+
+- Inside attention, many small units work side by side. Many recent models let groups of these units
+  share one set of stored notes. They usually keep 4 to 8 shared sets rather than just one, because
+  quality drops as more units share each set.
+- Some models built for long texts, such as Gemma 2 and Gemma 3, mix layers that only look at recent
+  tokens with layers that can look at everything.
+- FlashAttention, a method published in 2022, changes the order of the work on the chip that does
+  the arithmetic, so that far less has to be written to memory.
+- Llama 3 marks each token’s position by turning its numbers through an angle.
+
+### Why it matters
+
+Long texts are expensive in two ways, and both get worse as the text grows. First, the model keeps
+notes on every earlier token so it never has to reread the whole text. For a text the length of a
+book, those notes can take more memory than the model itself.
+
+Second, every token is compared with every token before it, so doubling the length of a text
+roughly quadruples the comparisons. While the model reads a long prompt, there comes a length where
+that comparing work catches up with everything else each layer does, and after that it takes over.
+
+Without the tricks in this module, a long conversation would need far more memory and far more time.
+Every trick has a price as well, though, so a large part of this lesson is about what each one gives
+up in exchange for its savings.
+
+### What you will be able to explain
+
+By the end of this lesson, you should be able to explain these ideas in your own words:
+
+- how the rule attention uses for scoring differs from the way the work is stored and ordered, which
+  can change while the rule stays fixed;
+- what a model gives up when groups of attention units share their stored notes, and what it gives
+  up when it keeps only the most recent 4,096 tokens;
+- why FlashAttention produces exactly the same answer as ordinary attention, and which costs it
+  leaves in place;
+- how rotary position embedding marks position by turning numbers through an angle, so that the
+  score between two tokens depends only on how far apart they are.
+
+### What the lab lets you see and try
+
+The lab has four cards, and nothing in it is trained or timed, so you can change any setting and see
+the result at once. The first two cards, **KV cache budget** and **Quadratic cost**, calculate
+memory and arithmetic with exact formulas for one real model’s shape. Every number on them is a
+calculation rather than a measurement taken on a real chip. You choose how many sets of notes are
+kept, whether old tokens are dropped, and how long the text is.
+
+The other two cards use small made-up numbers so that you can follow every step by eye.
+**FlashAttention tiles** works through one row of 16 scores a few at a time and lands on exactly the
+same answer as doing them all at once. **RoPE rotation** turns two short lists of numbers by their
+positions, and a button moves both positions together so that you can check whether the score
+changes.
+
+The key experiment is to stretch the text to 128K tokens and then tell the model to keep only the
+last 4,096 tokens. When you do, watch how far both the memory and the share of arithmetic spent on
+attention fall.
+
+## What it is
+
+### One rule for scoring
+
+Inside a model, each token is stored as a long list of numbers, and a list like this is called a
+**vector**. Attention makes three vectors from every token, and each one has its own job. The
+**query** describes what this token is looking for, while the **key** works like a label saying what
+the token can offer. The **value** holds the information that the token can hand over to any other
+token that finds its label useful.
+
+Each token compares its query with the key of every token it is allowed to see. The comparison
+multiplies the first number in the query by the first number in the key, the second by the second,
+and so on. Adding up all of those results gives one score for each key, and this step is called the
+**dot product**. A tool called **softmax** then turns the scores into shares that add up to 100
+percent. Finally, the token takes in a blend of the values, in which each value counts as much as
+its share.
+
+Together these steps make up the **scoring rule**, and that rule never changes anywhere in this
+module. What can change is the **memory layout**, meaning which keys and values are kept, where they
+are kept, and in what order the computer works through them. Two very different layouts can give
+exactly the same scores and the same blend, so the first skill this module asks for is keeping these
+two ideas apart.
+
+Of the four tricks below, only the third, working in small pieces, keeps the answer exactly the
+same. Two others, sharing stored keys and values among groups of heads and throwing old ones away,
+keep the rule too. But they change what it is applied to: fewer different keys, or fewer keys in
+view. So their answers can change a little. The
+fourth trick, RoPE, is different again, because its whole job is to change the scores on purpose by
+building in each token’s position.
+
+### The library picture
+
+To picture all this, think of the model as a library in which every token it has read leaves a
+folder behind. The label on the front of the folder is the token’s key, and the papers inside are
+its value. A reader arrives with a question, which is a query, and checks the label on every folder.
+The reader then copies out a blend of the papers, taking more from the folders whose labels fit the
+question best.
+
+A real model has many readers working side by side, and each one asks its own kind of question. Each
+reader is called an **attention head**, and running several heads side by side is called
+**multi-head attention**, or MHA. In the model this lab uses, every layer has 32 of these query
+heads, and in plain multi-head attention each head has a shelf of its own. That means each token
+leaves 32 different folders, one written for each reader, because every head makes its own key and
+value from the token.
+
+The model is also built from 32 **layers** stacked on top of each other, and each layer runs
+attention again on what the layer below produced. So the library really has 32 floors, and every
+floor has its own readers and its own shelves.
+
+The picture stops matching in two places, and the first is that the labels and papers are lists of
+numbers rather than words. A reader also never picks a single folder, because it always takes a
+blend from every folder it can see, even when some of them count for almost nothing.
+
+### Trick 1: sharing shelves
+
+The first trick keeps fewer shelves by letting a group of readers share one shelf, instead of each
+reader having its own. As a result, each token leaves one folder for each group rather than one for
+each reader. Every reader still writes its own question and still checks every label on its group’s
+shelf, so the scoring rule is untouched.
+
+Each shelf holds keys and values, so it is called a key-value head, or **KV head** for short.
+Letting groups of query heads share KV heads is called **grouped-query attention**, or GQA. The most
+extreme version, where all 32 readers share one single shelf, is called **multi-query attention**,
+or MQA.
+
+With 32 query heads, the lab lets you keep 32, 16, 8, 4, 2 or 1 KV heads, since each of those
+numbers divides 32 evenly. The real model whose shape the lab uses, called Llama 3 8B, has 8 KV
+heads, so each shelf serves a group of 4 readers. The saving is exact, because 8 shelves instead of
+32 means a quarter of the folders and therefore a quarter of the memory.
+
+The price is that the readers in a group must all read the same folders, so those folders cannot be
+shaped to suit each reader’s question. That usually costs the model a little quality, and the cost
+grows as the groups get bigger.
+
+### Trick 2: throwing old folders away
+
+The second trick limits how far back a reader may look, and it is called **sliding-window
+attention**. Each token may only see the most recent tokens, up to a limit called the window size,
+and older keys and values are thrown away. In this lab the window holds 4,096 tokens, and that count
+includes the token that is doing the looking.
+
+So a token at position 10,000 can see back as far as position 5,905, but nothing before that. The
+sum 10,000 − 4,096 gives 5,904, and the window starts one later because it counts position 10,000
+itself. As the text grows, the window slides forward with it, like a frame moving along a long strip
+of film, which is where the name comes from.
+
+Because only the last 4,096 tokens are ever kept, the memory stops growing once the text is longer
+than that. Each token also scores at most 4,096 keys, so the scoring work grows in a straight line
+instead of curving upward.
+
+Older text is not completely out of reach, and the reason is the layers. On layer 1, a token can
+only collect information from the tokens inside its own window, as described above. On layer 2, it
+reads tokens that have already collected information from their own windows, so information can now
+arrive from up to twice as far back. After all 32 layers, information can in principle travel up to
+32 × 4,096 tokens, which is 131,072. How far back information can reach in this way is called the
+**receptive field**.
+
+Picture a group chat that only lets you see the last 50 messages. You cannot scroll up to something
+said two days ago, but if a friend quoted it recently, you still find out about it, secondhand and
+maybe shortened. A sliding window behaves the same way, because old information reaches the present
+only when it has been passed along through newer tokens. A little of that information is lost on
+each hop, so what arrives from far back is weaker and less exact.
+
+The group chat stops matching in two ways. In the model, nothing deliberately saves a fact for
+later, so old information survives only if newer tokens picked it up through their attention, layer
+after layer along the way. And each hop uses up one layer, so with
+32 layers it can travel at most 32 windows back.
+
+### Trick 3: working in small pieces
+
+The third trick changes the order in which the work is done, while the keys and values that are kept
+stay exactly the same. To see why order matters, you need one fact about the chip that does a
+model’s arithmetic, which is called a **GPU**. A GPU has a large main memory that takes a while to
+reach, and a tiny memory built right into the chip that is extremely fast. These two are called
+**HBM and SRAM**, where HBM, short for high-bandwidth memory, is the large main store and SRAM is
+the small fast one.
+
+In the library picture, HBM is a huge storeroom and SRAM is a small reading desk. Carrying folders
+back and forth between them takes much longer than reading at the desk, so for long texts the
+carrying often decides how fast the work goes.
+
+The ordinary way to run attention calculates every score for a query and writes the whole row of
+scores out to the storeroom. Later it comes back to read them all again and turn them into shares.
+Done for every token at once, that makes a grid with one score for every pair of tokens, which is
+called the **score matrix**. For a long text this grid is enormous, and moving it in and out of HBM
+uses up much of the available time.
+
+**Flash attention**, usually written FlashAttention, carries a few keys and values to the desk at a
+time, and each small piece of the work is called a **tile**. It scores the keys in that tile, folds them into a
+few running totals, and moves on to the next tile. Because each tile is finished before the next one
+arrives, the full score matrix is never written to the storeroom at all.
+
+The hard part is softmax, so start with how softmax turns scores into shares. Recall from the
+**Attention** lab that softmax raises a special number, about 2.718, to the power of each score.
+This number is called e, and the lab writes “e raised to a power” as e^ followed by the power in
+brackets. Softmax then adds up all of these numbers, and each key’s share is its own number divided
+by that total.
+
+Raising 2.718 to a big score gives a huge number, and at a score of 100 the answer has 44 digits.
+Numbers that big can be too large for the space a GPU sets aside for each number. So softmax first
+subtracts the top score from every score, which keeps every result between 0 and 1. Subtracting the
+same amount from every score never changes the shares, because every number shrinks by the same
+factor, and so does the total.
+
+After that subtraction, each key’s number says how far behind the leader it is. The leader gets
+exactly 1, a key one point behind gets about 0.37, and a key two points behind gets about 0.14. If
+those three were the whole row, the total would be 1.51, so the leader’s share would be 1 ÷ 1.51,
+about 66 percent.
+
+Here is the problem for the desk. Each share depends on the total over every score and on the top
+score, but the desk has only seen some of the scores so far. FlashAttention handles this with
+**online softmax**, which keeps three running numbers as it goes:
+
+- the highest score seen so far, which is called the running max `m` and marks the current leader;
+- a running sum `ℓ`, which will become the total that the shares are divided by;
+- a running blend of the values, called the output `o`, which becomes the final blend at the end.
+
+Each key’s number is measured against the best score seen so far. When a new tile brings a score
+higher than the running max, every key already counted is suddenly further behind the new leader,
+so its number is now too big. The fix is to multiply the running sum and the running blend by the
+same factor, which is 2.718 raised to the old max minus the new max.
+
+The lab’s example shows why that factor is the right one. A key that scored 2.4 led the first tile,
+so its number was 1. Then a 3.1 arrives, and the 2.4 key is now 0.7 behind the new leader, so its
+number should be what a key 0.7 behind gets, which is 0.4966. Multiplying its old 1 by the factor,
+2.718 raised to 2.4 − 3.1, gives exactly that, because that power is −0.7. A negative power gives a
+number below 1, so the factor always shrinks whatever it multiplies.
+
+The same factor works for every earlier key. A key that was 1 point behind the old leader is now 1.7
+behind the new one. Multiplying its 0.37 by 0.4966 gives the right number for 1.7 behind, too. One
+multiplication of the running sum and blend fixes every earlier key at once, without going back to
+the storeroom.
+
+So each correction turns every earlier key’s number into exactly what it would have been if it had
+been measured against the new top score from the start. By the end, each key’s number is what it
+would have been if the whole row had been done at once against the true top score. The total is
+identical, so every share is identical too, and so is the final blend. FlashAttention is exact
+rather than an estimate, because it reaches the same answer by doing the work in a different order.
+
+What FlashAttention leaves alone matters as much as what it changes, because it still scores every
+pair of tokens. So the arithmetic stays the same, and the stored folders are not touched at all.
+
+### Trick 4: position as a rotation
+
+The scoring rule compares the contents of a query and a key, so on its own it has no sense of how
+far apart two tokens sit. The fourth trick builds position into the query and the key themselves, by
+turning them.
+
+**Rotary position embedding**, or **RoPE**, splits each query and each key into pairs of numbers.
+You can draw a pair of numbers as an arrow from the centre of a graph. Use the first number as x and
+the second as y, the same way you would plot a point. RoPE turns each arrow around the centre by an
+angle that grows with the token’s position, so a token at position 20 turns further than one at 7.
+Turning an arrow around a fixed centre like this is called a **rotation**, which is where the word
+rotary in the name comes from.
+
+Each pair rotates at its own speed, meaning the angle it turns for every step in position, and the
+lab calls this speed θ, the Greek letter theta. Angles here are measured in **radians** instead of
+degrees, and a full turn of 360 degrees is about 6.28 radians, so one radian is about 57 degrees. In
+the lab’s small example, with the base at 10,000, pair 0 turns one radian per position. Each later
+pair turns ten times more slowly than the pair before it.
+
+Here is the reason only the distance matters, and it comes from how the dot product treats a pair of
+arrows. For each pair, the dot product depends only on how long the query arrow and key arrow are,
+and on the angle between them. It is largest when they point the same way, zero when they are at
+right angles, and negative when they point in opposite directions. Rotating an arrow never changes
+its length, so the only thing a rotation can change is the angle between the two.
+
+Try it with three simple pairs of arrows, using the multiply-and-add rule from earlier:
+
+- The arrows (1, 0) and (1, 0) point the same way, and 1 × 1 + 0 × 0 = 1.
+- The arrows (1, 0) and (0, 1) are at right angles, and 1 × 0 + 0 × 1 = 0.
+- The arrows (1, 0) and (−1, 0) point opposite ways, and 1 × −1 + 0 × 0 = −1.
+
+Turn both arrows of the first pair a quarter turn and you get (0, 1) and (0, 1). Their dot product
+is 0 × 0 + 1 × 1 = 1, the same as before, because neither the lengths nor the angle between the
+arrows has changed.
+
+Suppose the query sits at position m and the key sits at position n, where m and n stand for the two
+position numbers. The query’s arrow turns m steps and the key’s arrow turns n steps, so the angle
+between them shifts by m − n steps. Their actual positions drop out of the score completely, and
+only the distance between the two tokens is left. Picture two hands on a clock face: if you turn the
+whole clock, both hands move, but the angle between them stays exactly the same.
+
+Take pair 1 in the lab, which rotates 0.1 radians for every step in position:
+
+- With the query at position 20, its arrow rotates 20 × 0.1 = 2 radians away from where it started.
+- With the key at position 7, its arrow rotates 7 × 0.1 = 0.7 radians, which is a much smaller
+  rotation.
+- The angle between the arrows therefore shifts by 2 − 0.7 = 1.3 radians, which is the distance of
+  13 positions times 0.1.
+- Move both 16 places later and the rotations become 3.6 and 2.3 radians, so the shift is still 1.3.
+
+Pairs that rotate quickly change a lot between neighbouring tokens, so they can tell apart tokens
+that are close together. Pairs that rotate slowly hardly change between neighbours, but they keep
+changing over long distances. This is a bit like the second hand and the hour hand on a clock.
+Here, though, the two hands stand for two different pairs, not for a query and a key. The
+setting that decides how slowly the slowest pairs rotate is called the **RoPE base**, and a bigger
+base means slower rotation.
+
+The clock picture stops matching in one way that matters, because the length of each arrow counts
+toward the score as well as the angle between them. The full score also adds up the parts from every
+pair, and each pair has its own query arrow and key arrow rotating at its own speed.
+
+### The model behind the numbers
+
+Every memory and arithmetic number in the first two cards is calculated for one real model shape,
+called Llama 3 8B. The 8B in its name stands for about 8 billion learned numbers, which were
+adjusted during training. It has 32 layers and 32 query heads, and each head’s query, key and value
+hold 128 numbers. Every stored number takes 16 bits, where a bit is a single 0 or 1. Eight bits make one byte, so
+each stored number takes 2 bytes.
+
+## Why it’s here
+
+Each of the four tricks answers a specific problem, and three of those problems are costs that grow
+more serious as a text gets longer. The fourth is a gap in the scoring rule itself, which cannot
+tell near from far without help.
+
+### A stack of notes that grows with every token
+
+A model writes its reply one token at a time, and every new token needs the keys and values of all
+the earlier tokens. Calculating them from scratch for every new token would repeat an enormous
+amount of work, layer after layer. So instead, the model calculates them once, stores them in
+memory, and reuses them for every token that follows. That store is the **KV cache**, which is the
+stack of folders in the library picture.
+
+The **Inference & KV cache** lab split a model’s work into two phases, and both of them matter here.
+Reading your whole prompt at once is called **prefill**, and writing the reply one token at a time
+is called **decode**. The cache is filled during prefill, then read in full for every new token
+during decode, and each new token adds its own key and value to it.
+
+Memory is counted in bytes, where a byte is roughly the space one letter of plain text takes up. The
+bigger units in the lab go up in steps of 1,024. A **KiB**, or
+kibibyte, is 1,024 bytes, which is roughly a thousand letters of plain text. Each bigger unit is
+1,024 of the one before, so a **MiB**, or mebibyte, is about a million bytes. A **GiB**, or
+gibibyte, is about a billion bytes, and a **TiB**, or tebibyte, is about a trillion.
+
+The **KV cache** row on the first card shows the formula `2 × 32 × 8 × 128 × 2 B × 8,192` with its
+values filled in. Read from left to right, it starts with 2, because every token leaves two vectors,
+one key and one value. The next two numbers are the 32 layers and the 8 KV heads, since every layer
+and every shelf keeps its own folders. Then come the 128 numbers inside each vector and the 2 bytes,
+written 2 B, that each 16-bit number takes up. The last number is the 8,192 tokens that have been
+read so far, since every one of them leaves its own folders.
+
+Multiplying everything except the last number gives 131,072 bytes, which is exactly 128 KiB for each
+token. The **Per token** readout shows that figure, and multiplying it by 8,192 tokens gives the
+1.00 GiB in the **Cache** readout.
+
+The cache grows in a straight line with the length of the text, so doubling the number of tokens
+doubles the memory. At 128K tokens it reaches 16 GiB, which is more than the model’s own learned
+numbers take up, at about 15 GiB.
+
+Size is not the whole problem, because the cache also slows the model down while it writes. For
+every new token, the model must read its learned numbers and its whole cache out of memory, which
+usually takes longer than the arithmetic. So a bigger cache also means slower writing, which is why
+shrinking the cache is often the saving that matters most.
+
+How many tokens a model is trained to handle at once is called its **context length**. Three things
+decide whether a long context works, and the first two are the memory for the cache and the cost of
+comparing every pair. The third is whether the model saw distances that long while it was being
+trained.
+
+### Comparisons that grow with the square
+
+The second cost is the arithmetic of scoring, where each token scores itself and every earlier token
+but never a later one. A model that writes from left to right must not peek ahead, so later tokens
+are blocked. This rule is called the **causal mask**, and it appears in the small heading of the
+**Quadratic cost** card.
+
+Count the pairs for a short text of 4 tokens to see how fast they pile up:
+
+- The first token scores only 1 key, which is itself, because nothing comes before it.
+- The second token scores 2 keys, itself and the first, and the third token scores 3.
+- The fourth token scores 4 keys, so the total is 1 + 2 + 3 + 4 = 10 pairs.
+
+With 8 tokens, adding up the whole numbers from 1 to 8 gives 36 pairs. So doubling the length of the
+text took the count to nearly four times as many pairs.
+
+Picture a party where every guest who arrives shakes hands with everyone already in the room. The
+first few arrivals are quick, but the hundredth guest has 99 hands to shake, so the total speeds up
+as the room fills. Attention grows the same way, since each new token has to be scored against
+everything already there. One difference is that a token also scores itself, so the hundredth token
+makes 100 comparisons, not 99.
+
+When a count grows roughly with the square of the length like this, the growth is called
+**quadratic**, which is where the **Quadratic cost** card gets its name. A text 16 times longer has
+about 256 times as many pairs, because 16 × 16 = 256.
+
+The card measures arithmetic in **FLOPs**, where one FLOP is a single multiplication or addition of
+decimal numbers. Its chart counts in TFLOP, where a TFLOP is a trillion FLOPs, because the totals
+for long texts are so large. In this model, each pair of tokens costs 512 FLOPs in each head, with
+half going on the score and half on blending in the value.
+
+Everything else in the layer grows in a straight line instead, because each token passes once
+through the layer’s grids of learned numbers. These learned numbers are called **weights**, and the
+card calls this work the **Weight matmuls**, short for multiplications by a matrix, which is a grid
+of numbers. The lab called **The transformer block** showed the arithmetic inside one layer, and
+this card prices that same layer.
+
+Doubling the text doubles the weight work but roughly quadruples the attention work, so attention’s
+share keeps climbing. At the starting length of 8,192 tokens, attention is 13.3 percent of one
+layer’s arithmetic while the model reads the prompt. At 128K tokens it is 71.1 percent, and the
+**Crossover** readout shows that the two are equal at 53,247 tokens.
+
+### The hidden cost of moving numbers
+
+A third cost hides behind the other two, and it comes from writing scores down. If attention wrote
+down every score before turning them into shares, the score matrix for one layer would need room for
+every pair in all 32 heads. The **Score matrix if stored** readout shows that this would take 4.00
+GiB at 8K tokens. At 128K tokens it would take 1.00 TiB for a single layer, which is far more than
+the whole model needs.
+
+Even when a chip has room for that grid, writing it to HBM and reading it back often takes longer
+than the arithmetic itself. FlashAttention never writes that grid at all, which is the whole point
+of working in tiles. The **FlashAttention keeps** readout shows what it saves instead: one small
+summary number for each row in each of the 32 heads, which comes to 1.0 MiB at 8K tokens.
+
+Those summaries matter during training. While a model is being trained, it needs the shares a second
+time to work out how to adjust its learned numbers. FlashAttention recalculates the scores from the
+queries and keys, then uses the summary numbers to turn them straight back into shares, rather than
+keeping the whole grid.
+
+### Position has to reach the scores
+
+The last problem is order, because the scoring rule on its own cannot tell near from far. Without
+help, two tokens would get the same score whether they sat side by side or thousands of tokens
+apart. That is because the score compares only what the tokens contain, not where they are. RoPE
+fixes this by turning each query and key according to its position, in a way that makes only the
+distance between them matter.
+
+### Which trick answers which problem
+
+- Fewer KV heads shrink the cache in exact proportion. The scoring arithmetic does not change at
+  all, and the layer’s total arithmetic barely moves.
+- A sliding window shrinks both the cache and the arithmetic, but it gives up direct access to old
+  tokens.
+- FlashAttention removes the stored score matrix and most of the carrying between memories, while
+  the arithmetic and the cache stay the same.
+- RoPE puts position into the scores, and it saves no memory or arithmetic at all.
+
+## How to play with it
+
+Each part below matches one of the four steps listed in the lab, in exactly the same order. The
+first two cards share their controls, so the settings you pick on **KV cache budget** also drive
+**Quadratic cost**.
+
+### Share key-value heads
+
+**Try this:** On **KV cache budget**, set **KV heads** to `32 · MHA`, then `8 · GQA`, then
+`1 · MQA`, while leaving **Sequence length** at 8,192 tokens. As you switch from one setting to the
+next, watch how the **Per token** and **Cache** readouts change. The **vs MHA** readout shows your
+cache as a percentage of the cache with all 32 KV heads.
+
+- At `32 · MHA`, **Per token** reads 512 KiB and **Cache** reads 4.00 GiB.
+- At `8 · GQA`, they read 128 KiB and 1.00 GiB, and **vs MHA** reads 25.0%.
+- At `1 · MQA`, they read 16 KiB and 128 MiB, which is about 3 percent of the full cache.
+
+Watch the head diagram on the same card as you switch, because it draws the sharing for you. The row
+of 32 small squares, the query heads, never changes, while the blocks underneath, the KV heads,
+merge into fewer and wider blocks. At `8 · GQA` its caption reads `8 KV heads cached · 4 query heads
+each`.
+
+The bar chart lists the cache for all six settings at the current length, with your selection
+highlighted. Each step down the list halves the bar, because halving the shelves halves the folders.
+
+Now look at **Quadratic cost** while you switch between the same settings. Its three curves are the
+solid **Weight matmuls** line, the dashed full-span attention line and the dotted window line, and
+you will see that they barely move. **Crossover** only shifts between about 51,000 tokens with one
+KV head and about 59,000 with all 32.
+
+That small shift has a simple cause. With fewer KV heads, the layer makes fewer keys and values, so
+its weight work shrinks a little. Attention then catches up with that smaller weight work slightly
+sooner, which moves the crossover earlier. The scoring work itself stays put, because all 32 readers
+still check every label.
+
+### Stretch the sequence
+
+Set **KV heads** back to `8 · GQA`, then drag **Sequence length** all the way to the right, to
+`131,072 (128K) tokens`. **Cache** now reads 16.00 GiB, which is sixteen times the cache at the
+starting length. In **Quadratic cost**, the dashed **Attention, full span** line has curved up well
+above the solid **Weight matmuls** line, and **Attention share** reads 71.1%.
+
+Step the length back down one notch at a time and watch **Attention share** fall:
+
+- At 64K tokens, attention is 55.2% of the layer’s arithmetic, so it still does a little over half
+  the work.
+- At 32K tokens, its share drops to 38.1%, which is somewhat more than a third of the work.
+- At 16K tokens, its share drops to 23.5%, which is a little under a quarter of the work.
+- At 8K tokens, its share is back down to 13.3%, which is a little over one eighth.
+
+The share itself does not halve, because it is attention’s part of the total. Compare attention with
+the weight work instead. Halving the length cuts attention’s work to about a quarter but the weight
+work only to a half, so attention’s work divided by the weight work halves each time:
+
+- At 128K tokens, attention does about 2.5 times the weight work, and at 64K about 1.2 times.
+- At 32K it does about 0.6 times the weight work, and at 16K about 0.3 times.
+- At 8K it does about 0.15 times the weight work, a little under one sixth.
+
+That halving is the square growth showing itself, because attention grows with the square of the
+length while the weight work grows only in a straight line.
+
+Now go back to 128K tokens and set **Attention span** to `Sliding window 4,096`. **Cache** drops to
+512 MiB, which is one thirty-second of what it was, and **Attention share** falls to 13.2%. The **KV
+cache** formula now multiplies by 4,096 tokens instead of 131,072, because only the last 4,096
+tokens are kept.
+
+The note under that formula calls this a rolling buffer, as in a model called Mistral 7B, which
+means each new token pushes out the oldest one. It also says that a token reaches 4,096 tokens back
+directly, and up to 131,072 back by hopping through 32 layers.
+
+In **Quadratic cost**, follow the dotted **Attention, window 4,096** line, which runs almost
+straight while the dashed line curves upward. Once the text is longer than the window, each new
+token adds the same 4,096 pairs, so the cost grows in a straight line.
+
+Finally, keep the window on and shorten the text to 4,096 tokens or fewer, where the window changes
+nothing at all. The whole text already fits inside the window, so no tokens are thrown away.
+
+### Tile the softmax
+
+**FlashAttention tiles** follows the scores of one query against 16 keys, and each key’s score sits
+in its own box. Its caption says the keys wait in HBM, the outlined tile is the one loaded into
+SRAM, and shaded tiles are done.
+
+Under each key are two marks that you will compare at every step of the walk-through. A dashed
+outline shows the key’s **full softmax weight**, which is its true final share of the row. Here
+“weight” means the key’s share, not the learned weights from the **Quadratic cost** card. A filled
+bar shows the share the key would get using only the tiles that have been seen so far.
+
+Walk through it one tile at a time with **Tile size** on `4 keys`:
+
+1. Drag **Tiles processed** all the way down to `0 of 4`, so that no tile has been loaded yet. The
+   table then reads `m = −∞, ℓ = 0`, where minus infinity is a starting value lower than any real
+   score.
+2. Step **Tiles processed** to `1 of 4`, which loads the first four keys into SRAM. Their highest
+   score is 2.4, so **Running max m** becomes 2.4, and **Running sum ℓ** reads 1.3729. The 2.4 key’s
+   number is 1, and 1 ÷ 1.3729 is about 0.73, so its share is about 73 percent at this point. Its
+   filled bar towers over its outline, because it is sharing with only three other keys.
+3. Step to `2 of 4`, and the new tile brings a 3.1, which beats 2.4 by 0.7. The running max jumps to
+   3.1, and the column headed `Rescale e^(m_old − m)` shows 0.4966. Here m_old is the old running
+   max, 2.4, and m is the new one, 3.1, so the column shows e^(2.4 − 3.1), which is e^(−0.7).
+
+   That factor shrinks the stored running sum and the 2.4 key’s own number by the same amount, so on
+   its own it would leave the share unchanged. The share drops to about 25 percent because the new
+   leader joins the total at a full 1, and its three tile-mates add about 0.28 more. Everything
+   counted before now adds up to only 0.68, measured against that new leader, so the new total is
+   about 1.96, and 0.4966 ÷ 1.96 is about 0.25.
+4. Step to `3 of 4`, then to `4 of 4`, and notice that neither tile beats 3.1, so the rescale stays
+   at 1.0000. Nothing is multiplied down, but each tile still adds more keys to the running sum, so
+   every share slips a little lower.
+5. At `4 of 4`, the 2.4 key’s share settles at 14.0 percent, exactly on its outline, and every other
+   bar lands on its outline too.
+
+At the end, the **Online vs full** row compares the tiled answer with the all-at-once answer and
+reads 8.3e-17. That is computer shorthand for 0.000000000000000083, a difference in the 17th decimal
+place. The tiny gap comes from **floating-point rounding**, because a computer keeps only a fixed
+number of digits for each decimal. Adding the same numbers in a different order can change the very
+last digit, and nothing more.
+
+Then pick a different **Tile size**, such as `2 keys` or `16 keys`, and the card jumps to the
+finished result. The final output is the same every time, because tiling changes only the order of
+the work. With `2 keys`, step through again from `0 of 8`. The first tile sets a starting max, and
+later tiles raise it twice, first to 2.4 and then to 3.1, with a rescale each time.
+
+### Rotate by position
+
+On **RoPE rotation**, the starting settings put **Query position** at `m = 20` and **Key position**
+at `n = 7`, so **m − n** reads 13. The **Score** row, which adds up the dot product over all four
+pairs after rotation, reads 2.0865.
+
+The card starts on pair 1, the same pair as the worked example, and the circle shows its two arrows
+before and after rotation. Dashed lines are the arrows before rotation, and solid lines are the
+arrows after, with a round dot for the query and a square for the key.
+
+Press **Shift both +16**, and both solid arrows swing round, because the query is now at 36 and the
+key at 23. Even so, **Score** still reads 2.0865, and **Pair angle**, the angle between the two
+rotated arrows, stays at 1.88 rad, where rad is short for radians. The **m − n** readout stays at 13
+as well, since both positions moved by the same amount.
+
+That 1.88 is the 1.3 radians of rotation from the worked example, plus the 0.58 radians that the two
+arrows were already apart before any rotation. **Shift both −16** moves both positions back again,
+and it stays greyed out until both positions are at least 16.
+
+Now move only **Key position**, and this time the score changes, because the distance between the
+two tokens changes. Set the two positions equal, and the score becomes 2.8200, which is the score
+the two vectors have with no rotation at all. With a distance of 0, the angle between each pair of
+arrows shifts by 0, so it is as if nothing was rotated. If you drag the key past the query, **m −
+n** goes negative, because the key now sits later in the text. The lab then adds a note that a
+causal model would mask that key.
+
+Next, step **Dimension pair** from 0 to 3 and read **Wavelength 2π/θ**, which is how many tokens one
+full turn of that pair takes. Here π is the number pi, about 3.14, so 2π is one full turn, about
+6.28 radians. For pair 1, θ is 0.1, so one full turn takes 6.28 ÷ 0.1, or about 63 tokens. With the
+base at 10,000, the four pairs give these wavelengths:
+
+- Pair 0 makes a full turn in about 6 tokens, so it changes a lot between neighbouring tokens.
+- Pair 1 takes 63 tokens to make one full turn, so it changes more gently from one token to the
+  next.
+- Pair 2 takes 628 tokens, which is ten times longer again, so neighbours look almost alike to it.
+- Pair 3 takes 6,283 tokens, so it barely moves between neighbours but keeps changing over long
+  stretches.
+
+Last, set **Dimension pair** back to 1 and switch **RoPE base** from `10,000` to `500,000`, so that
+pair 1 rotates more slowly. Its wavelength stretches from 63 tokens to 167 tokens, so it now needs
+more than twice the distance to make one full turn.
+
+The chart below the circle shows the distance between the two tokens along the bottom. Up the side
+it shows how much the selected pair adds to the score at that distance. Its side label for pair 1
+reads `dims 2,3 share of q·k`. Here dims is short for dimensions, meaning places in the list of
+numbers counted from 0, and q·k means the query-key dot product. As the distance grows, the angle
+between the arrows keeps turning, so this part of the score rises and falls in waves.
+
+The chart always draws both bases for the selected pair, so you can compare them without switching.
+The dashed **base 500,000** curve rises and falls more slowly than the solid **base 10,000** curve.
+On pair 0 the two curves sit on top of each other, because the fastest pair rotates at the same
+speed whatever the base is.
+
+## What to notice
+
+### On KV cache budget
+
+The cache follows the number of KV heads, not the number of query heads. With 8 KV heads it is
+exactly 25.0% of the full multi-head cache at every length, which you can check by moving **Sequence
+length** while you watch **vs MHA**.
+
+Changing KV heads barely moves the curves on **Quadratic cost**, because every one of the 32 readers
+still checks every label. Fewer shelves mean fewer folders to store, but the scoring work stays
+exactly the same, and only the layer’s weight work shrinks a little. This is the difference between the scoring rule and the memory layout,
+showing up in numbers.
+
+### On Quadratic cost
+
+Attention’s share climbs from a small slice to most of the layer’s arithmetic as the text grows. The
+number of pairs grows with the square of the length, while the weight calculations grow in a
+straight line. The window turns that curve back into a nearly straight line, though only once the
+text is longer than 4,096 tokens.
+
+The **Score matrix if stored** readout also grows with the square, until it reaches 1.00 TiB at 128K
+tokens. **FlashAttention keeps** grows only in a straight line, and it reaches 16 MiB at the same
+length.
+
+### On FlashAttention tiles
+
+Each tile adds keys to the running sum, so the filled bars of the earlier keys shrink. They shrink
+most when a tile brings a new running max, because the new leader joins the total at a full 1. The
+rescale shows how much further behind the new leader every earlier key has fallen, which is the
+same extra amount for all of them. Before the last tile, the filled bars sit
+above their outlines, since the running sum has not seen every key yet. At the end they land exactly
+on the outlines, whatever tile size you choose.
+
+### On RoPE rotation
+
+Shifting both positions together rotates both arrows but leaves **Score** and **Pair angle**
+unchanged, while moving one position alone changes them. That is the sign that only the distance
+m − n reaches the score, which is exactly what RoPE was designed to do. A bigger **RoPE base** slows
+the slower pairs, so their part of the score changes more gently as the distance grows.
+
+## Where it breaks
+
+### What this lab simplifies
+
+- The first two cards count bytes and FLOPs with formulas for one text: the cache across all 32
+  layers, and the arithmetic for one layer. Nothing runs on a GPU and nothing is timed.
+- Real speed also depends on how much data moves between memories, on how well the program is tuned,
+  and on whether it skips pairs the causal mask blocks.
+- **Quadratic cost** shows only prefill, the reading of the prompt, and leaves out decode. During
+  decode, each new token is scored against the whole cache, and speed is mostly limited by reading
+  memory.
+- A real server handles many conversations at once, which multiplies the cache. Storing each cached
+  number in fewer bits, such as 8 instead of 16, or in fixed-size blocks called pages, also changes
+  the totals.
+- You cannot take a model trained with 32 KV heads and switch it to 8, because GQA models are
+  trained that way or converted and then trained further.
+- **FlashAttention tiles** uses one query and 16 fixed teaching scores, and each value is a pair of
+  numbers. The real method also handles many queries at once and is tuned to the size of the chip’s
+  SRAM.
+- **RoPE rotation** uses a toy head of 8 numbers and two fixed vectors, not numbers taken from a
+  trained model. Real Llama heads have 128 numbers, which makes 64 pairs, each rotating at its own
+  speed.
+
+### Where the real tricks fail
+
+Sharing shelves has a price, because the readers in a group must all use the same stored keys and
+values. Those folders cannot fit every reader’s question at once, and that usually costs the model a
+little quality. MQA forces all 32 readers onto one shelf and carries the most risk, which is why
+many recent models keep 4 to 8 KV heads rather than 1.
+
+Picture four friends working on different parts of a history project who agree to keep one shared
+notebook instead of four. They save a lot of paper, but the notes have to serve all four topics at
+once. So each friend sometimes finds less detail on their own topic than a private notebook would
+have held.
+
+A window forgets, because a token further back than 4,096 tokens cannot be read directly at all. Its
+information reaches the present only by being relayed through the layers, and it gets weaker on the
+way. That is why several long-context models, such as Gemma 2 and Gemma 3, mix windowed layers with
+layers that see the full text.
+
+**A common mix-up:** FlashAttention is not a new or approximate kind of attention, and it does not
+shrink the KV cache. It reaches the same answer by working in a different order, and it still scores
+every pair, so its arithmetic still grows with the square of the length. Of the tricks in this lab,
+only fewer KV heads or a sliding window make the cache smaller.
+
+RoPE also has a limit, because it tells the model how far apart two tokens are without making every
+distance familiar. A model trained on texts of 8,000 tokens has never seen larger distances, so its
+attention gets worse beyond them.
+
+Stretching a trained model to longer texts by changing RoPE’s rotation speeds, usually with a little
+extra training, is called **context extension**. Without it, plain RoPE becomes less reliable past
+the length the model was trained on.
+
+## Going deeper
+
+### FlashAttention on a real chip
+
+FlashAttention was published in 2022, and it was designed around the gap between HBM and SRAM. It
+loads blocks of queries, keys and values into SRAM and calculates their scores there. It then writes
+only the output and one summary number per row in each head back to HBM. During training it
+recalculates the scores from the queries and keys, and uses those summary numbers to turn them
+straight back into shares, instead of storing the whole grid. Later versions split the work better
+across the chip and support smaller number formats, and the result stays exact.
+
+### RoPE’s rotation speeds
+
+The lab’s heading writes the rule for each pair’s speed as `θᵢ = 10,000^(−2i/8)`, where i is the
+pair number and 8 is how many numbers the toy head holds. Here is the rule worked out in steps for
+pair 1, the pair the lab starts on:
+
+- For pair 1, the power is −2 × 1 ÷ 8, which works out to −1/4.
+- A power of 1/4 means the fourth root, and the fourth root of 10,000 is 10, because 10 × 10 × 10 ×
+  10 = 10,000.
+- The minus sign means one over that number, so θ = 1 ÷ 10 = 0.1, which matches `θ = 0.10` in the
+  **Dimension pair** readout.
+
+A real Llama head holds 128 numbers instead of 8, so it has 64 pairs instead of the toy head’s 4. At
+base 10,000, its fastest pair makes a full turn every 6.3 tokens, much like pair 0 in the lab. The
+slowest pair takes about 54,000 tokens to make a single full turn. Llama 3 raised the base to
+500,000, which stretches that slowest turn to about 2.6 million tokens.
+
+### Stretching the context
+
+Context extension methods change these rotation speeds, and each of the three named in the lab does
+it differently:
+
+- **Position interpolation** squeezes the positions, so a longer text fits inside the range of
+  angles the model already saw in training.
+- **NTK-aware scaling** raises the base, which makes the slow pairs rotate even more slowly, much
+  like switching the lab’s **RoPE base** to 500,000.
+- **YaRN** treats fast and slow pairs differently, and it also adjusts how sharp the softmax shares
+  are.
+
+### Other labs
+
+**Inference & KV cache** covers this cache while a model serves many people, including grouping
+requests together and storing the cache in pages. **Why GPUs** explains why moving bytes, rather
+than doing arithmetic, often sets how fast a model can write. **The architecture zoo** covers
+state-space models, which replace the growing cache with a summary of fixed size and give up exact
+lookup of old tokens in exchange.

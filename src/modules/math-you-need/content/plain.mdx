@@ -1,0 +1,469 @@
+---
+objectives: ["Read a dot product as a weighted sum of features and a matrix as the map behind Wx+b","Say what a derivative, a gradient step, a conditional probability, and a logarithm each change in a calculation","Distinguish a convex bowl from a tilted double well without treating local minima as mythology","Use Bayes' rule to turn a prior and a likelihood into a posterior, read a Gaussian's mean and variance, and turn a logit into a probability with the sigmoid"]
+terms: ["Vector","Dot product","Matrix","Linear layer","Derivative","Gradient","Gradient descent","Probability","Likelihood","Bayes' rule","Mean and variance","Sigmoid and logit","Logarithm","Cross-entropy"]
+---
+
+## The big picture
+
+This module is a toolbox for the math that the rest of the app keeps reaching for. It covers six small ideas, one at a time:
+
+- vectors, which are lists of numbers;
+- matrices, which are grids of numbers;
+- derivatives, which measure how fast one number changes when you nudge another;
+- optimization, which here means walking downhill to the lowest point of a curve;
+- probability, which is the math of chances;
+- logarithms, which count how many copies of a number you multiply together to reach another number.
+
+Most of it uses only the arithmetic, fractions, squares and square roots you already know, plus a few new tools, such as logarithms, that the page explains as it goes. Where a step needs a calculator, such as the cosine of an angle or a power of a special number called e, the lab works it out for you.
+
+You have already met these ideas inside AI, even if nobody named them. When the model behind a chatbot picks its next word, it reads from a list of chances that add up to 100%, which is probability at work.
+
+When a model is trained, its adjustable numbers are moved a little at a time down a slope, so that a score of its mistakes gets smaller. Finding that slope is the job derivatives do. The large models behind chatbots run on this same arithmetic, only with thousands of numbers in each list where this page uses one or two.
+
+Without these tools, every later lab would face two bad choices: stop every few minutes to teach the same arithmetic again, or wave its hands. Waving your hands means saying a model “compares” or “learns” without showing what those words mean, and the math is what turns them into steps you can check.
+
+The math also protects against real mistakes, because a training program that could not read a slope would have no idea which way to improve. In the same way, a computer that multiplied a long string of small chances together would end up rounding the answer down to zero. And if you forget how rare something was to begin with, a single clue can make it look far more likely than it really is.
+
+By the end of this module you will be able to explain:
+
+- how to score a house for a buyer by multiplying each fact about it by how much the buyer cares, then adding, which is called a **dot product**;
+- how a grid of numbers called a **matrix** makes many of those scores at once, in the formula Wx + b;
+- what a **derivative** tells you, which is how much an answer moves when you nudge a number, and how a downhill step uses it to shrink a score of mistakes;
+- what a “given that” chance does, which is keep only the cases that match what you know, and how a **logarithm** turns multiplying into adding;
+- how a curve shaped like one bowl, with a single lowest point, differs from a tilted curve with two valleys;
+- why a ball can come to rest in the shallower valley, called a **local minimum**, and what that does and does not tell you about real models;
+- how to update a guess when a clue arrives, using **Bayes' rule**;
+- what the center and the spread of a bell-shaped curve, called the **mean** and the **variance**, tell you;
+- how the **sigmoid** squeezes any score into a chance between 0 and 1.
+
+In the lab, a **Topic** control picks one idea at a time, and the **Active refresher** card turns it into a picture that you can change with your own hands. You can turn two arrows, nudge a point along a curve, roll a ball downhill, lower a starting belief, stretch a bell curve or move a forecast toward the truth.
+
+Under the picture, the **Worked arithmetic** card writes out each step with the live numbers you have set. The **Live formula** card then prints the exact formula the page computes, so you can check any number by hand.
+
+Every number in the lab comes from a formula written into the page, and no model learns anything. The small table of counts and the four-number sample used for the bell curve are made up for the lesson, so nothing here is measured from real data.
+
+## What it is
+
+Think of this page as a cabinet with six labeled drawers, where each drawer holds one idea. Inside each drawer the same number shows up four ways: in words, as a picture, as a short worked calculation, and as a formula.
+
+If those four ever disagree, the page has a bug, so you can always check one against another. The page remembers which drawer is open, so a later lab can send you straight to the one you need.
+
+The cabinet picture stops matching in one useful way, because real drawers hold separate things while these ideas lean on each other. A matrix is a stack of dot products, a downhill step is built on a derivative, and cross-entropy is built from logarithms, so expect the same pieces to come back.
+
+### Vectors: a list of numbers you can draw
+
+Picture describing a house with two numbers, the way the lab's **Worked arithmetic** card does. Each number is a made-up score for one fact about the house, and a fact used this way is called a **feature**. The card calls the two features rooms-like and park-like.
+
+The default house scores 1.00 for rooms and 0.40 for parks, so think of it as very roomy and somewhat near a park. The scale is invented for the lab, so only how the numbers compare matters, not what a single number means on its own.
+
+A list of numbers kept in a fixed order like this is called a **vector**, and the order matters because the first number means rooms and the second means park.
+
+You can draw a two-number vector as an arrow that starts at the center of a grid. The vector (1, 0.4) means “go 1 to the right and 0.4 up”, so the arrow ends at that point. In the lab this arrow is **a**, the list of features, and its two numbers are all there is to it, with no hidden meaning tucked behind them.
+
+The length of an arrow, written |a|, comes from the right-triangle rule you may know from geometry: square each number, add the squares, and take the square root. For the arrow a, that gives √(1² + 0.4²) = √1.16, which is about 1.08, a little longer than its one step to the right.
+
+### The dot product: one weighted score
+
+Now picture a buyer who cares a little about rooms and a lot about parks. Their wishes form a second list, called the **weights**, and in the lab they are the vector **b**: 0.60 for rooms and 1.10 for parks.
+
+To score the house for this buyer, you multiply each feature by its matching weight and then add the results together. For the default house, that gives 1.00 × 0.60 + 0.40 × 1.10, which is 0.60 + 0.44 = 1.04.
+
+This calculation, where you multiply the pairs and then add, is called the **dot product** and is written a · b. It is a weighted sum, features times weights added up, and it is the score a model computes before it adds a bias, which the matrix drawer introduces.
+
+The arrows give a second route to the same number: the length of a, times the length of b, times a direction score called **cos θ**. Here θ, the Greek letter theta, is the angle between the two arrows, and cos θ, the cosine of that angle, only cares about direction. It is 1 when the arrows point the same way, 0 when they meet at a right angle, and −1 when they point in exactly opposite directions.
+
+You do not need to work out a cosine yourself, because a calculator's cos button does it, and the lab shows the answer in the **cos θ** readout. Think of it as a direction score that slides down as the arrows turn further apart.
+
+For the default arrows, |a| is about 1.08 and |b| is about 1.25. The angle between them is about 40 degrees, which the plot labels as θ, and at that angle the arrows mostly agree, so cos θ is about 0.77. Multiply those three numbers together and you get about 1.04, the same score you found by pairing the numbers up.
+
+So a dot product grows for two different reasons: the arrows are long, or the arrows point the same way.
+
+Turn b to face away from a and the score goes negative, because cos θ goes negative while lengths can never be negative. With b set to (−0.6, −1.1), for example, the arrows are about 140 degrees apart and a · b becomes −1.04. That is how a set of weights can mark a house down, giving it a negative score when its features point away from what the buyer wants.
+
+The lab also draws a dotted line that drops from the tip of a onto the line through b, meeting it at a right angle. The spot where it lands is the point on b's line that is closest to the tip of a. The dashed piece running from the center out to that spot is called the **projection** of a onto b.
+
+The dot product equals the length of b times the length of that projection. For the default arrows the projection is about 0.83 long, which is 1.08 × 0.77, and 1.25 × 0.83 is about 1.04, the same score again.
+
+If a points away from b, the projection lands behind the center, so its length counts as negative and the score goes negative too. That gives one more way to see why arrows that line up give a large score, since lining up makes the projection as long as it can be.
+
+The lab shows one more measurement, **Distance |a − b|**, which is the straight-line gap between the two arrow tips. You find it with the same square-and-add rule: the tips differ by 0.4 across and 0.7 up, so the distance is √(0.16 + 0.49) = √0.65, about 0.81. The distance is 0 only when the arrows are identical, and unlike cos θ it changes when you stretch an arrow without turning it.
+
+### Matrices: many dot products at once
+
+One dot product gives one score, but a model usually wants several scores from the same input, each with its own list of weights. Picture scoring one house for two different buyers at once, where each buyer's wishes form their own list of weights.
+
+Stack those weight lists as the rows of a grid and you have a **matrix**, usually written W. The top row is one buyer, and the bottom row is the other. Each row makes its own dot product with the input, so one matrix turns an input vector into a whole new vector of scores.
+
+The lab's default matrix has two rows, (1, 0.4) on top and (0, 1) on the bottom. So the first buyer cares mostly about rooms and a little about parks, while the second buyer cares only about parks. The input is the house x = (1, 0.2), which is roomy but not very near a park.
+
+The sliders m00, m01, m10 and m11 set the four numbers of W, where the first digit names the row and the second names the column, both counting from 0. That makes m01 the number in row 0 and column 1, which is the top-right number and starts at 0.4.
+
+To work out Wx, take one row at a time, multiply each of its numbers by the matching number in x, and add:
+
+1. The top row gives 1 × 1 + 0.4 × 0.2, which adds up to 1.08, the first buyer's score.
+2. The bottom row gives 0 × 1 + 1 × 0.2, which adds up to 0.20, the second buyer's score.
+
+Next, add a fixed amount to each output, called the **bias** and written b, which the sliders b0 and b1 set. You can think of it as a starting bonus that each buyer gives every house. This b is a new list, not the weight arrow from the vectors drawer, because math often reuses the same letters.
+
+With b = (0.2, 0.1), the outputs become 1.08 + 0.2 = 1.28 and 0.20 + 0.1 = 0.30. The whole calculation is written y = Wx + b, and here it gives (1.28, 0.30), the same pair the **W x + b** readout shows.
+
+Multiplying by a matrix and then adding a bias is called a **linear layer**, and it is a basic building block of the networks in later labs. Mathematicians save the word linear for maps that keep the center point (0, 0) where it is. Adding b slides everything over, center included, so the **Live formula** card uses the stricter name, affine layer, and the two names agree only when b is zero.
+
+### The matrix as a map
+
+You can feed any point on the grid into Wx + b as the input x, and it comes out at a new point. So the matrix acts like a map that moves every point of the grid somewhere new.
+
+To see how, feed in the point (1, 0) and leave out b for a moment. The top row gives 1 × 1 + 0.4 × 0 = 1, and the bottom row gives 0 × 1 + 1 × 0 = 0. So (1, 0) lands on (1, 0), which is the left column of W.
+
+Feed in (0, 1) and it lands on (0.4, 1), the right column. So the two columns of W show where a single step across and a single step up end up.
+
+To show what the map does to a whole shape, the lab draws a dashed square with its corners at (±1, ±1). The symbol ± means “plus or minus”, so the corners sit at every mix of 1 or −1 across and 1 or −1 up. The lab feeds those four corners into Wx + b and draws where they land.
+
+The shaded shape shows where Wx + b sends that square, and with the default W it leans sideways like a stack of cards with its top slid over. Even so, its area stays exactly the same, because sliding the top of the square sideways does not make it any bigger or smaller.
+
+The readout **det W · area scale** tells you how much every area grows or shrinks when W is applied. It shows the **determinant** of W: multiply the top-left and bottom-right numbers, then subtract the product of the other two.
+
+For the default W, that is 1 × 1 − 0.4 × 0 = 1, so the square keeps its size. A negative determinant flips the square over like a mirror image, and a determinant of 0 squashes it flat onto a line.
+
+The **Shapes** readout, (2×2)(2×1)+(2×1), lists the size of each piece as rows by columns, so W has 2 rows and 2 columns. Both x and b are a single column of 2 numbers, which is what the 2×1 means. The two middle sizes, the columns of W and the rows of x, must match, because each number in a row of W pairs with one number in x.
+
+### Derivatives: nudge a number and watch the answer move
+
+Picture a two-hour car trip with an average speed of 60 kilometers per hour, even though the speedometer showed a different number at each moment along the way. Average speed is a kind of rise over run, the distance gained divided by the time it took, so it blurs a whole stretch of the trip together. If you measure it over shorter and shorter stretches of time, it gets closer and closer to what the speedometer shows at that instant.
+
+That speedometer reading is the idea behind a **derivative**: how fast one number changes as another one moves, measured at a single spot. In math it answers the question “if I nudge this number a little, how much does the answer move?”
+
+The lab uses the curve f(x) = x², which squares whatever number x you give it, so at the default x of 1.2 its height is 1.44. To estimate the slope there, nudge x by a small amount called ε, the Greek letter epsilon, and see how much the height changes. The **Nudge ε** slider sets that amount, and with its default of 0.4 the calculation takes three steps:
+
+1. Move x from 1.2 to 1.6, so the height of the curve goes from 1.44 to 2.56.
+2. Subtract to find how much the height rose: 2.56 − 1.44 = 1.12.
+3. Divide that rise by the run, which is the size of the nudge: 1.12 ÷ 0.4 = 2.8.
+
+That rise over run is the slope of the dashed line through the two points, which is called a **secant**, and the lab shows it in the **secant** readout. It plays the part of the average speed over one stretch of the trip.
+
+The exact slope of x² at any point is 2x, so at x = 1.2 it is 2.4, shown as **slope 2x**. The lab draws this exact slope as a solid line called the **tangent**, which touches the curve at one point and tilts exactly the way the curve tilts there.
+
+The tangent plays the part of the speedometer reading, while the secant came out at 2.8, which is the true slope plus the whole nudge of 0.4. On this curve that always holds: the secant's slope is exactly 2x + ε, so the gap between secant and tangent is the nudge itself.
+
+Shrink the nudge and the gap shrinks with it, so a nudge of 0.1 makes the secant read 2.5. At the smallest setting, 0.05, it reads 2.45, which is very close to the true slope. The derivative is the number this ratio settles on as the nudge shrinks toward nothing, the same way average speed over a tiny stretch matches the speedometer.
+
+In training, the number you nudge is not this x but a **parameter**, one of the adjustable numbers inside a model. The slope that comes back says which way the model's error changes when that parameter moves, and by how much.
+
+### Gradient descent: walking downhill
+
+To train a model, you first need one number that says how wrong it is, called the **loss**, where lower is better. The lab draws a loss L(w) that depends on a single parameter w, so the whole training problem fits on one curve. Its derivative is written L'(w) and read “L prime of w”, and it is the slope of the loss curve at the current w.
+
+The sign of the slope tells you which way is uphill, because a positive slope means the loss rises as w grows. A negative slope means the loss rises as w shrinks, so either way you should step in the direction opposite to the slope.
+
+A real model has many parameters and one slope for each, and the full list of slopes is called the **gradient**. The gradient points in the direction where the loss climbs fastest, so **gradient descent** improves the model by stepping the other way.
+
+The lab writes one downhill step as new w = w − η × L'(w), where η, the Greek letter eta, is the step size you choose with the **Step size η** slider. The plot draws this step as a dashed arrow from the current w to the next one.
+
+Work one step on the convex bowl, the default **Loss surface**. Convex is the math word for a curve shaped like a single bowl, with one bottom where every downhill path ends. Its formula is L(w) = (w − 0.8)² + 0.25, so its lowest point sits at w = 0.8 with a loss of 0.25. Start from the default w of −1.4 with the default step size of 0.15, and one step goes like this:
+
+1. The loss starts at (−1.4 − 0.8)² + 0.25, which is 4.84 + 0.25 = 5.09, far above the floor.
+2. This bowl is the x² curve from the derivatives drawer slid over so that its bottom sits at 0.8, so its slope follows the same 2x rule measured from 0.8. That gives L'(w) = 2(w − 0.8) = 2 × (−2.2) = −4.4, and the minus sign means the loss falls as w moves right.
+3. The step is η × L' = 0.15 × (−4.4) = −0.66, which is the number the **η L'** readout shows.
+4. The new w is −1.4 − (−0.66) = −0.74, because subtracting a negative number moves you to the right, which is downhill here.
+
+The loss at −0.74 is about 2.62, roughly half of what it was, so one step already helped a lot. Press **Take a downhill step** again and w moves to about −0.28, then about 0.05, then closer and closer to 0.8. The steps get shorter as you go, because the slope flattens out near the bottom and each step is the slope times η.
+
+The step size matters a lot. On this bowl, each step multiplies your distance from the bottom by 1 − 2η, so at η = 0.15 the multiplier is 0.7 and you keep 70% of the gap each time.
+
+Above a step size of 0.5 the multiplier turns negative, so every step jumps past the bottom to the other side. At a step size of 0.7, the multiplier is −0.4, and the first step from −1.4 overshoots all the way to 1.68 on the far side.
+
+The next step lands back at 0.45 and the one after that at 0.94, so w zigzags in toward the bottom. Above 1, the multiplier would be bigger than 1 in size, so each jump would land further away than the last, which is why the slider stops at 0.8.
+
+Now set **Step size η** back to 0.15 and switch **Loss surface** to two wells, a curve with the formula L(w) = (w² − 1)² + 0.35w + 0.6. A well here means a valley, and the extra 0.35w tilts the curve so that the two valleys end up with different depths.
+
+The left valley bottoms out near w = −1.04 with a loss of about 0.24, which makes it deeper than the right one. The right valley bottoms out near w = 0.95, where the loss only gets down to about 0.94.
+
+Start at w = −1.4 and the steps roll into the deep left valley, but start at w = 1.4 and they settle in the shallow right valley instead. They stay there because the slope at the bottom of that valley is zero, so each update has nothing left to subtract.
+
+This curve is much steeper near its edges than the bowl, so it needs a small step size. Trouble starts at step sizes of about 0.2 and above. There the ball can jump between the valleys, swing back and forth without settling, or bounce from edge to edge of the chart.
+
+A valley bottom that is lower than every point near it is called a **local minimum**. The lowest one on the whole curve is also called the **global minimum**, so the plot labels the shallow valley “local min” and the deeper one “global min”.
+
+Picture a hiker caught in thick fog who wants to reach the lowest ground in a range of hills. She can't see anything around her, but she can feel which way the ground tilts under her boots, so she always steps downhill.
+
+In a single bowl-shaped valley that plan always works, but in hills with two valleys, where she ends up depends on where she started. From the wrong side of the ridge she will stop at the bottom of the shallower valley, with no way of knowing that a deeper one exists. Gradient descent behaves like that hiker, because it only reads the slope at the spot where it stands.
+
+The picture stops matching in one way: the hiker takes tiny steps, but gradient descent jumps a distance of η times the slope. Where the curve is steep, near the edges of the chart, one jump can sail right over the ridge. At the default step size, a start at w = 1.9 lands in the deep left valley, so the starting point and the step size together decide the valley.
+
+On the bowl, too, the hiker always reaches the bottom, but gradient descent does so only while the step size stays below 1.
+
+You may read online that getting stuck in a local minimum ruins training, or that it never happens at all. This page shows something narrower. On this curve a local minimum is real: it is a point where the slope is zero and every nearby point is higher. Still, that is a fact about one tilted curve with one parameter, not a law about every model you will meet.
+
+### Probability: shares that add up to one
+
+A **probability** is a share of the possibilities, written as a number from 0, meaning never, to 1, meaning certain. A probability of 0.25 is the same as 25%, or 1 chance in 4, so it sits a quarter of the way from never to certain. The shares for a complete set of outcomes always add up to 1, the way the slices of a pizza add up to the whole pizza.
+
+Often you want a chance after you have learned something, such as the chance it rains given that the morning was cloudy. That is a **conditional probability**, written P(y|x) and read “the probability of y given x”. You find it by keeping only the cases where x happened and then asking what share of those also had y.
+
+The lab's count table sums up eight made-up examples, and each one has an input x that is 0 or 1 and a label y that is 0 or 1. The table counts how many examples fall into each mix, and its last column, P(y=1|x), works out the share for you:
+
+- Of the four examples with x = 0, three have y = 0 and one has y = 1, so P(y=1|x=0) = 1/4 = 0.25.
+- Of the four examples with x = 1, one has y = 0 and three have y = 1, so P(y=1|x=1) = 3/4 = 0.75.
+
+You could imagine x as “the morning was cloudy” and y as “it rained”, so that 3 of the 4 cloudy mornings brought rain. The counts are authored, though, which means the lesson's writers chose them, so they are not real weather records.
+
+### Softmax and likelihood
+
+A model does not hand out chances directly: it first produces raw scores called **logits**, which can be any size. A step called **softmax** then turns those scores into chances that add up to 1. For two scores A and B, the lab's formula is P(A) = e^A / (e^A + e^B), where e is a fixed number, about 2.718, that is used all over math.
+
+Raising e to a power, even a fractional one like 2.4, is a calculator job, so the lab does it for you. What matters is that e to any power is always positive, and a bigger score gives a much bigger result. That is how softmax turns any scores into positive shares that favor the larger score.
+
+With the default **Logit A** of 2.4, the top of the fraction is e to the power 2.4, which is about 11.0. The default **Logit B** is 1.1, and e to the power 1.1 is about 3.0, so the bottom of the fraction is about 14.0.
+
+That makes P(A) about 11.0 ÷ 14.0, which is 0.786 or 78.6%, and it leaves 21.4% for B. The two bars under **Model distribution after softmax** show those two shares, and they always add up to 100%.
+
+Now picture a model that gives team A a 78.6% chance of winning each game against team B. Over the next three games, team A wins, then wins again, and then team B wins, and you want to score the model on those three outcomes.
+
+The **likelihood** is that score: the chance the model gave to exactly what happened. To combine chances in a row, think of a fair coin. The chance of two heads in a row is half of a half, 0.5 × 0.5 = 0.25, because only half of the first heads are followed by a second head.
+
+If each outcome is independent, meaning one does not affect the next, you multiply their chances in the same way: 0.786 × 0.786 × 0.214, which comes to about 0.132.
+
+A higher likelihood means the model gave more of its chance to what really happened, which is why training tries to raise it. The lab shows this number as **P(A,A,B)**, which you read as “the probability of A, A, B”.
+
+The readout beside it, **ln lik**, shows about −2.02, which is the same likelihood after taking its logarithm. Taking the log turns that product of three chances into a sum of three logs, and the logarithm drawer explains how that works.
+
+### Bayes' rule: updating a belief
+
+Picture a big group chat and a friend, call her Jo, who ends 3 out of every 4 messages with three exclamation marks. Everyone else in the chat does that in only 1 message out of 4, so the exclamation marks are a decent clue that Jo wrote the message. A message shows up ending in exclamation marks, but the sender's name is hidden, so how likely is it that Jo sent it?
+
+To find out, count messages instead of guessing, starting with a chat where half of all the messages are Jo's. Picture 40 messages, 20 from Jo and 20 from everyone else. Jo's habit gives 15 messages with exclamation marks, while everyone else's gives only 5. That means 15 of the 20 messages with exclamation marks are Jo's, which is a share of 0.75.
+
+Now picture a much busier chat where only 1 message in 10 is Jo's, while everyone else keeps their old habits. Out of 40 messages, now only 4 are Jo's, and 3 of those end with exclamation marks. The other 36 messages still produce 9 with exclamation marks, because 1 in 4 of 36 is 9.
+
+Now only 3 of the 12 messages with exclamation marks are Jo's, which is a share of 0.25, a third of what it was. The clue is exactly as strong as before, but Jo writes far fewer of the messages, so the clue points to her far less often.
+
+That reasoning is **Bayes' rule**, and the lab's Bayes' rule view uses these same numbers. The lab sorts each example into one of two groups, called **classes**. Class y = 1 plays the part of Jo, class y = 0 plays everyone else, and x = 1 is the clue, so the four parts look like this:
+
+- The **prior** is what you believed before seeing the clue, such as “Jo writes half the messages”. The lab's slider is **Prior P(y=1)**, the share of class 1 before looking at x.
+- The **likelihood** is how likely the clue is under each explanation: 3 in 4 if it is Jo, and 1 in 4 if it is anyone else. The lab reads these from its table as P(x=1|y=1) = 0.75 and P(x=1|y=0) = 0.25. This is the same idea as the likelihood in the softmax drawer: the chance of what you actually saw under one explanation. Here the explanations are “Jo sent it” and “someone else sent it”.
+- The **evidence**, shown as **Evidence P(x=1)**, is the total chance of seeing the clue at all: the chance it comes from Jo plus the chance it comes from everyone else.
+- The **posterior**, shown as **Posterior P(y=1|x=1)**, is the updated belief: the prior times the likelihood, divided by the evidence so that the chances add up to 1.
+
+The **Live formula** card writes this out with the live numbers you set, so you can follow the arithmetic exactly. At a prior of 0.10 it reads P(y=1|x=1) = (0.10 × 0.75) / (0.10 × 0.75 + 0.90 × 0.25), and you can work that out in four steps:
+
+1. Class 1 and the clue, like Jo sending it with exclamation marks: 0.10 × 0.75 = 0.075.
+2. Class 0 and the clue, like someone else sending it with exclamation marks: 0.90 × 0.25 = 0.225.
+3. The evidence adds up both ways the clue can appear: 0.075 + 0.225 = 0.300.
+4. The posterior is the share of that total that belongs to class 1: 0.075 ÷ 0.300 = 0.25.
+
+That matches the 3 out of 12 that you counted by hand in the busy chat, which is a good sign that the rule works. The two bars under **Weight of each way to see x = 1** are the two weights from the first two steps.
+
+There is a shortcut that uses odds, which compare the chance for something with the chance against it. A prior of 0.10 means a chance of 0.10 for and 0.90 against, which works out to odds of 1 to 9.
+
+The clue is 3 times as likely when y = 1 as when y = 0, so it multiplies the “for” side of the odds by 3. That turns 1 to 9 into 3 to 9, which is the same as 1 to 3. Odds of 1 to 3 mean 1 chance in 4, which is the same posterior of 0.25 that the four steps gave.
+
+The **Odds: prior × ratio** readout shows the same thing in decimals as 0.11 × 3 = 0.33, since odds of 1 to 9 are about 0.11. Because the clue always multiplies the odds by the same 3, a rare class needs much stronger evidence before it becomes likely.
+
+### Mean and variance: two numbers that set a bell curve
+
+The **mean** is the ordinary average, and it marks the center of a set of numbers, such as the lab's sample of −1, 0, 1 and 2. The **variance** measures how spread out the numbers are, because it is the average of the squared distances from the mean, and working it out takes four steps:
+
+1. Find the mean by adding the four numbers and dividing by 4, which gives 2 ÷ 4 = 0.50.
+2. Subtract the mean from each number to get its distance from the center: −1.5, −0.5, 0.5 and 1.5.
+3. Square each of those distances, which gives 2.25, 0.25, 0.25 and 2.25.
+4. Average the squares to get the variance: they add up to 5, and 5 ÷ 4 = 1.25.
+
+Squaring does two jobs: it makes every distance positive, so numbers below and above the mean cannot cancel out, and it weighs far-off numbers more heavily. It also leaves the variance in squared units: if the numbers were heights in centimeters, the variance would be in square centimeters.
+
+So you take its square root to get back to the units of the data, and √1.25 is about 1.12. That square root is the **standard deviation**, written σ, the Greek letter sigma, which is why the variance is written σ².
+
+Picture the heights of every 15-year-old in a big school. Most are near the average, and fewer and fewer are very short or very tall. A graph of how common each height is rises to a hump in the middle and falls away on both sides.
+
+A smooth hump of that shape is called a **Gaussian**, or a bell curve, and the mean and variance are the two numbers that draw it. The mean, written μ, the Greek letter mu, sets where the center of the bell sits, and the variance σ² sets how wide it spreads.
+
+With a bell curve, the chance of landing between two values is the area under the curve between them, and the total area is always exactly 1. The height at one single point is called a **density**, and it is not a chance.
+
+For every Gaussian, about 68% of the area lies within one standard deviation of the center, between μ − σ and μ + σ, and the lab shades that band. So if school heights followed a bell curve, about 68% of students would fall within one standard deviation of the average.
+
+Picture pouring the same cup of sand onto a table each time, spreading it into a wide, low mound or piling it into a narrow, tall one. The amount of sand never changes, and the bell works the same way, so a wider bell must have a lower peak and a narrower bell a higher one.
+
+At the default variance of 1, the peak of the bell is about 0.40 high, well below 1. Shrink **Variance σ²** to its smallest setting, 0.10, and the peak climbs to about 1.26, which is fine for a density even though a probability can never go above 1. The sand picture stops matching at the edges, because a bell curve's tails go on forever, getting thinner and thinner without ever reaching zero.
+
+**A common mix-up:** reading the height of a bell curve as a chance, when only area is a chance. Height is a density, and that is why it is allowed to go above 1 when the bell is narrow.
+
+The **Probe x** slider picks one point along the bottom, and the readout **z = (x − μ)/σ** says how many standard deviations that point sits from the center. With the defaults, the mean is 0 and σ is 1, so a probe at x = 1 sits exactly one standard deviation out. That gives z = 1, and the **Density at x** readout shows a height of about 0.242 at that point.
+
+The **Fit μ and σ² to the sample** button sets the bell's center and width to the sample's own mean, 0.50, and variance, 1.25. The four sample values also appear as small ticks along the bottom of the plot, so you can see the bell sitting over them. In the Classical machine learning lab, a method called naive Bayes fits one of these bells, with its own mean and variance, for each class and each feature.
+
+### From logit to probability: the sigmoid
+
+A logit can be any number at all, positive or negative, and the **sigmoid** squeezes it into a probability between 0 and 1. With two options, only the gap between their logits matters, so the sigmoid takes that gap as its single input, called z. The lab shows it as **Logit gap z = A − B**.
+
+The formula is σ(z) = 1/(1 + e^−z), where e^−z means e to the power negative z. A negative power means 1 divided by the matching positive power, so e^−z is always positive but shrinks toward 0 as z grows.
+
+Its graph is an S-shaped curve that passes through exactly 0.5 at z = 0 and climbs from left to right. For large positive z it flattens out near 1, and for large negative z it flattens out near 0.
+
+Try it with the default logits: the gap is z = 2.4 − 1.1 = 1.3, and e to the power −1.3 is about 0.2725. So σ(1.3) is 1 ÷ 1.2725, about 0.786, which is exactly the softmax P(A) from before, because with two options softmax is the sigmoid of the logit gap. The lab shows **Softmax P(A)** and **Sigmoid σ(z)** side by side, so you can see the two numbers match to every decimal place shown.
+
+That means only the gap matters: if both logits go up by 1, to 3.4 and 2.1, the gap is still 1.3 and P(A) stays at 0.786.
+
+It works like a tug-of-war: give both teams the same extra pull and nothing about the contest changes, because only the difference in pull matters. The picture stops matching in two ways. A rope keeps sliding while one side pulls harder, but P(A) is a fixed number set by the gap. And a tug-of-war ends with a single winner, while the sigmoid gives a chance.
+
+You can also run the sigmoid backward, from a chance back to the gap, and the logarithm drawer below finishes that story once it has explained logs.
+
+In the Classical machine learning lab, a method called logistic regression builds one logit as z = w·x + b. That is a dot product plus a bias, like the ones in the first two drawers. It then reports σ(z) as P(y=1|x), the chance that the label is 1 given the input, and the Stacking neurons lab uses the same S-shaped curve later on.
+
+The letter σ does two unrelated jobs on this page: in the bell-curve view it stands for the standard deviation, while σ(z) here is the sigmoid. The brackets right after the sigmoid's σ are the quickest way to tell the two apart.
+
+### Logarithms: turning products into sums
+
+A **logarithm** answers the question “how many copies of the base must I multiply together to get this number?”, where the base is a fixed number such as 10.
+
+Because 10 × 10 × 10 = 1,000, you need three copies of 10 to make 1,000, so the logarithm of 1,000 with base 10 is 3. In the same way, the logarithm of 100 is 2, and numbers between 0 and 1 have negative logs, since 0.1 = 1 ÷ 10 counts as 10 to the power −1.
+
+Logs have one property that makes them useful in AI: multiplying numbers matches adding their logs. For example, 100 × 1,000 = 100,000, and on the log side 2 + 3 = 5, which is the log of 100,000. So a log turns a long string of multiplications into a string of additions, which are far gentler to work with.
+
+The lab uses the **natural log**, written ln, whose base is the same number e, about 2.718, that appeared in softmax. The idea is the same as with base 10, and only the base changes, so any chance between 0 and 1 still has a negative log. The lab therefore puts a minus sign in front and calls −ln p the **surprise** of an event with chance p, which is never below zero.
+
+A fair coin landing heads has a chance of 0.5, and its surprise is −ln 0.5, about 0.693. Rarer events surprise you more, so a chance of 0.25 gives a surprise of about 1.386, exactly twice as much. That is because 0.25 = 0.5 × 0.5 is like getting two heads in a row, and the log turns that product into the sum 0.693 + 0.693.
+
+These surprises are measured in **nats**, the unit you get from the natural log. If you used base 2 instead, the unit would be the **bit**, and one fair coin flip would carry exactly 1 bit of surprise. One bit and 0.693 nats are the same amount measured on different scales, the way 1 hour and 60 minutes are the same length of time.
+
+Here is why AI needs this: multiply 0.5 by itself 100 times and the answer has 30 zeros after the decimal point before its first other digit. A computer has a limit on how small a number it can store, and that one is still above the limit, but a longer product soon falls below it.
+
+Multiply 0.5 by itself 1,100 times and the answer has more than 330 zeros after the decimal point. That is too small for a computer's ordinary numbers, so it rounds to exactly zero. The sum of the 1,100 surprises is 1,100 × 0.693, about 762, a perfectly ordinary number.
+
+That is why training losses add log-probabilities instead of multiplying tiny fractions, and why **ln lik** in the softmax view adds logs rather than multiplying chances.
+
+Logs also finish the sigmoid story from the probability drawer, by running it backward. Start from the odds for A, which are P(A) ÷ P(B) = 0.786 ÷ 0.214, about 3.67, and take their natural log, which is 1.30, exactly the gap you started with.
+
+That is why, with two options, the gap z = A − B is also called the **log-odds**, while Logit A on its own is not. The sigmoid and the log-odds undo each other, and the lab shows the trip back as **Log-odds ln(P(A)/P(B))**.
+
+### Surprise, entropy and cross-entropy
+
+Picture a weather app that announces a 60% chance of rain every single day, in a town where it really rains on 1 day in 4. Each rainy day then surprises you by −ln 0.60, which is about 0.511, since the app said rain was fairly likely. Each dry day surprises you more, by −ln 0.40 or about 0.916, because the app gave dry weather only a 40% chance.
+
+Now average those surprises over the real weather, where 1 day in 4 is rainy and 3 days in 4 are dry. Weighting each surprise by how often it really happens gives 0.25 × 0.511 + 0.75 × 0.916, which comes to about 0.815.
+
+That average surprise, when the world follows the true chance p but your forecast said q, is the **cross-entropy**, written H(p,q). The lab's defaults are this exact case, because **True p** starts at 0.25 and **Model q** starts at 0.60.
+
+Now suppose the app had told the truth and said 25%, so a rainy day would surprise you by about 1.386. A dry day would surprise you by only about 0.288, and the average comes to 0.25 × 1.386 + 0.75 × 0.288, about 0.562. This is the truth's own average surprise, called the **entropy** and written H(p), and it is not zero even for a perfect forecast, because the weather really is uncertain.
+
+The gap between the two, 0.815 − 0.562 = 0.253, is called **KL**, and it is the extra surprise you pay for believing q when the world is p. The lab shows it as **KL(p‖q)**, and if you move **Model q** onto **True p** the gap closes to 0, while no setting can push it below 0.
+
+A confident wrong forecast is very expensive, which you can see by setting True p to 0.02 and Model q to 0.90. That is an app promising rain 90% of the time in a town where it rains on only 2 days in 100.
+
+Every dry day now surprises you by about 2.30, so H(p,q) jumps to about 2.26 while H(p) stays under 0.1. Training a model lowers its cross-entropy, which pulls its forecast q toward the true chance p and shrinks the gap.
+
+## Why it’s here
+
+Later labs need one shared set of arithmetic, not a fresh metaphor every time a formula appears. Each drawer is here because some later part of the app runs into a specific problem that this piece of math solves.
+
+- **Comparing two lists of numbers:** Tokens & embeddings stores words, or pieces of words, as lists of numbers, and Attention compares those lists to decide which words matter to each other. Both need one number that says how well two lists match. Attention uses the dot product itself, while Tokens & embeddings uses cos θ, the dot product divided by both lengths, so that length does not count. Knowing that the dot product mixes length with direction stops you from reading every large score as a close match.
+- **Making many scores at once:** a layer of a network needs many weighted sums from the same input. A matrix packs all of their weight lists into one grid, so a whole layer becomes one Wx + b instead of a pile of separate sums.
+- **Knowing which way to change:** a real model has a huge number of adjustable parameters, and training has to decide which way to move every one of them. The slope answers that question from where the model stands, without trying every possible change first.
+- **Seeing a valley for what it is:** the two-well curve turns a “local minimum” into a real valley where you can watch a ball settle. It claims nothing about deep networks, and it is still only one dimension.
+- **Working with chances:** Classical machine learning uses Bayes' rule, the bell curve's two numbers and the sigmoid without stopping to explain them. Naive Bayes multiplies a prior by bell-curve likelihoods, and logistic regression reports σ(w·x + b) as a probability.
+- **Adding instead of multiplying:** a loss is built from the chances a model gave to many real outcomes. Multiplying all of those chances would shrink toward zero, so losses add log-probabilities instead, and cross-entropy is the result.
+- **One drawer at a time:** the page stores which **Topic** is open, so a later lab can link straight to the refresher you need instead of repeating a textbook.
+
+## How to play with it
+
+Work through the drawers in order, and before each change, say out loud what you expect to happen.
+
+### Pick a topic
+
+Set **Topic** to `vectors`, then click through each of the other names one by one. Only one refresher appears at a time in the **Active refresher** card, and the **Worked arithmetic** and **Live formula** cards rewrite themselves to match. The numbers you set in each drawer stay put when you switch away and come back later.
+
+### Vectors and matrices
+
+On `vectors`, edit the number boxes labeled **a features** and **b weights** until the two arrows point in roughly opposite directions. Watch **a · b** and **cos θ** both turn negative, then redo the two products in the small table under the arrows by hand, multiplying each pair and adding them up.
+
+Switch Topic to `matrices` and move **m01**, the top-right number of W, and watch the shaded square lean further over as m01 grows. Even so, **det W · area scale** stays at 1 while m00 and m11 stay at 1 and m10 stays at 0, because the slant never changes the area. Then set **m00** to −1 and watch the determinant turn negative as the square flips over like a mirror image.
+
+### Derivatives
+
+**Try this:** Switch Topic to `derivatives`, and before you touch anything, use the rule 2x + ε to predict the **secant** readout for a nudge of 0.1. Then drag **Nudge ε** from 0.4 down to 0.05 and watch the dashed secant swing toward the solid tangent. The secant readout should fall from 2.8 through 2.5 to 2.45, while **slope 2x** stays at 2.4 the whole time.
+
+Next, move **x** to −1, where the slope becomes −2 because the curve falls as you move right at that spot. The secant still sits exactly one nudge above the tangent, so the rule 2x + ε works on both sides of the curve.
+
+### Optimization
+
+Set Topic to `optimization` and **Loss surface** to two wells, and leave **Step size η** at its default of 0.15. Then put **Parameter w** near 1.4 and press **Take a downhill step** several times. Watch **L(w)** and **Nearest minimum** as you go, and the ball should settle near w = 0.95 with a loss of about 0.94. Now move Parameter w to −1.4 and step again, and this time it settles near −1.04 with a loss of about 0.24.
+
+Switch back to the convex bowl and start from either side, and every start reaches 0.8. Then raise **Step size η** to 0.7, start from −1.4, and watch the dotted path of steps zigzag across the bottom before it settles.
+
+### Probability
+
+Set Topic to `probability` and use **Probability idea** to move through its four views:
+
+1. In counts and softmax, read P(y=1|x=1) = 0.75 from the table, then lower **Logit A** one notch at a time while you watch **P(A,A,B)**. It rises, peaks when P(A) is about 2/3, and then falls again, because two of the three outcomes were A. The score is highest when the model gives A the same share it really got, 2 out of 3.
+2. In Bayes' rule, lower **Prior P(y=1)** from 0.50 to 0.10 and watch **Posterior P(y=1|x=1)** fall from 0.75 to 0.25, while the table's likelihoods never move.
+3. In mean and variance, press **Fit μ and σ² to the sample**, then raise **Variance σ²** and watch the bell widen as its peak falls. Then drop the variance to 0.10, move **Probe x** to the center at 0.5, and watch **Density at x** climb past 1.
+4. In logit to probability, raise **Logit A** and **Logit B** by the same amount, and **Softmax P(A)** and **Sigmoid σ(z)** both stay put. They stay put because **Logit gap z = A − B** does not change when both logits move together.
+
+### Logarithms
+
+On `logarithms`, move **Model q** onto **True p** and watch **H(p,q)** fall to **H(p)** while **KL(p‖q)** reaches zero. Then set True p to 0.02 and Model q to 0.90, and see how far KL jumps when the forecast is confident and wrong.
+
+### Check the arithmetic
+
+Finally, pick one line in the **Worked arithmetic** card and redo it yourself with the live numbers. Then check that the **Live formula** card prints the same result, because both cards format the numbers the picture was drawn from.
+
+## What to notice
+
+- A large dot product can come from long arrows or from arrows that point the same way. The **cos θ** readout separates out direction alone, and the foot of the dotted drop marks the projection of a onto b.
+- **Distance |a − b|** is the straight-line gap between the arrow tips, and it is 0 only when the two arrows are identical. Unlike cos θ, it changes when you stretch an arrow without turning it. A program that looks for the items closest to a given one, such as similar songs, ranks them by this distance.
+- The shaded shape on matrices is Wx + b applied to the four corners of the square, which is a linear layer in miniature. Under W alone, before the shift by b, the left column of W shows where the point (1, 0) lands, as you worked out in the matrix drawer. The right column shows where (0, 1) lands, and every other point is a mix of those two.
+- On derivatives, the secant slope on x² is always exactly 2x + ε, so the gap to the tangent is always the nudge itself.
+- On the convex bowl, every start reaches w = 0.8 when the step size is small, while a step size above 0.5 overshoots the bottom on every step. On two wells, the starting point and the step size together decide the valley, and the right-hand valley is a real local minimum. Neither curve is a picture of a deep network, though.
+- Two logits become a set of chances only after softmax, and the likelihood of A, A, B then multiplies three of those chances together. Logs turn that product into a sum, which is the number the **ln lik** readout shows beside it.
+- A rare class stays rare, because at a prior of 0.10 the same 3-to-1 evidence lifts the posterior only to 0.25.
+- A wider bell has a lower peak, because the total area stays at 1. The 68% band holds for every mean and variance, and a height above 1 is fine for a density but impossible for a probability.
+- Raising both logits by the same amount leaves P(A) unchanged, because only the gap between them decides the chances.
+- Cross-entropy equals entropy only when q matches p, and KL can shrink to 0 but never goes below it.
+
+## Where it breaks
+
+### What this lab simplifies
+
+Every readout here comes from a fixed formula written into the page's code, not from anything learned from data. Most are closed-form, meaning one exact formula you could work out in a single go.
+
+Two readouts take a careful search instead. **Nearest minimum** is found by halving a range over and over until it pins down where the slope is zero. The 68% area is found by adding up many thin slices under the bell.
+
+Each readout also works in only one or two dimensions, meaning lists of one or two numbers, where real models use thousands. The curve y = x², called a parabola, is drawn from 81 points, and the two loss surfaces are the formulas printed on the card.
+
+There is no automatic differentiation, the method real training software uses to work out slopes through a long chain of calculations. Instead, each slope rule here, such as 2x for the parabola, is written straight into the page.
+
+The only number that changes by anything like learning is the w you step by hand on optimization. The count table, its likelihoods and the four-number bell-curve sample are all authored, so none of them is measured from the real world.
+
+The dotted path of steps is only a picture of where you have been, so moving Parameter w or switching the surface starts a fresh one. The loss plot also cuts off its top, and it labels the ball when the loss runs off the top of the chart.
+
+### Where the real ideas run into trouble
+
+A real Bayes update multiplies many estimated likelihoods rather than reading one from a tidy table, and the posterior still depends on a prior that someone has to justify. A bell curve is one shape among many, and real data is often not bell-shaped, so a bell can be a poor description of it.
+
+Training uses these same ideas in thousands of dimensions, and it needs extra care with two problems that the lab never meets. The first is overflow, which happens when a number grows too large for the computer to store, the opposite of a product shrinking to zero.
+
+The second is discrete choices, like picking one word out of many, which jump from one option to the next with no in-between. A jump like that has no slope, so training has to pick a smooth stand-in to measure instead.
+
+The loss of a large network is not a one-dimensional double well, so the two-well curve does not support stories about every local minimum in a big model. “All local minima are terrible” is a myth this page refuses, and the curve here does not prove the opposite either.
+
+People also slip by treating the logarithm as a way to make numbers smaller, or by treating a local minimum as automatically fatal. The log is here so that products of probabilities become sums that a computer can handle, not to shrink anything. A local minimum is a place where the slope is zero and nearby points are higher, which is real on this curve but not a verdict on deep learning.
+
+Another trap is reading the posterior as the likelihood, because the table says 3 in 4 and that looks like the final answer. That number is the posterior only when the prior is the table's own 0.50, and with a rare class the posterior is much smaller, because the prior counts too.
+
+## Going deeper
+
+Each drawer comes back later in the app, and here is where you will meet each one again:
+
+- Data, features, and representation builds vectors from the rows of a table on purpose.
+- Classical machine learning uses Bayes' rule and bell-curve means and variances in naive Bayes, and it uses the sigmoid in logistic regression.
+- Stacking neurons uses the sigmoid's S-shaped curve again, so the curve you move here will look familiar there.
+- Tokens & embeddings and Attention reuse the dot product as a way to compare two lists of numbers.
+- Loss & gradient descent takes the slope and the downhill step from this page and applies them to a real parameter.
+
+### A few extra details
+
+- **Where 2x + ε comes from:** multiply out (x + ε)² to get x² + 2xε + ε². Subtract x² to get the rise, 2xε + ε², and divide by the run, ε, to get 2x + ε. As ε shrinks toward nothing, the extra ε fades away and leaves 2x, which is why the secant closes in on the tangent.
+- **Many parameters, many slopes:** each slope in a gradient comes from nudging one parameter while holding all the others still, and the gradient lists those slopes side by side. Real training software works them all out together with automatic differentiation.
+- **Batches:** the Worked arithmetic card for matrices mentions stacking several inputs as the rows of a taller grid, which is called a batch. One matrix calculation can then score every input in the batch at once, instead of one at a time.
+- **Why layers need a bend:** two Wx + b layers in a row, with nothing between them, add up to a single layer of the same straight-line kind. Later labs put a bending step, called a nonlinearity, between the layers so that a stack can bend.
+- **Dividing by 4, not 3:** some textbooks divide by one less than the count when they estimate a variance from a sample. This lab divides by the full count, 4, which is the version naive Bayes uses.
+- **An average given x:** the examples with x = 1 have y values that average 0.75, which the lab writes as E[y|x=1]. It is an average over those rows, not a promise about any single one of them.
+- **The odds rule in general:** posterior odds equal prior odds times the likelihood ratio. That ratio says how many times more likely the clue is under one explanation than under the other, and on this page it is always 3.

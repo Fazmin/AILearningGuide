@@ -1,0 +1,502 @@
+---
+objectives: ["Describe constrained decoding as a token mask applied at each step","Explain why a valid JSON string can still be a wrong answer","Explain why masking one token at a time can sample different strings than conditioning the model on valid output"]
+terms: ["Constrained decoding","Grammar","Schema","Token mask","Renormalization","Valid prefix","Token boundary","Greedy decoding","Distribution distortion","Function call"]
+---
+
+## The big picture
+
+When a person reads a chatbot's answer, a friendly "Sure!" at the start or an extra sentence at the
+end does no harm. Sometimes, though, the reader is another computer program, and programs are far
+less forgiving. A program may need the answer in an exact format, with every bracket and quotation
+mark in place, and one stray word can make it fail.
+
+This module is about **constrained decoding**, a way to keep a language model's output inside a
+required format. As you saw in **Next-token prediction**, a model writes text one small piece at a
+time, and those pieces are called **tokens**. Picking the tokens one by one to write the answer is
+called **decoding**, and *constrained* means held inside limits. Before each token is picked, the
+model gives every possible token a chance of being picked, such as 40% for one and 2% for another.
+Constrained decoding adds a rule check at that moment, so any token that would break the format
+gets a chance of zero and can never be picked.
+
+### Where it shows up
+
+- When a chatbot app shows you a neat weather card instead of a paragraph, a program had to read
+  the model's answer first. That program needed the answer in an exact format.
+- A program that needs data from a model can ask for the answer in **JSON**, a common text format
+  that programs use to share information. JSON writes labels and values inside curly brackets, like
+  `{"ok":true}`, and constrained decoding keeps the answer in the exact shape the program expects.
+- An AI system that uses a tool, such as a weather lookup, has to write an instruction called a
+  **function call**, like `get_weather(city="Oslo")`, for a program to run. Read it as: do the
+  action get_weather, and fill in the blank called city with the text Oslo. The quotation marks go
+  around the city name, and the closing bracket ends the call. The **Tools and function calling**
+  lab later in this guide runs calls like this one, and the **Agents** lab runs them again and again
+  in a loop.
+
+### Why it matters
+
+A model's favourite next token is not always one the format allows. In this lab's JSON example, the
+token the model rates most likely at the very first step is `Sure`, which starts a chatty reply
+instead of a JSON object. If `Sure` were picked, the program reading the answer would fail on the
+very first word. Constrained decoding blocks it, along with every other token that would break the
+format, so the shape no longer depends on what the model rates highest.
+
+The promise is narrow, though, and a good part of this lesson is about where it ends. It covers the
+shape of an answer, not whether the answer is true, so a perfectly formatted weather request can
+still name the wrong city. A length limit can still cut an answer off before its closing bracket.
+And blocking tokens one at a time changes how often each whole answer comes out, in a way that can
+be surprising the first time you see it.
+
+### What you will be able to explain
+
+By the end of this lesson, you should be able to explain each of these in your own words:
+
+- How constrained decoding uses a **token mask** at every step. Tokens that would break the format
+  are blocked, and the chances of the tokens that are left get scaled up to add to 100% again.
+- Why an answer can be valid JSON, with every bracket in the right place, and still be the wrong
+  answer.
+- Why blocking tokens one at a time can give whole answers in different proportions from the model's
+  own odds once its invalid answers are thrown out.
+
+### What the lab lets you try
+
+No trained model runs in this lab. A small pretend model, which this lesson calls the toy model,
+stands in, with scores for its 24 tokens set by hand and then turned into chances. Everything the
+lab does with those chances is real, though. The rule check, the blocking and the rescaling are
+worked out exactly, and they give the same results a real system would.
+
+The lab is built from four cards, each with its own job:
+
+- **Grammar** lets you pick one of two formats, a tiny JSON answer or a weather tool call, and shows
+  exactly which outputs each one allows.
+- **Prefix walk** builds the answer one token at a time with the numbered **Decode step** buttons.
+  It shows the model's top choice next to the token it was allowed to pick.
+- **Masked distribution** lists each token's chance before and after the blocking, and it works out
+  the rescaling with real numbers.
+- **Mask distortion** is a separate small example about two city names. Its slider shows how
+  blocking one token at a time can give a different result from the model's own odds for whole
+  answers.
+
+## What it is
+
+### A stencil for text
+
+Picture a stencil held over a spray can, so that paint lands only where the stencil has holes. The
+letters come out the right shape however wobbly your hand is, but the stencil does nothing about the
+colour, because its only job is the shape.
+
+Constrained decoding is a stencil for text, and here is how the pieces match up. At every step, the
+model gives a chance to every token in its **vocabulary**, the full list of tokens it can pick
+from. These are the same kind of odds you worked with in
+**Next-token prediction**. A set of rules for which texts are allowed, called a **grammar**, then
+marks the tokens that could still lead to an allowed answer. Those tokens are the holes in the
+stencil, and everything else is covered up.
+
+The stencil is cut fresh at every step, because what is allowed next depends on what has been
+written so far. At the very start of the JSON example, the only allowed tokens are ones that begin
+with a curly bracket. Once the text reads `{"ok":`, the only allowed tokens are `true` and `false`.
+
+### Blocking tokens: the token mask
+
+At each step, the lab marks every one of its 24 tokens as **legal**, meaning allowed, or
+**masked**, meaning blocked. This yes-or-no list over the whole vocabulary is called the **token
+mask**, and a masked token gets a chance of exactly zero, so it can never be picked.
+
+Here is the first step of the JSON example, where the prompt asks whether the service is up and
+says to answer as JSON. Four tokens get most of the model's probability, and the mask splits them
+into two pairs:
+
+- `Sure` at 41.5% and `The` at 18.6% are masked, because a JSON object cannot start with a word.
+- `{"` at 22.8% and `{` at 9.3% are legal, because both of them start with a curly bracket.
+
+So the two legal tokens held only about 32% of the model's probability between them, while the
+other 68% sat on tokens that are now blocked.
+
+### Rescaling what is left: renormalization
+
+After the mask, the legal chances no longer add up to 100%, so they have to be rescaled. Picture
+letting the model write its first token 1,000 times, picking at random with these odds each time.
+About 320 of those starts would be legal, and about 228 of the legal ones would be `{"`. If you
+count only the legal starts, `{"` makes up roughly 71% of them.
+
+The lab does the same thing with one division, after adding up the chances of all the legal tokens
+and calling the total **Z**. At this step Z is 0.320, which is 32% written as a decimal, and the
+**Masked distribution** card shows the division for the token that gets picked:
+
+```text
+p′({") = p({") ÷ Z = 0.228 ÷ 0.320 = 0.711
+```
+
+Read it like this: the new chance of `{"`, written p′ and said "p prime", equals its old chance,
+written p, divided by Z. The result is 0.711, which means `{"` now has a 71.1% chance of being picked. If you try the
+division on a calculator you get 0.7125, a hair different, because the lab divides the unrounded
+numbers and rounds only at the end. The other legal token, `{`, rises from 9.3% to 28.9% the same
+way, so together the two legal tokens now hold all of the probability.
+
+This rescaling step is called **renormalization**, and it is worth noticing what it keeps. Before
+the mask, `{"` was about two and a half times as likely as `{`, and after the mask it still is.
+Every legal token is divided by the same number, so the model's ratios between legal tokens stay
+exactly as they were. That means the mask adds no new information about which allowed token is the
+better one.
+
+### How the mask decides what is legal
+
+The rule check works on single characters, meaning single letters, digits and symbols, and it asks
+one question about each token. If this token were added to the text so far, could the result still
+be finished into an allowed answer? A beginning of text that can still be finished that way is
+called a **valid prefix**. In the JSON grammar, `{"ok":tru` is a valid prefix because adding `e}`
+completes it, while `{"ok":x` is not, because no allowed answer has an x in that spot.
+
+Checking character by character matters because tokens do not line up neatly with the pieces of the
+grammar. The token `{"` opens the object with its curly bracket and also starts the label `"ok"`
+with a quotation mark, so it covers two grammar pieces at once. The token `":` also covers two
+pieces, because it closes the label and adds the colon that follows it. Both are ordinary ways to
+write JSON, and both are legal because every one of their characters fits.
+
+The place where one token ends and the next begins is called a **token boundary**. Token boundaries
+rarely fall exactly where the grammar's pieces start and end, so a correct mask lets a token cross
+from one piece into the next. In **Masked distribution**, a legal token that crosses like this
+carries a `↔` tag naming the two pieces it joins, such as `{ and "ok"`.
+
+### Knowing when to stop
+
+The grammar also decides when the answer ends, using a special token that means "the end". In this
+lab it appears as `⟨eos⟩`, short for end of sequence, and it is legal only once the answer is
+complete. At step 5 of the JSON walk the text reads `{"ok":true`, and the model gives `⟨eos⟩` a 22%
+chance. The mask blocks it anyway, because stopping there would leave the object without its
+closing bracket.
+
+### Picking a token: greedy decoding
+
+After the mask and the rescaling, something still has to choose one token. A chatbot often picks at
+random, using the rescaled chances as its odds, the way the **Next-token prediction** lab draws its
+characters. The **Prefix walk** in this lab always takes the single most likely legal token
+instead, which is called **greedy decoding**. That is why its heading says "greedy constrained
+decoding", and an automatic check in the app's code confirms that every step of both walks really is
+the top legal token.
+
+### Where the stencil picture stops matching
+
+The stencil captures the blocking well, but two points need care. First, a paper stencil is cut
+once, while this mask is worked out again after every token, from the text written so far. Second,
+a stencil says nothing about how likely each shape is, and the mask has the same blind spot. It
+checks only whether an allowed ending still exists, and never how likely the model is to write
+that ending. That shared blind spot turns out to matter a great deal, and the **Mask distortion**
+card shows why.
+
+## Why it’s here
+
+### Programs read text with no room for error
+
+A program that receives a model's answer usually hands it to a **parser**, which reads text in a
+fixed format and turns it into data. A parser is strict on purpose, so if a bracket is missing or an
+extra word appears, it stops with an error instead of guessing what was meant.
+
+Picture a friend who builds a small app that asks a chatbot whether a game server is up, then shows
+a green or red light. The app expects `{"ok":true}` or `{"ok":false}` and nothing else, and for
+weeks that is what it gets. Then one day the reply comes back as a friendly sentence that starts
+with "Sure!" and says the server looks fine. That reply makes sense to a person, but the parser
+finds no curly bracket, so it throws an error and the app shows a crash screen.
+
+### Any JSON is not enough: the schema
+
+Your friend's app also needs more than valid JSON, because some valid JSON would still confuse it.
+The text `{"ok":null}`, where `null` is JSON's word for "no value", is valid JSON. So is
+`{"ok":"yes"}`, where the quotation marks make yes a piece of text. The app, though, needs the label
+`ok` followed by true or false and nothing else. A value that can only be true or false is called a
+**boolean**, and a label in a JSON object is called a **key**. A labelled spot that the model has to
+fill in, such as `ok` here or the city in the weather call, is called a **field**.
+
+A description of which keys an answer must have, and what kind of value each one holds, is called a
+**schema**. Real systems often write schemas in a standard format called JSON Schema, and then turn
+each schema into a grammar for the mask. That makes the mask stricter than JSON itself, because it
+enforces this app's rules and not only the basic rules of JSON.
+
+### Why not fix the model instead?
+
+There are other ways to get the right format, but they do not come with a guarantee. You can
+describe the format in the prompt, which helps a lot, yet the model can still slip. You can also
+train the model further on examples, which changes its **weights**, the numbers it learned in
+training. Training changes the odds rather than setting rules, though, so a slip is still possible.
+
+Constrained decoding takes a different route, because it leaves the model's weights alone and edits
+each step's chances while the answer is being written. No retraining is needed, and the shape is
+guaranteed even for a model that would otherwise slip, as long as the answer is allowed to finish.
+
+## How to play with it
+
+Work through the cards from top to bottom, using the steps below to see what to click and what to
+look for.
+
+### Step 1: choose a format on Grammar
+
+Start by setting **Grammar** to **JSON object** and reading the lines under it. The **Prompt** line
+shows the request the toy model is answering, which asks whether the service is up and asks for
+the answer as JSON. The **Allowed output** line shows `{"ok":true} or {"ok":false}`, and the **Rule**
+line says the object's only key is a required boolean called "ok". It also notes that spaces are
+left out to keep the example small.
+
+Then set **Grammar** to **Function call**, whose prompt asks for the weather in Oslo and whose
+allowed output is `get_weather(city="…")`. In that pattern the city can be any run of one or more
+letters. Switching **Grammar** always sends **Decode step** back to the first token, so each walk
+starts from the beginning.
+
+### Step 2: step through on Prefix walk
+
+Go back to **JSON object** and click the numbered **Decode step** buttons in order. Each button
+shows its step number and the token that step ends up picking. The tokens written so far, called the
+prefix, appear as chips followed by a `?` for the spot being decided. Above the buttons, the line
+**Grammar accepts next** says in words what the rules allow at that spot, such as "true or false".
+
+Under the buttons sit three readouts, which compare the model's top choice with the token the mask
+allows:
+
+- **Unconstrained pick** is the token the model rates most likely before any blocking, with a ✗
+  after it if the mask blocks it.
+- **Pick after mask** is the token actually chosen, which is the most likely legal one.
+- **Legal tokens** counts how many of the 24 tokens are allowed at this step.
+
+### Step 3: read the numbers on Masked distribution
+
+This card lists tokens from most to least likely, and its **model p** column shows each token's
+chance before the mask. The **mask** column says ✓ legal or ✗ masked, and the **after mask** column
+shows the rescaled chance. The heading calls Z the "legal mass", meaning the total chance held by
+legal tokens, and it also shows the share of the model's probability that was removed. The formula
+under the table works out the picked token's new chance.
+
+**Try this:** With **Grammar** on **JSON object**, click **Decode step** button 1. **Unconstrained
+pick** shows `Sure ✗`, the model's top token marked as blocked, while **Pick after mask** shows
+`{"`. On **Masked distribution**, `Sure` drops from 41.5% to 0 in the **after mask** column.
+Meanwhile `{"` rises from 22.8% to 71.1%, the same numbers you worked through above. Then click
+button 4 and find `"`, the quotation mark that would start a text value like `"yes"`, at 27.9%. It is masked because the schema
+demands true or false, and `false` keeps 21.4% after the mask.
+
+### Step 4: compare with the function call
+
+Switch **Grammar** to **Function call** and click button 5, where the city name starts. **Legal
+tokens** jumps to 11 / 24, because almost any token made of letters is allowed inside the city.
+That includes `hello`, which gets 11.2% after the mask, so the model could ask for the weather in a
+city called hello. Click button 6 next: after `Os`, the closing token `")` keeps 6.3%, which would
+finish the call as `get_weather(city="Os")`.
+
+### Step 5: drag the slider on Mask distortion
+
+The last card is a separate example, which the next section explains in full. Drag **P(slo" after
+"O)** from 10% to 90% and watch the two bars, **Per-step mask** and **Model, conditioned on a valid
+string**. The slider's label means the chance that the model writes `slo"`, finishing Oslo, after
+it has already written `"O`. One bar never moves while the other climbs, and they meet only when
+the slider reaches 90%.
+
+## What to notice
+
+### The mask keeps the model's ratios
+
+Renormalization divides every legal chance by the same number, so it never changes which legal
+token is ahead or by how much. Before the mask at JSON step 4, `true` has 37.6% while `false` has
+10.3%. That makes `true` a bit more than three and a half times as likely, and after the mask, at
+78.6% to 21.4%, it still is. Nothing in the mask checks whether the service is actually up, because
+the mask only makes sure the answer is one of the two allowed words.
+
+### The model and the mask mostly agree
+
+On most steps, **Unconstrained pick** and **Pick after mask** show the same token. The mask makes
+its biggest difference at the edges of the answer, where the model's top token is often a chatty
+word such as `Sure`. At step 6 of the JSON walk, once `{"ok":true}` is finished, the
+model's top token is `The` at 40.7%. That would start a sentence after the object, so the mask
+blocks it and allows only `⟨eos⟩`.
+
+Constrained decoding works best when the model already leans toward the format, because then the
+mask has less to block, and "Going deeper" shows how real systems use that.
+
+### The rules can be stricter than JSON
+
+At JSON step 4, the mask blocks both `null` and `"`, even though each could appear in some other
+JSON object. This schema needs a boolean in that spot, so the grammar rules them out, which shows
+the mask enforcing the schema and not only the basic rules of JSON.
+
+### Some legal tokens cross grammar pieces
+
+At JSON step 1, `{"` is legal even though it covers the curly bracket and the start of the label.
+At step 3, `":` is legal even though it closes the label and adds the colon. Look for the `↔` tags
+on **Masked distribution**, which show the mask checking each token character by character.
+
+### A free text field lets almost anything through
+
+**Legal tokens** swings from 1 to 13 as you step through the walks, depending on what kind of spot
+is being filled. At punctuation, often only one token fits, but inside the city name almost any
+word-like token is legal, including `hello`, `Sure` and `true`. The grammar only asks for letters,
+so any letters will do.
+
+### The setup on Mask distortion
+
+The **Mask distortion** card gives the most surprising result in the lab, so it is worth going
+through slowly. The card's answer starts with `{"city":` and then needs a city name to fill that
+field, and the schema allows only two values, "Oslo" or "Bergen". A field whose value must come from a short fixed
+list like this is called an **enum** field, which is what the card's heading means. Each city name
+takes two tokens, and the tree on the card shows the model's chances:
+
+- For the first token, `"O` gets 55% and `"B` gets 30%. The other 15% goes to `"P`, which is
+  masked because no allowed city starts with P.
+- After `"O`, the model can write `slo"` to make Oslo, or `ttawa"` to make Ottawa, which is masked.
+  The slider sets the chance of `slo"`, and it starts at 10%, so the other 90% goes to Ottawa.
+- After `"B`, the model writes `ergen"` nine times in ten to make Bergen. The rest of the time it
+  writes `ern"` to make Bern, which is masked.
+
+### What the per-step mask does
+
+Unlike **Prefix walk**, this card assumes the model picks at random using the masked odds, the way
+a chatbot often does. Both bars show how often each city would come out. At the first step, the mask blocks `"P` and rescales `"O` and `"B`, which gives `"O` about 65%. The
+caption under the bar shows this as 55% ÷ 85%, where 85% is what `"O` and `"B` held together. At
+the second step each branch has exactly one legal token left, which renormalizes to 100%, so every
+`"O` becomes Oslo. The **Per-step mask** bar therefore shows Oslo at 65%, wherever you put the
+slider.
+
+### What the model's own odds say
+
+Now picture letting the model write the city 1,000 times with no mask, with the slider at its
+starting value of 10%:
+
+- About 550 answers start with `"O`, but only a tenth of those, about 55, go on to spell Oslo, while
+  the rest spell Ottawa.
+- About 300 answers start with `"B`, and nine in ten of those, about 270, spell Bergen, while the
+  rest spell Bern.
+- About 150 answers start with `"P` and never become an allowed city.
+
+Throw away every answer that is not allowed, and about 325 valid answers remain. Only 55 of them are
+Oslo, which is about 17%, while the rest are Bergen. Keeping only the valid answers and rescaling
+the model's own chances for them is called **conditioning** the model on valid output. That is what
+the **Model, conditioned on a valid string** bar shows.
+
+### Why the two bars differ
+
+The mask asks only whether `"O` *can* still end as an allowed city, and it can, through Oslo. It
+never asks how *likely* the model is to end it that way, so it cannot see that most of the model's
+`"O` answers go on to Ottawa. It commits to `"O` first and then forces `slo"`, so every one of
+those Ottawa-bound starts is turned into Oslo. This gap between the two bars, caused by committing
+to a start before seeing where it leads, is called **distribution distortion**.
+
+For a single token, as at JSON step 1, masking and throwing away bad answers give the same numbers,
+which is what the 1,000-starts picture showed. The gap appears only once an answer takes more than
+one token, because the mask throws away bad endings one step at a time instead of throwing away
+whole answers.
+
+Picture a phone keyboard that only lets you type two city names, Oslo and Bergen. A friend starts
+typing Ottawa, and the keyboard accepts the O, because Oslo starts with O too, then fills in "slo"
+for them. The message says Oslo, a city your friend never meant, and if lots of people start typing
+Ottawa, the keyboard sends far more Oslos than anyone intended.
+
+The friend is where this picture stops matching. A model has no word in mind when it writes `"O`.
+It only gives the next token its odds, and after `"O` most of those odds happen to point to
+`ttawa"`.
+
+### Watching the slider
+
+As you drag **P(slo" after "O)** up, more of the `"O` answers really do spell Oslo, so the
+conditioned bar climbs while the per-step bar stays at 65%. At 90%, both branches keep the same
+share of legal endings, nine in ten, so the two bars match. Past 90%, the conditioned bar edges
+slightly beyond the per-step bar, because then the `"O` branch has the larger share of legal
+endings. The distortion comes from starts that differ in how often the model finishes them with an
+allowed city, which a mask that decides one token at a time cannot see.
+
+## Where it breaks
+
+### What this lab fakes or simplifies
+
+- No trained model runs here, so the chances are made up. At each step every token starts on the
+  same low score, −2, and a few get higher scores set by hand. The lab then turns those
+  scores into chances, the same way the **Next-token prediction** lab does.
+- The vocabulary has only 24 tokens, while a real model's vocabulary can hold 100,000.
+- Both grammars are tiny patterns with no spaces, no objects inside other objects, and no special
+  codes for putting a quotation mark inside a piece of text.
+- **Prefix walk** always takes the top legal token, so you never see a random pick.
+- The distortion tree has only two levels, so the lab can list every answer and work out the
+  conditioned bar exactly, which is out of reach for a real model.
+
+Everything the lab does with those made-up chances is real, though. The character-by-character
+check, the mask and the rescaling are real calculations that give the same results a real system
+would get. The difference is that real systems prepare most of the check ahead of time.
+
+### Where the real mechanism fails
+
+**A common mix-up:** it is tempting to treat valid JSON as a correct answer, but passing the parser
+only checks the shape. Picture a multiple-choice test marked by a machine that first checks that
+every row on the answer sheet has exactly one bubble filled in. A sheet can pass that check
+perfectly and still get every question wrong, because filling one bubble per row says nothing about
+filling the right one.
+
+Constrained decoding is like an answer sheet that physically lets you fill only one bubble per row.
+The shape is guaranteed, but the sheet still says nothing about which bubble is right, and the
+function-call walk shows this clearly. The call `get_weather(city="Os")` parses perfectly and asks
+for the weather in a place called Os. At step 6, the token `")` that would end the call right there
+still keeps 6.3% after the mask. A free text or number field also lets fluent nonsense through, so
+`hello` is a perfectly legal city. If a format had a number field for a temperature, any number at
+all would be legal there, even one far hotter than any real day. Even a strict enum cannot rescue a
+misunderstood question, because if the person really asked about Ottawa, every answer the Oslo-or-Bergen schema allows is wrong. So the
+program that runs a function call still has to check its inputs, the way it would check any input
+it cannot trust.
+
+**Length limits** can still break the shape, because real systems set a maximum number of tokens
+for each answer. If that limit is reached before the closing bracket, the answer is cut off
+mid-object and the parser fails anyway. The guarantee holds only when the answer is allowed to
+finish.
+
+**Forcing** the text can make it poor, because when the mask removes most of the probability, the
+tokens that survive may all be ones the model rated unlikely. The output can then be valid and
+still poor, so the share removed, shown in the heading of **Masked distribution**, is a warning
+sign worth watching. It reaches 75% at the first step of the function call, even though the
+surviving token there, `get`, happens to be a good one.
+
+**Per-step masking distorts whole answers**, and the Oslo-and-Bergen gap is not a quirk of this lab.
+Any per-step mask commits to the start of an answer before finding out whether the model would
+finish it legally, and real formats branch far more than twice. Getting the exact conditioned answer
+for a real model would mean adding up the chances of every possible legal ending, which is far too
+much work. Park and colleagues pointed out this problem for grammar-based masking in 2024, and they
+proposed a corrected way to pick tokens.
+
+**A badly built mask** can hurt quality too, if it allows only tokens that match one whole grammar
+piece. Such a mask would block `{"` and `":`. The same text can be cut into tokens in more than one
+way. In the text the model learned from, an opening like `{"ok"` usually came with `{"` as one
+token. A mask that forces `{` then `"` then `ok` gives the model a spelling it rarely saw, and its
+later guesses can get worse after an opening that looks strange to it. That is why a correct mask
+checks each token character by character.
+
+## Going deeper
+
+### How real systems make the mask fast
+
+Real engines turn full JSON Schemas, or bigger kinds of grammar, into a state machine, a
+rule-following machine that tracks where the text is inside the format. Each possible position is
+called a **state**, and for each state they work out most of the list of allowed tokens ahead of
+time. Checking a 100,000-token vocabulary character
+by character at every step would be far too slow, so this preparation is what makes masking cheap.
+Outlines and XGrammar are two well-known engines of this kind.
+
+### The same result, done earlier
+
+The note under the formula on **Masked distribution** says masking gives the "same result as
+setting illegal logits to −∞ before the softmax". In **Next-token prediction**, a model's raw
+scores are called **logits**, and the **softmax** step turns them into chances. The symbol −∞ means
+minus infinity, and a score that low becomes a chance of exactly zero. The softmax then shares the
+probability among the remaining tokens in the same ratios that dividing by Z gives. So you can mask the scores first or
+the chances afterwards, and you get the same numbers either way.
+
+### A safety net, not a steering wheel
+
+The usual pattern in practice is to describe the format in the prompt and use a mask as well. The
+prompt makes the model's own chances favour the format, so little probability gets removed and the
+mask acts as a safety net rather than a steering wheel.
+
+### Token healing
+
+Token boundaries can cause trouble at the other end of the text too, where your prompt stops and the
+model's answer begins. Suppose your prompt ends with `{`, but the model almost always writes `{"`
+as one token. A lone `{` at the end of the prompt is unusual for it, so its next guess can be odd.
+A fix called token healing removes the prompt's last token, here the `{`, then masks the next pick
+so that it must begin with the removed text. That lets the model choose `{"` as it normally would.
+
+### Where these calls go next
+
+The **Tools and function calling** lab runs calls like the `get_weather` one you built here, and the
+**Agents** lab runs them over and over in a loop. The program that runs them still has to check the
+inputs, because the grammar checked the brackets, not whether `get_weather` should run for that
+city. Constrained decoding is also a decode-time technique, meaning it changes how text is produced
+without changing the model, like the techniques in **Inference & KV cache**.

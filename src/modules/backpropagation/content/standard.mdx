@@ -1,0 +1,247 @@
+---
+objectives: ["Follow forward values and backward derivatives", "Use the chain rule on a small graph", "Predict how gradient size changes from layer to layer as depth, activation, initial weight scale, and skip connections change"]
+terms: ["Chain rule", "Local derivative", "Computation graph", "Backward pass", "Upstream gradient", "Reverse-mode autodiff", "Partial derivative", "Gradient checking", "Vanishing gradient", "Exploding gradient", "Weight initialization", "Skip connection", "Activation memory", "Credit assignment"]
+---
+
+## The big picture
+
+This module is about **backpropagation**, the algorithm that computes the gradient of a scalar loss
+with respect to every parameter. *Loss & gradient descent* showed how to use a slope: step each
+weight against it. This module answers where those slopes come from when the loss sits at the end of
+a chain of operations: how much would the loss change for a small nudge to each weight?
+
+The answer is the **chain rule**. Each operation knows only its **local derivative**, how its output
+responds to its own inputs, and the backward pass multiplies those factors along the
+**computation graph**, the record of operations from inputs and parameters to the loss. The module
+follows that product through a one-weight graph, then through a stack of up to 12 layers.
+
+### Where it shows up
+
+- **Every gradient-trained model.** Deep learning frameworks run backpropagation as
+  **reverse-mode automatic differentiation**, so model code defines only the forward computation and
+  gets every gradient from one backward call.
+- **Deep architectures.** Transformers and deep convolutional networks pair skip connections, which
+  add a layer's input to its output, with normalization layers, which rescale activations to a
+  steady size. Separately, initialization schemes such as Glorot (Glorot and Bengio, 2010) and He
+  (He et al., 2015) choose the spread of the random starting weights, which sets how much each layer
+  scales the gradient.
+- **Training memory.** Forward values stay in memory until the backward pass has used them, and
+  this **activation memory** often limits training before compute does.
+
+### Why it matters
+
+Every training step needs a slope for every parameter. Reverse mode gets all of them from one
+backward pass that typically costs about two forward passes, however many parameters the model
+has. Working forward instead would take one pass per parameter; *What it is* shows why.
+
+Depth adds a second problem. The gradient that reaches the first layer has passed through every
+layer above it, so it can arrive too small to move those weights or large enough to blow up the
+update. In the lab, depth, the activation, the initial weight scale, and skip connections set how
+small or large that gradient starts, before any training step.
+
+### What you will be able to explain
+
+- How forward values fill a computation graph from the inputs to the loss, how backward derivatives
+  fill it from the loss back to the weight, and why the backward pass needs the stored forward values.
+- How the chain rule turns the local derivatives of a small graph into `∂L/∂w`, and how a
+  finite-difference check confirms it.
+- How gradient size changes from layer to layer with depth, activation, initial weight scale, and
+  skip connections, so you can predict when the first layers' gradients vanish or explode.
+
+### What the lab shows
+
+Nothing here is a trained model: every number is computed from your settings. The first three cards
+share one graph, `z = x · w`, then `ŷ = σ(z)`, then `L = (ŷ − y)²`, with one weight and one example,
+evaluated with exact formulas.
+
+- **Interactive backpropagation computation graph.** **Backpropagation trace** and
+  **Advance one edge** step forward through `Multiply`, `Activate`, and `Measure loss`, then back to
+  `Product → weight`. A tape records each multiplication.
+- **Loss versus weight tangent chart.** The exact loss curve and its tangent, with **Analytic slope**
+  from the chain rule beside **Numeric check** from a finite difference.
+- **Backpropagation controls and chain rule.** Sliders for **Input x**, **Weight w**, **Target y**,
+  and **Learning rate**, the **Chain rule** product, and **Apply w ← w − η∂L/∂w** for one
+  gradient-descent step.
+- **Gradient flow through depth.** A multilayer perceptron, a stack of fully connected layers, 1 to
+  12 deep with 16 units each. It is backpropagated once at one random draw of starting weights, on 32
+  synthetic points, with no training step and no normalization layers. Bars show each layer's
+  measured gradient norm, the size of its weight gradient.
+
+The key experiment: set **Activation** to `sigmoid`, **Initial weight scale** to `Glorot`, and
+**Skip connections** off, then raise **Network depth** from 1 to 12. **Layer 1 norm** falls by nearly
+seven orders of magnitude, while the last layer's norm swings up and down along the way and ends near
+0.2, about where it started. Turning **Skip connections** on lifts Layer 1's norm back up, and
+**Loss at the start** shows the cost.
+
+## What it is
+
+Gradient descent needs `∂L/∂w` for every parameter. **Backpropagation** computes all of them
+in one backward sweep over the **computation graph**, by multiplying local derivatives along
+each path from the loss back to the parameter.
+
+This lab runs the smallest graph that still has every feature: `z = x · w`, then
+`ŷ = σ(z)`, then `L = (ŷ − y)²`. The forward pass fills in values left to right. The backward
+pass fills in derivatives right to left.
+
+### The three local derivatives
+
+Each node only knows how its own output responds to its own inputs:
+
+- Loss node: `∂L/∂ŷ = 2(ŷ − y)`
+- Sigmoid node: `∂ŷ/∂z = ŷ(1 − ŷ)`
+- Multiply node: `∂z/∂w = x` and `∂z/∂x = w`
+
+The **chain rule** assembles them: `∂L/∂w = 2(ŷ − y) · ŷ(1 − ŷ) · x`. The **Chain rule**
+panel shows exactly this product with the current numbers substituted in. On the graph, each
+edge shows the local factor it multiplies in, each node shows the gradient accumulated so far,
+and the tape below writes out every multiplication.
+
+Notice the pattern in the multiply node. The derivative with respect to `w` is `x`, and the
+derivative with respect to `x` is `w` — each input's gradient depends on the *other* input's
+forward value. That is why the forward values must be kept around until the backward pass
+reaches them.
+
+### Why backward rather than forward
+
+You could compute derivatives forward instead, propagating "how does everything change if `w`
+changes?" from the input onward. That works, but it answers the question for one parameter per
+pass.
+
+Reverse mode answers it for *all* parameters in one pass, because it propagates "how does the
+loss change if this intermediate changes?" backward from a single output. With one scalar loss
+and billions of parameters, a reverse pass costs a small constant multiple of a forward pass,
+typically about twice, while forward mode would need one pass per parameter.
+
+### Many layers: the product gets long
+
+The one-weight graph has three factors. A deep network has more factors for every layer, so the
+**Gradient flow through depth** card measures how a long product behaves. It backpropagates a
+perceptron of 16-unit layers, 1 to 12 deep, at its random starting weights and prints the gradient
+norm for each layer's weights.
+
+With sigmoid units and Glorot starting weights, Layer 1's norm falls from 1.5e-1 at depth 1 to 2.6e-8
+at depth 12, while Layer 12's stays near 0.2. Each layer on the way back multiplies the gradient by
+about 0.24: a sigmoid slope of at most 0.25 times a weight gain near one. That is the **vanishing
+gradient**. Three controls change the product:
+
+- **Activation.** tanh with Glorot or He weights keeps Layer 1 within a factor of three of the last
+  layer at every seed from 1 to 7. Sigmoid does not: its first-to-last ratio is below 0.004 at all four
+  starting scales.
+- **Initial weight scale.** With ReLU at depth 12, Layer 1's norm is 2.4e-7 for small weights, 2.0e-2
+  for Glorot, 1.3 for He, and 3.5e5 for large. The scale sets how big every layer's gradient is, so a
+  bad one means no learning or a blow-up. He initialization (He et al., 2015) was derived for
+  rectifiers and Glorot (Glorot and Bengio, 2010) is the scale the tanh runs hold level.
+- **Skip connections.** A **skip connection** adds a layer's input to its output, so the backward
+  pass gets an identity route: `∂L/∂h_(l−1) = ∂L/∂h_l + W_lᵀδ_l`. At depth 12 with sigmoid and Glorot,
+  Layer 1's norm rises from 2.6e-8 to 0.24. The price shows in **Loss at the start**, which rises from
+  0.90 to 7.30, because the additions make activations grow with depth.
+
+## Why it’s here
+
+This is the **credit assignment** mechanism. When a prediction is wrong, backpropagation
+decides how much each parameter contributed to that error, and the answer is precise rather
+than heuristic.
+
+It also explains two failure modes that shape every architecture decision later in the
+course. Because gradients are products of local derivatives, a long chain of factors below 1
+shrinks toward zero and a long chain above 1 grows without bound. Residual connections, layer
+normalization, and careful initialization all exist to keep that product well behaved.
+
+## How to play with it
+
+Advance the **Backpropagation trace** through `Multiply` and `Activate` and watch values fill
+in from `x` and `w` toward the prediction. Continue to `Measure loss` and compare the loss
+node with its position on the loss-versus-weight chart.
+
+Then step backward through `Loss → output`, `Output → product`, and `Product → weight`. Read
+each `×` tag on an edge as one factor entering the product, and check on the tape that each
+gradient is the previous one times that factor. At the defaults the tape ends at
+`∂L/∂w = −0.1333 × 0.800 = −0.1066`. Click an edge to jump to it.
+
+Set **Target y** far from the current prediction and watch `∂L/∂ŷ` grow. Then set **Input x**
+to `1.5`, **Weight w** to `3`, and **Target y** to `0.1`: the sigmoid saturates, `ŷ(1 − ŷ)`
+drops to 0.011, and `∂L/∂w` falls to 0.029, even though the loss is 0.790, ten times its
+default value.
+
+Next, pick a **Learning rate** and press **Apply w ← w − η∂L/∂w**, then check that the new
+point sits lower on the chart. At the defaults and η 0.70, one press moves `w` from 0.600 to
+0.675 and the loss from 0.0797 to 0.0720. Compare **Analytic slope** with **Numeric check** as
+you go: the **Numeric agreement** readout is a gradient check.
+
+Then open **Gradient flow through depth**. Set **Activation** to `sigmoid`, **Initial weight scale**
+to `Glorot`, and **Skip connections** to off, and raise **Network depth** from 1 to 12: the **Layer 1
+norm** collapses, while the last layer's norm swings with depth and ends near 0.2 as **Layer 12 norm**.
+Switch **Activation** to `tanh` and compare.
+
+At depth 12 with `ReLU`, step **Initial weight scale** from small to large and read **Layer 1 norm**.
+Then switch to `sigmoid`, turn **Skip connections** on, and compare **Layer 1 ÷ last** and **Loss at the
+start**.
+
+## What to notice
+
+- The running product is what travels; the local derivative is what each node contributes.
+  Nothing has global knowledge of the graph.
+- `ŷ(1 − ŷ)` peaks at `0.25` when `ŷ = 0.5` and falls toward zero at both ends. Sigmoid can
+  never pass more than a quarter of the gradient through, which is a per-layer decay factor.
+- The branch toward `x` has a valid derivative but no parameter to update, so no weight change
+  follows it. In a deep model that same branch is how gradient reaches earlier layers.
+- `Target y` is fixed data. During the backward pass the graph marks it `no gradient: data`.
+- Analytic and numeric slopes agree to about eleven significant digits at the defaults.
+  Disagreement in real code almost always means a bug in a hand-written derivative, not a flaw
+  in calculus.
+- A big loss does not guarantee a big gradient. Saturation decouples the two.
+- Vanishing is a ratio between layers; initial scale is a size across all of them. With ReLU at depth
+  12 the first-to-last ratio stays within a factor of ten at every scale, while the norms themselves run
+  from 2.4e-7 to 3.5e5.
+- Skip connections fix the ratio, not the size: the starting loss they leave behind (7.30 against 0.90)
+  is the activations growing, which normalization layers exist to hold down.
+
+## Where it breaks
+
+**In this lab.** The graph is genuinely computed — forward values, every local derivative, the
+chain-rule product, the finite-difference check, and the weight update are all live. What the
+first three cards leave out is scale and structure: one parameter, one example, no minibatch, no
+layers, and a squared-error loss instead of the cross-entropy used for language models. The learning-rate
+slider affects nothing until you press apply.
+
+The Gradient flow card is one random draw (seed 7) of a 16-wide network on 32 synthetic points,
+measured before any training step and with no normalization layers. Other seeds change its numbers, not
+the orderings quoted here; the tests cover seeds 1 to 7. It shows how large a gradient starts, not
+whether the network would train: that also depends on the optimizer, the learning rate, and the loss.
+
+**In real systems.** Nodes have many outputs, so gradients arriving from several paths must be
+*summed* at each node rather than replaced. Weights are reused across positions and time steps,
+which means one parameter accumulates contributions from many places in the graph. And the
+backward pass is not free: it needs the forward activations, so memory grows with depth,
+batch size, and sequence length. Long-context training is frequently memory-bound rather
+than compute-bound for exactly this reason.
+
+Real deep networks rarely use skip connections alone. Transformers and deep convolutional networks pair
+them with normalization layers, which this lab leaves out, so the card shows what skips do on their
+own, including the growth they cause.
+
+Backpropagation is also not a model of biological learning. It requires a global error signal
+and symmetric weight access that brains do not appear to have. It is an efficient algorithm
+for differentiating a program, and nothing more.
+
+## Going deeper
+
+Frameworks implement this as **reverse-mode automatic differentiation**. Every operation
+records enough of its inputs to compute its own local derivative, forming a tape; calling
+backward walks the tape in reverse. You never write a derivative by hand, which is why new
+architectures are cheap to try.
+
+The memory cost has a standard remedy: **gradient checkpointing** stores activations only at
+chosen boundaries and recomputes the rest during the backward pass, trading roughly 30 percent
+more compute for a large memory reduction. Mixed-precision training adds a related wrinkle:
+small gradients in 16-bit floating point (fp16) can underflow to zero, so a loss-scaling factor
+multiplies the loss before backward and divides it out afterward. The bf16 format keeps fp32's
+exponent range and usually needs no scaling.
+
+Two more practical notes. Gradients must be zeroed between steps in most frameworks, because
+accumulation is the default and is what makes large effective batch sizes possible on small
+hardware. And when a graph passes through a non-differentiable operation such as sampling a
+token, ordinary backpropagation stops there; policy-gradient estimators or
+straight-through approximations are needed instead, which is part of why the post-training
+lab's reinforcement stage differs from ordinary supervised training. Reinforcement learning
+foundations runs the simplest such estimator on a four-armed bandit.

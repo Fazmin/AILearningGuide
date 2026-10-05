@@ -1,0 +1,24 @@
+{
+  "assets": [
+    {
+      "path": "assets/bpe-tokenizer.json",
+      "bytes": 30121,
+      "sha256": "cb0cb8aa9e29e730359b20d2d070016f9f9c2af69956fae8e5a5ce5cf0d7b91a"
+    },
+    {
+      "path": "assets/embedding-10k.f32",
+      "bytes": 2000000,
+      "sha256": "611f6bf71ec7269152ff149f0c0e94aced029de434d07e628f52e1a91804e384"
+    },
+    {
+      "path": "assets/embedding-10k.index.json",
+      "bytes": 99429,
+      "sha256": "1f7c89c3efbbce8abc5755955158f41334888fccf2645b9375e7f0f98d46583b"
+    },
+    {
+      "path": "assets/embedding-10k.projections.json",
+      "bytes": 905298,
+      "sha256": "d0c02e58bace8e6018115a32035f6d5a97bef1372d1b49df64955d6dd27b60ac"
+    }
+  ]
+}

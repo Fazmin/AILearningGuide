@@ -1,0 +1,713 @@
+---
+objectives: ["Trace information through a transformer block", "Explain the role of the residual stream", "Explain why attention cannot tell word order by itself and what position information adds"]
+terms: ["Residual stream", "MLP", "Layer normalization", "RMSNorm", "Pre-norm", "Sublayer", "Skip connection", "Feed-forward expansion", "SwiGLU", "Position-wise", "Ablation", "Mixture of experts", "Positional encoding", "Permutation equivariance"]
+---
+
+## The big picture
+
+When you send a message to a chatbot, the program behind it, called a language model, first turns
+each word into a list of numbers. Those numbers then climb through a tall stack of steps, and at the
+top the model scores every piece of text that could come next. The surprising part is that almost
+the whole stack is one design, copied over and over again. That repeated design is called the
+**transformer block**, and in this module you take one apart and watch every piece of it work.
+
+### Where you have met it
+
+The language models behind today’s chatbots are built from this block, stacked dozens of times, with
+a word lookup at the bottom and a next-word scorer at the top. The lab names two real models whose
+sizes you can check for yourself: GPT-2 small stacks 12 blocks, while Llama 2 7B stacks 32 of them.
+The 7B in that name means the model holds about 7 billion adjustable numbers, which you will meet in
+a moment. Bigger models stack even more, since Llama 2 70B uses 80 blocks and Llama 3.1 405B uses
+126.
+
+Inside every one of those blocks, the same few steps run in the same order. That is why
+understanding one block, even the tiny one in this lab, takes you a long way toward understanding
+the whole model.
+
+### Why it matters
+
+A block has several jobs to do at once, and each job would fail in a clear way without its part:
+
+- First, words have to **share information**. In “the animal did not cross the street because it was
+  tired”, the word `it` stands for the animal, so that word needs information from several words
+  back. Without a sharing step, called **attention**, every word would be processed on its own and
+  could never pick anything up from its neighbours.
+- Second, each word’s information has to be **reworked**, because whatever a word has gathered still
+  has to be combined and turned into something more useful for the next block.
+- Third, the stack has to **survive being repeated** dozens of times. In this design, each step adds
+  a correction to a word’s numbers instead of replacing them. Without that rule, information from
+  the bottom of a deep stack would get scrambled on the way up. **Training** would stall too. That
+  is the long practice stage where a model guesses next words over and over. After each guess, its
+  adjustable numbers are nudged a little so that the next guesses improve.
+- Fourth, **word order** has to count. Picture a block in which every word may read every other
+  word. Without extra position information, it cannot tell “the cat sat on the mat” from “the mat
+  sat on the cat”, even though they mean very different things.
+
+### What you will be able to explain
+
+By the end of this lesson, you should be able to explain these three ideas in your own words:
+
+- how information travels through one block, step by step, from the moment a word’s numbers enter
+  to the moment they leave;
+- what the **residual stream** is, a running list of numbers that every step adds to and no step
+  erases, and why that one rule lets models stack so many blocks;
+- why attention, the only step where words share information, cannot tell word order by itself, and
+  what adding position information changes.
+
+### What the lab lets you do
+
+The lab runs a real transformer block right in the page, and it lets you switch its parts on and
+off while you watch the numbers change. It is organised into four cards, and each one shows a
+different side of the block:
+
+- **Transformer block** shows one word’s numbers at every stage of the block, with an on and off
+  switch for each working part.
+- **Residual stream** shows how each part’s changes pile up for that word, and its **Input scale**
+  slider makes the incoming numbers bigger or smaller.
+- **Parameter count** counts the adjustable numbers inside a block, the settings that training
+  tunes, and adds them up for two real models to match their published totals exactly.
+- **Position** reorders the words of a sentence and checks whether the block’s outputs change.
+
+Nothing in the lab has been trained, so its adjustable numbers are still random rather than tuned by
+practice. It shows you the plumbing of a block rather than anything a
+block has learned. That turns out to be enough to see why each pipe is there.
+
+## What it is
+
+### Words as lists of numbers
+
+A computer cannot do arithmetic on the letters c, a and t, so a language model starts by swapping
+each word for numbers. It uses a list of numbers that describes the word, and a list like this is
+called a **vector**. The swap uses a **word lookup table**, which stores one starting list of
+numbers for every word the model knows. Each piece of text the model handles is called a **token**,
+and in this lab every token is a whole word.
+
+Real models use hundreds or thousands of numbers for each token: 768 in GPT-2 small and 4,096 in
+Llama 2 7B. The lab uses just 8, so that you can see every one of them. The lab labels those
+eight places d0 to d7, and the number of places is the model’s width, written d, so in this lab d
+is 8.
+
+The lab’s sentence is “the cat sat on the mat”, six tokens sitting in slots numbered 0 to 5. The
+**Token** buttons at the top of the **Transformer block** card choose which word that card and the
+**Residual stream** card describe. The lab starts on `mat` in slot 5.
+
+The card draws each vector as
+eight small bars, with positive numbers rising above a middle line and negative numbers dropping
+below it. For `mat`, the first bar dips a little below the line and the second rises well above it.
+The bars carry no number labels, but the lab computes them as −0.45 and 1.70.
+
+Beside each row, the card also prints a single number called the **norm**, which measures the
+overall size of the whole list. You find it the way you find the long side of a right-angled
+triangle: square each number, add up the squares, then take the square root. For a short list such
+as 3 and 4, that gives 9 plus 16, which is 25, so the norm is 5.
+
+Doing the same with `mat`’s eight
+starting numbers gives a norm of 2.93, which the top row of the card prints as `norm 2.93`. If you
+picture a list as an arrow, its norm is the arrow’s length.
+
+Keep the two meanings of “norm” apart as you read on, because this **norm** measures size, while
+the **Layer norm** step you are about to meet changes the numbers.
+
+### A conveyor belt that only adds
+
+Picture a factory conveyor belt that carries one tray for each word, with all six trays riding side
+by side. In each tray sits a card with that word’s 8 numbers, and specialists stand at stations
+along the belt. A specialist never takes a card away and never rubs out a number. Instead, it
+photocopies the card, works on the copy, and writes down a change for each of the 8 numbers.
+
+A change might say “add 0.58” or “take away 0.66”, and since a change can be negative, adding it can
+lower a number as well as raise it. The changes are added onto the card, and the tray rolls on to
+the next station carrying everything it already had plus the new changes.
+
+The belt is the model’s **residual stream**: one running list of numbers for each word, travelling
+the full height of the model. Each block is one stretch of the belt with two specialists along it,
+and each specialist is called a **sublayer**:
+
+- **Self-attention** is the specialist that can look into other trays, copying information from the
+  cards of other words. It is the only step in the block where one word’s numbers can affect another
+  word’s.
+- The **MLP**, short for multilayer perceptron, an old name for a small network built in layers,
+  works on one tray at a time. It has no way of seeing that other words exist, and it reworks the
+  numbers already on that card.
+
+The path that carries a card around a specialist, straight to the point where the change is added,
+is called a **skip connection**. It is the reason the belt never breaks, even when a specialist is
+switched off.
+
+Each specialist also has its own set of numbers, like the dials on a machine, which decide
+exactly how it turns a copy into a change. These are not the word’s numbers. They belong to the
+specialist, and it uses the same ones for every word. Training tunes them, so they are called
+**adjustable numbers**, or **parameters**.
+
+### One trip through the block
+
+The **Transformer block** card lists the stages from top to bottom in the order the numbers meet
+them, and the six stages below follow `mat` along that path. Rows on the left rail are the belt
+itself, while indented rows work on a copy. A Layer norm row tidies the copy, and the specialist row
+below it writes its change back at the next plus sign.
+
+#### Stage 1: tidy a copy (`Layer norm`)
+
+Numbers on a card can drift very large or very small on their way up a model, but a specialist
+works best on input of a steady size. So, before each specialist reads its copy, a tidying step
+resizes the copy in two moves. First, it subtracts the average of the eight numbers from each of
+them, so that the new numbers average zero.
+
+Second, it divides each number by how far the numbers typically sit from their average, a kind of
+spread called the standard deviation. That leaves eight numbers whose typical size is 1, and this
+two-move step is called **layer normalization**, which the lab’s button shortens to `Layer norm`.
+
+Here is a small example you can check by hand, using the list 2, 2, 6 and 6, whose average is 4.
+Subtracting 4 gives −2, −2, 2 and 2, and since every number now sits exactly 2 away from the
+average, the spread is 2. Dividing by 2 then gives −1, −1, 1 and 1.
+
+Now make the list 8 times bigger, so that it reads 16, 16, 48 and 48. The average is now 32 and the
+spread is 16, so the tidied copy comes out as −1, −1, 1 and 1 once again. That is the key property:
+however big or small the numbers on the card are, the tidied copy comes out at the same size.
+
+In the conveyor-belt picture, the tidying step is a photocopier with an automatic zoom that always
+prints the copy at one standard size. For `mat`, the Layer norm row reads `(x − 0.05) ÷ 1.03`, which
+means subtract an average of 0.05 and then divide by a spread of 1.03. The tidied copy’s norm is
+2.83, the square root of 8, because eight numbers with a typical size of 1 have squares that add up
+to about 8.
+
+Only the copy is tidied, so the card on the belt keeps its own size. Tidying a copy before each
+specialist reads it is called **pre-norm**, and it is the placement that GPT-2 and Llama use.
+
+#### Stage 2: share between words (`Self-attention`)
+
+This is the step you met in the Attention lab, and here each word again makes three lists of numbers
+from its tidied copy. A **query** describes what the word is looking for, a **key** advertises what
+it can offer, and a **value** holds the information it hands over.
+
+The word compares its query with the key of every word it may read, and it turns those match scores
+into shares that add up to 100 percent. It then takes a blend of their values, where each word’s
+value counts as much as its share. In this block, a word may read itself and the words before it but
+never the words after it, a one-way rule called the **causal mask**. The rule is there because the
+model’s job is to guess the next word, and reading later words would be peeking at the answer.
+
+The block runs two of these searches side by side, and each search is called a head and has its own
+adjustable numbers. In a trained model, that lets each head learn to look for a different kind of
+match, such as one finding the action and another the thing being acted on. The Self-attention row
+shows both heads’ shares for the chosen word, and for `mat`, head 1 gives 29 percent to `sat` and
+only 3 percent to `cat`. Head 2 also leans toward `sat`, giving it 31 percent.
+
+The two blends are then combined into one list of 8 numbers, which is the change this specialist
+writes back, called the **attention write**. For `mat`, its size measured as a norm is 1.57, which
+the **Residual stream** card shows as **Attention write**.
+
+#### Stage 3: add (the first `Residual add`)
+
+The skip connection carries the original card around the specialist, and at the plus sign the
+attention write is added to it. For `mat`, d1 starts at 1.70 and the attention write for d1 is
+−0.66, so after the addition d1 reads 1.04. The `Residual add` rows have no switch, because removing
+the addition would remove the belt itself.
+
+#### Stage 4: tidy again (the second `Layer norm`)
+
+The updated card is copied and tidied in exactly the same way as in stage 1, so that the next
+specialist also reads numbers of a standard size.
+
+#### Stage 5: rework each word alone (`MLP`)
+
+The MLP is a small network built from the kind of artificial neurons you met in earlier labs. It
+first widens the 8 numbers into 32, then passes each of the 32 through a bending rule called
+**GELU**, and finally squeezes the result back down to 8 numbers.
+
+Each of the 32 new numbers is a mix of the 8 old ones. To make one, multiply each old number by its
+own adjustable number, then add up the eight results. Squeezing back down to 8 works the same way,
+with each final number a mix of the 32.
+
+GELU passes large positive numbers through almost unchanged and squashes negative numbers to nearly
+zero, with a smooth bend in between. That bend matters, because two multiply steps in a row can
+always be replaced by one. Multiplying by 3 and then by 2 is the same as multiplying by 6. Without
+the bend in between, the widening and the squeezing would do no more than one plain mixing step, and
+the extra room would be wasted.
+
+For `mat`, the row reads `8 → 32 (GELU, 16 positive) → 8`, meaning
+16 of the 32 in-between numbers came out positive.
+
+How much the MLP widens the list, 4 times here, is called the **feed-forward expansion**. The MLP
+uses the same adjustable numbers for every word, handling one word at a time, and it never looks at
+another slot. A step that works like this, separately on each slot with shared adjustable numbers,
+is called **position-wise**.
+
+Layer norm is position-wise too, because it averages across one word’s 8 numbers and never across
+different words. That leaves attention as the only step in the whole block that crosses between
+slots.
+
+#### Stage 6: add again (the second `Residual add`)
+
+The MLP’s change, called the **MLP write**, is added to the belt, and the result is the block’s
+output for this word. For `mat`’s d1, the MLP write is 0.57. The lab does not print values for a
+single place like d1, but here is the arithmetic it does for the whole trip:
+
+```text
+d1 for mat:    1.70   input
+             − 0.66   attention write
+             + 0.57   MLP write
+             = 1.61   block output
+```
+
+In a pre-norm block, every one of the 8 numbers follows the same pattern: the output equals the
+input plus the attention write plus the MLP write. Nothing was replaced along the way, and the
+**Residual stream** card draws exactly this sum for all eight places.
+
+### Pre-norm and post-norm
+
+The order above, which tidies a copy before each specialist, is pre-norm, but the original
+Transformer from 2017 used a different placement, called **post-norm**. Post-norm tidies the belt
+itself right after each addition, so in the photocopier picture it resizes the card on the belt
+instead of the copy. The specialists then read the belt directly, with no tidied copy in between.
+
+In this one-block lab, that means attention reads the raw input card, because nothing has tidied it
+yet. The **Placement** control switches between `Pre-norm` and `Post-norm`, and in post-norm the
+Layer norm rows move onto the rail.
+
+Post-norm also puts a tidying step across the belt itself, so the route from the top of a stack
+back to the bottom is no longer only plus signs. That is part of why deep post-norm stacks are
+harder to train, as the next section explains.
+
+### Where order comes from
+
+Look again at how attention works, and you will find a gap. Its match scores depend only on the
+numbers being compared, and nothing on a card says which slot its tray rides in. So, when every word
+may read every other word, swapping two trays changes nothing about the work. Each card receives
+exactly the same changes as before, and the outputs come out the same, only in the swapped slots.
+
+Walk one word through both sentences to see why, with every word allowed to read every other word
+and no position information yet. Take `sat`. In “the cat sat on the mat”, it compares its query
+with all six cards, including cat in slot 1 and mat in slot 5.
+
+In “the mat sat on the cat”, `sat` meets the very same six cards, only cat and mat have swapped
+trays. The match scores are the same, so the shares and the blend are the same, and `sat` gets
+exactly the same change. Attention cannot tell a word next door from a word five trays away,
+because distance is written on no card.
+
+The same goes for cat itself. Its card gets the same change in slot 5 as it did in slot 1, so the
+six outputs are identical to before, and only their slots have swapped.
+
+This property has a long name, **permutation equivariance**, which makes sense once you split it in
+two. A permutation is a reordering, and equivariance means the outputs change in the same way as the
+inputs, so reordering the words going in reorders the outputs coming out. Layer norm and the MLP
+never look at slots either, so the whole block shares this property.
+
+The fix is a **positional encoding**: information about each word’s slot. The simplest kind, used in
+this lab, is a list of numbers that depends only on the slot, added to each word’s vector before the
+first block. Other kinds work inside attention instead, as Going deeper describes. In the
+conveyor-belt picture, it is like stamping each card
+with its seat number, where the stamp is a set of small numbers added onto the card’s own 8 numbers.
+
+This lab uses a wave pattern, called sinusoidal, whose numbers swing between −0.5 and 0.5. Slot 0’s
+pattern is 0, 0.5, 0, 0.5 and so on, while slot 1’s pattern begins 0.42 and then 0.27. The first
+numbers of the pattern change quickly from slot to slot while the later ones change slowly, so every
+slot gets its own mix.
+
+It works like the hands of a clock. The second hand moves fast and the hour hand moves slowly, so
+together they give every moment of the day its own reading. In the same way, the fast-changing first
+numbers and the slow-changing later ones give every slot its own pattern.
+
+The label on the **Input x** row says the same thing, describing the input as the word’s embedding,
+meaning its starting numbers, plus the position. So `the` in slot 0 and `the` in slot 4 enter the
+block as two different vectors, with first numbers of −1.48 and −1.86. They are the same word, but
+the block no longer receives them as the same input.
+
+The one-way rule gives away a little order on its own, because the first word sees only itself and
+the last word sees all six. To keep its test about order alone, the **Position** card switches that
+rule off, so that every word reads all six words.
+
+### What is actually running
+
+The lab computes a real transformer block in your browser, only a very small one. Each word is a
+list of 8 numbers, attention has two heads that each work with 4 numbers, and the MLP widens to 32
+numbers and back. Altogether, the block has 840 adjustable numbers, which the **Parameter count**
+card lists as **This lab’s toy block**.
+
+Those adjustable numbers are random rather than trained, because they come from a random number
+generator that always starts from the same value, called a seed. That is why you see the same
+numbers every time you open the lab. The arithmetic is honest, but the numbers carry no meaning, so
+the lab shows how information flows through a block, not what a trained block does with it.
+
+## Why it’s here
+
+Earlier labs gave you separate pieces: attention showed how words share information, and the neuron
+labs showed how a small network reworks numbers. A useful model needs both jobs done many times
+over, one layer after another. The transformer block wires the two together into a single unit that
+you can repeat, and the hard part is making that repetition work.
+
+### Deep stacks lose their signal
+
+Picture a game of telephone with 32 players, where each player whispers the message to the next
+one. Every whisper loses a little, so by the last player the message has turned into nonsense. Now
+change one rule: the original note travels down the line too, and each player may only stick a short
+correction onto it. The last player still holds the original note, plus every correction made along
+the way.
+
+A deep stack built without the belt would be like the first game, because every layer would have to
+pass on a whole new version of every word. With the belt, each specialist only adds a correction, so
+the original information survives all the way to the top. It also lets each specialist focus on one
+kind of correction, since none of them has to rebuild the whole card.
+
+The same path also helps in the other direction, during training, when a correction signal travels
+backward from the model’s answer down through every layer. The signal tells each adjustable number
+which way to move, and the plus signs give it a direct route all the way down to the lowest layers.
+
+Here is why the plus sign matters. A block’s output is its input plus the changes, so if the input
+rises by 1, the output rises by 1 as well, plus whatever the changes do. A message such as “move
+this number up” therefore passes back through each plus sign at full strength.
+
+The route through a specialist is different, because a specialist can shrink the message as it
+passes. Picture a stack where each specialist halves it: after 10 layers, less than a thousandth is
+left, and after 32 layers almost nothing. The plus-sign route still carries the message whole, and
+that direct route is what made very deep stacks trainable.
+
+Together with the tidying step described next, this path is what lets real models repeat their
+block dozens of times. Information does not fade on the way up, and the training signal does not
+die on the way down.
+
+There is one more benefit, which the interpretability labs, about explaining what goes on inside a
+model, build on. Because the stream is a sum of many separate changes, the numbers at the top can,
+in principle, be pulled apart into the pieces that each specialist added.
+
+### Numbers that drift out of range
+
+Without the tidying step, the size of the numbers drifts as they pass through layer after layer.
+Attention is especially sensitive to this, because its match scores come from multiplying numbers
+from two words together. You will see the result in the lab: make the input large with Layer norm
+off, and each head gives 100 percent of its share to a single word.
+
+Where the tidying happens matters as much as whether it happens, and pre-norm is the standard choice
+today because deep stacks train steadily with it. Post-norm usually needs extra care before a deep
+stack will train, such as a slow warm-up with small training steps at the start and carefully chosen
+starting numbers.
+
+### Order carries meaning
+
+Order changes more than which sentence sounds sensible. Picture a model reading “the dog chased the
+cat up a tree, and then the” and guessing what comes next. To guess well, it has to know which
+animal did the chasing and which one is now stuck in the tree, and only the order of the words says
+so.
+
+Swap the two animals and the same words describe a different story, with a different likely next
+word. Since attention alone cannot see order, a position signal has to be added. Without one, a
+block where every word reads every other word hands back the same numbers for both stories, only
+shuffled between the slots.
+
+### Reading a model’s spec sheet
+
+Knowing the block’s shape also helps you read the short descriptions that are published for real
+models, called model cards. The width, the number of layers, the type of MLP and the size of the
+vocabulary almost fix how many adjustable numbers a model has. The **Parameter count** card shows
+how, and it does the counting for you.
+
+## How to play with it
+
+### Switch off the only step that crosses words
+
+**Try this:** In the **Transformer block** card, click the `Self-attention` button so that it reads
+`off`. Then read **Output shift if other words change** in the **Residual stream** card, and watch
+it drop from 0.900 to exactly 0.000.
+
+That readout comes from a small experiment the lab runs for you. It runs the block a second time
+with the other five words replaced, so “the cat sat on the mat” becomes “a dog ran to a mat”. Only
+`mat` stays the same, and the lab measures how far its output moved between the two runs.
+
+With attention on, the output moves by 0.900, because `mat` reads the other words. With attention
+off, nothing else in the block can see another word, so the output does not move at all. The belt
+still reaches the output, though, and **Output norm** stays well above zero, because the card’s own
+numbers pass straight through.
+
+Now switch `Self-attention` back on and pick the `the` button at slot 0. Its shift is 0.000 even
+with attention on, because under the one-way rule the first word has no earlier words to read. Its
+Self-attention row shows both heads giving 100 percent to the word itself.
+
+### Make the input huge
+
+Click the `mat` button again, turn `Layer norm` off, and then drag **Input scale** from 1× up to 8×
+while you watch the Self-attention row. Both heads now give 100 percent of their share to `sat`, so
+`mat` reads one word and ignores the rest.
+
+Match scores come from multiplying numbers from two words together, so when every number is 8 times
+bigger, each score becomes 64 times bigger. Gaps between scores that were small turn huge, and the
+top score takes everything.
+
+The changes the specialists write grow about five times bigger, which you can read in the
+**Attention write** as it climbs from 1.83 to 9.18. The **MLP write** climbs in the same way, from
+2.25 to 11.19, so a block without tidying lets every size run away.
+
+Now turn `Layer norm` back on, and the attention write drops to 1.57 and stays exactly there
+wherever you drag the slider. Making every number on every card the same amount bigger leaves the
+tidied copies unchanged, as the 2, 2, 6, 6 example showed, so attention reads exactly the same
+input.
+
+The MLP’s copy is taken after the attention write has been added, and that write tilts a small card
+more than a large one. So the MLP write drifts a little as you drag, staying between about 1.9 and
+2.2.
+
+Then look at **cos(output, input)**, where cos is short for cosine. Picturing each list as an arrow
+again, the cosine scores how closely the two arrows point the same way. It runs from 1 for exactly
+the same direction down to −1 for opposite directions. With Layer norm on and the input at 8×, it
+reads 0.995, so the output is almost the same as the input. At 0.25× it falls to 0.178, so the
+output is mostly the specialists’ changes.
+
+The changes are about the same size in both cases, so what differs is the size of the stream they
+land on. Two spoonfuls of sugar change a cup of tea a lot, while in a swimming pool you would never
+taste them.
+
+### Watch the additions line up
+
+First set **Input scale** back to 1×. In the **Residual stream** card, each of the eight rows, d0 to
+d7, has three lanes. The top lane runs
+from zero to the input value, and the middle lane adds the attention write, starting where the top
+lane ended. The bottom lane adds the MLP write in the same way, and a diamond marks the block’s
+output for that place.
+
+In pre-norm, every diamond sits exactly at the end of the bottom lane. Find the d1 row for `mat`,
+where the middle lane points left, because the attention write there is negative, and the bottom
+lane points back to the right.
+
+Now switch the `MLP` off in the **Transformer block** card, and the bottom lanes vanish. Each
+diamond lands at the end of the middle lane instead, because the output is now the input plus the
+attention write. Switch the MLP back on and compare the two writes, which for `mat` read 1.57 for
+**Attention write** and 2.00 for **MLP write**.
+
+### Move the tidying onto the belt
+
+In the **Transformer block** card, switch **Placement** to `Post-norm`, and the Layer norm rows jump
+onto the rail, because they now resize the belt itself. In the **Residual stream** card, the
+diamonds no longer sit at the end of the lanes, since the output is resized after every addition.
+
+Watch **Output norm** while you drag **Input scale** from 0.25× to 8×. With Layer norm on, it reads
+2.83 the whole time, the square root of 8, because every card is resized to the same standard size.
+Post-norm erases the stream’s own size at every addition, while pre-norm keeps it.
+
+Now look at the Self-attention row with the slider at 8×. Both heads again give 100 percent to
+`sat`, even with Layer norm on, and the **Attention write** reads 9.18. In post-norm, attention
+reads the raw input card, which nothing has tidied yet, so its huge numbers reach the match scores
+unchanged.
+
+### Count where the parameters live
+
+As you saw earlier, the adjustable numbers in a model are called **parameters**, and the main ones
+are also called weights. In the **Parameter count** card, click `GPT-2 small`, and the bar splits
+one block’s parameters into attention, the MLP (hatched) and a thin sliver for the norms. **MLP
+share** reads 66.6%, so two out of every three adjustable numbers in a block belong to the MLP.
+
+The note under the card adds up all the blocks, the word lookup tables and the final norm. It
+arrives at 124,439,808, which is exactly the published count for GPT-2 small. Click `Llama 2 7B`
+instead, and the MLP share reads 66.8%, with a total of 6,738,415,616, or about 6.7 billion.
+
+Next, drag **Model width** from 768 to 1,536, which doubles d, and watch the **Block** row grow
+about four times bigger. It goes from about 7.1 million to about 28.3 million parameters, because a
+block’s size grows with d squared, and 2 squared is 4. Going deeper shows where the square comes
+from.
+
+Then switch **Norm** between `LayerNorm` and `RMSNorm`, a cheaper tidying step described in Going
+deeper, and notice that the total barely moves.
+
+### Test word order
+
+The **Position** card runs the block with the settings from the **Transformer block** and
+**Residual stream** cards, so start by resetting them. Set **Placement** back to `Pre-norm`, make
+sure `Layer norm`, `Self-attention` and `MLP` are all on, and set **Input scale** to 1×.
+
+Open the **Position** card, then set **Word order** to `Swap cat ↔ mat` and **Position information**
+to `Off`. The two rows of word chips show “the cat sat on the mat” and “the mat sat on the cat”, and
+**Words whose output changed** reads 0 of 6.
+
+Every **Output shift** in the table is 0.000, and every **Result** says “same output”. The block
+hands back the same six outputs, only in each other’s slots, so it cannot tell the two sentences
+apart.
+
+Switch **Position information** to `On`, and all six words change output, with cat moving by 1.565
+and mat by 1.286. Those two move the most because their own slots changed. The four words that
+stayed put move less, by about 0.4 each. Their own cards did not change, but the cat and mat cards
+they read now carry different seat-number stamps.
+
+Try `Shuffle all` next, which turns the sentence into “mat on cat the the sat”. With position
+information off, the result is again 0 of 6, while with it on all six change and **Largest output
+shift** reads 1.391.
+
+Finally, go back to the swap with position information on, and turn `Self-attention` off in the
+**Transformer block** card. Now only cat and mat change output, because without attention a word’s
+output depends only on its own input.
+
+## What to notice
+
+- Each specialist **adds a nudge rather than rewriting the card**, so in the **Residual stream**
+  card the pre-norm diamond lands exactly at the end of the three lanes.
+- **Switching a specialist off does not cut the block**, because the skip connection still carries
+  the stream to the output. That is why blocks built around a residual stream get gradually worse
+  when a part is removed, instead of breaking outright.
+- **Attention is the only step where words affect each other**, so with `Self-attention` off the
+  output shift is 0.000 for every word. With it on, the first word still reads 0.000, because it has
+  no earlier words to read.
+- **In pre-norm, Layer norm hides the stream’s overall size from the specialists**, so with it on
+  the attention write stays at 1.57 at every **Input scale**. That keeps their work in a sensible
+  range however large the stream has grown.
+- **The same change matters less on a bigger stream**, so as you raise **Input scale**, the cosine
+  between output and input climbs toward 1.
+- **Pre-norm keeps the stream’s own size, while post-norm erases it**, which is why the post-norm
+  output norm reads 2.83 at every input scale.
+- **Most of a block’s parameters live in the MLP**, which the **Parameter count** card shows as
+  about two-thirds for both presets.
+- **In the Position card, only position information supplies order**, because the card lifts the
+  one-way rule. With position information off, the card shows zero change at every setting of the
+  other switches. Tidying, the MLP and the input size cannot supply order, because none of them
+  looks at slots.
+
+## Where it breaks
+
+### What this lab simplifies
+
+- **Nothing here has been trained**, because the adjustable numbers are random values from a fixed
+  seed. The arithmetic is honest, but no vector means anything, so the lab shows the plumbing rather
+  than learned skill.
+- **The block is tiny**, with 8 numbers for each word where real models use hundreds or thousands, and it runs
+  one block where real models run dozens.
+- **One switch stands in for two**, since the single `Layer norm` button turns both tidying steps
+  off together, while a real block has two separate ones. Real tidying steps also end by multiplying
+  by a learned scale and adding a learned shift. Here the scale is fixed at 1 and the shift at 0, so
+  those last moves change nothing.
+- **Some parts are missing**, since attention here has no **biases**, the extra adjustable numbers
+  some steps add on at the end of their arithmetic. There is also no dropout, a training trick that
+  randomly blanks out some numbers.
+- **Switching a part off is exact here, in one sense**: nothing later in this block was trained to
+  expect that part’s changes. So no step is thrown off by an input unlike anything it saw in
+  training, which stops being true in a trained model, as the mix-up below explains.
+- **Later steps still react to a part being switched off**, though. Switch `Self-attention` off and
+  the MLP reads a different card, so for `mat` the **MLP write** changes from 2.00 to 1.89. The
+  output then moves by more than the attention write alone.
+- **The Position card lifts the one-way rule**, which matters because with the rule in place, the
+  first word sees only itself and the last sees all six. So even a block with no position numbers
+  leaks a little order, although the last word still cannot tell in which order the five words
+  before it came.
+- **The position pattern is fixed**: it is a wave pattern of size 0.5 added to the input of an
+  untrained block. The card shows that the block’s outputs can depend on position, not that the
+  block makes any use of order.
+- **The parameter counts assume every head has its own keys and values**, which Smaller attention
+  below explains. Outside the two presets, the card also counts the main weights only, with no
+  biases and no word lookup tables.
+
+### Where the conveyor belt stops matching
+
+The belt picture makes a real model look tidier than it is, in three ways. First, the picture
+suggests that each specialist’s changes stay neat and separate on the card. In a real model, every
+specialist at every level writes into the same fixed list of numbers, as long as the model’s width.
+
+With hundreds of specialists, that list runs out of room, so their changes end up crowded on top of
+each other. The interpretability labs return to this problem.
+
+Second, the tidying step is not neutral bookkeeping. It has its own adjustable numbers, a scale and
+a shift, which training tunes. And the size it hides from each copy still matters. A word with large
+numbers on the belt is changed less by the same write, as the sugar example showed. Trained models
+make use of effects like these.
+
+Third, the specialists are not workers who choose what to write, since each one does fixed
+arithmetic with its learned numbers, and its change is whatever that arithmetic produces.
+
+### What goes wrong in real models
+
+**A common mix-up:** Switching a specialist off in a real, trained model is not a clean experiment.
+Picture a school band that has rehearsed for months with a drummer, and on concert night the drummer
+is sick. The band sounds noticeably worse, but not only because the drum part is missing, since the other
+players were counting on the beat to keep time and they stumble too.
+
+Judging the drummer’s job by how bad the band sounds would overstate it. A trained model works the
+same way, because every later layer learned to expect that specialist’s changes. Removing it hands
+those layers inputs they never saw in training, and nothing retrains to make up for the gap.
+
+The damage you measure therefore mixes the specialist’s own job with the shock to everything after
+it. Removing a part like this is called **ablation**, and getting an honest answer from it takes the
+more careful methods in the circuits lab.
+
+Position has real-world limits as well, because adding position information is necessary but not
+enough, and a trained model still has to learn to use it. How well a model copes with texts longer
+than the ones it trained on also depends on which position scheme it uses.
+
+Finally, for most models the parameter count tracks both the memory a model needs and the work it
+does for each word. Some designs separate the two, because they hold many MLPs per block but run
+only a few of them for each word, as Going deeper explains.
+
+## Going deeper
+
+### Counting a block from its shape
+
+You can work out a model’s size from its shape, because most of its adjustable numbers sit in grids
+that turn one list into another. Each new number is a mix of all d old ones, and each mix needs d
+adjustable numbers of its own, one for each old number. So a grid that turns a list of d numbers
+into a new list of d numbers needs d × d entries, written d².
+
+Attention needs four of these grids, one each to make queries, keys and values and one to combine
+the heads’ results, which is the **Attention** row’s `4 · d²`. With d = 768, one grid holds 589,824
+numbers, so the four of them together hold 2,359,296.
+
+The MLP needs two bigger grids, one that widens the list to 4d and one that squeezes it back. For
+GPT-2 small the widened list has 3,072 numbers, which is 4 times 768. So the **MLP** row reads `2 ·
+d · 3,072`, which comes to 4,718,592, twice the attention count.
+
+The MLP’s two grids hold 8 · d² between them, so adding attention’s 4 · d² gives about 12 · d² for a
+whole block. That is why the **Block** row compares the total with this rule of thumb, and why
+two-thirds of every block is MLP.
+
+The two tidying steps add only a scale and a shift for each of the d places. At d = 768 they make up
+about 0.04% of a block, so choosing between LayerNorm and RMSNorm affects speed and steadiness
+rather than size. Because the count grows with d², doubling the width makes each block four times
+bigger.
+
+Load **GPT-2 small**, and the lab adds its 12 blocks to a word lookup table for 50,257 tokens. It
+also counts a table of positions, the biases and a final norm, and it reproduces the published
+124,439,808 exactly.
+
+### Newer MLPs
+
+Newer designs mostly change the MLP rather than attention, and one such design, **SwiGLU**, splits
+the widening step into two branches that are multiplied together. One branch acts a little like a
+dimmer switch on the other. Since SwiGLU uses three grids instead of two, it narrows the middle to
+about 8/3 of the width, which keeps its total close to the classic MLP’s.
+
+It is the `SwiGLU ≈8/3×` choice in the **MLP** control, and **Llama 2 7B** uses it with a middle
+width of 11,008. With it, the preset still adds up to Llama 2 7B’s published 6,738,415,616.
+
+A **mixture of experts** goes further by keeping many MLPs in each block but sending each word to
+only a few of them. A model can then have an enormous total size while each word still pays only a
+small bill in work.
+
+### Smaller attention
+
+**Grouped-query attention**, covered in **Modern attention at scale**, lets several heads share the
+same keys and values. That shrinks two of attention’s four grids, so real attention often costs less
+than `4 · d²`.
+
+### A cheaper tidying step
+
+**RMSNorm** skips subtracting the average and has no learned shift, so it only divides by the
+typical size of the numbers and then applies a learned scale. It is cheaper to compute, works about
+as well in practice, and is the standard in recent models such as Llama.
+
+### Other ways to supply order
+
+Real models handle order in several ways, and some of them add a learned list of position numbers
+for each slot. Others add a fixed wave pattern, as this lab does, while others lower the match score
+between two words the farther apart they sit, a scheme called ALiBi.
+
+Many current models, Llama among them, add nothing at the input at all. Instead, they twist each
+query and key by an angle that depends on its slot, a scheme called rotary embeddings. **Modern
+attention at scale** shows it at work, and the **Attention** lab lines the schemes up.
+
+A model that only reads earlier words can pick up a little order from that rule alone. Even so,
+most models still supply position information on purpose, either at the input or inside attention.
+
+### Peeking partway up
+
+At the very top of the stack, one more tidying step and a word-scoring layer turn each word’s list
+of numbers into odds for the next token. You can also apply that scoring layer to the residual
+stream partway up the stack. That gives a rough peek at which next token the model was leaning
+toward at that depth, a tool researchers call the logit lens.
+
+### Specialists that read and write in the same space
+
+Because every specialist only adds to a shared stream, you can picture each part of attention, and
+each neuron in the MLP, as reading certain mixes of the stream’s numbers. Each part also writes its
+own mix back, and two parts at different depths work together when what one writes overlaps with
+what the other reads. The circuits lab is built on that way of looking at a model.

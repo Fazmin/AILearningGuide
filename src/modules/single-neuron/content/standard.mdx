@@ -1,0 +1,158 @@
+---
+objectives: ["Compute a weighted sum", "Describe how activation functions shape outputs", "Relate the weights and bias to the position of the decision boundary"]
+terms: ["Weight", "Bias", "Weighted sum", "Dot product", "Weight vector", "Activation", "Sigmoid", "ReLU", "Step function", "Decision boundary", "Linear separability", "Saturation", "Parameter"]
+---
+
+## The big picture
+
+This module is about a single neuron: a unit that multiplies each input by a learned **weight**,
+adds a learned **bias**, and passes the resulting **weighted sum** `z` through an
+**activation**, a fixed scalar function. *Tokens & embeddings* turned text into vectors; a neuron
+reads a vector of inputs like those and returns one number.
+
+The question it answers is what a few learned numbers can decide about an input, and what they
+cannot. The answer is geometric. The inputs where `z = 0` form the **decision boundary**, a
+straight line in this lab's two-input plane and a hyperplane in general. The weights and bias
+place that boundary; the activation sets how the output changes across it.
+
+### Where it shows up
+
+- **Layers in this course.** Dense layers, attention projections, and MLP blocks are all built
+  from this one weighted sum.
+- **Transformers.** Attention scores, MLP hidden units, and output logits are all weighted sums
+  with a nonlinearity nearby.
+- **Activation choices.** Hidden layers in production mostly use smooth relatives of ReLU, and
+  sigmoid remains at binary outputs and gates.
+
+### Why it matters
+
+A neuron decides from its inputs using only numbers that training can change: its
+**parameters**, the weights and the bias. Three ingredients are there because leaving any one
+out causes a specific failure:
+
+- Without the bias, the decision boundary is forced through the origin.
+- Without a nonlinear activation, extra layers add no expressive power.
+- Without a usable slope in the activation, gradient descent has nothing to follow, which is why
+  step units cannot be trained by it.
+
+Even so, one neuron draws one straight boundary. A pattern is **linearly separable** when a
+single straight boundary splits its classes; one that is not is out of reach. XOR is the
+standard example, and the reason *Stacking neurons* comes next.
+
+### What you will be able to explain
+
+- Compute a weighted sum `z = x₁w₁ + x₂w₂ + b` by hand, and check it against the lab's
+  **Weighted sum** readout.
+- Describe how sigmoid, ReLU and step shape the output from the same `z`, and how each one's
+  slope decides whether gradient descent gets a signal.
+- Relate the weights and bias to the position of the decision boundary: the direction of the
+  weight vector `w = (w₁, w₂)` turns it, the ratio `|b| / ‖w‖` sets how far it sits from the
+  origin, and scaling all three together leaves it in place.
+
+### What the lab shows
+
+Nothing trains and there is no dataset. Every number is closed-form maths for one two-input
+neuron, evaluated exactly from the inputs and parameters you set by hand.
+
+- **Decision boundary and controls.** The input square, shaded by the neuron's output, with the
+  boundary, the weight vector drawn as the `w` arrow, and a probe at the current input. Controls:
+  **Activation** (Sigmoid, ReLU, Step), **Input x₁**, **Input x₂**, **Weight w₁**, **Weight w₂**,
+  **Bias b**, and **Corner task** (Off, AND, OR, XOR). Readouts: **‖w‖**,
+  **Distance to boundary**, and **Corners correct**.
+- **Neuron equation.** The forward pass with every product shown, and the **Weighted sum** and
+  **Activation** rows evaluated live.
+- **Activation curve.** The chosen function for `z` from −6 to 6, with the current `z`, the
+  tangent where one exists (never for Step), and **Slope f′(z)**.
+
+The `w` arrow points exactly along `w`, but its length is resized to fit the plot, and the four
+corners are a fixed truth table with no loss. The key experiment: set **Corner task** to
+`AND` or `OR` and find weights that score 4 / 4, then switch to `XOR`. No setting of the three
+sliders gets past 3 / 4.
+
+## What it is
+
+A neuron is two operations in sequence: an affine map, then a scalar **activation**. For the
+two inputs in this lab the affine part is `z = x₁w₁ + x₂w₂ + b` and the output is `a = f(z)`.
+Only the weights and the bias are learned; the inputs arrive from data or a previous layer.
+
+At the defaults, `z = 0.70 × 1.2 + 0.35 × (−0.8) + (−0.1) = 0.460`, and `σ(0.460) = 0.613`.
+
+### The geometry of z = w · x + b
+
+Written for any width, `z = w · x + b`. The **weight vector** `w` is the gradient of `z` with
+respect to the input, so it is perpendicular to every level line of `z`, including the
+**decision boundary** `z = 0`. Its direction sets the boundary's orientation. Its length sets
+how fast `z` grows: the lines `z = ±1, ±2` sit `1 / ‖w‖` apart.
+
+The bias sets the offset. The signed distance from an input to the boundary is `z / ‖w‖`,
+which the lab prints as **Distance to boundary**: 0.319 at the defaults, where `‖w‖` is
+1.442. Without a bias the boundary would be forced through the origin.
+
+### What the activation adds
+
+- **Sigmoid** maps any `z` into the open interval (0, 1). Its slope `σ(1 − σ)` peaks at 0.25
+  at `z = 0` and falls below 0.05 beyond `|z| ≈ 2.89`.
+- **ReLU** returns `max(0, z)`. It is unbounded above, and its slope is exactly 1 on the
+  active side and 0 on the other.
+- **Step** returns 1 when `z > 0` and 0 otherwise. Its slope is 0 everywhere except the jump,
+  where no derivative exists, so it gives gradient descent nothing to follow.
+
+## Why it’s here
+
+This is the smallest unit that learns, and the rest of the course is built from copies of it.
+A layer is many neurons reading the same inputs with different weights; a deep network is
+layers of those.
+
+Two affine maps composed are still one affine map, so without a nonlinearity any stack
+collapses to a single linear function. The next lab tests that claim directly.
+
+## How to play with it
+
+Move **Input x₁** and **Input x₂** and watch the probe cross the plane while **Weighted
+sum** and **Activation** update. Hold the inputs and sweep **Weight w₁** from `-2` to `2`:
+the boundary rotates and the `w` arrow stays perpendicular. **Bias b** translates it.
+
+With the default parameters, set the inputs to `0.75` and `1.00` so `z = 0`, then switch
+**Activation**: Sigmoid gives 0.500, ReLU 0.000, Step 0. Finally set **Corner task** to
+`AND`, `OR`, and `XOR` and try to score 4 / 4 on each.
+
+## What to notice
+
+- Scaling `w₁`, `w₂`, and `b` by the same factor leaves the boundary and the distance in
+  place while `z` scales. From (1.0, −0.5, −0.2) to (2.0, −1.0, −0.4), the default probe's `z`
+  goes from 0.325 to 0.650 and its distance stays 0.291.
+- Scaling only the weights moves the boundary toward the origin, because `b` did not scale.
+- The three activations disagree most near `z = 0`. At the lab's maximum, `z = 6`, sigmoid
+  reads 0.998 with slope 0.0025, step reads 1, and ReLU reads 6.
+- AND and OR reach 4 / 4, for example `w = (1, 1)` with `b = −1.5` or `b = −0.5`. XOR never
+  passes 3 / 4.
+
+## Where it breaks
+
+### In this lab
+
+Nothing trains. The parameters are hand-set, the inputs are clamped to the unit square, and
+the four corners are a truth table, not a dataset with a loss. The `w` arrow's drawn length
+is scaled for display; its direction is exact.
+
+### In real systems
+
+One neuron draws one hyperplane, so any pattern that is not **linearly separable** is out of
+reach. XOR is the standard example: an exhaustive search over this lab's slider grid finds
+no setting above 3 / 4. Step units cannot be trained by gradient descent. Sigmoid units in
+deep stacks slow learning through **saturation**, and ReLU units can die: once `z` is
+negative for every example, the gradient is zero and the unit may never recover.
+
+A weight is also not an importance score. Rescale an input feature and its weight
+compensates, with no change in behaviour.
+
+## Going deeper
+
+Production hidden layers mostly use GELU or SiLU, smooth relatives of ReLU that allow small
+negative outputs and keep a usable slope near zero. Sigmoid survives at binary outputs and
+inside gates; its multi-class relative, softmax, appears in every attention head.
+
+Initialization scale keeps `z` in the responsive part of the activation at the start of
+training, and normalization layers keep it there as depth grows. With a step activation,
+this unit is Rosenblatt's perceptron (1958). Minsky and Papert's 1969 analysis of what one
+layer cannot compute, XOR among it, is answered by Stacking neurons, the next lab.

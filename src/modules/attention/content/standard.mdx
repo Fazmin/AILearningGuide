@@ -1,0 +1,353 @@
+---
+objectives: ["Distinguish queries, keys, and values", "Read an attention pattern without over-interpreting it", "Tell a head that follows content from one that reads a fixed distance", "Explain what the causal mask changes and how encoder and decoder-only models differ", "Say why scores are divided by the square root of the head dimension"]
+terms: ["Query", "Key", "Value", "Attention weight", "Attention head", "Scaled dot product", "Causal mask", "Multi-head attention", "Output projection", "Head dimension", "Attention pattern", "Induction head", "Previous-token head", "Attention sink", "Grouped-query attention", "Encoder", "Decoder-only (causal) language model", "Masked language model", "Positional encoding"]
+---
+
+## The big picture
+
+This module is about self-attention, the transformer step that moves information between
+positions. It answers a routing question: which parts of the context should a position draw on,
+when the answer changes with the text? **Next-token prediction** treated the model as a map from a
+context to a next-token distribution; this module opens the step that does the routing.
+
+Each position asks with a **query** (what it looks for), every readable position answers with a
+**key** (what it offers), and the position receives a mix of their **values** (what each passes
+on), weighted toward the best matches. One independent set of these learned projections is an
+**attention head**. The module also covers position information, the causal mask that stops a
+position reading later ones, and dividing scores by `√d_k`, the square root of the head dimension.
+
+### Where it shows up
+
+- **Model families.** A decoder-only (causal) language model, like this lab's, keeps the causal
+  mask and predicts the next token. An encoder drops the mask and reads both directions; BERT is
+  one, trained to fill hidden tokens.
+- **Position schemes.** GPT-2 and this lab's model add a learned vector per slot, the original
+  Transformer a fixed sinusoidal one, and Llama and many recent models rotate queries and keys
+  (RoPE).
+- **Serving.** Generation caches past keys and values, grouped-query attention shrinks that cache,
+  and kernels such as FlashAttention compute the softmax in on-chip tiles. Scoring every pair makes
+  cost grow with the square of sequence length.
+- **Interpretability.** Induction heads (Olsson and colleagues, 2022) attend from a repeated token
+  to what followed its earlier occurrence.
+
+### Why it matters
+
+Attention computes its routes from each input's content and positions, so the same learned weights
+serve any input. Each design choice around it prevents a specific failure:
+
+- Without a position signal, attention sees only vectors and, apart from a little order the causal
+  mask leaks, cannot tell *the dog bit the man* from *the man bit the dog*.
+- Without the causal mask, next-token training could be solved by copying the answer.
+- Without the division by `√d_k`, softmax pushes each query's weights toward a
+  single key, and the original Transformer authors suspected this leaves extremely small gradients
+  in training.
+
+### What you will be able to explain
+
+- Tell queries, keys and values apart: queries and keys decide which positions are read, and values
+  decide what is read.
+- Read an attention pattern as evidence about routing, not proof that the output used the route.
+- Tell a head that follows content from one that reads a fixed distance, by moving the content.
+- Say what the causal mask changes, and how encoder and decoder-only models differ.
+- Say why scores are divided by the square root of the head dimension.
+
+### What the lab shows
+
+The lab runs a real two-layer, four-head character transformer with 1.37 million parameters,
+trained on Tiny Shakespeare plus synthetic repeated strings. With the model's own settings, every
+attention weight and Q, K and V vector comes from it; the **runtime status** badge says when
+deterministic stand-in values show instead.
+
+Type a **Sentence** or press an **Examples** button, then click a word in the arc diagram to make it
+the query. The **Attention matrix** card shows the model's own **Characters** grid, or the
+**Words** view the lab sums from it. The inspector sets **Layer** and **Attention head**. The stage
+buttons under the arc diagram step the inspector through `Query`, `Keys`, `Score`, `Softmax` and
+`Mix`; its `Softmax` row recomputes one character pair's weight in closed form beside the model's
+value.
+
+**Mask** set to *Bidirectional*, **Score scaling** set to *No scaling*, and **Value vectors (V)**
+are inference-time experiments on one head, not trained conditions. After you edit a Q or K chip,
+the arcs, that query's word row, the `Softmax` row and the mix come from your numbers, not the
+model, until you press **Match the model vectors**.
+
+The key experiment uses the fixed **Repeated name**, **Name moved earlier**, **Repeats every 8**
+and **Repeats every 9** inputs to test whether a route follows content or keeps a fixed distance.
+
+## What it is
+
+Self-attention lets one position read from other positions. Each token's vector is projected
+three ways by learned matrices, into a **query**, a **key**, and a **value**. The query of one
+position is compared against the keys of all permitted positions to decide how much of each
+value to take.
+
+For a causal head the calculation is `softmax(QKᵀ / √d_k + M) V`, where `d_k` is the head
+dimension and the mask `M` is 0 for earlier or equal positions and −∞ for later ones. The lab
+exposes it as five stages: `Query`, `Keys`, `Score`, `Softmax`, and `Mix`.
+
+### How the five stages fit together
+
+1. **Project (`Query`, `Keys`).** One vector per position becomes three vectors, each of the
+   head's dimension. Queries and keys are compared with each other; values carry the payload.
+2. **Score.** Take the dot product of the query with each key. The **Score** readout shows
+   `q · k` for the pair you selected. A high score means the two vectors point in similar
+   directions in the space this head learned.
+3. **Scale and normalize.** Divide by `√d_k`, shown in the **Scale** readout, then apply softmax
+   across the visible key positions. The strip in the inspector draws the whole row twice: the
+   scores above, weights below, with masked positions hatched. **Score scaling** switches the
+   division off so you can see what it does.
+4. **Mix.** Multiply each value vector by its weight and sum. The **Mixed value** chip shows the
+   first dimensions of that 64-dimensional result, which the output projection then writes back
+   into the residual stream. **Value vectors (V)** zeroes the payload so you can see which stage
+   owns it.
+
+### Why the scores are compared, not stored
+
+Nothing about this routing is fixed. The same head applies the same projection matrices to
+whatever text arrives, and the pattern that emerges is a function of content and position. The
+*weights* of the network are fixed after training, while the *routes* are computed fresh for
+every input.
+
+### Where position comes from
+
+The dot product `q · k` sees only vectors. Nothing in it says which slot a vector came from, so
+with no extra signal, reordering the words only reorders the outputs, and attention cannot tell *the
+dog bit the man* from *the man bit the dog*. (The causal mask leaks a little order; **The
+transformer block** measures it.) Order has to be injected, and the schemes differ in where:
+
+- **Learned absolute** (GPT-2, and this lab's model): a trained vector for each slot is added to
+  the token vector at the input. A slot beyond the table has no vector, so context is capped at
+  the table size, 64 here.
+- **Sinusoidal absolute** (the original Transformer): a fixed sine and cosine pattern of the slot
+  is added at the input. Nothing is trained, but such models extrapolate poorly past their trained
+  length.
+- **Relative, ALiBi**: no position vector. A penalty proportional to the distance between query and
+  key is subtracted from each score, with a fixed slope per head, so nearer keys score higher.
+- **Rotary, RoPE** (Llama and many recent models): each query and key pair is rotated by an angle
+  proportional to its position, so the score depends only on the distance between the two. **Modern
+  attention at scale** has a card for it.
+
+This lab's model is the first kind. A head can prefer a fixed distance back only if its queries and
+keys carry the slot, and here they do: Layer 1 has heads that read 1, 2 or 3 characters back on every
+text this lesson tries.
+
+Zero the 64 learned vectors and those stripes fall from between 66 and 100
+percent of the weight to under 6 percent. The order test itself, with and without position information, runs in
+**The transformer block**.
+
+### What this lab is running
+
+The interactive drives a real two-layer, four-head character transformer with model width 256,
+head dimension 64 and 1.37 million parameters, exported to ONNX. It reads the actual Q, K and V
+tensors and per-head attention weights from that model. The **runtime status** badge names the
+execution provider, or says when the lab is showing its deterministic stand-in values.
+
+It trained for 8,000 steps on 64-character windows of Tiny Shakespeare: 45 windows of each batch of
+64 from the first 90 percent of the text, and 19 synthetic windows holding a random string repeated
+at a period from 4 to 31 characters, except 11, 13, 17 and 19. The last 10 percent of the text was
+held out for measurement.
+
+Because the model is character-level, the **Words** view sums character weights over each word,
+where a word owns the space in front of it. With that convention a row read at a word's last
+character covers only earlier characters, so word rows sum to exactly 100 percent with nothing
+discarded. The **Characters** view shows the model's own grid.
+
+## Why it’s here
+
+Attention is the mechanism that makes context work. Before it, a position holds mostly local
+information: this token, at this place. Attention gives it a content-addressed way to retrieve
+what it needs, such as the subject a pronoun refers to, the matching bracket, or the format
+established three examples ago.
+
+It is also the piece that made scale practical. Recurrent models pushed all history through one
+fixed-size state, computed strictly in order. Attention compares all positions in parallel
+during training, which is what allowed sequence models to use modern accelerators fully.
+
+## How to play with it
+
+Choose a query token in the arc diagram, then move the **Attention head** slider across all
+four heads at each **Layer**. The same sentence produces visibly different routing, because each
+head learned its own projection matrices.
+
+Select a matrix cell to inspect one query–key pair, then step through `Score` and `Softmax`. The
+**Softmax** row recomputes the weight from the displayed Q and K and prints the model's own value
+beside it; they agree to within about 1e-6. Compare **Selected score** with **Selected weight**:
+the first is one character pair, the second sums a whole word.
+
+Edit a number in the `K` vector chip and watch every weight in that row change, not just the
+pair you edited. Press **Match the model vectors** to return to the model's own values.
+
+### Divide, or don't
+
+Set **Score scaling** to *No scaling*. The raw scores are 8 times larger than the scaled ones, so
+softmax concentrates. Compare **Largest weight** and **Saturated rows**, which counts the rows of
+this head's grid that put 99 percent or more on one character. For Layer 2 head 2 on the pronoun
+sentence, no row does with the division and 26 of 55 rows do without it.
+
+### Zero the values
+
+Set **Value vectors (V)** to *Zero all*. The strip, the arcs and every weight stay exactly as they
+were, while the **Mixed value** falls to zero: Q and K chose the route, and V is what travels
+along it. *Zero word* removes only the inspected word's values, and the mix loses exactly that
+word's share. Pick a cell with a large weight to see it.
+
+### Lift the mask
+
+In the **Attention matrix** card, set **Mask** to *Bidirectional*. Each row now reads every
+character, weight appears above the diagonal, and every weight below it shrinks by the same factor,
+because the row still sums to 100 percent. For `it`, Layer 1 heads 3 and 4 move 0.1 and 0.2 percent
+of their weight forward; Layer 2 head 4 moves 90.2 percent.
+
+Layer 2 heads 2 and 3 put 33.8 and 30.6 percent of `it` on the very next character. In next-token
+training that character is the answer. Reading it directly would solve the task by copying, which is
+what the causal mask prevents.
+
+### Test a route before you believe it
+
+Press **Pronoun sentence** with `it` as the query and move the **Attention head** slider through both
+layers. No head's strongest route is `animal`, and none gives it even 10 percent. Layer 1 heads 3 and
+4 send 99.9 percent to `it` itself. The **Characters** view shows why: a stripe one place below the
+diagonal, because they read the previous character, the `i` inside `it`.
+
+Now press **Repeated name**, set **Layer 2** and head 3, and read the second `Mark`: 92.7 percent
+goes to `Jones`, the word after the earlier `Mark`. Press **Name moved earlier**. The route stays on
+`Jones` at 97.2 percent although the earlier name is now 19 characters back instead of 34.
+
+A route that follows the content when you move it is worth testing. It is still not proof that the
+output used it. For a name with no earlier match, type Smith at the end and select it: no word gets
+even 20 percent. Other surnames land elsewhere: with Davis, about two thirds goes to the first
+character, which the Words view counts as part of the first Mark.
+
+## What to notice
+
+- Every row sums to 100 percent, which makes attention a competition. Strengthening one route
+  necessarily weakens the others in that row, as you see when you edit a single key.
+- The matrix is triangular. This model is causal, so a query can attend to itself and to earlier
+  positions only. That constraint is what allows every position to be trained in parallel on
+  next-token prediction without leaking the answer. Set **Mask** to *Bidirectional* and the upper
+  triangle fills.
+- The **On spaces** readout needs interpretation. For `it`, Layer 1 head 2 puts 99.1 percent on
+  spaces, but only because it reads two characters back and `it` has two letters. For `because` the
+  same head puts 1.3 percent there. Layer 2 head 4 puts 61.7 percent on spaces for `it`.
+- Layer 1 heads 2, 3 and 4 read a fixed distance back (2, 1 and 1 characters), and head 1 puts about
+  two thirds of its weight 3 back. Layer 2 routes differ from Layer 1's on the same text, because
+  layer 2 is attending to vectors that layer 1 already modified.
+- Scaling by `√d_k` is not cosmetic. The **Score** and **Scale** readouts differ by the constant
+  factor 8, but that factor decides whether softmax produces graded weights or a near one-hot row.
+- Zeroing V changes nothing in the strip and everything in the **Mixed value**. Keys decide who is
+  read; values decide what is read.
+
+## Where it breaks
+
+**An attention weight is not an explanation.** It describes how much of one value vector was
+included at one head in one layer. It says nothing about what that value *contains*, whether the
+output projection kept it, whether a later layer cancelled it, or whether the final answer
+depended on it. Establishing that requires intervention, the subject of the circuits lab.
+
+### How to tell copying from a positional habit
+
+A head that reads a fixed distance back looks like copying whenever the repeat length happens to
+match that distance. The method that separates them is to change the repeat length and see whether
+the stripes follow.
+
+Press **Repeats every 8** and view **Characters**. Layer 2 heads 2 and 3 have stripes 7, 15 and 23
+characters back, where the next character of the pattern sits: 94 and 88 percent of their weight
+lands on it.
+
+Press **Repeats every 9**. The stripes move to 8, 17 and 26, and the share on the true
+next character is 95 and 89 percent. Less than 1 percent is left at 7, 15 and 23. That is what
+copying looks like.
+
+The six other heads do not copy: none puts more than 11 percent on the true next character at either
+period. Layer 1 heads 1 to 4 keep their strongest stripe 3, 2, 1 and 1 characters back at both
+periods. Those are fixed-distance habits, and they depend on the learned position vectors.
+
+### What this model demonstrates, and what it does not
+
+The model passes a check built to fail a position habit. The check repeats a random string once, at
+a period the model never trained on (11, 13, 17 or 19), and measures each head's attention from the
+second copy to the character after the earlier match, an offset one less than the period.
+
+Demonstrated:
+
+- Layer 2 heads 2 and 3 put 0.83 and 0.81 of their weight there on random strings, the worst case
+  over the four periods, and 0.40 and 0.51 on snippets of held-out Shakespeare. Every other head
+  stays under 0.06 on random strings at each of the four periods. A fixed 7-back look-up would
+  score near zero.
+- The loss on the repeated half falls from about 4.3 to between 0.13 and 0.25 nats on random
+  strings, and from 1.6–1.7 to 0.39–0.53 on corpus text.
+- Layer 1 heads 3 and 4 put 0.99 or more of their weight on the previous character, the information
+  a layer-2 induction head needs from the layer below.
+
+Not demonstrated:
+
+- The wiring. No path patching was run. Switching a head off removes everything it writes.
+  Switching off Layer 2 head 3 raises the repeated-half loss more than tenfold, but switching off
+  Layer 1 head 2, which is not a previous-token head, costs about as much as Layer 1 head 4. Ablation
+  alone does not isolate the circuit.
+- Anything beyond this model. It has 1.4 million parameters, reads characters, and learned from one
+  author's plays plus synthetic repeats; it says nothing about in-context learning in a large
+  language model.
+- What the other heads do. Layer 1 head 1 and Layer 2 heads 1 and 4 are displayed, not explained.
+- An attention pattern is evidence about routing, not an explanation by itself.
+
+### Other limits of this lab
+
+The model trained for 8,000 steps, about 23 passes over the 1.0 million characters of its training
+split. Its loss on the held-out last 10 percent is 1.54 nats per character (2.23 bits), against
+4.19 nats for a uniform guess over its 66 symbols. About 30 percent of each batch, 19 of 64 windows,
+was synthetic repeated strings, by design, so this model saw repetition on purpose.
+
+The mask, scaling and value controls are inference-time experiments. **Mask** lifts the mask for one
+head of a model trained with it on, so the later-position scores were never trained. **Score
+scaling** multiplies this head's scores by 8, which shows saturation, not training without the
+division. **Value vectors (V)** changes the lab's mix for one head, not the model's output.
+
+Input caps at 64 characters, the trained block size. The chips expose only 4 of 64 dimensions, and
+after an edit the displayed weights come from your vectors, not the model.
+
+**In real systems.** Full self-attention compares every pair of positions, so the score matrix
+costs time and memory proportional to the square of sequence length. That single fact drives most
+long-context engineering.
+
+## Going deeper
+
+**Multi-head attention** runs several of these operations in parallel with separate projections.
+Their outputs are concatenated and passed through one learned **output projection**, then added
+back to the residual stream. Splitting a width of 256 into 4 heads of 64 costs about the same
+arithmetic as one 256-wide head, while providing four independent routing channels.
+
+Most current models use RoPE rather than this lab's learned absolute vectors, and context
+extension methods work by rescaling its angles. Both are covered in **Modern attention at scale**.
+
+Keys and values for past positions do not change during generation, so they can be cached, the
+subject of **Inference & KV cache**. **Grouped-query attention** shrinks that cache by sharing one
+key/value head across several query heads. Kernels such as FlashAttention compute exactly this
+softmax in on-chip tiles without storing the full score matrix.
+
+**Induction heads** are studied in *In-context Learning and Induction Heads* (Olsson and
+colleagues, 2022). They define the head by two behaviours: prefix matching, which attends back to
+tokens that were followed by the current token, and copying, which raises the logit of the
+attended-to token.
+
+In a two-layer model the circuit pairs a **previous-token head** with an
+induction head. In larger models they report a phase change early in training in which induction
+heads form while in-context learning improves, and they describe their evidence that these heads
+drive most in-context learning as preliminary and indirect.
+
+**Attention sinks** are positions, often the first token, that absorb large weight when a head has
+nothing useful to retrieve; evicting them from a cache degrades output.
+
+The `√d_k` divisor comes from the original Transformer paper (Vaswani and colleagues, 2017, section
+3.2.1). For independent query and key components with mean 0 and variance 1, a dot product has
+variance `d_k`, and the authors suspected that large dot products push softmax into regions with
+extremely small gradients. The lab's switch shows the saturation; the vanishing gradients belong to
+training, which it cannot show.
+
+The causal mask is a design choice, not a law. An **encoder** drops it: attention is
+bidirectional, the matrix is a full square, and every position reads earlier and later ones. A
+**decoder-only (causal) language model**, like this lab's, keeps the mask and learns to predict the
+next token.
+
+A **masked language model** such as BERT is an encoder trained to fill hidden tokens
+from both sides, which suits understanding better than generating. The **Bidirectional** setting is
+an experiment on a decoder-only model, not an encoder.

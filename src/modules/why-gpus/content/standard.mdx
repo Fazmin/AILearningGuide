@@ -1,0 +1,95 @@
+---
+objectives: ["Explain why a GPU helps a neural net without claiming that the chip understands the task","Separate arithmetic throughput from memory bandwidth as two different limits","Predict from arithmetic intensity whether an operation is memory-bound or compute-bound"]
+terms: ["Matrix multiply","FLOP","Throughput","Memory bandwidth","Arithmetic intensity","Roofline","Ridge point","Memory-bound","Compute-bound","Batch","Parallelism","Kernel","Precision"]
+---
+
+## The big picture
+
+This module is about why neural networks run on GPUs, and what sets their speed once they do. For one layer operation on a given chip, it asks whether the time is set by arithmetic or by moving bytes from memory. It builds on **Stacking neurons**: one dense layer, applied to a batch of input rows, is a matrix multiply whose work and memory traffic follow from its shapes.
+
+Two rates bound that time. A **roofline** plots attainable speed against **arithmetic intensity**, operations per byte moved: a slanted roof set by **memory bandwidth**, the rate at which bytes reach the arithmetic units, meets a flat roof set by **throughput**, the chip's peak arithmetic rate. That meeting point, the **ridge point**, splits **memory-bound** work, limited by bytes, from **compute-bound** work, limited by arithmetic.
+
+### Where it shows up
+
+- **Training.** A large training batch reuses each fetched weight across many rows, which puts its big matmuls on the compute-bound side of the ridge. Counting training compute in floating-point operations (FLOPs), as **Scaling laws** do, is fair for that reason.
+- **Serving.** Text generation emits one token per step, so each weight matrix sees one row per sequence and serving is usually memory-bound. Batching users together and quantizing weights to fewer bytes raise the tokens served per second.
+- **Kernel design.** A **kernel** is a GPU program for one operation. FlashAttention (Dao et al., 2022) made attention faster without doing fewer FLOPs, by moving fewer bytes to and from the GPU's main memory.
+
+### Why it matters
+
+A FLOP count alone does not predict the time. For memory-bound work, twice the peak arithmetic finishes no sooner; only more bandwidth, fewer bytes moved, or more reuse of each fetched byte helps. Knowing which limit binds says which resource to add or save.
+
+Parallel work is necessary but not sufficient. At the lab's defaults, 1 row through a 4096-wide layer at fp16 and 2000 GB/s, the matmul offers 4,096 independent dot products yet uses 0.67% of peak, because each weight byte feeds about one operation. A serial chain, such as a recurrent network in which each step waits for the one before, gives a GPU's thousands of arithmetic lanes less to run at once.
+
+### What you will be able to explain
+
+- Why a GPU speeds up a neural net, in terms of the shape of its work, without claiming that the chip understands the task.
+- Arithmetic throughput and memory bandwidth as two separate limits, each setting its own time: operations ÷ peak, and bytes ÷ bandwidth.
+- Whether an operation is memory-bound or compute-bound, predicted from its arithmetic intensity against the ridge point.
+
+### What the lab shows
+
+Nothing in the lab runs a kernel, times one, or trains a weight; every readout is closed-form arithmetic on tensor shapes. Peak rates are fixed round numbers of the same order as an A100-class GPU, and arithmetic and traffic are assumed to overlap perfectly, so every point sits on the roof that measured kernels land below.
+
+**Workload knobs** sets **Operation** (*Matmul X·W* or *Elementwise add*), **Precision**, **Batch rows**, **Layer width** and **Memory bandwidth**. **Roofline** places the operation as a dot and reads **Intensity**, **Ridge**, **Attainable** and **Bound**. **Where the time goes** compares the two clocks, arithmetic time (ops ÷ peak) and memory time (bytes ÷ bandwidth), takes the larger as the wall-clock, and re-runs the arithmetic after one change, such as *2× peak arithmetic* or *2× memory bandwidth*.
+
+The key experiment keeps the defaults of width 4096 and 2000 GB/s and moves **Batch rows** from 1 to 1024 on the fp16 matmul. Each fetched weight feeds more rows, so the dot crosses the ridge at about 162 rows and **Bound** flips from memory to compute. Dropping **Memory bandwidth** to 100 GB/s, or switching to *Elementwise add*, puts the work back left of the ridge.
+
+## What it is
+
+A dense layer is a matrix multiply. Push a batch of B rows through a d-wide layer, `Y = X·W`, and you do `2·B·d²` operations. Each of the `B·d` outputs is an independent dot product, which is exactly the shape a GPU's thousands of arithmetic lanes are built for.
+
+Speed has two separate limits. Throughput is how fast the chip can do arithmetic. Memory bandwidth is how fast bytes reach that arithmetic. Arithmetic intensity, operations per byte moved, says which one binds.
+
+### The roofline
+
+The fastest an operation can run is `min(peak, bandwidth × intensity)`. The ridge point, `peak / bandwidth`, separates the two regimes. Below it an operation is memory-bound; above it, compute-bound.
+
+On the lab's illustrative device at fp16 and 2000 GB/s the ridge is 150 FLOP/B. The device uses round numbers of the same order as an A100-class GPU.
+
+### Why batch is the lever
+
+A matmul reads the `d×d` weights once, however many rows use them. Its bytes are `(d² + 2·B·d)·bytes`, so while B is much smaller than d, intensity is about `2·B / bytes`. Each extra row reuses weights that were already fetched.
+
+An elementwise add has no such reuse. It performs one operation per three memory touches, so its intensity is `1 / (3·bytes)` at every batch.
+
+## Why it’s here
+
+Neural nets became practical at scale on GPUs because their work is regular, parallel arithmetic, not because the chip understands the task. The data and the loss carry the meaning; the GPU multiplies.
+
+The same two clocks explain later labs. The KV cache, quantization, and serving are all questions about bytes moved per token, asked against this roofline.
+
+## How to play with it
+
+Start with **Operation** on Matmul X·W, **Batch rows** at 1, **Layer width** 4096, fp16, and 2000 GB/s. Intensity reads 1.00 FLOP/B, Bound reads memory, and the kicker shows 0.67% of peak in use.
+
+Move **Batch rows** to 1024. Intensity climbs to 683 FLOP/B, the dot crosses the ridge (Rows to reach ridge reads about 162), and the wall-clock is the 115 µs arithmetic time.
+
+Then compare **Precision** at 1 row, drop **Memory bandwidth** to 100 GB/s at 1024 rows, and finally switch **Operation** to Elementwise add.
+
+## What to notice
+
+- From 1 to 1024 rows, operations grow 1024× while bytes grow only 1.5×. That reuse is what moves the dot.
+- When Bound is memory, the 2× peak arithmetic row reads no change and the 2× memory bandwidth row reads 2.00× faster.
+- At 1 row there are still 4,096 independent dot products. Parallel work is necessary for speed, not sufficient.
+- fp32's ridge is only 10 FLOP/B, because its peak runs on ordinary lanes rather than matrix units.
+- At 100 GB/s the ridge moves to 3000 FLOP/B, so the 1024-row matmul turns memory-bound again.
+- The add stays at 0.167 FLOP/B in fp16 and memory-bound at 4096 rows.
+
+## Where it breaks
+
+**In this lab.** Every readout is closed-form arithmetic on shapes. No kernel runs on a GPU. Peaks are round illustrative numbers, arithmetic and traffic overlap perfectly, each operand moves exactly once, and launch costs, caches, and tile shapes are ignored. int8 is treated as 1 byte in and out, although real int8 matmuls accumulate in int32.
+
+**In the real mechanism.** Measured kernels land below the roof, often far below for small matrices. Training also moves activations, gradients, and optimizer state, and large models add communication between GPUs.
+
+Serving differs from training. Generating one token at a time runs every weight matrix at one row per sequence, the far-left corner of this plot. That is why serving is usually memory-bound, and why batching users and quantizing weights raise throughput.
+
+## Going deeper
+
+- **Inference & KV cache** is the batch-1 corner of this roofline: every generated token re-reads the weights and the cache.
+- **Quantization** cuts bytes per weight, which moves memory-bound work up the slanted roof.
+- **Deployment & serving** batches many users so each weight fetch feeds more rows.
+- **Scaling laws** count training compute in FLOPs, which is only fair because large-batch training sits near the flat roof.
+- FlashAttention (Dao et al., 2022) sped up attention by reorganizing it to cut memory traffic, not FLOPs: a roofline argument.
+
+The **Architecture zoo** comes next. Its wirings differ in how much of this parallel shape they keep. A recurrent network, for example, must finish step t before step t + 1.

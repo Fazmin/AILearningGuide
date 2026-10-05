@@ -1,0 +1,205 @@
+---
+objectives: ["Describe in-context learning as inference from the prompt, with no weight update", "Separate copying an answer from context from inferring a rule from it", "Explain how a scratchpad lets a fixed per-pass computation follow a longer chain of dependent steps, and what it costs in passes"]
+terms: ["In-context learning", "Few-shot prompting", "Zero-shot", "Demonstration", "Task inference", "Induction head", "Prompt sensitivity", "Context window", "Chain of thought", "Scratchpad", "Serial computation", "Faithfulness", "Test-time compute"]
+---
+
+## The big picture
+
+This module is about what a model can do at answer time with its weights frozen. **In-context
+learning** adapts to a task from examples in the prompt, with no gradient step. **Chain of
+thought** writes intermediate results as tokens so that later forward passes can build on them.
+Both answer one question: how much can a fixed network get out of its context, and where does
+that stop?
+
+**Post-training** adapted a model by changing its weights; here every adaptation comes from the
+text the model reads. The copying mechanism builds on **Attention**: an **induction head** is an
+attention head that finds an earlier copy of the current token and predicts what followed it.
+
+### Where it shows up
+
+- **Few-shot prompting.** Worked examples in the prompt, called **demonstrations**, make the
+  intended task identifiable, even one the model was never trained on.
+- **Induction heads.** Trained transformers develop this copying circuit, and its appearance during
+  training coincides with a jump in few-shot ability (Olsson et al., 2022).
+- **Reasoning models.** Their long traces are trained behavior, not only something a prompt asks
+  for.
+- **Test-time compute.** This is compute spent while answering rather than while training. A
+  scratchpad spends it as extra passes; sampling and voting spend it across attempts, and the
+  **Reasoning models** module prices them.
+
+### Why it matters
+
+A fixed network adapts only through its context, and three different things can go wrong there:
+
+- **Examples can underdetermine the task.** If every example fits two rules, the prompt does not
+  say which answer is meant where they disagree. Only an example that separates them, or a stated
+  rule, settles it.
+- **Copying can pass for inference.** Copying reproduces the format and exact lookups, but on a new
+  input it can only offer the old answers, so a well-formatted answer is no evidence of a rule.
+- **Some chains do not fit in one pass.** A network does a fixed amount of work per forward pass.
+  In **serial computation**, where each step needs the one before, a chain longer than one pass can
+  follow fails unless partial results are written down, at a cost in passes.
+
+### What you will be able to explain
+
+- In-context learning as inference from the prompt, with no weight update.
+- How copying an answer from context differs from inferring a rule from it, and why copying cannot
+  compute the answer for a new word.
+- How a scratchpad lets a fixed per-pass computation follow a longer chain of dependent steps, and
+  what that costs in passes.
+
+### What the lab shows
+
+Nothing here is measured from a trained model: the examples, rules, and lookup table are authored,
+the induction head is set by hand, and every readout is computed in closed form, with no sampling
+or noise.
+
+**Prompt as context** builds the prompt from **Examples** (0 to 5), **Prompt strategy**
+(**Examples only**, or **State a rule**, which adds an instruction line), and **Query** (`florin`,
+`letter`, `soravel`). It checks six rules, each a real function of the word, against the shown
+examples with noise-free matching. The prior is uniform over the six, or all on "count the
+letters" when the rule is stated. Rules that miss an example drop out, and **Weights changed**
+always reads 0.
+
+**Copy from context** runs the head over the same prompt, split into whole words with no tokenizer.
+It shades each token by its attention from the final arrow and shows the predicted next token, so
+`soravel`, which is in the prompt from three examples on, can be compared with the new word
+`florin`.
+
+**Chain-of-thought scratchpad** follows a fixed ten-node lookup table. **Hops k** sets the chain
+length, **Per-pass budget b** caps lookups per pass, a limit the lab imposes rather than measures,
+and **Scratchpad** decides whether a pass writes the node it reached for the next pass to start
+from. The key experiment is k = 6 at b = 3: read the answer with **Scratchpad** off, switch it
+on, and count the passes.
+
+## What it is
+
+Show a model a few examples of a task it was never trained on, and it will often perform the task.
+No parameter changes and no gradient step: the weights are identical before and after. That is
+**in-context learning**, here by **few-shot prompting**; with instructions and no examples it is
+**zero-shot**.
+
+Nothing persists. Close the context and the ability is gone. The examples narrowed the model's
+distribution over "what kind of text is this", and the continuation most consistent with them
+performs the task.
+
+### Examples as evidence
+
+**Prompt as context** makes that narrowing explicit with six candidate rules, each a real function
+of the word. A rule that gets any shown example wrong drops out. This is **task inference** in its
+simplest, noise-free form.
+
+For `florin`, the chance on 6 goes 33%, 50%, 67%, then 100% as the first three examples arrive.
+For `letter` it stops at 50% on 6 and 50% on 4: no example word repeats a letter, so "count the
+letters" and "count distinct letters" fit equally well. `ballot → 6` settles it. So does stating
+the rule, which here is worth several examples.
+
+### Copying is not the same as inferring
+
+Pretraining text is full of patterns that are set up and then continued. **Induction heads**
+exploit that: they find an earlier copy of the current token and predict whatever followed it.
+Their appearance during training coincides with a jump in few-shot ability (Olsson et al., 2022).
+
+**Copy from context** runs a hand-set version over the prompt's word tokens. For a word already in
+the prompt, such as `soravel`, it retrieves 7 with over 90% weight. For the new word `florin` it
+gives each earlier answer 24%. Copying explains the format and exact lookups; applying a rule to a
+new input needs more.
+
+### Spending compute at answer time
+
+A network does a fixed amount of work per forward pass, and each pass emits one token. A task whose
+steps depend on one another, such as following a chain of lookups, is **serial computation**: step
+three cannot start until step two is done. If one pass can chain only so many steps, a longer chain
+does not fit.
+
+A **chain of thought** gets around that by writing intermediate results as tokens. The next pass reads
+that **scratchpad** from its context and continues from it, so the chain runs across passes. Theory
+results (Li et al., 2024) show that, under standard assumptions, this separates what a fixed-depth
+transformer can compute with and without chain of thought. It is one way to spend **test-time compute**.
+
+**Chain-of-thought scratchpad** makes it concrete. A table of ten arrows sits in the prompt, and the
+task is to start at C and follow the table k times. Each hop is the find-and-copy step from the
+previous card, and each needs the hop before it. The lab imposes a per-pass budget b: one pass chains
+at most b hops.
+
+With k = 6 and b = 3 and the scratchpad off, one pass chains three hops and answers J. The correct
+answer is G. With it on, pass 1 writes J, pass 2 starts from that token, finishes the chain, and
+answers G, at a cost of two passes. Sampling several answers and voting spends compute across attempts
+instead; **Reasoning models** prices that.
+
+## Why it’s here
+
+In-context learning is why prompting works at all, and why "just fine-tune it" is usually the wrong
+first answer. A behavior you can get from four example lines is not worth a training run.
+
+The reasoning trace matters for a different reason. It looks like the model showing its work, but it
+is text produced by the same next-token process as everything else. How far it reflects the
+computation behind the answer needs evidence, not trust.
+
+## How to play with it
+
+1. Set **Examples** to 0 and read the answer bars for `florin`. Add examples one at a time and watch
+   rules drop out of the table.
+2. Set **Query** to `letter`. At four examples two rules still fit and disagree. Add the fifth
+   example, or set **Prompt strategy** to `State a rule`.
+3. On **Copy from context**, compare `soravel` with `florin` at four examples.
+4. On **Chain-of-thought scratchpad**, set **Hops k** to 6 and **Per-pass budget b** to 3 with
+   **Scratchpad** off. Switch it on, then raise **Per-pass budget b** to 6.
+5. Read the table under the passes at b = 3. Raise b and watch the first failing row move down.
+
+## What to notice
+
+- **Weights changed** always reads 0. The same fixed function produced the confused zero-example
+  distribution and the certain three-example one.
+- An answer can be settled before the task is. For `florin` both surviving rules agree, so 6 is
+  certain even though the rule is not.
+- With **Scratchpad** off, the answer is right exactly when k is at most b. At b = 3 that is k up to
+  3; k = 4 through 8 all fail.
+- With it on, every k is right, at ceil(k ÷ b) passes. At b = 3 that is 2 passes for k = 4 to 6 and 3
+  for k = 7 and 8; at b = 1, k = 8 takes 8.
+- Once b reaches k, both settings answer in one pass. The scratchpad earns its cost only past the
+  one-pass limit.
+- The silent lookups never enter the context; only the token a pass writes does. A partial result has
+  to be written to be reused.
+
+## Where it breaks
+
+**In this lab.** The six rules, the examples, and the queries are authored, and the rule weights use a
+uniform prior with noise-free matching. The induction head is set by hand over whole words; no model
+or tokenizer runs.
+
+The scratchpad card's per-pass limit b is imposed: it is a number the lab sets, not measured from a
+model. The table and every step are exact, so no step is ever wrong, and the trace is faithful by
+construction because each pass reads only what was written.
+
+**In real systems.** In-context learning shows **prompt sensitivity**: details that should not matter,
+such as example order, formatting, label wording, and even whitespace, can move accuracy by several
+points. Min et al.
+(2022) found that the format and label space of **demonstrations** can matter more than whether their
+labels are correct, which sits awkwardly with the story that the model learns the mapping from them.
+
+A long **context window** is not free capability. Retrieval accuracy can degrade for information in the
+middle of a long context, and adding examples eventually plateaus.
+
+A real model's per-pass limit comes from its depth and training. It is not a clean integer, and it
+differs by task. Written steps can also be wrong, and errors compound over a long trace. Published
+comparisons find that chain of thought helps most on math and symbolic problems and much less
+elsewhere (Sprague et al., 2024). Every written token costs latency.
+
+The largest caution is **faithfulness**. A chain of thought is not a log of the computation. Models can
+be swayed by a feature of the prompt and write a trace that never mentions it. Treat the trace as an
+output to verify, not an explanation to trust.
+
+## Going deeper
+
+- **Sampling, voting, and verifiers** spend test-time compute across several attempts rather than
+  along one chain. **Reasoning models** prices them, including where voting makes things worse.
+- **Process supervision** rewards each correct step rather than only the final answer.
+
+Recent reasoning models were trained with reinforcement learning against checkable answers, so long
+traces became learned behavior rather than something a prompt requests. **Reasoning models** covers
+that; **Interpretability II: circuits** switches off an induction head and measures what breaks.
+
+Keep three things apart. In-context learning changes activations only. Fine-tuning changes weights.
+Retrieval changes the context by fetching documents. Only the second persists, and only the third
+grounds an answer in a source you can check.

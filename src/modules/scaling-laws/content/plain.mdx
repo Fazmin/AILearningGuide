@@ -1,0 +1,611 @@
+---
+objectives: ["Read the compute-optimal frontier as a power law: a straight line on log-log axes once the floor is removed, with steady and slow returns", "Describe compute-optimal model and data balance", "Estimate N from a transformer's layer count and width, and say what that estimate leaves out"]
+terms: ["Scaling law", "Compute-optimal", "IsoFLOP curve", "Power law", "Irreducible loss", "Chinchilla ratio", "FLOPs", "Parameter count", "Token-to-parameter ratio", "Overtraining", "Emergent ability", "Data-constrained scaling", "Extrapolation", "Test-time compute"]
+---
+
+## The big picture
+
+The AI models behind chatbots learn by reading huge amounts of text, and training a large one costs
+so much computing power that a team gets only one try. Before that run starts, someone has to make
+two choices that cannot be undone: how big the model will be, and how much text it will learn from.
+This module is about the patterns that guide those two choices and predict how good the model will
+be before anyone pays for it.
+
+These patterns are called **scaling laws**. Researchers found them by training hundreds of models of
+different sizes on different amounts of text and scoring how far off each one's guesses were. The
+scores follow smooth curves that one formula can describe, so a team can test ideas on small models
+and read the curve forward to plan a big one.
+
+The chatbots you may have used were planned with the help of patterns like these. In 2022, a study
+that trained a model called Chinchilla suggested that many of the biggest models of the time had
+read too little text for their size. Today, many widely used models are deliberately made smaller
+than the formula's best choice and taught with extra text, because a smaller model costs less every
+time it answers you.
+
+Why does this matter? Without scaling laws, picking a model's size would be a very expensive guess,
+because nobody could tell in advance which way of splitting the budget would work best. Put too much
+into size and the model is starved of text, while putting too much into text leaves a model too
+small to use it all. Either mistake is locked in once the run ends, and the money spent on it is
+gone.
+
+By the end of this lesson, you will be able to explain:
+
+- why the best results form a straight line on a special graph once you remove a floor the score
+  never drops below, and why that means slow, steady progress;
+- how to split a fixed budget between model size and training text so that neither one is wasted;
+- how to estimate a model's size from how many layers it has and how wide they are, and what that
+  estimate leaves out.
+
+The lab never trains anything: it runs a published formula, so every number you see is a
+prediction. You set a model size and an amount of text on the **Scaling law controls** card, and
+three more cards show what the formula predicts for that choice:
+
+- **IsoFLOP curves** shows how good every possible split of one budget would be, and where the best
+  split sits.
+- **Loss breakdown** shows which part of the formula is holding the score up, the model's size or its
+  text.
+- **Frontier power law** shows the best result at every budget, lined up on that special graph.
+
+The controls card also holds a small calculator, **N from dimensions**, which counts a model's size
+from its shape.
+
+## What it is
+
+### A library on a fixed budget
+
+Picture a town that has saved up enough money to build one library, with no second chance. If it
+spends most of the money on shelves, it gets a huge building with almost nothing to read. If it
+spends most of the money on books, they end up stacked on the floor with nowhere to go. Somewhere
+between those two mistakes is the split of shelves and books that gives the best library for that
+budget.
+
+Training a language model, the kind of AI behind chatbots, involves the same kind of choice. The
+model's size plays the part of the shelves and its training text plays the part of the books, with
+both paid from one bill for computing power. A **scaling law** is a formula that predicts, for any
+split you choose, how good the finished model will be.
+
+### Three words you need first
+
+The lab's labels lean on three ideas, so it helps to pin them down before going further.
+
+A model is a huge collection of adjustable numbers, and training nudges each one, over and over, so
+that the model's guesses get better. Each of those numbers is a **parameter**, also called a weight,
+and the letter N stands for how many a model has, which is its **parameter count**. The lab writes
+big counts with a letter on the end, M for million, B for billion and T for trillion, so `3.2B`
+means 3.2 billion parameters.
+
+Models read text in small pieces called **tokens**, where a token is usually a whole word or part of
+one. The letter D counts the tokens a model reads in training, so `28B` means 28 billion pieces of text,
+far more than anyone could read in a lifetime.
+
+During training, the model guesses each next token and gets a score, called **loss**, for how far off
+its guess was, so lower is better. The lab measures loss in **nats** per token, a unit of surprise
+that grows when the model gave the real next token a low chance. As a sense of scale, a model that gave
+the correct token a 1-in-11 chance every single time would score about 2.4 nats per token.
+
+A model that was sure of the right token, and correct, would score 0, while a 1-in-2 chance scores
+about 0.7. Each time the chance the model gives the right token halves, the loss rises by about 0.7
+nats. So the differences you will meet in this lab, often a few hundredths of a nat, are small but
+real edges.
+
+### The bill multiplies
+
+Here the library picture needs a fix, because a library's bill adds the cost of shelves to the cost
+of books, while a model's bill multiplies size by text. It multiplies because every token of
+training text has to pass through every parameter. For each token, each parameter takes part in
+about 6 small calculations: 2 while the model makes its guess, and 4 while training works out how to
+adjust it.
+
+Each of those small calculations is one step of arithmetic on decimal numbers, called a
+floating-point operation, so training cost is counted in **FLOPs**, short for floating-point
+operations. The total cost of a run, called its compute and written C, is therefore about 6 × N × D,
+which the lab shows as **Compute C = 6ND**.
+
+Here is the bill for the run the lab starts on, which has 3.2B parameters and 28B tokens.
+Multiply 6 × 3.2 billion × 28 billion and you get about 5.4 × 10²⁰ FLOPs, where 10²⁰ means a 1
+followed by 20 zeros. In other words, the run takes roughly 540 billion billion small calculations.
+
+Because the bill multiplies, a fixed budget fixes the product N × D. A model twice as big can read
+only half as many tokens for the same money, and that trade is the whole puzzle this lab is about.
+
+### The formula: a floor plus two shrinking parts
+
+The formula comes from those hundreds of training runs, where researchers measured each model's loss
+and found the formula that best matched the results. It is a bit like drawing the line that best
+fits a scatter of dots on a graph. The lab prints that formula at the top of its **IsoFLOP curves**
+card:
+
+```text
+L = E + A/N^α + B/D^β
+```
+
+Here L is the predicted loss, and N and D are the parameter and token counts from before. The
+letters E, A, B, α and β stand for numbers the researchers chose so that the formula matches their
+results. Choosing numbers this way is called fitting, and one chosen set of numbers is called a
+**fit**. The sign `^` means "raised to the power", so `N^α` is N raised to the power α.
+
+The lab offers two fits under **Fit**, and the main one, `Hoffmann 2022`, is the set printed in the
+2022 Chinchilla paper. Each of the formula's three parts has its own job:
+
+- `E` is a floor that no amount of size or text gets below, called the **irreducible loss**, and in
+  the lab's main fit it is 1.69.
+- `A/N^α` is the **size term**, which shrinks as the model gets bigger, because a bigger model can
+  pick up more patterns from the same text.
+- `B/D^β` is the **data term**, which shrinks as the model reads more tokens, because more text gives
+  it more examples to learn from.
+
+**Loss breakdown** works the formula out for your run, and at the starting run of 3.2B parameters and
+28B tokens it shows this line:
+
+```text
+= 1.69 + 0.238 + 0.488 = 2.416
+```
+
+The size term adds 0.238 on top of the floor, while the data term adds 0.488, about twice as much,
+and the total is the **Predicted loss**. The lab also works out that doubling the text here would
+lower the loss by 0.086, while doubling the size would lower it by only 0.050. So this model is short
+of text more than it is short of size.
+
+The Greek letters α (alpha) and β (beta) are powers, like the 2 in a square, but they are small:
+0.34 and 0.28 in the main fit. A power of one half is the same as taking a square root, so a power
+of 0.34 grows even more slowly than a square root does.
+
+Here is what that means for a model ten times bigger. N^α grows by 10 to the power 0.34, which is
+only about 2.2, and because N^α sits on the bottom of the fraction, the size term gets divided by
+2.2. At the starting run, that takes the size term from 0.238 down to about 0.109. Another tenfold
+step takes it to about 0.050, so the second step removes less than half as much as the first, at
+ten times the price. Ten times more tokens works the same way, but it divides the data term by only
+about 1.9. That is why each improvement costs more than the one before.
+
+The floor needs care, because people often describe it as the truly unpredictable part of text, like
+the next word in a sentence where several words fit equally well. But E is a number the fit chose to
+match the results, not something anyone measured. So it also includes whatever this design of model,
+trained this way, never learns, and a different design might have a lower floor. Within this
+formula, though, no run ever reaches E. Even at the far end of both sliders, 1T parameters on 30T
+tokens, the formula predicts a loss of 1.793, which is still above the floor of 1.69.
+
+The library picture stops matching in two places. Books sit on shelves as whole copies, but a model
+does not keep copies of its text, because training only adjusts its numbers to pick up patterns. And
+while a library's hundredth shelf holds as many books as its first, each extra step of size or text
+lowers the loss less than the last.
+
+### The best split for one budget
+
+Now put the bill and the formula together by fixing the budget and trying every model size. Each
+bigger model must read fewer tokens, so its size term falls while its data term rises. Plot predicted
+loss against model size and you get a U-shaped curve, which the lab calls an **IsoFLOP curve**. The
+name comes from "iso", which means "same", because every point on the curve costs the same number of
+FLOPs.
+
+The lowest point of the U is the best split for that budget, and a run sitting there is called
+**compute-optimal**. To the left of the bottom, the model is too small to make full use of its text.
+To the right, it is so big that it reads too little text to fill it.
+
+At the bottom, doubling the size or doubling the text would each double the bill and lower the loss
+by about the same amount. Since neither is a better buy than the other, moving money from one to the
+other cannot help, which means neither resource is being wasted.
+
+Notice that the bottom is where the two doubling gains match, not where the two terms are equal.
+Doubling the size cuts the size term by about 21%, while doubling the text cuts the data term by
+only about 18%, because α is bigger than β. So at the best split the data term is still a little
+bigger. At the starting budget's best split, the data term is 0.385 while the size term is 0.317.
+The bigger term is only a rough guide to what a model is short of, and the doubling gains are the
+real test.
+
+Here is one budget worked out, where two runs that each cost 1.2 × 10²⁰ FLOPs sit on the same U:
+
+- 10B parameters on only 2B tokens, a giant library with almost no books, has a predicted loss of
+  2.873.
+- 200M parameters on 100B tokens, a tiny library buried in books, has a predicted loss of 2.643.
+
+The two runs sit on opposite sides of their curve's bottom, which reaches 2.575 at about 700M
+parameters, so each one wastes a good part of the same budget.
+
+The number of training tokens divided by the number of parameters is called the
+**token-to-parameter ratio**, and the lab shows it as **Tokens per parameter**. A low ratio means a
+big model starved of text, while a very high one means a small model fed more text than it can use.
+A popular rule of thumb, the **Chinchilla ratio**, says to aim for about 20 tokens per parameter. It
+is named after the Chinchilla model, which its makers trained with 70B parameters on 1.4T tokens,
+exactly 20 tokens for every parameter.
+
+### A straight line on a special graph
+
+Find the bottom of the U for every budget and join them up, and you get the **compute-optimal
+frontier**, the lowest loss the formula allows at each budget. To show its shape, the lab uses a
+graph whose axes grow by multiplying instead of adding, so each equal step along an axis means ten
+times more. These are called **log-log axes**, from logarithm, a piece of math you will not need
+here. The IsoFLOP chart's size axis works the same way: it runs 100M, 1B, 10B, 100B and 1T.
+
+Now take the frontier's loss and subtract the floor E, and what is left, written L − E, is the part
+that more compute can still remove. On log-log axes it falls along a perfectly straight line, which
+is the sign of a **power law**. In a power law, each tenfold step in compute multiplies the loss
+above the floor by the same fraction, which is about 70% under the main fit.
+
+Here is that rule at work along the frontier, read from the formula:
+
+- Start at a budget of 10²⁰ FLOPs, where the best possible run sits 0.910 above the floor.
+- Ten times that budget, 10²¹ FLOPs, brings it down to 0.639, which is 70% of what was there.
+- Ten times again, 10²² FLOPs, brings it to 0.449, which is once more 70% of the step before.
+
+Why does that draw a straight line? On the loss axis, which also grows by multiplying, keeping 70%
+is the same-sized step down wherever you start. On the lab's frontier chart, the space from 2 down
+to 1 is as tall as the space from 0.2 down to 0.1, because each one is a halving. Each
+tenfold budget is also the same-sized step across. The same step down for every step across is
+exactly what a straight line is, so a power law always draws one on these axes.
+
+This is what steady but slow means. Every tenfold budget buys the same share of progress, with no
+sudden jumps or stalls, yet that share is small. Two tenfold steps, 100 times the compute, keep 70% of 70%, which is 49%, a little
+under half. So halving the loss above the floor takes a bit less than 100 times the compute, about
+90 times.
+
+The floor has to come off first, because with it left in, the loss bends and flattens as it nears E,
+as if progress were dying out. With the floor left in, the frontier losses at those three budgets
+are 2.600, 2.329 and 2.139. Each keeps about 90%, then 92%, of the one before, so the drops seem to
+fade, even though the part that can still shrink keeps the same 70% every time. Only once E is
+removed does the straight line appear, which is why the lab's chart plots L − E instead of the loss
+itself.
+
+### Counting N from a model's shape
+
+The formula needs N, and for the most common kind of language model you can estimate N from the
+model's shape. These models are **transformers**, built as a stack of repeated blocks called layers,
+and inside each layer every token is carried as a list of numbers. The length of that list is the
+model's width, written d, and the number of layers, sometimes called its depth, is written L. (The letter L does double duty in
+this lab: next to **Layers L** it counts layers, while in the formula it means loss.)
+
+Each layer keeps its weights in grids of numbers, called matrices. A grid d numbers by d numbers
+holds d × d numbers, written d², so a grid 8 by 8 holds 64. The attention part of a layer, where
+tokens gather information from one another, has four of these square grids, so it holds 4 × d².
+
+The feed-forward part, which works on each token by itself, has two wide grids, one d by 4 × d and
+one 4 × d by d. Each of them holds 4 × d² numbers, so together they hold 8 × d². Adding 4 × d² and
+8 × d² gives 12 × d² weights per layer, so the whole stack holds about 12 × L × d².
+
+The lab's calculator starts at 32 layers of width 4,096, which is the shape of one of the LLaMA
+models. Each of those layers holds 12 × 4,096² weights, about 201 million, so 32 layers hold about
+6.44B in total.
+
+Because the width is squared, it adds to N far faster than the number of layers does. Double the width and
+every grid gets four times as many entries, so N grows fourfold, to 25.8B. Double the layers instead
+and you only get twice as many grids, so N doubles, to 12.9B.
+
+This count is an estimate that leaves some things out, and the biggest is the **embeddings**, a
+lookup table that turns each token into its starting list of numbers. It has one row of d numbers
+for every token in the model's vocabulary, which is the full list of tokens the model can read. The
+count also skips small extras, such as the numbers each layer uses to shift and rescale its values.
+It assumes the feed-forward part is exactly four times as wide, too, which not every model follows.
+So a real model's total usually comes out a little higher, and for small models it can be a lot
+higher, as Going deeper shows.
+
+## Why it’s here
+
+Picture a baker asked to make one enormous cake for a wedding, with enough ingredients for exactly
+one attempt. She cannot practise on the real thing, so she bakes small cakes at several sizes and
+writes down how the baking time grows with size. Then she draws a curve through her notes and reads
+it forward to plan the big cake.
+
+The biggest AI training runs are planned the same way, because nobody can afford to try one of them
+twice. A team trains many small models, fits the scaling-law formula to them, and reads it forward.
+That way the budget, the model size, the amount of text and the expected loss are all chosen before
+the expensive run starts.
+
+Using a formula beyond the range it was measured on is called **extrapolation**, and it is both the
+main use of scaling laws and their biggest assumption. Like the baker's curve, the pattern might not
+hold at a size nobody has tried.
+
+The formula also settles a question that people have gotten wrong before, which is how to split the
+budget. An earlier study, from 2020, concluded that model size should grow much faster than the
+amount of text. The 2022 Chinchilla study made several changes. One was to match each run's
+learning-rate plan, which sets how the size of each adjustment step shrinks over time, to how long
+that run would last. That way every run, short or long, could finish as well as it was able to.
+
+Compared fairly like this, the runs showed that size and text should grow at roughly the same pace.
+Going deeper shows that the two studies also counted parameters differently, which explains much of
+the gap too.
+
+The two crosses on **IsoFLOP curves** show what that change meant for the biggest models of the
+time. Gopher had 280B
+parameters and read 300B tokens, while Chinchilla had 70B parameters and read 1.4T tokens, and the
+two used similar amounts of compute. The main fit predicts that the smaller model, which read more
+text, comes out ahead, at 1.937 against 1.993 for Gopher.
+
+Scaling laws also help explain the AI industry, since a company will spend huge sums on a training run
+only if it can predict what the money buys. Returns that are steady and predictable, even if slow,
+justify that spending in a way that surprises could not.
+
+## How to play with it
+
+The **Scaling law controls** card holds everything you can change, starting with **Parameters**,
+which runs from 100M to 1T, and **Training tokens**, which runs from 1B to 30T. Both sliders move by
+multiplying, like the log axes, so each notch along them is the same percentage change rather than
+the same amount. **Fit** picks which published set of numbers the formula uses, and **Budget**
+decides whether the two sliders move on their own (`Free`) or together (`Hold compute`). Under the
+sliders, **Fit optimum here** names the best split at your current budget, in parameters, tokens and
+tokens per parameter.
+
+### Read the starting run
+
+Before you touch anything, read the four readouts under **IsoFLOP curves**:
+
+- **Predicted loss** is 2.416, the average score per token that the formula expects for your run.
+- **Compute C = 6ND** is 5.4 × 10²⁰ FLOPs, the size of the bill for training this model on this much
+  text.
+- **Tokens per parameter** is 8.8, well below the rule of thumb of 20, so this model reads little
+  text for its size.
+- **Gap to optimum** is 0.023 nats, which is how far your loss sits above the best split at the same
+  budget.
+
+Your run is the filled dot on the thick curve, and the diamond on that same curve marks the
+formula's best split for the same budget. The legend calls it **Fit optimum, same C**, and it sits at
+1.38B parameters on 65B tokens, with a loss of 2.393. The hollow square marks the
+20-tokens-per-parameter split, called **20 tokens/param, same C**, at 2.12B parameters on 42.3B
+tokens.
+
+**Loss breakdown** tells you which way to move, because **Doubling N lowers L by** shows 0.050 while
+**Doubling D lowers L by** shows 0.086. So at this run more text is the better buy, and the sentence
+under the readouts says the data term dominates.
+
+### Change the size, change the budget
+
+With **Budget** on `Free`, drag **Parameters** and leave **Training tokens** alone. Your dot moves
+across the thin curves, and the thick curve moves with it. That happens because a bigger model on
+the same text costs more compute, which is a different budget. Each thin curve is one fixed budget,
+labelled from 10¹⁹ to 10²⁵ FLOPs where it leaves the chart, while the thick curve is always the
+budget of your current run.
+
+### Feed the model more text
+
+Bring **Parameters** back near its starting 3.2B, then drag **Training tokens** upward while you
+watch **Loss breakdown**. The hatched bar is the data term and the solid bar is the size term, and
+the hatched bar shrinks as the text grows.
+
+Keep an eye on the two doubling readouts as well. At around 190B tokens, **Doubling N lowers L by**
+catches up with **Doubling D lowers L by**, and past that point it is the bigger of the two. The
+bottleneck has moved, so now the model is short of size rather than text. The bars themselves only
+cross later, past 360B tokens, because the size term shrinks faster with each doubling.
+
+### Two bad splits on one curve
+
+**Try this:** Set **Parameters** to `10B` and **Training tokens** to `2B`, and **Predicted loss**
+reads 2.873, a huge library with almost no books. Now set `200M` and `100B`, and the loss is 2.643, a
+tiny library buried in books. **Compute C = 6ND** reads 1.2 × 10²⁰ FLOPs both times, so both dots
+sit on the same curve, on opposite sides of its low point. **Fit optimum here** tells you where that
+low point is, at about 700M parameters.
+
+### Walk one curve
+
+Switch **Budget** to `Hold compute`, and the box under it now says the budget is held. Moving one
+slider now moves the other, so your dot slides along one curve instead of jumping between them. Drag
+**Parameters** toward the diamond, and watch **Training tokens** move the opposite way while **Gap
+to optimum** shrinks. Stop when it reads `0.000`, because then you are on the diamond, the best
+split this formula allows for that budget.
+
+Keep dragging past the diamond and the gap grows again. On the left of the diamond, the model is too
+small for its text. On the right, the model is so big that it is starving for text. Drag across the
+whole curve and watch the gap grow on both sides of the bottom.
+
+Near the bottom, the two doubling readouts in **Loss breakdown** nearly match, and its sentence
+changes to say that doubling either resource buys about the same. Each slider stops where the other
+would run off its range, so the budget never changes by accident.
+
+### Read the frontier
+
+On **Frontier power law**, the dashed line is the compute-optimal frontier, drawn on log-log axes
+with the floor already removed, while the dotted line follows the 20-tokens-per-parameter rule. Your
+dot sits on or above the dashed line, higher by however far your run is from its best split.
+
+Read **Slope**, which shows −0.154, and **10× compute keeps**, which shows 70% of L − E. The
+frontier has its own power, which comes from combining α and β, and the lab shows it as the slope,
+so it says how steeply the line falls. A minus sign on a power means dividing: ten to the power
+−0.154 is 1 divided by ten to the power 0.154. Ten to the power 0.154 is about 1.43, and 1 ÷ 1.43 is
+about 0.70, which is where the 70% comes from.
+
+Then switch **Fit** to `Epoch 2024 refit`, and the line stays straight while the slope steepens to
+−0.178. Ten to the power 0.178 is about 1.51, and 1 ÷ 1.51 is about 0.66. So each tenfold budget now keeps 66% of the loss
+above the floor, a slightly faster pace than before.
+
+### Build N from dimensions
+
+Find **N from dimensions** at the bottom of the controls card, where **Layers L** runs from 1 to 128.
+**Width d** runs from 64 to 16,384 in steps of 64, and the line below them works out 12 × L × d² for
+you. At the starting 32 layers of width 4,096 it reads 6.44B weights, and **Use as Parameters** moves
+the **Parameters** slider to that count.
+
+**Budget** may still be on `Hold compute` from walking the curve, so switch it back to `Free` first.
+Under `Hold compute`, the button would also move **Training tokens** to keep the bill the same. It
+could even stop short of the count, because the held budget runs out of room before the slider does.
+
+Press it, then double **Width d** to 8,192 and watch N become 25.8B, four times as many. Put the
+width back and double **Layers L** to 64 instead, and N becomes 12.9B, only twice as many. If a shape
+gives a count outside the slider's 100M to 1T range, the line says so and the button stops at the
+nearest end.
+
+## What to notice
+
+### The bottom of the U is flat
+
+At the starting budget, the square for 20 tokens per parameter sits only 0.006 above the diamond,
+even though it uses a model 54% bigger. Getting the balance roughly right matters a lot, while
+getting it exactly right barely matters. That flatness is also why the dotted 20:1 line and the
+dashed frontier nearly overlap on **Frontier power law**.
+
+### The bottleneck moves instead of vanishing
+
+Push one resource far enough and the other becomes the one worth buying, which **Loss breakdown**
+shows when its doubling readout takes the lead. You never escape both terms by piling everything onto one slider, because the term you ignore stops
+shrinking.
+
+### Loss has a floor
+
+Even at 1T parameters and 30T tokens, the largest run the sliders allow, the formula predicts 1.793
+against a floor of 1.69. The size and data terms keep shrinking toward zero as you add more, but E
+stays put however much you spend.
+
+### Width grows N faster than depth
+
+N follows the square of the width but only the plain count of layers, so widening a model adds
+parameters much faster than adding layers does. Doubling the width multiplies N by four, while
+doubling the layers multiplies it by two. This is only about the count, and it says nothing about
+whether a wide model or a deep one learns better.
+
+### Straight, steady and slow
+
+On **Frontier power law**, every tenfold budget keeps the same 70% of the loss above the floor. No
+point on the line speeds up or suddenly drops, so progress is predictable, but halving the loss above
+the floor costs about 90 times the compute.
+
+### The two fits agree on shape, not on the bottom
+
+Switch **Fit** at the starting run and **Fit optimum here** moves from 1.38B parameters on 65B tokens
+to 2.02B on 44.3B. Under `Hoffmann 2022`, the diamond pulls further from the square as budgets grow,
+toward smaller models fed more text. Under `Epoch 2024 refit`, the two stay close together, near 20
+tokens per parameter.
+
+### The crosses are predictions
+
+The crosses marked Chinchilla and Gopher stand for real models, and the legend lists their sizes as
+**Real runs (70B/1.4T, 280B/300B)**. But each cross sits at the loss this formula predicts for that
+size, not at the loss the real model actually reached.
+
+## Where it breaks
+
+### What this lab simplifies
+
+Nothing in this lab is trained. Every readout is the published formula worked out with your numbers,
+so the lab shows what the formula predicts, not what a real model would do.
+
+The sliders also reach far past the runs the formula was fitted on. Those runs went from about 70M to
+16B parameters, trained on 5B to 500B tokens, while the sliders reach 1T parameters and 30T tokens.
+Most of the chart is therefore extrapolation, like the baker reading her curve past the biggest cake
+she has ever baked.
+
+The loss is in the formula's own units, measured on one particular collection of text cut into
+tokens one particular way. So a loss from this lab cannot be compared with a loss reported for some
+other model.
+
+The bill, 6 × N × D, is a shortcut too, because it leaves out some of the work in attention, which
+adds up when a model reads very long passages. Real runs also lose time when machines wait on each
+other or restart, so the true cost is higher.
+
+The frontier line is perfectly straight here because it is worked out from the formula itself. A
+real frontier is fitted to a few dozen training runs, so it comes with uncertainty that grows with
+each tenfold step past them.
+
+Last, **N from dimensions** is a calculator, not a fit, and it skips the embeddings and small
+extras. For large models it lands a few percent under the real count. For small ones it lands much
+further under, because the embedding table is a big share of them, as Going deeper shows.
+
+### When the fit and the rule of thumb disagree
+
+**A common mix-up:** "20 tokens per parameter" is a rule of thumb, not what the Chinchilla formula
+says at every budget. With the formula's numbers as the paper printed them, the best split at
+Chinchilla's own budget is 32B parameters on 3.0T tokens, about 93 tokens per parameter.
+
+The Chinchilla paper worked out the best split in three different ways, and the printed formula was
+only one of them. A 2024 study by Epoch AI, which redid the Chinchilla paper's analysis, found that the
+formula's numbers did not agree with the other two ways. So it fitted the data again. Switch **Fit**
+to `Epoch 2024 refit` and that same optimum moves to about 73B parameters on 1.34T tokens, about 18
+tokens per parameter, which is close to 20.
+
+The powers α and β are touchy as well. That study also lists the original powers with two more
+decimal places, so 0.34 becomes 0.3392 and 0.28 becomes 0.2849. That tiny change moves the same
+optimum from 32B to about 40B parameters, which shows how much large-scale predictions hang on small
+details of a fit.
+
+### Where real scaling laws fail
+
+Scaling laws are trends inside a tested range, not laws of nature, so they only describe the kind of
+model and training they were measured on. Every part of the formula depends on the model's design,
+the mix of training text, the way text is cut into tokens, and the training recipe. Change any of
+these and the whole curve shifts, so a fit made for one setup cannot be carried over to another.
+
+Lower loss is also not the same as being more useful. Picture a spelling bee where you score a point
+only if you spell the whole word right, with no credit for being close. A student who gets a few more
+letters right each week scores zero for weeks, then suddenly starts scoring, even though the student
+improved steadily all along.
+
+Some AI tests work the same way, giving credit only for a fully correct answer. A smooth loss curve
+can sit under a test score that jumps, and a skill that seems to appear suddenly at some size is
+called an **emergent ability**. Many reported emergent abilities depend on whether the test gives
+partial credit or counts only exact answers.
+
+Good text also runs out, and how scaling behaves when it does is called **data-constrained
+scaling**. One study found that reading the same text up to about four times is nearly as good as
+reading fresh text, though each pass after that is worth less.
+
+## Going deeper
+
+### From dimensions to N
+
+The 12 × L × d² rule comes from counting one layer's grids, the way **The transformer block** lab
+does. There, the toy block has a width of 8, so it holds 12 × 8² = 768 such weights, or 840 once you
+count its small extras.
+
+The rule holds up well at large scale, which you can check against the LLaMA paper. LLaMA's 6.7B
+model has 32 layers of width 4,096, so the rule gives 6.44B, about 4% under the paper's count. Its
+65.2B model has 80 layers of width 8,192, and the rule gives 64.4B, about 1% under. The missing part
+is what the rule leaves out: the embeddings, the small extras, and the exact shape of the
+feed-forward part.
+
+Small models are where the rule falls furthest short, and GPT-2 small shows why. According to its
+published settings, it has 12 layers of width 768 and a vocabulary of 50,257 tokens. Its layers hold
+84.9M weights, yet its token table alone holds 38.6M, nearly half as much again on top.
+
+The table grows only with the width, while the layers grow with the width squared, so the table's
+share falls as models get wider. For a model with the LLaMA shape above, a table of the same 50,257
+tokens would add only about 3% to the count.
+
+Papers even disagree about whether N should include that table, since an early study from 2020 left
+it out while the 2022 Chinchilla study counted it. A 2024 paper traced much of the gap between their
+two answers on how to split a budget to that one choice. Both fits in this lab follow the 2022
+study's form.
+
+**Inference & KV cache** looks at the same two numbers when a model is answering people rather than
+training. While it writes an answer, the model saves a few notes for every token so far, and those
+notes grow with the number of layers and with the width. Some models share notes between parts of a
+layer to save space, so for them the notes grow more slowly than the full width. So layers and width
+set both what a model costs to train and what it costs to run.
+
+### Training cost is not the whole bill
+
+Picture a bakery choosing between two ovens. One is cheap to buy but uses a lot of power on every
+loaf, while the other costs more up front but uses far less per loaf. If you plan to bake millions of
+loaves, the second one comes out cheaper in the end, even though it cost more on the first day.
+
+Models face the same trade, because compute-optimal means best for the training bill only. A model
+served to millions of people runs up a new bill on every answer, and those bills can add up to more
+than training cost. So labs deliberately train a smaller model on far more text than the formula's
+best split, which is called **overtraining**.
+
+For a model, the up-front price is paid in training, and here the oven picture stops matching.
+The oven's extra cost is only money, but the smaller model pays in quality too. At the same training
+budget it ends with a slightly higher loss, or it needs extra training compute to reach the same loss.
+
+Set **Budget** back to `Free`, then set **Parameters** as close to 8B and **Training tokens** as
+close to 15T as the sliders allow, which is about 7.94B and 15.1T. That is roughly the recipe for
+Llama 3 8B. The
+printed fit charges about 0.026 of extra loss compared with its best split at that budget, which is
+a model of about 36B parameters. In return, the 8B model is several times cheaper to run on every
+answer it gives. Under `Epoch 2024 refit`, the extra loss is about 0.054, measured against a best
+split of about 81B.
+
+**Inference & KV cache** showed where that running cost comes from: every new token makes the model
+read through all its weights and its saved notes again. That bill comes back on every answer, for as
+long as the model is in use.
+
+### Other ways to scale
+
+Some models send each token to a few internal specialists, called experts, instead of through the
+whole model. Their total size can grow while the work per token stays the same. So fits for these
+models track three things separately: the total size, the part actually used for each token, and
+the number of experts.
+
+Spending more compute at answer time has its own curves too. Sampling several answers, writing out
+longer reasoning, or checking an answer before giving it are all kinds of **test-time compute**. To
+reach a given accuracy, a lab can spend less on training and more at answer time, or the other way
+around.
+
+The same curve-fitting trick also helps choose training settings for a big run. Labs fit how the
+best learning rate and the best batch size, the number of examples a model learns from in one step,
+shift as compute grows. Another approach sets up the model so those best settings stay the same as
+it gets wider.

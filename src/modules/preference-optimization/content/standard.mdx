@@ -1,0 +1,220 @@
+---
+objectives: ["Run preference optimization on comparisons you authored", "Read an implicit reward margin correctly", "Explain what beta trades away", "Judge whether a preference gain carries over by scoring pairs the optimizer never saw"]
+terms: ["DPO", "Reference model", "Implicit reward", "Margin", "Beta", "KL divergence", "Length bias", "Degenerate repetition", "Reward hacking", "Policy", "RLHF", "Bradley-Terry", "Held-out pairs", "SFT checkpoint"]
+---
+
+## The big picture
+
+This module is about **direct preference optimization (DPO)**: training a language model on
+comparisons, each a prompt with a preferred and a rejected completion, through one
+classification-style loss. It asks what a successful-looking run has actually changed: which
+completions moved, how far the model drifted from its starting point, and whether the preference
+holds on comparisons it never trained on.
+
+It follows **Post-training**, which fitted a reward model to comparisons and optimized against it
+under a KL penalty, a cost on drifting from a reference distribution. **Instruction tuning &
+templates** supplies the response-only loss that builds this lab's optional **SFT checkpoint**, a
+stand-in for the supervised fine-tuned model DPO normally starts from.
+
+### Where it shows up
+
+- **After supervised fine-tuning.** Production DPO runs on an SFT checkpoint, which is normally
+  also the frozen reference. Without one, Rafailov et al. (2023) build the reference by maximizing
+  the likelihood of the preferred completions, which is how this lab's `SFT checkpoint` is built.
+- **On off-policy data.** Pairs are usually collected from some other model's outputs.
+- **As a family of objectives.** Length-normalized and reference-free variants (SimPO, ORPO), an
+  added likelihood term on the preferred side, and online variants that sample fresh completions
+  from the model being trained each target one of DPO's known limits.
+- **In run monitoring.** Production diagnostics match the lab's readouts: both sides of the margin
+  plotted apart, the share of pairs ordered correctly, drift, and a check on unseen pairs.
+
+### Why it matters
+
+DPO turns comparisons into gradients with no reward model, no sampling and no
+reinforcement-learning loop. The KL penalty survives inside the loss: every reward is measured
+against a frozen **reference model**, and **beta** sets how strongly the **policy**, the model
+being trained, is held near it. Without that anchor, nothing in the loss would keep the policy
+close to a working model.
+
+The cost is a result that is easy to misread. The loss sees only the margin between the two
+completions, can be satisfied mostly by making the rejected one unlikely, and grades only the
+training pairs. Without separate readouts for each side, for drift and for unseen pairs, a falling
+loss looks like a learned preference whether or not it is one.
+
+### What you will be able to explain
+
+- Run DPO on comparisons you write, and say why the loss reads ln 2 before the first step whatever
+  the pairs contain.
+- Read an **implicit reward margin** correctly: the gap between two completions of one prompt, each
+  scored by beta times its log-probability gain over the reference, and never a quality score.
+- Explain what **beta** trades away: separation between the completions against drift from the
+  reference, and why, under this lab's plain gradient descent, that trade depends on the step
+  budget.
+- Judge whether a preference gain carries over, by scoring **held-out pairs** the optimizer never
+  saw.
+
+### What the lab shows
+
+Every loss, gradient, reward and KL value is genuinely computed; the model, the data and the
+optimizer are deliberately simple. The model conditions on one preceding character through 900
+logits, trains on the pairs you write (three by default), and updates by plain full-batch gradient
+descent with no sampling. **Reference model** chooses `Base model`, a table trained 50 epochs on
+the Harbor and Recipes corpora, or `SFT checkpoint`, that base fine-tuned here on your preferred
+completions.
+
+In the **Preference pair editor**, write comparisons in **Preference pairs** as
+`prompt | preferred | rejected`, then set **DPO steps**, **Beta** and **DPO learning rate**. Each
+change retrains from the reference.
+
+**Implicit reward margin during training** plots the margin and both of its sides, averaged over
+the training pairs, at every step, and the held-out margin at evenly spaced step counts along the
+same run. **Where each pair sits on the loss** places each pair's measured log-ratio margin
+m, the margin with beta divided out, on the closed-form loss curve for the current beta, beside the
+curves for half and double beta.
+
+**Drift from the reference model** plots KL from the reference, averaged evenly over 30 context
+rows, at three betas. **Per-pair rewards** shows both rewards for every training pair and for the
+held-out pairs `H1` to `H3`, three fixed comparisons written before any run.
+
+The key experiment raises **DPO steps** from 0 and compares the training pairs' `ordered correctly`
+badge with **Held-out pairs ordered correctly**. At the defaults every training pair ends ordered
+correctly, but only one of the three held-out pairs does.
+
+## What it is
+
+**DPO** trains on comparisons directly. There is no reward model, no sampling, and no
+reinforcement-learning loop — just one loss over pairs of completions:
+
+`L = −log sigmoid(beta · ((logp_chosen − logp_chosen_ref) − (logp_rejected − logp_rejected_ref)))`
+
+The **implicit reward** of a completion is `beta` times how much more log-probability the
+**policy** — the model being trained — gives it than the frozen **reference model** does. The **margin** is the chosen completion's
+implicit reward minus the rejected one's. The loss is a decreasing function of the margin and of
+nothing else.
+
+By default the reference model is a real checkpoint: 50 epochs on the Harbor and Recipes corpora,
+a base table. Production DPO starts from an **SFT checkpoint** instead. **Reference model** in the
+pair editor can switch to one: the same base, fine-tuned here on your preferred completions with a
+response-only loss, as in *Instruction tuning & templates*. That lab's own weights are never loaded.
+
+The policy starts as an exact copy of the reference. Set **DPO steps** to 0 and **DPO loss** shows
+0.6931, because every margin is exactly zero and `−log sigmoid(0)` is `ln 2`.
+
+### What the comparisons look like
+
+The three default pairs in **Preference pair editor** use `prompt | preferred | rejected`, and
+every rejected completion is **degenerate repetition** — "fog fog fog fog fog." against "fog
+settles over the harbor.". Looping on a phrase is a genuinely high-probability failure for a small
+model, and in all three pairs the reference model assigns the loop the higher raw probability.
+
+## Why it’s here
+
+**Post-training** made the case for learning from comparisons: ranking two replies is faster
+and more reliable than writing an ideal one, and DPO reaches the RLHF objective without a separate
+scorer. It described DPO but never ran it.
+
+The margin needs care precisely because it is the quantity being optimized. That makes it the last
+quantity that can serve as evidence the optimization did what you wanted.
+
+## How to play with it
+
+Raise **DPO steps** from 0. At the defaults — three pairs, **Beta** 0.4, 40 steps, **DPO learning
+rate** 0.35 — the loss falls from 0.6931 to 0.0317, the β-scaled margin rises to 3.497, the
+**Log-ratio gap** reads 8.74 nats, and all three pairs end correctly ordered.
+
+Now read the two dashed and dotted lines. The chosen reward ends at +0.556, the rejected at −2.940.
+On **Where each pair sits on the loss**, the numbered pairs have slid right to m = 9.50, 8.85 and
+7.88, where each still pulls at only 2 to 4% of full strength.
+
+Then sweep **Beta** and read the three drift curves. The legend gives each run's gap and its final
+KL. Try it at 40 steps and again at 4.
+
+### Held-out pairs
+
+Under **Per-pair rewards**, below the training pairs, sit three **held-out pairs**, `H1` to `H3`:
+comparisons of the same kind that no step trains on, fixed before any run. At the defaults all
+three training pairs end ordered correctly and only `H3` does. `H1` and `H2` end at margins of
+−0.54 and −1.12. The held-out line in the first chart ends at +0.42, against +3.50 for the training
+pairs.
+
+### Change the reference
+
+Switch **Reference model** to `SFT checkpoint`. The reference now already prefers the chosen
+completion on two of the three training pairs, where the base preferred none, yet **DPO loss** at 0
+steps still reads 0.6931. After 40 steps the held-out margins are −1.48, −1.76 and +2.70.
+
+## What to notice
+
+- The margin is bought lopsidedly. The rejected side falls about five times further than the chosen
+  side rises. Most of the gap comes from making the bad completion unlikely.
+- That is not a bug, and both sides falling would not be one either. The loss only ever sees the
+  difference.
+- Per pair, the chosen rewards are +0.18, +0.51 and +0.97; the rejected ones −3.61, −3.03 and −2.18.
+  The rejected column moves further in every row.
+- **Beta** plays two roles. It sets where the loss flattens: loss 0.1 needs m = 11.26 at β 0.2, 5.63
+  at 0.4 and 2.82 at 0.8. It also multiplies every gradient step.
+- So its effect on drift depends on the budget. At 40 steps, β 0.2, 0.4 and 0.8 end at KL 0.0133,
+  0.0102 and 0.0053, with gaps of 10.2, 8.7 and 6.2 nats. At 4 steps the order flips: 0.0005,
+  0.0013 and 0.0017.
+- The β-scaled margin rises with β (2.045, 3.497, 4.949) while the gap it measures shrinks. Compare
+  runs with the gap, not the scaled margin.
+- The training margin and the held-out margin part ways. The training badge reads 100% and the
+  held-out badge 1 of 3: `H1` and `H2` are ordered backwards and `H3` forwards.
+- More steps make `H1` and `H2` worse, not better. Raise **DPO steps** and the held-out line stays
+  near zero while the training margin climbs. At the default beta and learning rate, no step count
+  orders more than one held-out pair.
+- `H3` carries over because its loop, "pasta and the pasta and the pasta.", shares ` and the ` with
+  training pair 2's loop. Train on pair 2 alone and `H3` ends at +2.25; on pair 1 alone, at +0.28.
+- With the SFT checkpoint the reference already ranks pairs 2 and 3 correctly, and the lab still
+  reports a loss of 0.6931 at 0 steps. Margins are measured from the reference, whatever it prefers.
+  Drift at β 0.40 rises from 0.0102 to 0.0161, because it is now measured from that checkpoint.
+
+## Where it breaks
+
+**In this lab.** The objective, the gradients, the rewards and the KL are all real; the model is
+not. It conditions on one preceding character through 900 logits, so a completion is a chain of
+character transitions. Three pairs, full-batch plain gradient descent, and no sampling. Drift is an
+even average over the 30 context rows, not weighted by how often each occurs.
+
+The transitions inside "fog fog fog" are the same ones ordinary harbor text needs, so pushing the
+rejected completion down necessarily takes probability from useful text. A model with real context
+can learn that a phrase is fine once and bad five times in a row; this one cannot.
+
+With Adam, which rescales steps per parameter, beta's step-size role largely disappears and its
+saturating role dominates. The early-steps flip above is a property of plain gradient descent.
+
+The held-out set is three fixed comparisons of one kind, a corpus sentence against a loop. It shows
+that ordering does not carry over automatically, not how often it does. The SFT checkpoint is
+trained on the same preferred completions the pairs contain, so it prefers them by construction; a
+real SFT set is separate and far larger.
+
+**In real systems.** A rising margin is evidence about the margin. **Reward hacking** — the measured
+objective improving while human-judged quality stalls — survives the removal of the reward model,
+because the margin is now the exploitable quantity.
+
+**Length bias** is the concrete case. Raw total log-probability always favours the shorter
+completion, and preference data in which longer answers tend to win teaches the policy to write
+longer. Pairs are also usually collected off-policy, from some other model's outputs, so the policy
+is taught about text it would not have produced.
+
+## Going deeper
+
+The closed form comes from **RLHF**. Maximizing reward minus β times the KL to the reference has a
+known optimal policy, `πref · exp(r / β) / Z(x)`. Inverting it writes the reward as
+`β · log(π / πref)` plus a per-prompt constant, and that constant cancels inside the **Bradley-Terry**
+likelihood for a pair. The KL constraint is not dropped — it is absorbed, which is why beta is both
+the reward scale and the constraint strength.
+
+The variants each attack one limit above: length-normalized and reference-free objectives (SimPO,
+ORPO) for length bias and the second model's memory, an added likelihood term on the chosen side
+for the "both sides fell" outcome, and online variants that sample fresh completions from the
+current policy and label those.
+
+DPO is run on a supervised fine-tuned checkpoint, and that checkpoint is normally the reference.
+Rafailov et al. (2023, arXiv 2305.18290) initialize the reference from the SFT model when one
+exists and, when it does not, by maximizing the likelihood of the preferred completions. That
+fallback is what **Reference model** `SFT checkpoint` does here. The default is still the base
+table, so the lineage is only followed once you switch.
+
+The production diagnostics are the ones on screen here: both sides plotted apart, the share of
+pairs ordered correctly, drift, and a check on pairs the optimizer never trained on.

@@ -1,0 +1,553 @@
+---
+objectives: ["Explain what a chat template adds to raw completion data", "Identify which part of the sequence the model is asked to produce", "Predict what training without an end-of-turn marker does to a model's sense of where a reply stops", "Predict how serving a trained model with a format it did not train on changes what it does next"]
+terms: ["Supervised fine-tuning", "Chat template", "Special token", "System prompt", "End-of-turn token", "Loss masking", "Template mismatch", "Instruction following", "Role markers", "Packing", "Nats", "Pretraining", "Superficial alignment hypothesis", "Multi-turn data"]
+---
+
+## The big picture
+
+When you type a question into a chatbot, it writes an answer, stops, and waits for your next message.
+That feels as natural as texting a friend, but the model underneath never sees chat bubbles or a send
+button. It receives one long line of text, and the one thing it has been trained to do is guess which
+piece of text comes next.
+
+So something has to turn your conversation into that single line, and the line has to show whose words
+are whose and where each reply ends. This module is about that layout, which is called a **chat
+template**, and about the extra round of training that teaches a model to use it. That training is what
+the module's title calls instruction tuning: practice on hand-picked examples of requests, each paired
+with a good reply.
+
+### Where you have met it
+
+Each chat model is trained with its own template, which ships with the model so that the software
+running it can lay out your messages the same way. When a chatbot finishes its answer and stops instead
+of rambling on, that is because training taught it to write an end marker at that point. A template can
+also hold a block of instructions that comes before your message, such as "answer briefly and plainly",
+which is called a **system prompt**.
+
+### Why it matters
+
+A model that has only learned from web pages is good at continuing text but poor at answering it. Ask it
+"how long should it simmer" and it may reply with another question, because on web pages one question is
+often followed by more questions. It also has no signal for when to stop, so it keeps writing and often
+makes up your next message itself.
+
+The template also has to match between training and use, and a mismatch is easy to miss. If an app lays
+out your messages differently from the way the model was trained, nothing crashes or shows an error,
+while the model quietly does a worse job. The markers matter for safety as well: a system prompt
+stays trusted only while ordinary typed text cannot copy the special labels around it.
+
+### What you will be able to explain
+
+By the end of this lesson, you should be able to explain these ideas in your own words:
+
+- what a chat template adds to a plain question and answer, and why a model needs it;
+- which part of the long line the model is trained to write, and which parts it only reads;
+- what happens to where a model's replies stop if it trains without an end marker;
+- what a trained model does next when it is given a layout it never trained on.
+
+### What the lab lets you try
+
+The lab trains two tiny models on the same four questions and answers, about fog, a sauce, the weather
+by noon and how long to simmer something. One model sees them laid out with the chat template, while the
+other sees each question and answer run together as plain text. You can switch parts of the template on
+and off, choose which characters the model is graded on during training, and write your own examples. Then you can give
+both trained models a layout they never saw and watch what each one does next.
+
+The models are small enough to train instantly, so every number you see is really measured rather than
+made up. The four starting examples, the system sentence and one test reply are fixed text written for
+the lab. The markers are spelled out in letters rather than being special symbols. The models are also far simpler than a real chatbot, and the lesson points out where that changes
+what the numbers mean.
+
+## What it is
+
+### One long line of text
+
+A chat model never receives a conversation, only one long run of characters, which programmers call a
+**string**. The **chat template** is the rule that decides exactly what that string looks like. Here is
+the first example in the lab with every part of the template switched on, split over three lines so you
+can read it:
+
+```
+<system>answer briefly and plainly.<end>
+<user>when does the fog arrive<end>
+<assistant>the fog settles over the harbor in the morning.<end>
+```
+
+The model gets all of this as one unbroken line of 138 characters. Each of the three switches in **Chat
+template editor** adds or removes one kind of piece, and each switch shows `in template` or `off`:
+
+- The **System block** switch puts `<system>` and the sentence "answer briefly and plainly." at the
+  front. That sentence is the **system prompt**, a block of instructions that sits outside the user's
+  turn.
+- The **Role markers** switch adds labels called **role markers**, which say whose words each turn
+  holds: `<user>` goes in front of the question and `<assistant>` in front of the answer.
+- The **End-of-turn marker** switch closes every turn with `<end>`, including the system block when that
+  is on. The question gets its `<end>` only while **Role markers** is on too, as step 1 below shows.
+
+### A radio picture
+
+Picture two people talking on walkie-talkies, where only one of them can talk at a time, so they follow
+a routine. Each turn starts by saying who is talking, such as "this is base", and ends with the word
+"over" to hand the turn back. Those words carry no news, since their only job is to mark where a turn
+starts and ends. The markers do the same job, with `<user>` and `<assistant>` as the "this is base" part
+and `<end>` as the "over".
+
+The picture stops matching in two places. First, a person can say "over" in an ordinary sentence, such
+as "the game is over", and the listener has to work out which meaning was intended. In this lab that
+cannot happen, because `<` and `>` never appear in the lab's example text and are removed from anything you type,
+so a bracketed marker can only ever mean structure. Second, a radio operator already knows what "over"
+means, while a model gets nothing from `<end>` until training has shown it many examples of the marker
+in use.
+
+### The tiny models in this lab
+
+Real chat models are huge, so the lab uses the smallest kind of model that can still show the idea. It
+works with only 30 characters: the space, the 26 letters, the full stop, the opening bracket `<` and the
+closing bracket `>`. Each model is a table with one row for each of those characters, and every row
+holds the odds for which character comes next.
+
+To make a guess, the model looks only at the last character and reads that character's row. If the last
+character is `t`, it reads the `t` row, which after training gives `h` by far the best odds because
+"the" is so common in the replies. The whole model is 30 rows of 30 numbers, which makes 900 numbers in
+all, while a real chat model looks back over the whole conversation before every guess.
+
+Both models start blank, with every row giving all 30 characters the same chance: 1 in 30, which is
+about 3.3%. Training changes a row only when the model is graded on a guess made from that row. As you
+will see below, the lab can choose to grade only some guesses. A row that is never used for a graded
+guess stays at an even 3.3% for every character. Keep that in mind, because it explains several of the
+most surprising results in the lab.
+
+The lab trains two of these tables side by side on the same four examples. The templated model trains on
+the chat template, while the plain model trains on each question and answer run together as plain text.
+
+### Same guessing game, new layout
+
+Big language models are first trained on enormous amounts of text by guessing the next piece at every
+position, which is called **pretraining**. After each guess, training checks what really came next and
+gives a penalty that grows with how surprised the model was. That penalty is called the **loss**, and
+training works by nudging the model's numbers so that the loss gets smaller next time.
+
+The lab measures surprise in a unit called **nats**, and a perfect guess, which gave the right character
+a 100% chance, scores 0. Every time that chance is cut in half, the surprise goes up by about 0.69, so
+the lower the chance the model gave the right character, the higher its surprise. A model that spreads
+its odds evenly over all 30 characters scores about 3.40, which is the score of a model that has learned
+nothing at all.
+
+**Supervised fine-tuning** plays the same guessing game with the same penalty, but on a much smaller,
+hand-picked set of requests paired with good replies. It is called supervised because every example
+comes with the reply it should get, and fine-tuning because in real life it adjusts a model that
+pretraining has already trained. Two things change from pretraining: the text is laid out as turns with
+a chat template, and usually only the reply is graded.
+
+### Graded, or only read
+
+The switch labelled **Loss on** decides which characters count toward the loss, and with `Assistant
+reply only`, the only graded ones are the reply and the `<end>` right after it. Everything before them,
+from the system prompt to the question and its markers, is still read, because each next guess is based
+on it. The model is never graded on guessing those characters, though.
+
+This is called **loss masking**, because a mask covers part of the line so that those guesses do not
+count. `Every character` removes the mask and grades every guess, which is exactly the rule pretraining
+uses.
+
+The same switch applies to the plain model, even though its text has no markers. The lab still knows
+which part of each plain line is the reply, so with `Assistant reply only` it grades the reply's
+characters and only reads the question. While the end marker is on, the templated model is also graded
+on the `<end>` after each reply, so the two models are not graded on quite the same characters.
+
+Picture a worksheet where you copy out each question and then write your answer underneath. You need the
+question in order to answer it, but only your answer earns marks, and nobody gets points for copying the
+question neatly. Loss masking grades a model the same way, and for the same reason: the goal is to get
+better at answering, not at writing questions.
+
+The strip under the switches shows the first example with one cell per character. Grey, hatched cells
+are "context only: read, never graded", while plain cells with a blue underline are "graded: in the
+loss". A line along the top of each cell shows whose turn the character belongs to. A bar inside the
+cell shows how surprised the trained model is by that character, on a scale from 0 to 5 nats.
+
+At the default settings, **Graded characters** reads 52 of 137. The total is 137 rather than 138 because
+the very first character has nothing in front of it to guess from, so it is never predicted. The 52
+graded characters are the 47 characters of the reply "the fog settles over the harbor in the morning."
+plus the 5 characters of `<end>`.
+
+### Markers as special symbols
+
+Real models do not read one character at a time; instead, they cut text into chunks called **tokens**,
+which are often whole words or pieces of words. Each token has its own id number, and a real template
+gives every marker a reserved id of its own, called a **special token**. That makes `<end>` one symbol
+rather than five characters.
+
+In this lab, by contrast, the markers are spelled out in characters, so `<end>` uses the same `e`, `n`
+and `d` rows as ordinary words like "the" and "and". Because `<end>` is graded, the marker and the
+words compete for those rows. For instance, the `d` row has to point at a space after "and" but at `>`
+inside `<end>`, so it cannot give either one the full odds. That sharing has a small cost, which you
+will see in the lab's reply scores.
+
+## Why it’s here
+
+Look at what the plain model trains on for the first example: "when does the fog arrive the fog settles
+over the harbor in the morning." Nothing in that line says where the question stops and the answer
+starts, and nothing comes after the final full stop. Text taken from web pages has the same gap, because
+it never says whose turn it is.
+
+The template adds two things that plain text cannot, and together they make **instruction following**
+learnable. Instruction following means writing a reply to a request instead of carrying on with the
+request's own text. A model picks this up from formatted examples like the ones in this lab, not from
+more pretraining.
+
+### A starting line for the reply
+
+The first thing the template adds is a clear starting line: after `<assistant>`, everything is the
+model's own output, and that is exactly the part the mask grades. When you chat, the app sends your
+question followed by `<assistant>`. That puts the model in the same spot where training made it practise
+writing replies, so a reply is what comes next.
+
+### A signal to stop
+
+The second thing is an **end-of-turn token**, a marker the model learns to write when a reply is
+finished. The part of the software that generates a reply, called the **decoder**, picks one piece of
+text at a time and keeps going until it reaches a stop signal. If the model never learned to write that signal, the decoder
+has nothing to stop on, so the model keeps writing and often invents the user's next question itself.
+
+Picture two campers on walkie-talkies, and one of them has never learned to say "over". They finish
+their news, keep holding the button, and then start guessing what their friend might say back, because
+nothing in their routine tells them to hand the turn over. A model trained without `<end>` runs on in
+the same way, because nothing in its training marks the point where a reply ends.
+
+The picture stops matching in one way. The camper is guessing on purpose, while a model is not trying to
+do anything. A real model writes a fake user turn only because, in conversation text, a user's message
+is what usually comes next. The lab's tiny model cannot show even that: with no `<end>` and the mask on, its row
+for the full stop is untrained. So the character it writes right after a reply is a pure guess, with
+every character equally likely.
+
+### Why only the reply is graded
+
+The mask exists because the model is meant to write replies, not user messages. If every character were
+graded, the model would also practise writing the questions and markers that the user and the app
+supply. That practice can then show up in the wrong place, as the lab shows.
+
+When every character is graded, the templated model also practises guessing what comes after each `>`.
+In its training text, `<end>` is followed straight away by `<user>` or `<assistant>`. So it learns that
+the closing bracket is often followed by an opening one. A reply starts right after the `>` of
+`<assistant>`, so the model may open its reply with a marker instead of a word.
+
+## How to play with it
+
+The lab follows five steps, and each one below says what to change and what to watch.
+
+### 1. Edit the template
+
+Turn **System block**, **Role markers** and **End-of-turn marker** on and off one at a time, and watch
+the strip gain and lose structure. For example, turn off only **Role markers**, and the line becomes
+this:
+
+```
+<system>answer briefly and plainly.<end>when does the fog arrive the fog settles over the harbor in the morning.<end>
+```
+
+Now the question runs straight into the answer with a single space between them, so nothing shows where
+one ends and the other begins. Turn all three switches off, and the strip shows exactly the plain text
+that the plain model trains on.
+
+Watch the count as well: with **End-of-turn marker** off, **Graded characters** drops from 52 to 47,
+since the reply no longer has an `<end>` after it to grade.
+
+### 2. Read the loss mask
+
+With every switch back on, find `<assistant>` in the strip, and you will see the graded cells begin
+right after it, at the `t` of "the".
+
+**Try this:** switch **Loss on** between `Assistant reply only` and `Every character`, and read the
+three numbers under the strip. With the mask on, **Graded characters** reads 52 of 137. Beside it,
+**Mean −log p, graded** reads 2.11 nats, while **Mean −log p, context** reads 2.92 nats.
+
+The label "−log p" is the lab's short way of writing the surprise score from earlier, and "mean" means
+average. Here p is the chance the model gave the right character. Later you will see **log-prob**,
+written log p, which is the same number with the sign flipped, so it is negative.
+
+A surprise of 2.11 is what you would get if the model gave each right character about a 1 in 8 chance.
+You can check this with the halving rule, since getting from 100% down to 1 in 8 takes three halvings.
+Three steps of 0.69 add up to about 2.1. A surprise of 2.92 is closer to 1 in 18, so the context
+characters are much harder for the model to predict. That makes sense, because the model is never
+graded on them, so only the letter pairs they share with the replies get any practice.
+
+Switch to `Every character`, and all 137 characters are graded, so **Mean −log p, context** reads "none"
+because no character is left ungraded. The graded average becomes 1.99 nats, which is close to a 1 in 7
+chance. Set **Loss on** back to `Assistant reply only` before you move on, because the numbers in the
+next steps assume the mask is on.
+
+### 3. Fine-tune on your pairs
+
+In **Supervised dataset editor**, each line is one example, written as `instruction | response`. The
+request goes to the left of the upright line `|`, and the reply it should get goes to the right.
+Everything you type is made lowercase. Digits, commas and other symbols turn into spaces, and brackets
+are removed, because the models only use 30 characters. The editor keeps up to 16 lines of 200 characters each, and a line
+with no `|` drops out, which you can spot in the **Examples** count.
+
+The **SFT epochs** slider (SFT is short for supervised fine-tuning) sets how many times training works
+through all the examples, and one full pass through them is called an **epoch**. You can choose anywhere from 1 to 80 passes. Move it and watch the
+readout `“<” after the full stop` in **Two models, two formats**, which gives each model's chance of
+starting `<end>` after the reply's last full stop.
+
+With the four starting pairs, the templated model gives that marker about a 6% chance at 4 epochs. At
+the default of 30 epochs that rises to 54%, and at 80 epochs it reaches 88%. The end of a turn is
+learned gradually, like any other pattern in the examples.
+
+The same card shows **Reply log-prob per char, templated**, the log-prob from step 2. So −2.228 at the
+defaults means an average surprise of 2.228 per character of the reply, and closer to zero is better. It
+moves towards zero as the passes rise. At 4 epochs it is about −3.02, close to a 1 in 20 chance for
+each right character. At 80 epochs it reaches about −1.87, which is nearer to 1 in 6.
+
+The chart above it shows each model's loss falling as training goes on. Its bottom axis counts
+**optimizer steps**, where each step is a single nudge to the table based on a small batch of graded
+guesses. Each point on the chart averages a few steps.
+
+The two training curves grade different characters, so the chart's own note warns that they are not a
+ranking of which model is better. The same note gives the counts for one pass over the examples: 191
+graded guesses for the templated model against 171 for the plain one. The extra 20 are the five
+characters of `<end>` at the end of each of the four replies. **Graded targets**, in **Supervised
+dataset editor**, shows the templated count, and it jumps to 528 when **Loss on** is set to `Every
+character`.
+
+Before you move on, delete any line you added and set **SFT epochs** back to 30. The numbers in the
+next steps assume the four starting pairs at 30 passes.
+
+### 4. Break the boundary
+
+Turn **End-of-turn marker** off, keep the mask on, and compare the two lists under **What follows the
+end of a turn**. Each list shows the five characters a model gives the best odds right after the full
+stop that ends the first reply. The templated model is on top, and the plain model is below.
+
+With the marker on, the templated model's top bar is `<` at 54.4%, the first character of `<end>`. With
+it off, the upper list goes flat like the lower one. Every character, `<` included, gets 3.3%, so the
+list shows only the first five characters in order: space, a, b, c and d. The readout `“<” after the
+full stop` drops to 3% for both models. Turn the
+marker back on before the last step, since its numbers assume the full template.
+
+### 5. Serve a different format
+
+Using a trained model to answer prompts is called **serving** it, and the card **Serve the trained
+models** does that with both of the lab's models. It sends them the first example, cut off right where
+the reply should begin. The box shows the exact string sent, with its last character highlighted. Each
+model reads only that last character, so that one character decides what each model does next.
+
+**Try this:** switch **Serve with** between `Chat template`, `No template` and `Wrong role marker`, and
+watch the readout **First reply character “t”, templated vs plain**. Under `Chat template`, the reply's
+first letter `t` gets 18% from the templated model and only 3% from the plain one. The plain model never
+saw a `>` in front of anything during training, so its `>` row was never trained and spreads its odds
+evenly.
+
+`No template` sends only the question and a space, and then the templated model reads 22% while the
+plain one reads 25%. The plain model does well here because in its training a single space sat right
+before every reply. `Wrong role marker` puts `<user>` where `<assistant>` belongs, and you will find it
+gives exactly the same results as `Chat template`; "What to notice" explains why. Serving a model with a
+layout that differs from the one it trained on is called a **template mismatch**.
+
+Above the bars, each model also writes a short piece of text, called a **sample**, by picking one
+character at a time, with likelier characters picked more often. A note under each sample says where a decoder watching for
+markers would stop.
+
+Last, set **Loss on** to `Every character` and serve `Chat template` again. The templated model now puts
+37% on `<` right after the closing `>`, and its sample opens with a marker instead of a reply. A decoder
+watching for markers would stop at once, leaving an empty reply.
+
+This happens because, with every switch on, each training example has two places where a closing bracket
+is followed by `<`, inside `<end><user>` and `<end><assistant>`. Grading those characters taught the
+model that a bracket is often followed by another marker.
+
+## What to notice
+
+### Where a reply ends
+
+- With the full template and the mask, the templated model puts 54.4% on `<` right after a reply's full
+  stop, so its likeliest next step is to start `<end>`.
+- The plain model gives every character 3.3% at that same spot, because its row for the full stop was
+  never trained. In its training, nothing ever came after a reply's last full stop, so nothing in that
+  row says to stop.
+- Turn **End-of-turn marker** off with the mask still on, and the templated model drops to 3.3% too. The
+  graded `<end>` was the only thing teaching it where a reply ends. The role markers cannot do that job,
+  because they sit before the reply, where nothing is graded.
+- Switch to `Every character` with the end marker still off, and the templated model is back to 55% on
+  `<`, even with no `<end>` in its data. It learned that from the system prompt, where "plainly." is
+  followed by `<user>`, which is a boundary it was never meant to be graded on. The masked result is
+  cleaner, because there the model learns where a reply ends from replies alone.
+- A tall bar for the opening bracket means the model will probably start a marker, not that it will
+  spell `<end>` correctly. The rest of the marker is still predicted one character at a time.
+
+### What the mask changes
+
+- Under the mask, the context characters (the system prompt, the markers and the question) average 2.92
+  nats, against 2.11 for the graded reply. Nothing trains the model to predict them directly.
+- The question still improves as a side effect. Its characters, spaces included, average about 2.50
+  nats, well below the 3.40 of a blank model. That is because letter pairs like "th" and "he" in "the
+  fog" also appear in the replies, so the question uses rows that the replies trained.
+- The point of the mask is where the training effort goes: into writing replies, not into writing the
+  user's side of the chat.
+
+### What the template costs and buys
+
+- The template costs the reply a little: **Reply log-prob per char, templated** reads −2.228, while
+  **Reply log-prob per char, plain** reads −2.168, slightly closer to zero.
+- Both of those scores work out to roughly a 1 in 9 chance per character, so the gap is small. It has
+  two causes in this tiny model.
+- First, the graded `<end>` uses the same `e`, `n` and `d` rows as the reply's letters, so those rows
+  split their odds between the marker and ordinary words.
+- Second, the reply's first letter is guessed from the `>` row, which has had far less training than the
+  space row the plain model uses. The `<assistant>` letters themselves are not graded under the mask, so
+  they train nothing.
+- With `Every character`, the gap grows to −2.425 against −2.129, because grading the prompt makes the
+  templated model spend more of those shared rows on the markers.
+- What the template buys in return is a known place where every turn starts and ends. The readout `“<”
+  after the full stop` shows it: 54% for the templated model, against 3% for the plain one, which has
+  never seen `<end>`.
+
+### Serving a different format
+
+- A plain-trained model served the chat template does not crash or show an error. It answers from a row
+  that nobody trained, so all of its next-character bars sit flat at 3.3%.
+- Taking the template away even raises the templated model's score for `t`, from 18% with the template
+  to 22% with `No template`. In this toy that is an accident of reading one character, because its
+  space row was trained on the spaces between the replies' own words. It does not mean templates are
+  optional.
+- `Chat template` and `Wrong role marker` give identical bars and samples. Both strings end in `>`, and
+  a model that reads one character cannot tell `<user>` from `<assistant>`, while a model that reads the
+  whole marker can.
+- The samples look like scraps of words rather than sentences, because a model that sees one character
+  can only learn which letters tend to follow which. At the defaults, the templated sample writes a few
+  scraps, reaches a full stop, and starts a marker right after it.
+- **Held-out reply, log-prob per char, templated vs plain** scores a reply that appears in none of the
+  training pairs, "the rain stops before noon." It reads −2.86 for the templated model and −2.87 for the
+  plain one. Compare the templated −2.86 with −2.23, which **Reply log-prob per char, templated** gives
+  the first trained reply.
+- That gap is roughly the difference between a 1 in 17 chance and a 1 in 9 chance for each character.
+  Scores on training data flatter a model, the same way that grading yourself on the exact questions you
+  practised would flatter you.
+
+**A common mix-up:** the mask does not hide the question from the model. Masked characters are still
+read, and they are exactly what each next guess is based on; the mask only takes them out of the grade.
+In the worksheet picture, you still read each question in order to answer it, and the teacher does not
+mark your copy of it.
+
+## Where it breaks
+
+### What this lab simplifies
+
+Every number in this lab is really trained and measured, so none of it is made up. What is missing is
+size, and that limits what the numbers can mean.
+
+- Each model looks at one character to guess the next. So "it knows the turn ended" means only that the
+  row for `.` learned to point at `<`, the first character of `<end>`. A real model predicts a single
+  stop symbol from the whole conversation.
+- Four examples is not a dataset, while real fine-tuning uses thousands to millions of pairs.
+- Both models start from blank tables, instead of from a model that pretraining has already taught.
+- The markers are spelled in letters instead of being single reserved ids, so `<end>` shares rows with
+  ordinary text.
+- The system prompt is one fixed sentence, the strip shows only the first example, and only the end of
+  the first reply is probed.
+- Serving is tested through one character only, because each model reads the last character of the
+  served string. A template mismatch therefore shows up as one different row of the table.
+- That means the real cost of a mismatch cannot appear here: a real model reads the whole unfamiliar
+  prompt again at every step of its reply.
+- Each sample picks characters at random, with likelier characters picked more often, but the lab
+  reuses the same random numbers every time. A sample therefore changes only when the trained table or the
+  served string changes. Either way, you see one possible reply rather than a typical one, and the
+  held-out reply is one sentence, so neither tells you much on its own.
+- The two reply scores cover the same characters and are divided by the same count, which makes them
+  fair to compare. They still come from two differently laid-out datasets, so treat the gap between them
+  as a hint rather than proof.
+
+### Where real systems fail
+
+Serving a model with the wrong template is a common failure, and it is silent. Nothing errors;
+the model receives a string unlike anything it trained on, and the quality of its answers sags.
+
+Picture a student who practised for weeks with quizzes where every question started with "Q:" and every
+answer space started with "A:". On test day the paper uses a new layout, so the student still writes
+answers but makes more slips, and nothing on the paper says the layout caused them. A model served the
+wrong template is in the same spot, except that it cannot notice the change at all.
+
+A serving system that builds prompts by gluing text together can also turn `<end>` into five ordinary
+characters instead of the reserved id. The two look identical in the printed record of what was sent, so the bug is hard to spot, but
+the model never receives the marker it was trained on.
+
+Stopping also depends on the serving software, which keeps a list of stop signals to watch for. If the
+stop id is missing from that list, nothing halts the reply when the marker appears, and the model runs
+on into an invented next turn.
+
+There is a security side as well, since a **system prompt** only counts as instructions because the
+template and the training data agreed to treat it that way. If the software turns a marker that a user
+typed into the real marker id, the user's text can pretend to be a system turn.
+
+Picture a group chat where messages from the admin appear in a special gold box. If anyone could type a
+short code that put their own message in the gold box, the box would stop meaning anything. Reserved ids
+only protect a system prompt when the serving software keeps them out of user text.
+
+## Going deeper
+
+### How real templates ship
+
+Real models ship their template as a small piece of code, stored in the settings of the **tokenizer**,
+which is the part that cuts text into tokens. The software that runs the model uses it to lay out every
+conversation. When it is time to write a reply, the template also adds the opening assistant marker
+after your message, so the model starts writing in the right place.
+
+Adding a brand-new marker needs a new token id and a new row of numbers inside the model for that id, so
+it changes the size of the model itself.
+
+### Masking is a choice
+
+Most fine-tuning recipes grade only the assistant's turns, but some research finds that grading the
+instructions too can help when replies are short and examples are scarce. So the mask is a setting to
+test, not a law.
+
+### What the examples teach
+
+The **superficial alignment hypothesis** is an idea about what this kind of training really does. Here
+"alignment" means getting a model to behave the way people want when it talks with users, and a
+hypothesis is an idea that researchers propose and then test. This one says that a model learns nearly
+all its knowledge and skills during pretraining, and that later tuning mostly teaches it which format
+and style of reply to use.
+
+The idea comes from a 2023 paper by Zhou and colleagues, called LIMA, short for "Less Is More for
+Alignment". They fine-tuned a large model called LLaMA, with about 65 billion adjustable numbers, on
+only 1,000 carefully chosen pairs of prompts and replies. For comparison, each model in this lab has 900
+adjustable numbers.
+
+Smaller tests on a model with 7 billion numbers pointed the same way. The researchers trained it on 2,000
+examples from the Stack Exchange question-and-answer sites, picked only from good-quality posts. That
+raised a helpfulness score by about half a point on a six-point scale, compared with 2,000 examples
+picked without that quality check. Doubling the amount of data, on the other hand, did not make the replies better.
+
+The scores in those tests were given by another AI model, ChatGPT, rather than by people. So treat the
+results as evidence for the idea about format and style, not as proof that fine-tuning adds no
+knowledge.
+
+### Conversations with many turns
+
+The lab's examples each have one question and one answer, but real chats go back and forth. In a real
+chat the template repeats: a user block, an assistant block, then a user block again. The masking rule
+stretches to fit, because the whole conversation is trained as one string, every assistant turn is
+graded, and every user turn is read as context.
+
+**Multi-turn data**, meaning training conversations with several turns each, matters because a model
+tuned only on single questions can lose the thread. In the LIMA paper, one model was tuned on 1,000
+examples that each had a single turn. That model stopped following the prompt within three exchanges in
+6 of the 10 test chats.
+
+Adding only 30 multi-turn conversations raised the share of excellent replies from 45.2% to 76.1%. That
+is a jump from fewer than half of the replies to about three in every four.
+
+### Packing
+
+Real models read text in windows of a fixed length, called the **context window**. A short example
+leaves most of the window empty, and that space is filled with blank filler called padding, which the
+computer still has to work through. **Packing** glues several short examples into one sequence to fill
+the window instead.
+
+That can save a lot of work, because Krell and colleagues found that up to half of the tokens in common
+training datasets can be padding. Packing needs care, though, because each example still needs its own
+end marker. The model must also be blocked from looking back across the join, or one example can read
+the one before it as if they were one conversation.
+
+In this lab every example is its own sequence, so nothing is packed and no guess ever crosses from one
+example into the next.

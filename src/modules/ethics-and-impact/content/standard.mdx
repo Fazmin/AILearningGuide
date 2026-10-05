@@ -1,0 +1,186 @@
+---
+objectives: ["Name at least two costs that never appear on a leaderboard","Explain why a benchmark score cannot finish an ethics question, using who the benchmark represents","Compare the one-time compute of training with the ongoing compute of serving","Name the fairness criterion the triage gap breaks, and say how a risk-based rule treats a deployment without deciding whether it is justified"]
+terms: ["Training data","Consent","Dual use","Externalities","Labor","Accountability","Disaggregated evaluation","Equal opportunity and equalized odds","Distribution shift","Provenance","Training compute","Inference compute","Risk-based regulation"]
+---
+
+## The big picture
+
+This module is about what a benchmark score can and cannot settle in a deployment decision, and
+who bears the costs it never records, from past students and contractors to readers and patients.
+The lab lays out competing claims and leaves them unscored. It does not decide whether any
+deployment is justified.
+
+It builds on **The ecosystem** and adds two calculations that put numbers on what a score leaves
+out. **Disaggregated evaluation**, reporting a metric separately for each group of people, shows
+whom an average hides. A compute estimate separates **training compute**, paid once per run, from
+**inference compute**, paid on every request served.
+
+### Where it shows up
+
+- **Benchmarks and leaderboards.** A headline accuracy averages over the test set's population.
+  Group-fairness criteria such as **equal opportunity** and **equalized odds** (Hardt, Price, and
+  Srebro, 2016) compare error rates group by group.
+- **Regulation.** The EU AI Act is **risk-based regulation**, scaling duties with the harm a use
+  could cause. Its high-risk list includes emergency healthcare patient triage and AI that
+  evaluates learning outcomes in education, and Article 50 asks for machine-readable marks on
+  generated content, a form of **provenance**.
+- **Energy reporting.** Published energy figures for training often cover only the final run and
+  not the experiments before it. The lab converts its estimate of arithmetic operations to
+  energy with one assumed utilization.
+
+### Why it matters
+
+- **An average can hide a group.** In the lab's synthetic triage model, accuracy falls about 3
+  points as group B goes from 10% to 50% of patients, while missed urgent cases per 1,000 double,
+  mostly in group B. A single accuracy cannot show where the misses fall; per-group reporting can.
+- **Some costs never reach a score.** Training text taken without **consent**, labeling
+  **labor**, and the energy of serving are costs no score records. Most fall on people who did not
+  choose the deployment, which makes them **externalities**. A real person's likeness used without
+  their say is only partly measurable, and only by a benchmark whose prompts ask for real people.
+- **Serving is the recurring bill.** Counting only training misses compute paid on every request,
+  and at high volume serving dominates.
+- **A rule is not a verdict.** Meeting a risk-based rule's duties still leaves open whether a
+  deployment is justified.
+
+### What you will be able to explain
+
+- Name at least two costs that never appear on a leaderboard, and who bears them.
+- Explain why a benchmark score cannot finish an ethics question, using who the benchmark
+  represents.
+- Compare the one-time compute of training with the ongoing compute of serving.
+- Name the fairness criterion the triage gap breaks, and say how a risk-based rule treats a
+  deployment without deciding whether it is justified.
+
+### What the lab shows
+
+Nothing here runs a trained model or measures a real system. Each card is authored text, fixed
+synthetic rates, or closed-form arithmetic.
+
+**Deployment** switches between `School tutor`, `Newsroom draft`, `Clinic intake` and
+`Image generator`, four fictional settings with five authored claims each, tagged by theme, by who
+bears them, and by whether a benchmark speaks to them. **Score** stays at none. In
+**Tension explorer**, **Claim** steps through them one at a time.
+
+**Who the benchmark represents** evaluates a synthetic triage model with invented, fixed group
+rates. The key experiment moves **Group B share of patients** from 10% to 50%: accuracy barely
+moves, **Missed urgent per 1,000** climbs, and the **Equal-opportunity gap** and
+**False-positive gap** stay put.
+
+**Training versus serving** estimates floating-point operations (FLOP) for a dense model in closed
+form, about 6 × parameters × training tokens to train and 2 × parameters per token served, driven
+by **Parameters**, **Training tokens** and **Tokens served per day**. **Days to break even**, the
+day cumulative serving compute matches one training run, does not move when **Parameters** changes.
+The card's note converts compute to energy in MWh, assuming 40% of an A100's peak throughput and
+400 W per GPU.
+
+## What it is
+
+A deployment decision has claims for it and claims against it, and they are borne by different
+people. This lab lays out four fictional deployments, each with five authored claims tagged by theme,
+by who bears them, and by whether any benchmark number could speak to them. One is an image generator,
+with claims about consent, likeness, and **provenance**. The lab never reduces them to a score.
+
+Two cards then compute what a leaderboard leaves out.
+
+### Who the benchmark represents
+
+A single accuracy is an average over whoever was in the test set. The synthetic triage model here is
+94.0% accurate on group A and 85.4% on group B, whose notes the labels under-represent. It misses 10%
+of group A's urgent cases and 45% of group B's.
+
+On a holdout with 10% group B it scores 93.1%. Move the population to 50% group B and accuracy falls
+only to 89.7%, while missed urgent cases per 1,000 patients go from 27 to 55. That gap is what
+**disaggregated evaluation** exists to show, and what **distribution shift** hides.
+
+The gap has a name. The model flags 90% of group A's urgent cases and 55% of group B's, a
+true-positive-rate gap of 35 points. **Equal opportunity** (Hardt, Price, and Srebro, 2016) asks for
+equal true-positive rates, so the model is far from it.
+
+**Equalized odds** also asks for equal false-positive rates. Those are 5% and 7%, only 2 points apart,
+so the model fails equalized odds almost entirely because of the first gap. Neither gap moves with the
+group mix.
+
+### Training versus serving
+
+**Training compute** for a dense transformer is about `6·N·D` operations for N parameters and D
+training tokens. **Inference compute** is about `2·N` per token served. One is paid once; the other is
+paid on every request.
+
+They are equal after `3·D ÷ tokens served per day` days, so model size cancels out. With 2T training
+tokens and 10B tokens served a day that is 600 days; at 1T tokens a day it is 6.
+
+## Why it’s here
+
+Leaderboards answer harnesses. Misinformation, **dual use**, and **accountability** do not sit on
+those axes. The extractor that fills in an intake form can also compile a dossier, and no score says
+who answers for a wrong output. The ecosystem lab showed that a release is a bundle of parts; this
+lab asks who pays for each part, and who is left out of the measurement.
+
+## How to play with it
+
+1. Set **Deployment** to `School tutor` and read **Score** and **A benchmark speaks to**.
+2. Move **Claim** through all five lines and read **Who bears it** and **Can a benchmark measure it?**
+3. In **Who the benchmark represents**, move **Group B share of patients** from 10% to 50%, then read
+   **Equal-opportunity gap** and **False-positive gap**.
+4. In **Training versus serving**, raise **Tokens served per day**, then change **Parameters** and
+   watch **Days to break even** stay put.
+5. Switch to `Newsroom draft`, `Clinic intake`, and `Image generator` and name two costs no leaderboard
+   measures.
+
+## What to notice
+
+- In each deployment at most one claim is fully on a leaderboard, and in three of the four an Against
+  line already answers it. On `Image generator` the only benchmark claim is prompt match; consent, likeness,
+  and provenance are not.
+- The costs fall on people other than the buyer: past students, contractors, writers, readers, patients.
+- At the default 30% group B, group B is 30% of patients and 66% of missed urgent cases.
+- The **Equal-opportunity gap** stays at 35 points and the **False-positive gap** at 2 at every share.
+  Both are properties of the model, not of who walks in.
+- Training energy is a one-off; serving energy scales with use. At high volume, serving dominates.
+
+## Where it breaks
+
+**In this lab.** The deployments, claims, and tags are authored teaching sentences, not findings. The
+triage model's group rates are invented and fixed, and only two fairness criteria are named; others
+exist, such as demographic parity. The compute arithmetic assumes a dense model and
+one utilization figure. It ignores long-context attention cost, sparse mixture-of-experts models,
+cooling, and the energy source.
+
+**In the real mechanism.** A benchmark still cannot finish the question. **Externalities** stay off the
+loss curve, a public URL is not consent, and a model card is not accountability by itself. Published
+energy figures often cover only the final training run and not the experiments before it.
+
+## Going deeper
+
+### Rules and frameworks, checked 30 September 2026
+
+Regulation and standards now name deployments like these. Three are worth knowing by name. They set duties
+and processes; none decides whether a deployment is justified.
+
+- **EU AI Act, risk levels.** It is **risk-based regulation**. The European Commission describes four
+  levels: unacceptable risk (banned), high risk, transparency risk, and minimal risk. Annex III lists
+  high-risk uses, including emergency healthcare patient triage and AI that evaluates learning outcomes
+  in education.
+- **EU AI Act, transparency.** Article 50 asks providers of systems that generate synthetic audio, image,
+  video, or text to mark outputs so they are machine-readable and detectable as generated, and deployers
+  of deepfakes to disclose them. AI-generated text published to inform the public must be disclosed
+  unless a person has reviewed it and holds editorial responsibility.
+- **NIST AI Risk Management Framework.** AI RMF 1.0, released in January 2023, is voluntary and organized
+  around four functions: Govern, Map, Measure, and Manage. A Generative AI Profile followed in July 2024.
+- **ISO/IEC 42001.** Published in 2023, it is a management-system standard for AI: requirements for how an
+  organization sets up and keeps improving its own AI governance. It is about processes, not any one
+  model's behavior.
+
+The schedule is the part that moves. As the Commission's AI Act timeline read on 30 September 2026,
+prohibitions applied from 2 February 2025, rules for general-purpose AI from 2 August 2025, most other
+rules including Article 50 from 2 August 2026, and Annex III high-risk rules from 2 December 2027, a date
+moved later by an amendment, the Digital Omnibus on AI. Check the current text before relying on a date
+here.
+
+*Sources: the European Commission's AI Act pages (digital-strategy.ec.europa.eu and
+ai-act-service-desk.ec.europa.eu), Article 50 and Annex III of Regulation (EU) 2024/1689, nist.gov's AI RMF
+page, and iso.org's page for ISO/IEC 42001:2023.*
+
+**The ecosystem** is the card you would read first. **How we know a model works** and **Evaluation**
+explain why a harness can look fine. **Failure modes, safety, and security** treats dual use as a
+security problem; here it stays a civic one.

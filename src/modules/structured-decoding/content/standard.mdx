@@ -1,0 +1,157 @@
+---
+objectives: ["Describe constrained decoding as a token mask applied at each step","Explain why a valid JSON string can still be a wrong answer","Explain why masking one token at a time can sample different strings than conditioning the model on valid output"]
+terms: ["Constrained decoding","Grammar","Schema","Token mask","Renormalization","Valid prefix","Token boundary","Greedy decoding","Distribution distortion","Function call"]
+---
+
+## The big picture
+
+This module is about **constrained decoding**: keeping a language model's output inside a required
+format, such as a JSON object that matches a schema or a tool call with a fixed syntax. It asks how
+a decoder can guarantee that a finished output has the right shape, and what that guarantee leaves
+unchecked.
+
+It builds on **Next-token prediction**, where a model emits one token at a time from a softmax over
+its vocabulary. Constrained decoding edits each step's distribution: a **grammar**, a set of rules
+for which strings are legal, decides which next tokens are still allowed, and the rest are removed
+before the choice.
+
+### Where it shows up
+
+- **Structured output.** A JSON **schema**, a description of fields and types, is compiled into a
+  grammar, so an answer meant for a program comes out in the shape that program expects.
+- **Function calls.** A grammar keeps a call such as `get_weather(city="…")` parseable before the
+  host runs it, the step that **Tools and function calling** and **Agents** rely on.
+- **Inference engines.** Libraries such as Outlines and XGrammar run the mask inside the decoding
+  loop, so a request can carry a schema and every finished output fits it.
+
+### Why it matters
+
+A model's most probable token can fall outside the format. At the first step of this lab's JSON
+example the favourite is `Sure`, the opening of a prose reply rather than an object. A mask removes
+that token and every other one that would leave the grammar, so the shape no longer depends on what
+the model happens to prefer.
+
+The guarantee is narrow. It covers shape, not truth: a parseable function call can name the wrong
+city, and a free string field admits fluent nonsense. A length limit can still cut the output off
+mid-object. And masking one token at a time can change how often each whole string comes out,
+compared with the model's own probabilities restricted to valid strings.
+
+### What you will be able to explain
+
+- How constrained decoding applies a **token mask** at each step, removing illegal tokens and
+  rescaling the rest so they sum to one (**renormalization**).
+- Why a valid JSON string can still be a wrong answer.
+- Why masking one token at a time can sample different strings than conditioning the model on valid
+  output, a gap called **distribution distortion**.
+
+### What the lab shows
+
+No trained model runs here: each step's distribution is a softmax over authored logits, a baseline
+of −2 plus a few hand-set values, across 24 tokens. The softmax, the character-level matcher, the
+mask and the renormalization are real computations, and a test checks that each walk is the
+**greedy** constrained path, taking the most probable legal token at every step.
+
+**Grammar** switches between *JSON object*, which accepts only `{"ok":true}` or `{"ok":false}`,
+and *Function call*, `get_weather(city="…")` with a free-string city. On **Prefix walk**, each
+button of **Decode step** is one step of the greedy decode, labelled with the token it picks;
+readouts give **Unconstrained pick**, **Pick after mask** and **Legal tokens**. **Masked
+distribution** lists token probabilities before and after the mask, the legal mass `Z`, and the
+share removed.
+
+The key experiment is **Mask distortion**, a separate two-step example with an enum field (a closed
+list of values) that allows only Oslo or Bergen. Its probabilities are authored, and both bars are
+computed exactly from them. Drag **P(slo" after "O)** from 10% to 90%: the **Per-step mask** bar
+stays at 65% Oslo, while **Model, conditioned on a valid string** rises from 17% until the two meet.
+
+## What it is
+
+Constrained decoding restricts each next token to those a grammar still allows. At every step the
+model produces a distribution over its whole vocabulary, the logits and softmax from
+**Next-token prediction**. A **token mask** sets illegal tokens to
+zero, and **renormalization** divides the survivors by `Z`, the probability they had together:
+
+```text
+p′(t) = p(t) / Z   for legal t,   0 otherwise,   Z = Σ legal p(t)
+```
+
+That is the same as setting illegal logits to `−∞` before the softmax. Sampling or greedy choice
+then proceeds as usual.
+
+### How legality is decided
+
+A **grammar** (often compiled from a JSON **schema**) is turned into an automaton over characters.
+A token is legal when the prefix plus that token is still a **valid prefix**: some accepted string
+starts with it. End of sequence is legal only once the string is complete.
+
+Tokens do not line up with grammar symbols. `{"` opens the object and starts the key in one token;
+`":` closes the key and adds the separator. A correct mask walks each token's characters through
+the automaton, so these **token boundary** crossings are allowed.
+
+## Why it’s here
+
+Tools, APIs and agents consume model output with a parser. A decode that drifts from the format
+breaks the pipeline. Constrained decoding guarantees the shape at decode time, with no change to
+the weights, which is why it is a decode-time technique like those in **Inference & KV cache**.
+
+## How to play with it
+
+**Grammar** selects a JSON object with schema `{"ok": boolean}` or a tool call
+`get_weather(city="…")`. **Prefix walk** steps through the greedy constrained decode; each button
+of **Decode step** is one token.
+
+At JSON step 1 the model's favourite token is `Sure` at 41.5%. It is illegal, so **Masked
+distribution** shows `Z = 0.320` and the pick `{"` rising from 0.228 to 0.711. At step 4 the
+model's second choice is `"`, a string, which the boolean field forbids.
+
+**Mask distortion** is a separate two-step example. Drag **P(slo" after "O)** from 10% to 90% and
+compare the two bars.
+
+## What to notice
+
+- The model's ratios among legal tokens survive the mask exactly. Renormalization is bookkeeping,
+  not new knowledge.
+- The schema is stricter than the syntax: `null` is valid JSON but masked for a boolean field.
+- A free string field lets almost anything through. At function-call step 5, 11 of 24 tokens are
+  legal, including `hello`. At step 6, `")` keeps 6.3%, which would call the tool for city `Os`.
+- In the distortion example, per-step masking picks Oslo 65% of the time whatever the slider says.
+  The model's own probabilities, restricted to valid strings, give 17% at the default.
+
+## Where it breaks
+
+**In this lab.** The logits are authored, not produced by a trained model: a baseline of −2 plus a
+few hand-set values per step. The grammars are two tiny patterns with no whitespace, nesting or
+escapes, and the vocabulary has 24 tokens. The softmax, the mask, the matcher and the
+renormalization are real computations.
+
+**In the real mechanism.** Constrained decoding guarantees shape, not truth. A parseable function
+call can name the wrong city, and a schema with free strings and numbers admits fluent nonsense.
+The guarantee also needs the run to finish: a length limit can still cut a string off mid-object.
+
+### Distortion
+
+Masking one token at a time does not sample from the model's distribution conditioned on valid
+output. It commits to a prefix before learning whether the model would continue it legally; Park
+et al. (2024) call this out for grammar-constrained decoding and propose a corrected sampler. When a
+large share of mass is removed, the survivors may all be tokens the model thought unlikely.
+
+### Tokenization
+
+A mask that allowed only tokens matching whole grammar symbols would forbid `{"` and `":` and force
+spellings such as `{`, `"`, `ok` that the model rarely saw in training. Prompt boundaries have a
+similar issue: a prompt ending mid-token pushes the model toward odd continuations, which "token
+healing" fixes by backing up one token and constraining the next.
+
+## Going deeper
+
+Production engines compile full JSON Schema or context-free grammars into finite-state or pushdown
+automata and precompute, for each automaton state, most of the allowed-token set. Outlines and
+XGrammar are well-known examples; the precomputation is what makes masking a 100,000-token
+vocabulary cheap at every step.
+
+The practical pattern is to describe the schema in the prompt as well, so the model's unconstrained
+distribution already favours the format and little mass is removed. The mask then acts as a safety
+net rather than a steering wheel.
+
+**Tools and function calling** executes objects like the one this lab builds, and **Agents** loops
+that execution. The host still has to validate arguments: the grammar checked the shape, not
+whether `get_weather` should run for that city.

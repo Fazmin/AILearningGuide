@@ -1,0 +1,556 @@
+---
+objectives: ["Describe in-context learning as inference from the prompt, with no weight update", "Separate copying an answer from context from inferring a rule from it", "Explain how a scratchpad lets a fixed per-pass computation follow a longer chain of dependent steps, and what it costs in passes"]
+terms: ["In-context learning", "Few-shot prompting", "Zero-shot", "Demonstration", "Task inference", "Induction head", "Prompt sensitivity", "Context window", "Chain of thought", "Scratchpad", "Serial computation", "Faithfulness", "Test-time compute"]
+---
+
+## The big picture
+
+To start, here is a small puzzle: look at these lines and decide which number belongs after the last
+arrow.
+
+```
+glim → 4
+plint → 5
+soravel → 7
+florin → ?
+```
+
+Most people answer 6, because each number seems to be the count of letters in the word before it.
+Nobody told you that rule, though, so you pieced it together from three examples and then used it on a
+word you had never seen before.
+
+A language model, the kind of program behind a chatbot, can often do the same thing. Show it three or
+four examples of a made-up task and it will often do the task. Yet the settings it learned in training
+stay exactly the same as it reads them.
+
+This module explains how that works, and why a right answer does
+not always mean the model worked it out, since it may have copied the answer from your message. It also
+shows what changes when a model is allowed to write out its steps before it answers.
+
+### Where you have met it
+
+If you have ever given a chatbot a couple of examples of the layout you wanted and watched it follow
+them, you have used this idea. It is the reason that a well-written prompt, the message you send to a
+model, can get it to do a new job without any extra training.
+
+You may also have heard of reasoning models, a newer kind of model that writes out a long chain of steps
+before it gives an answer. The last part of this module looks at why writing steps down can change
+whether an answer is right. It also explains why those written steps deserve a careful look rather than
+blind trust.
+
+### Why it matters
+
+Without this ability to learn from examples in the prompt, every new task would need its own round of
+training. That would cost time, computing power and a large set of training examples for every single
+job. Prompting with a few examples, which is the cheapest way to point a model at something new, would
+not work at all.
+
+It also matters that you can tell what kind of success you are looking at. A model that repeats an
+answer it can already see in your message has not shown that it can handle a new case. In the same way,
+a tidy list of written steps does not prove that those steps are how the answer was reached. Both are
+tempting mistakes when you judge what a model can do, and this module shows you how to avoid them.
+
+### What you will be able to explain
+
+By the end of this lesson, you should be able to explain each of these ideas in your own words:
+
+- How a model can pick up a task from the examples in your message by treating them as clues, while the
+  settings it learned in training stay exactly the same.
+- The difference between copying an answer that already sits in the message and working out a rule that
+  also fits a word the message never mentioned.
+- How writing progress down, in what is called a scratchpad, lets a model that does a fixed amount of
+  work per run follow a longer chain of steps. Each step in the chain needs the one before it, and you
+  will see how many extra runs the scratchpad costs.
+
+### What the lab lets you do
+
+The lab has three cards, and each one is a small toy that was built by hand for this lesson:
+
+- **Prompt as context** shows the puzzle above with six possible rules beside it. You add examples one
+  at a time and watch the rules that do not fit get crossed out, while a chart shows how the possible
+  answers are shared out.
+- **Copy from context** shows a copying trick that real models use, and lets you watch it succeed on a
+  word it has already seen. Then you can watch the same trick fail on a word it has never seen.
+- **Chain-of-thought scratchpad** sets a chain of lookups that is too long to finish in one go. You can
+  switch on a scratchpad to see when writing steps down fixes the answer, and count the extra work it
+  takes.
+
+No real model runs anywhere in the lab, so every number you see comes from rules written for the lesson.
+That makes each result exact and something you can check by hand, while the section "Where it breaks"
+explains what real models do differently.
+
+## What it is
+
+### Three words you will need
+
+A language model reads and writes text in small pieces called **tokens**, which are whole words or parts
+of words, and it produces its reply one token at a time. What it does with those tokens is controlled by
+a huge collection of numbers inside it, called its **weights**. Those numbers were adjusted again and
+again while the model was trained, and once training ends they stay fixed while people use the model.
+
+The text a model can see at any moment, meaning your message plus everything earlier in the
+conversation, is called its **context**. Keep this split in mind for the whole lesson: changing the
+context changes what the model is reading, while changing the weights changes the model itself.
+
+### Learning without changing: in-context learning
+
+Suppose you send a model a few examples of a task it was never trained on, using words it has never
+seen. It will often carry on the pattern correctly for the next word. Its weights are exactly the same
+after it answers as they were before it read your examples, because nothing in the model was adjusted at
+all. This is called **in-context learning**, since all of the "learning" lives in the context and none
+of it reaches the weights.
+
+This lesson's puzzle uses letter counting because you can check every answer by hand. Real models are
+actually weak at counting letters, because they see tokens rather than single letters, so a real chatbot
+may well miscount florin. On tasks they can see clearly, though, a few examples are often enough for them
+to pick up a pattern they were never trained on.
+
+Nothing is kept afterwards, either, because the examples in the context were the only thing that
+changed. If you clear the conversation and ask about `florin` with no examples, the model is back where
+it started.
+
+Three terms describe the different ways of asking a model to do a task:
+
+- Giving a handful of examples, like the puzzle lines, is called **few-shot prompting**, where each
+  "shot" is one example.
+- Each example pair in the prompt, such as `glim → 4`, is called a **demonstration**.
+- Asking with an instruction and no examples at all, such as "Count the letters in each word" followed
+  by `florin →`, is called **zero-shot**. Models that were trained to follow instructions handle
+  zero-shot requests far better, although models without that training can still manage some tasks.
+
+So how can a model do a task it was never trained on, without any change to its weights? During training it took
+in an enormous amount of text and became very good at continuing text in a way that fits what came
+before.
+
+Your examples narrow down what kind of text this is, so the continuation that fits best is the
+one that carries on the pattern. Carrying on the pattern and doing the task turn out to be the same
+thing.
+
+### A game of guess-my-rule
+
+Picture a friend who starts a guessing game with you, without telling you the rule. "Glim gives 4, plint
+gives 5, soravel gives 7," they say, "so what does florin give?" You do not study, and you do not become
+a different person while you play. Instead you use each clue to throw out the guesses that do not fit,
+and then you answer with whatever rules are left.
+
+The lab plays this game out in the open, so you can watch each guess get thrown out. The game is a way
+to picture the examples as clues. It is not a picture of what happens inside a real model, and "Where it
+breaks" explains where the two stop matching.
+
+### The examples are clues: task inference
+
+The **Prompt as context** card lists six rules that someone might mean by `glim → 4`. They are "count the
+letters", "count distinct letters", "consonants + 1", "vowels + 3", "count consonants" and "count
+vowels". Here "distinct" means that each different letter is counted only once, and the vowels are a, e,
+i, o and u. Each rule is a real calculation, so the card runs it on every example word and marks the
+result with a ✓ or an ✗.
+
+Watch what the first example, `glim → 4`, does to the list. Glim has four letters and none of them
+repeats, so "count the letters" and "count distinct letters" both give 4. It has three consonants and
+one vowel, so "consonants + 1" and "vowels + 3" also come to 4. Only "count consonants", which gives 3,
+and "count vowels", which gives 1, miss the answer, so those two rules are out.
+
+The next two examples keep cutting the list down, one rule each. Plint has only one vowel, so "vowels +
+3" gives 4 instead of 5 and drops out. Soravel has four consonants, so "consonants + 1" gives 5 instead
+of 7 and drops out as well. That leaves two rules standing: "count the letters" and "count distinct
+letters".
+
+Treating the examples as evidence about which task you mean, and keeping only the rules that fit, is
+called **task inference**. The word inference means reaching a conclusion from evidence, which is exactly
+what you do in the guessing game.
+
+Not every example earns its place, though, and the fourth example, `trelix → 6`, crosses out nothing at
+all. Trelix has no repeated letters, so both of the rules that survived soravel already give 6 for it. A
+good example is one that rules something out.
+
+### From rules to a guess about the answer
+
+The card splits 100% equally among the rules still standing, and the **Weight** column shows each
+rule's share. This is a different use of the word from the model's weights, the numbers fixed during
+training, which never change in this lab. With two rules left, for example, each one gets 50%. Each rule then makes its own
+prediction for the word you are asking about, which the lab calls the **Query**, and those predictions
+are added up into the answer bars.
+
+Here is how that plays out for `florin`, a word with six different letters, made of four consonants and
+two vowels:
+
+- With no examples, all six rules are still in play and two of them predict 6, so the chance on 6 is two
+  out of six, about 33%.
+- After glim, four rules remain and two of them predict 6, so the chance rises to 50%.
+- After plint, three rules remain and two of them still predict 6, which gives 67%.
+- After soravel, only the two letter-counting rules remain and both of them predict 6, so the chance
+  reaches 100%.
+
+The readout **P(florin → 6)** shows this number as it changes, where the P stands for probability,
+meaning the chance that something happens.
+
+By the third example, something interesting has happened: the card still cannot tell which of the two
+rules you mean. For florin, though, the two rules agree, so the answer is settled before the task is.
+
+### When the clues run out
+
+Now switch the Query to `letter`, a word where "count the letters" gives 6 but "count distinct letters"
+gives only 4, because letter has two e's and two t's. None of the first four example words repeats a
+letter, so these two rules fit every one of them equally well. With three or four examples the card
+stays split, 50% on 6 and 50% on 4, because the evidence cannot separate the two rules.
+
+In the guessing game, this is the moment when you have two guesses left and both fit every clue so far.
+You cannot say which one your friend means until a clue arrives that splits them, and the lab offers two
+ways to provide that clue. The first is the fifth example, `ballot → 6`, which has two l's, so "count distinct letters"
+gives 5 and drops out.
+
+The other way is to switch **Prompt strategy** from **Examples only** to **State a rule**, which puts an
+instruction at the top of the prompt. The instruction says "Count the letters in each word", so it gives
+the whole starting share to the rule "count the letters". The table then marks the other rules as "ruled
+out by the instruction", unless an example has already knocked them out. In this lab, then, a single
+stated rule is worth several examples.
+
+### Copying is not the same as working it out
+
+Models also have a much more direct way to produce an answer, which is to copy one. Inside a model,
+parts called attention heads look back over the earlier text and pull information from the spots that
+best match what they are searching for. One kind, called an **induction head**, searches for an earlier
+spot where the current token appeared and copies whatever came right after it.
+
+The **Copy from context** card runs a hand-built induction head over the puzzle prompt. The last token of
+the prompt is the arrow after the Query word, so the head looks for earlier arrows. It pays attention to
+whatever came right after each of those arrows, which is always an earlier answer, and that is what it
+copies.
+
+The head is really looking for the same pair it is sitting on, which is the Query word followed by an
+arrow. On a line that started with the same word as the Query, the answer comes right after a perfect
+match of that pair. So that answer gets a much larger share of the head's attention than any other.
+
+Watch it work on `soravel` with at least three examples showing, which means the line `soravel → 7` is
+already in the prompt. The head puts more than 90% of its attention on the 7 at the end of that line and
+copies it, reaching the right answer without counting a single letter.
+
+Switch to `florin` at four examples and the trick falls apart, because no earlier line starts with
+florin. With nothing to match, the four earlier answers all tie, and each one's bar sits at about 24%.
+That is a little under a quarter, because a small amount of attention always leaks onto the other words
+and arrows.
+The head has copied the format, a number after an arrow, but nothing in it has looked at how many letters
+florin has.
+
+Push it one step further, and at five examples the bar for 6 climbs to 38%, which looks like progress.
+It happens only because two of the earlier answers, the ones for trelix and ballot, are both 6. A taller
+bar for the right answer can be pure luck about which answers sit in the prompt.
+
+Picture a classmate who has the practice test's answer sheet lying open on the desk and copies from it
+instead of solving anything. If a question on the real test matches a line on the sheet, they copy that
+answer instantly and look like an expert. For a new question, all they can do is hedge between the
+answers on the sheet, which will sometimes include the right one by luck.
+
+Here the picture stops matching. A classmate might remember a few answers after the sheet is gone, but
+the head keeps nothing. Clear the prompt and the trick is gone.
+
+Induction heads are real and well studied, and they make sense for the text models are trained on, which
+is full of patterns that are set up and then continued. Researchers have found that induction heads
+appear during training at about the same time as models get much better at learning from examples in the
+prompt. Copying explains the format and exact repeats, but applying a rule to a brand-new word needs more
+than this one part.
+
+### Writing the steps down
+
+Each time a model writes one token, it sends the whole context through a fixed stack of processing
+stages, called layers, from the first to the last. One complete run like this is called a **forward
+pass**, and it ends with exactly one new token. Because the number of layers never changes, each pass
+can do only a fixed amount of work.
+
+Some tasks are a chain in which every step needs the result of the step before it, which is called
+**serial computation**. In a chain like this, step three cannot start until step two is finished. If one
+pass can link only so many of these steps, a longer chain does not fit inside it.
+
+Picture adding up a long column of numbers in your head, where you can keep a running total for the
+first few but lose track somewhere along the way. With a pencil, you write the running total down every
+few numbers and carry on from what you wrote, so the column can be as long as you like.
+
+A model can do something similar by writing its partial results as tokens before its final answer, and
+those in-between tokens are called a **chain of thought**. The text a model writes for itself before it
+answers is called its **scratchpad**. Because the scratchpad sits in the context, the next pass can read
+the latest partial result and carry on from it instead of starting over. In this way the chain can
+stretch across as many passes as it needs.
+
+Spending extra work while a model answers, rather than while it trains, is called **test-time compute**.
+Here "test time" means whenever the model is being used to answer, and compute means the amount of
+calculating work.
+
+Writing a chain of thought is one way to spend it,
+and a mathematical study published in 2024 showed why it can matter so much. Under some widely used
+assumptions, a model with a fixed number of layers can solve some step-by-step problems only when it is
+allowed to write out its steps.
+
+### The lab's arrow puzzle
+
+The **Chain-of-thought scratchpad** card turns this into a puzzle you can watch, using a table of ten
+arrows in its prompt. Each arrow, such as C → H or H → A, points from one letter to exactly one other
+letter. The task is to start at C and follow the arrows a set number of times. Following one arrow is
+called a hop, and the number of hops is the lab's **Hops k**.
+
+Starting from C, the path through the table runs like this:
+
+```
+C → H → A → J → E → B → G → D → I
+```
+
+Each hop is the same find-and-copy step that the induction head performs: find the current letter in the
+table and copy the letter its arrow points to. You cannot jump ahead, because you only learn the next
+letter once you have found the current one.
+
+To make the limit visible, the lab adds a rule called the **Per-pass budget b**: one pass can follow at
+most b arrows before it must write a token. That limit is a rule invented for the lesson, not something
+measured from a real model.
+
+Here is the walk-through the card is built around, with **Hops k** set to 6 and **Per-pass budget b** set
+to 3. If you count six steps along the path above, you land on G, which is the correct answer.
+
+- With **Scratchpad** off, the model gets a single pass, which follows C → H → A → J and uses up its
+  budget. It has to write something at that point, so it answers J, which is wrong.
+- With **Scratchpad** on, pass 1 follows the same three arrows to J, but this time it writes J as a
+  scratch note instead of an answer. Pass 2 reads that J back from the context, follows J → E → B → G,
+  and answers G, which is right.
+
+The lookups inside a pass are silent, which means they are never written down. In the lab, the next pass
+reads only what was written, so the written J is the only thing that carries the progress forward. The
+letter says where the chain has reached, and the fact that one scratch note is already there tells pass 2
+that three hops are done and three are left.
+
+You might think any extra tokens would help, since each one gives the model another pass. But filler,
+such as a row of dots, carries no partial result, so the next pass has nothing to carry on from and the
+chain does not move forward.
+
+### What the scratchpad costs
+
+The fix is not free, because every pass writes one token and each pass takes its own time to run. The
+number of passes the scratchpad needs is k divided by b, rounded up to the next whole number. For
+example, with k at 7 and b at 3, the division gives two and a third. Rounding up makes that three
+passes, because the last hop still needs a pass of its own.
+
+The card's info panel writes the same rule as `ceil(k / b)`, where ceil is short for ceiling and means
+round up. At the other extreme, with b at 1, every hop needs its own pass, so a chain of eight hops takes
+eight passes.
+
+The pencil-and-paper picture is a good guide to why writing helps, but it stops matching in a couple of
+places, which "Where it breaks" sets out.
+
+## Why it’s here
+
+### A new job without new training
+
+Changing a model's weights to teach it a task is called fine-tuning, and it means running another round
+of training with its own examples, time and computing power. If four example lines in the prompt get you
+the behavior you want, a training run is an expensive way to buy it. That is why "we should fine-tune a
+model for this" is usually the wrong first instinct.
+
+Picture a small team that wants a model to rewrite messy dates into one neat format. One person starts
+planning a training run, while another pastes four before-and-after examples into the prompt and tries
+that first. If the examples work, the team has spent a few lines of text rather than a training run.
+They can also change the format in seconds whenever they change their minds about how the dates should
+look.
+
+### Telling copying from working it out
+
+You saw that soravel can be answered by copying while florin cannot, and this matters whenever people
+test a model. A test that shares words with the examples in the prompt will make a model look better than
+it is, because some of its right answers were copied. A fair test always includes cases the prompt has
+never shown, like florin rather than soravel.
+
+### Chains that are too long for one pass
+
+A model does a fixed amount of work in each pass, so a chain of dependent steps that is longer than that
+amount cannot be finished in one go. In the lab, a pass that runs out of budget answers with wherever it
+got to, and that answer is wrong. Writing partial results down gets around this, which means a chain of
+thought can change what a model gets right, not only how it explains itself.
+
+### Steps that look like working
+
+The written steps raise a sharper question, because they are text produced in the same way as everything
+else the model writes, one token at a time. They look like the model showing its working, but how closely
+they match what really produced the answer has to be checked with evidence, not taken on trust.
+
+## How to play with it
+
+Work through the cards from top to bottom, and make a prediction before each change so you can test it.
+
+1. **Try this:** On **Prompt as context**, set **Examples** to 0 with the **Query** on `florin`, and read
+   the answer bars. Several answers are still possible at this point, and **P(florin → 6)** reads only
+   33%. Now raise **Examples** one step at a time and watch the table, where each rule that misses says
+   where it went out, such as "out at glim". By the third example, the chance on 6 has climbed all the
+   way to 100%.
+2. Set **Query** to `letter` and **Examples** to 4, then read the small badge next to the card's
+   heading, which now says "2 of 6 rules fit". The bars split evenly between the answers 6 and 4, because the two remaining rules disagree. Add
+   the fifth example, `ballot`, and watch "count distinct letters" drop out of the table for good. Then go
+   back to four examples and switch **Prompt strategy** to **State a rule**, which settles the question
+   without the fifth example.
+3. Switch **Prompt strategy** back to **Examples only**. Then, on **Copy from context**, keep
+   **Examples** at 3 or more and set **Query** to `soravel`. Read the
+   heading, the shading and percentages under the tokens, and the bars for the "Induction head's predicted
+   next token". Then switch to `florin` and compare, first at four examples and then at five.
+4. On **Chain-of-thought scratchpad**, set **Hops k** to 6 and **Per-pass budget b** to 3 with
+   **Scratchpad** off. Read **Answer**, **Correct answer** and the badge, which should say "answer wrong"
+   because the single pass stopped short. Then switch **Scratchpad** to on and compare **Answer**,
+   **Passes (one token each)** and the scratch line in the context box. Also look at the table of passes
+   beside the context box, where each row is one pass. Its **Silent lookups** column shows the arrows
+   that pass followed without writing them down.
+5. Look at the table of hop counts at the bottom of the card, and compare its **No scratchpad** and
+   **Scratchpad** columns while b is 3. Then raise **Per-pass budget b** one step at a time, and watch the first ✗ in the
+   No scratchpad column move further down the table.
+
+The **Examples**, **Prompt strategy** and **Query** controls live on the first card, but they also change
+the **Copy from context** card, because both cards read the same prompt.
+
+As a reminder, the **Weight** column shows each rule's share of the 100%, while the **Weights changed**
+readout is about the model's own weights, the numbers set during training.
+
+## What to notice
+
+- **Weights changed** always reads 0, because only the prompt ever changes. The confused spread of
+  answers at zero examples and the certain answer at three examples both came from the same fixed
+  calculation.
+- A good example is one that rules something out, and trelix shows the opposite: it adds a column to the
+  table but removes nothing new.
+- An answer can be settled before the task is. For florin, the answer 6 is certain while the card still
+  cannot tell which of the two remaining rules you mean.
+- Copying reproduces the format, a number after an arrow, without working anything out about a new word.
+  A taller bar for the right answer can be a coincidence of which answers happen to be in the prompt.
+- With **Scratchpad** off, the answer is right exactly when k is at most b. At b = 3, chains of one to
+  three hops are right, while every chain from four to eight hops fails.
+- With **Scratchpad** on, every chain is right, and the price is paid in passes. At b = 3, chains of up to
+  three hops take one pass, chains of four to six take two, and chains of seven or eight take three.
+- Once b reaches k, both settings answer in one pass, so writing steps down pays off only past the limit
+  of a single pass.
+- The silent lookups in each row of the passes table never reach the next pass, because only the token a
+  pass writes does. That is why a partial result has to be written down before the next pass can build
+  on it.
+
+## Where it breaks
+
+### What this lab fakes or simplifies
+
+- On **Prompt as context**, the six rules, the examples and the Query words were all written for the
+  lesson. The examples never contain a mistake, and every rule starts with an equal share unless you
+  state a rule, which gives it all to one rule. A real model
+  faces a vast range of possible tasks, and which ones it leans toward before seeing any examples comes
+  from its training.
+- Crossing out rules is a clean way to picture a prompt as evidence, but it is not how a real model
+  calculates on the inside.
+- On **Copy from context**, there is a single induction head whose settings were chosen by hand, and it
+  works on whole words. Nothing was trained, and no tokenizer, the tool a real model uses to chop text
+  into tokens, runs at all.
+- On **Chain-of-thought scratchpad**, the budget b is a number the lab sets, not something measured from
+  a model. The table, the task and every step are exact, so no pass ever makes a mistake, and no model
+  runs. When a pass runs out of budget, the lab has it answer with wherever it got to, which is the toy's
+  own choice rather than measured behavior.
+- In the lab, the written steps are always honest, because the lab is built so that each pass can read
+  only what was written. The letters on the scratchpad really are what carries the answer, while a real
+  model's written reasoning makes no such promise.
+
+### Where the two pictures stop matching
+
+The guess-my-rule game gives the model too much credit in one way. A person playing it knows they are in
+a game and remembers the rule afterwards, while a model has no awareness of a task at all. It produces a
+very good continuation of a pattern, and it keeps nothing once the conversation is cleared.
+
+The pencil-and-paper picture also needs a warning, because your limit comes from memory and tiredness,
+while a model's limit per pass is built into its layers. Your written totals can be wrong, too, and so
+can a real model's written steps, even though the lab's never are.
+
+### Where real in-context learning goes wrong
+
+Real in-context learning is fussier than the lab suggests, because details that should not matter can
+still move its accuracy by several percentage points. These include the order of the examples, their
+formatting, the wording of their answers, and even extra spaces or line breaks. A change of several
+points means several more or fewer right answers out of every hundred questions, and the effect is called
+**prompt sensitivity**.
+
+Picture a student whose quiz score changes when the same questions are printed in a different order. The
+questions did not get harder, yet the result moved, and a model can behave the same way with its
+examples.
+
+Researchers have also found that the layout of the **demonstrations**, and the set of possible answers
+they show, can matter more than whether each example's answer is correct. Picture a prompt that labels
+movie reviews as "happy" or "sad", where some of the labels have been swapped to the wrong one. A model
+often still does nearly as well, as long as the examples keep the same layout and use the same two
+labels.
+
+The examples seem to tell the model what kind of answer to give more than which answer is right. That
+sits awkwardly with the neat story that a model learns the rule from its examples, the way the lab's
+first card does.
+
+Piling more text into a prompt has limits too, starting with the **context window**, which is the most
+text a model can look at in one go. It is measured in tokens, and it is working space rather than lasting
+memory. Models can get worse at using information buried in the middle of a long context, and adding
+more examples eventually stops helping.
+
+### Where real chains of thought go wrong
+
+- A real model's limit per pass comes from its depth, meaning its number of layers, and from its training.
+  It is not a clean number like b, and it differs from one task to another.
+- Written steps can be wrong, and one mistake spoils every step that follows. In the arrow puzzle, a wrong
+  letter on the scratchpad would send each later pass down the wrong path. You cannot try this on the
+  card, but a test in the lab's code changes one scratch letter and shows that the final answer changes
+  with it.
+- Studies comparing many tasks found that writing steps down helps most on math and symbol puzzles, and
+  much less on other kinds of task.
+- Every written token costs time, so a long chain of thought makes the answer slower to arrive.
+
+**A common mix-up:** the reasoning a model writes out is not a record of how it got its answer. A model can
+be swayed by some detail in the prompt and then write a tidy explanation that never mentions that detail.
+Picture a student who copies an answer from a friend and then writes neat working that leads to it. The
+working looks convincing, but it is not how the answer was reached.
+
+The steps do not have to be deliberately misleading for this to happen. They can simply leave out what
+actually drove the answer. Whether a written trace matches what produced the answer is called **faithfulness**, and
+nothing guarantees it in a real model. Treat the trace as another output to check, not as an explanation
+to trust.
+
+## Going deeper
+
+### Other ways to spend time on an answer
+
+Writing steps down is one way to spend test-time compute, and there are others that spread the work
+across several attempts instead of along one chain:
+
+- Ask the model the same question several times and take a vote on the most common answer.
+- Produce several different answers and let a separate checker pick the best one. This works very well
+  when the checker can tell for certain whether an answer is right, such as running a piece of code to
+  see whether it works.
+
+The **Reasoning models** module works out what each of these costs, including the cases where voting
+makes things worse.
+
+A different idea works during training rather than while the model answers. It rewards each correct step
+rather than only the final answer, which is called **process supervision**.
+
+### Models trained to write long chains
+
+Recent reasoning models were trained with reinforcement learning, a kind of training that rewards good
+behavior. Here the model was rewarded when its final answer could be checked and turned out to be right.
+As a result, writing long chains of steps became learned behavior rather than something a prompt has to
+ask for. The **Reasoning models** module looks at these models, and the **Interpretability II:
+circuits** module switches off an induction head and measures what breaks.
+
+Interpretability II also uses the word faithfulness, but there it means something different: whether a
+small group of the model's parts can reproduce a behavior on their own.
+
+### Three ways to change what a model does
+
+Keep these three apart, because they sound alike but do very different things:
+
+- In-context learning: you put examples in the context. The model's temporary numbers, called
+  activations, change as it reads them, but its weights do not, so nothing about it is permanent.
+- Fine-tuning: this changes the weights themselves, so the change stays with the model after the
+  conversation ends.
+- Retrieval: a search tool finds documents and adds them to the context for you. Like in-context
+  learning, it changes only what the model reads, but it brings in facts rather than examples of a task.
+
+Only fine-tuning lasts, and only retrieval gives you a source you can go and check.
+
+### Where the facts come from
+
+- The link between induction heads and learning from examples comes from Olsson and colleagues, 2022.
+- The proof about fixed layers and written steps comes from Li and colleagues, 2024.
+- The finding that the layout of demonstrations can matter more than correct answers comes from Min and
+  colleagues, 2022.
+- The comparison showing that chains of thought help most on math and symbol problems comes from Sprague
+  and colleagues, 2024.

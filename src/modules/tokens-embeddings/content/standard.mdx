@@ -1,0 +1,200 @@
+---
+objectives: ["Explain why models process tokens rather than words", "Trace how byte-pair merges turn bytes into token IDs", "Interpret distance in an embedding space", "Explain why an embedding is one vector per token and where word order has to come from"]
+terms: ["Token", "Token ID", "Vocabulary", "Subword", "Byte-pair encoding", "Merge rule", "Pre-tokenization", "Special token", "Embedding", "Embedding matrix", "Embedding dimension", "Cosine similarity", "Analogy arithmetic", "Projection", "Positional encoding"]
+---
+
+## The big picture
+
+This module covers the conversion that runs before a language model's first layer, from a string
+to one learned vector per **token**, a piece of text drawn from a fixed vocabulary. It has two
+halves: a **tokenizer** cuts text into tokens and numbers each with an integer **token ID**, and an
+**embedding matrix** maps each ID to a vector, which is all the model holds about that token before
+any layer runs.
+
+**Data, features, and representation** looked words up in a fixed eight-word list and placed
+points on a map by hand. Here both halves are learned: the vocabulary by **byte-pair encoding**
+(BPE), which repeatedly merges the most frequent adjacent pair in a corpus, and the vectors by
+gradient descent. The question is what that conversion keeps and what has to be added back.
+
+### Where it shows up
+
+- **The first step of every language model.** The embedding lookup is the first operation applied
+  to every token ID, and every layer after it works on its output.
+- **Production tokenizers.** Byte-level BPE tokenizers in production start from all 256 byte
+  values, so no input is unknown.
+- **Chat systems.** Special tokens such as end-of-text mark structure, and encoders disagree on
+  whether user text may produce them: the Hugging Face default allows it, tiktoken refuses by
+  default.
+- **The output layer.** The unembedding maps the final vector back to one score per vocabulary
+  entry, and many models tie it to the input embedding matrix.
+
+### Why it matters
+
+A network has parameters for a fixed set of inputs, but text is open-ended. A vocabulary of
+**subwords**, pieces that may be smaller than a word, closes that gap: rare words are spelled from
+several common pieces, and a vocabulary that keeps all 256 byte values can spell any input. An ID,
+though, is only an address. The embedding row gives it a geometry, in which tokens used in similar
+contexts lie close together.
+
+The tokenizer is trained once, before the model, and changing it invalidates the learned rows.
+
+The lookup also carries no position: a token gets the same row wherever it sits. Without a causal
+mask, a transformer block cannot tell two orderings of the same tokens apart; the mask, which hides
+later tokens, leaks only some order. So most models add a **positional encoding**, a vector that
+depends on the token's slot.
+
+### What you will be able to explain
+
+- Why models process tokens from a fixed vocabulary rather than whole words.
+- How byte-pair merges, replayed in rank order, turn a word's bytes into token IDs.
+- What distance means in an embedding space, read as **cosine similarity**: the cosine of the
+  angle between two vectors.
+- Why an embedding is one vector per token, and where word order has to come from instead.
+
+### What the lab shows
+
+The lab runs no language model. **Tokenizer workbench** encodes your **Text to tokenize** with the
+real BPE tokenizer shipped with the module, 512 entries trained on Tiny Shakespeare, and computes
+the chips, IDs and **Tokens** count exactly. Its alphabet is only the 65 byte symbols Tiny
+Shakespeare uses, with no byte fallback, so any other byte becomes `<unk>`.
+
+The key experiment: hold the text fixed and drag **Vocabulary size** from 512 toward 69. Only the
+earliest merges remain, so words fall back to their pieces and the token count rises.
+**Merge trace** lists every merge that builds the word containing the selected chip, one rung per
+merge, and fades the rungs the current **Vocabulary size** cuts.
+
+The embedding cards query real GloVe vectors, 10,000 English words by 50 dimensions, from a
+word-level table not indexed by the BPE IDs. **Nearest neighbours** computes cosines live for a
+**Query word**, and **Vector arithmetic** ranks words against `A − B + C`, with **Input words**
+set to `Excluded` or `Allowed to win`.
+
+**Embedding projection** reduces the vectors to two dimensions for display. Its UMAP and PCA
+layouts, chosen with **Projection**, are fixed, computed once when the asset was built. A badge
+counts how many of the query's ten nearest words by 50-D cosine are still among its ten nearest
+dots on the map.
+
+## What it is
+
+A language model never sees text. Two lookups stand between a string and the first
+arithmetic operation: a **tokenizer** cuts the string into pieces drawn from a fixed
+vocabulary and numbers them, and an **embedding matrix** replaces each number with a
+learned vector.
+
+### The two lookups
+
+Each token ID selects one row of an embedding matrix of shape `[V, d]`, where `V` is the
+vocabulary size and `d` the model width. Nothing else about the piece survives: after the
+lookup the model holds `d` numbers per position. Production vocabularies hold roughly 32,000
+to 256,000 entries, which makes this matrix one of the largest single tensors in a model.
+
+The lookup is a one-hot vector times a matrix: a vector of length `V` with a single 1 at the
+token's ID, multiplied by the `[V, d]` matrix, returns exactly that row. Implementations skip
+the multiplication and index the row directly.
+
+### Byte-level BPE, step by step
+
+The lab runs the real tokenizer shipped with this module, a byte-level **byte-pair
+encoding** trained on Tiny Shakespeare with 512 entries. Encoding has three stages:
+
+1. **Pre-tokenization.** The text is NFKC-normalized and split by the GPT-2 pattern into
+   word-like chunks, each keeping its leading space. Merges never cross these chunks.
+2. **Bytes.** Each chunk becomes its UTF-8 bytes, drawn as printable symbols; a space byte
+   is `Ġ` in the file and `␣` in the lab.
+3. **Merges.** Repeatedly join the adjacent pair with the lowest merge rank until none
+   applies.
+
+Training produced those ranks greedily: each merge was the most frequent adjacent pair at
+that moment. So `␣king` is assembled as `i + n` (#8), `in + g` (#44), `␣ + k` (#91), and
+`␣k + ing` (#275), and its ID is 69 + 275 = 344.
+
+### What the vectors hold
+
+Embedding rows begin as random noise and are updated by gradient descent like every other
+weight. Because the objective rewards predicting real text, tokens used in similar contexts
+drift toward similar vectors. The geometry is a consequence of the training task.
+
+The lab's vectors are GloVe: 10,000 English words by 50 dimensions, trained on Wikipedia and
+news text. They are a separate word-level table, used because no model here was trained on
+the 512-token vocabulary.
+
+### Where order comes from
+
+An embedding is one vector per token, chosen without looking at its neighbours. In the default
+sentence `␣the` appears twice, after `and` and after `read`, and both chips show ID 82: the same
+row is read both times. Nothing in a row says whether its token came second or ninth.
+
+So order has to be added separately. A **positional encoding** is a vector that depends on the
+slot, added to each embedding before the first block or applied inside attention. **The
+transformer block** shows a block that cannot tell two orderings apart until it is added, and
+**Attention** compares the schemes.
+
+## Why it’s here
+
+From the first block on, attention compares the embedded vectors and the MLP transforms them. No
+layer reads the characters directly, only what the embedding rows encode.
+
+Tokenization also explains visible behaviour. Digit grouping affects arithmetic reliability.
+Letter counting fails when a word is one opaque token. The same sentence costs different
+amounts in different languages because vocabularies are fit to their training mix. Stop
+sequences and special markers operate on token boundaries, not characters.
+
+## How to play with it
+
+On **Tokenizer workbench**, keep the default sentence and move **Vocabulary size** from
+`512` to `69`. Only the merge budget changes, yet the count rises from 18 tokens to 47.
+Select `␣king` and read **Merge trace**; below 345 entries its last rung fades.
+
+Pick the sample `the The  the` to compare case and spacing, and `2024 was 33 years` to
+find `<unk>`. Then type a word into **Query word**, switch **Projection** between `UMAP` and
+`PCA`, and run the presets in **Vector arithmetic** with **Input words** set both ways.
+
+## What to notice
+
+- IDs are addresses, not magnitudes. In this vocabulary a merged token's ID is 69 plus its
+  merge rank, but the model attaches no meaning to that order.
+- `The` (167), `␣the` (82), and a leading `the` (`t` + `he`) are three different encodings
+  of one word. Case and spacing are part of the token.
+- `queen`'s nearest words are princess (0.852), lady (0.805), and elizabeth (0.787).
+- `king − man + woman` gives queen at cosine 0.852, but only with the inputs excluded. If
+  they may win, `king` scores 0.885.
+- UMAP keeps 5 of queen's 10 cosine neighbours as 2-D neighbours; PCA keeps none.
+
+## Where it breaks
+
+### In this lab
+
+- The tokenizer has 512 entries and saw only Shakespeare. Its alphabet lacks most digits,
+  accents, and emoji, which become `<unk>` because it has no byte fallback.
+- The word vectors are GloVe, looked up by whole lowercase word, not rows indexed by the BPE
+  IDs above. The workbench's line about an embedding row describes a model that is not
+  present.
+- The projections were computed once when the asset was built. They cannot place the
+  analogy target itself, only the words.
+
+### In real systems
+
+High cosine similarity means "appears in similar contexts", which includes antonyms: the two
+nearest words to `hot` here are `cool` and `cold`. Analogy arithmetic is fragile:
+`bigger − big + small` returns `larger` before `smaller`, and `tokyo − japan + germany`
+returns `frankfurt` before `berlin`.
+
+An input embedding is static, one vector per token regardless of context or position. Separating
+the senses of `bank`, and knowing which word came first, is work done later: by attention, and by
+the positional encoding added alongside the embedding.
+
+## Going deeper
+
+Production byte-level BPE tokenizers start from all 256 bytes, so no input is unknown;
+rare text simply costs more tokens. Encoders differ on special tokens. This one, like the
+Hugging Face default, turns a literal `<eos>` in the text into the real end-of-text ID;
+tiktoken refuses such strings by default. Chat systems must decide, or user text can forge
+structure.
+
+The unembedding step at the end of the network reverses this one, projecting a `d`-vector
+back to `V` logits. Many models tie the two matrices. A tokenizer is trained once, before
+the model, and effectively frozen: changing it invalidates the learned rows.
+
+Fertility, the average number of tokens per word, varies across languages, so the same
+content spends different amounts of a fixed context window. The next lab, A single neuron,
+shows what a layer does with numbers like these, using two scalar inputs in place of a full
+embedding: one weighted sum and one activation.

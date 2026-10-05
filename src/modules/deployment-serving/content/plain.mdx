@@ -1,0 +1,937 @@
+---
+objectives: ["Separate the fixed cost of weights from the per-stream cost of the KV cache", "Explain why batching raises throughput and lowers per-user speed", "List what an export has to produce before a model can be served", "Predict how hardware, paged attention, KV-cache quantization, and speculative decoding change streams that fit, speed, and cost per million tokens", "Name what operating a served model adds beyond speed: monitoring and drift, versioned rollouts, guardrails, and where prompts go"]
+terms: ["KV cache", "Memory bandwidth bound", "Continuous batching", "Throughput and latency", "Time to first token", "Paged attention", "Speculative decoding", "Hybrid attention", "KV-cache quantization", "Cost per million tokens", "Monitoring and drift", "Versioned rollout", "Guardrails", "On-device inference"]
+---
+
+## The big picture
+
+Training a model is only half of the work. Someone then has to run it on a real machine, so that
+people can type questions and get answers back. Putting a trained model to work like this is called
+**deployment**, and the everyday job of answering people’s requests with it is called **serving**.
+
+This module covers the three questions behind serving a model: does it fit in the machine’s memory,
+how fast does it write, and what does each answer cost? You will work out all three with plain
+arithmetic, and you will see why the answers keep pulling against each other.
+
+A model writes its reply one piece of text at a time. Each piece is called a **token**, and a token
+is often a short word or part of a longer one. Almost every number in this lab is counted in tokens:
+how long a conversation is, how many come out each second, and what a million of them cost.
+
+This lesson keeps returning to one picture, where the machine is a reader at a desk with an enormous
+book of numbers that stands for the model. To write each new token of a reply, the reader has to
+flip through the whole book once, from the first page to the last. Each conversation also leaves its
+own growing pile of notes on the desk. The desk is only so big, and that turns out to matter a great
+deal.
+
+### Where you have met it
+
+If you have used a chatbot, a model like this was serving you, and you may have noticed a short
+pause before the reply began. After that pause the words arrived a few at a time, and both the pause
+and the pace are things this lab predicts.
+
+This app serves a model too: in Settings, it can download a small model called Qwen3.5 2B and run it
+on your computer as its local guide. The lab includes that exact model, so you can see why it fits
+so comfortably on an ordinary machine. If you pick a cloud provider in the app instead, your words
+travel to that company’s computers and are answered there.
+
+The lab also includes real machines that people rent by the hour, such as the RTX 4090, a graphics
+card made for home computers. Another is the H100 SXM, a much bigger chip made for data centres, the
+buildings full of computers that run online services. On the price pages the lab quotes, an hour
+costs $0.74 on the first and $3.49 on the second.
+
+### Why it matters
+
+A model that loads with plenty of room to spare can still run out of memory once many people use it
+at the same time. That catches people out, because the part of memory that grows is not the model
+itself but the notes kept for each conversation. Without a budget, the busiest moment of the day is
+exactly when the machine runs out of room.
+
+Speed and money pull against each other too, because one machine can answer many people at once and
+spread its hourly rent over far more tokens. The catch is that each person then waits a little
+longer for every token. Choosing where to sit on that trade is a big part of serving a model well.
+
+Running a model for real is also a job that never quite ends. The questions people ask change over
+time, and new versions have to replace old ones safely. Someone also has to decide where people’s
+words are allowed to go once they have typed them.
+
+### What you will be able to explain
+
+By the end of this lesson, you should be able to explain these ideas in your own words:
+
+- why the model’s own numbers take memory once, while the notes kept for each conversation, called
+  the **KV cache**, take memory again for every person and every token;
+- why serving many people together raises the total number of tokens written each second, while each
+  person’s own tokens arrive more slowly;
+- what a trained model has to be turned into, step by step, before a program can serve it to people;
+- how swapping the machine, or switching on one of three tricks, changes how many conversations fit,
+  their speed and their cost. The tricks are handing out memory in small pages (**paged
+  attention**), writing the notes in shorthand (**KV-cache quantization**), and letting a small
+  helper guess ahead (**speculative decoding**);
+- what running a model for real adds beyond speed: watching for changes, swapping in new versions
+  safely, putting rules around the model, and knowing where people’s prompts go.
+
+### What the lab lets you do
+
+Nothing in this lab is timed on a real machine, because every number is arithmetic from assumptions
+the lab states for you to check. The lab is laid out as five cards, each with its own job:
+
+- **Serving controls** picks the model, how its numbers are stored, how many people use it at once,
+  how long each conversation may grow and how the machine takes turns.
+- **Memory budget** draws a bar showing where the memory goes, then tells you how many conversations
+  can fit at once.
+- **Throughput and latency** charts how many tokens come out each second, both in total and for each
+  person, as you add users.
+- **Hardware, levers, and cost** swaps in real machines, switches the three tricks on and off, and
+  works out what a million tokens cost.
+- **Export the model you trained** walks through the steps that turn a trained model into a file
+  that a server can run.
+
+One surprise to watch for is that a smaller, cheaper machine can beat a much faster one on cost.
+That stays true even while the faster machine serves every person several times more quickly. By the
+end of the lesson, you should be able to explain exactly why that happens.
+
+## What it is
+
+This page does arithmetic, not measurement: you state your assumptions, do the division, and find
+out which resource runs out first. The note under the throughput chart lists every assumption the
+first three cards use, so you can disagree with any of them.
+
+The models in the lab use the real shapes of published models, so `1.5B` and `3B` follow two Qwen2.5
+models and `8B` follows Llama-3.1-8B. The fourth, `2B · this app`, is the very model this app
+downloads to run on your computer. For the first three, the size of each storage format comes from
+real file sizes reported by llama.cpp, the program this app uses to run its own model.
+
+### A few words you need first
+
+Everything a model learned during training is stored as a huge set of numbers called **weights**,
+which are also called **parameters**. The model names in the lab tell you roughly how many there
+are, so `8B` has about 8 billion weights and `1.5B` about 1.5 billion. The `8B` model has exactly
+8.03 billion, and the lab uses that precise count in all of its sums.
+
+A model is built as a stack of stages called **layers**, and every token passes through all of them
+in order. The `8B` model has 32 of them, and they matter here because a model keeps a separate set
+of notes in every layer.
+
+Memory is measured in bytes, where a **bit** is a single 0 or 1 and 8 bits make one **byte**, enough
+room for one letter of plain text. Larger amounts use units that each step up by 1,024, which suits
+computers because 1,024 is ten 2s multiplied together, 2 × 2 × 2 and so on, ten times:
+
+- a **KiB**, or kibibyte, is 1,024 bytes, about as much as a paragraph of plain text;
+- a **MiB**, or mebibyte, is 1,024 KiB, which is a little over a million bytes;
+- a **GiB**, or gibibyte, is 1,024 MiB, which is a little over a billion bytes.
+
+A **GB**, or gigabyte, is exactly a billion bytes, so the same amount of memory looks a little
+bigger when it is written in GB than in GiB. Times are mostly given in milliseconds, written **ms**,
+where 1 ms is a thousandth of a second. Speeds are given in tokens per second, which the lab writes
+as **tok/s**.
+
+### Weights: memory you pay for once
+
+Before a model can write anything, all of its weights have to be loaded into the machine’s memory.
+How much room they take depends on how many bits each weight is stored in, which is what the
+**Weight format** control picks.
+
+`F16` stores each weight in 16 bits, which is 2 bytes, while the other formats, such as `Q4_K_M`,
+are rounded versions from the *Quantization* lab. Those squeeze each weight into fewer bits at some
+cost in quality. For example, a weight like 0.73128 might be stored as the nearest of a small set of
+allowed values, such as 0.75.
+
+Rounded formats handle the weights in small groups called **blocks**. Each block stores a few extra
+bits that record how its weights were rounded, and the recipe a format follows for its blocks is
+called its **block type**. Those shared extra bits are spread over every weight in the block, so the
+bits per weight need not be a whole number.
+
+The note on **Serving controls** gives `Q4_K_M` as 4.90
+bits per weight for `8B`, as an average over the whole file.
+
+To get the size of the weights, multiply the number of weights by the bits per weight, then divide
+by 8 to turn bits into bytes. For `8B` at `Q4_K_M`, that is 8.03 billion × 4.90 ÷ 8, which comes to
+about 4.9 billion bytes. Because each GiB is a little more than a billion bytes, the lab shows that
+as 4.58 GiB.
+
+At `F16`, the same model needs 2 bytes for every weight, which comes to about 16 billion bytes, or
+14.96 GiB. That is more than three times the room for exactly the same model, with nothing changed
+but how its numbers are written down.
+
+The weights are loaded **once** and then shared, so whether one person or thirty people are using
+the model, there is only one copy in memory. That is why the weights part of the **Memory budget**
+bar never moves when you add users or make conversations longer.
+
+### The KV cache: memory you pay for every conversation
+
+To write each new token, a model looks back over every token that came before it. This
+looking-back step is called **attention**, and the *Attention* lab showed it in detail.
+
+For each earlier token, the model uses two lists of numbers that it worked out when it first read
+that token. One list is a **key**, a label describing what that token offers. The other is a
+**value**, the information that token hands over, in proportion to how much attention it gets.
+
+Take the sentence “The dog chased the ball because it was bored.” To make sense of “it”, the model
+compares what it is looking for with the keys of the earlier words. “Dog” matches best, so the model
+borrows mostly from the value of “dog”, and only a little from the other words.
+
+Working out those lists again for every earlier token, each time a new token is written, would
+repeat a huge amount of work. So the model saves every token’s keys and values the moment it makes
+them, in every layer, and reads them back later. That store of saved keys and values is the **KV
+cache**, where KV stands for keys and values.
+
+The cache grows by one token’s worth every time a token is read or written. Each conversation also
+needs a cache of its own, because its words are different from everyone else’s. That makes the cache
+the part of memory that grows as more people use the model, and as their conversations get longer.
+
+The lab calls one conversation being served a **stream**, which is why the **Concurrent users**
+slider reads in streams, such as `8 streams`.
+
+### How big one token’s notes are
+
+The **Memory budget** card shows the cost of one token’s notes as **Per token, per stream**, and the
+card’s formula multiplies a few numbers that the model’s design fixes:
+
+```text
+2 × layers × KV heads × head dim × 2 bytes
+```
+
+Inside each layer, the looking-back is split into several lookups that run side by side. Each lookup
+reads from a set of saved keys and values, and several lookups may share one set. These saved sets
+are called **KV heads**. Each saved key or
+value is a list of numbers, and the length of that list is the **head dim**, short for head
+dimension.
+
+The first 2 is there because every token saves one key and one value. The last 2 is the bytes each
+number takes in **fp16**, the 16-bit format that the lab uses for the cache.
+
+Now work it out one step at a time for `8B`, which has 32 layers, 8 KV heads in each layer and a
+head dim of 128. One key and one value in one head make 2 × 128 = 256 numbers. Eight heads make that
+2,048, and 32 layers make it 65,536 numbers for each token.
+
+At 2 bytes per number, that is 131,072 bytes, which is exactly 128 KiB. That is room for about
+131,000 letters of plain text, saved for every single token of every single conversation.
+
+The `3B` model has 36 layers but only 2 KV heads, so the same sum gives 36 KiB per token, and the
+`1.5B` model pays 28 KiB. That means the `8B` model pays 3.6 times as much as the `3B` model for
+each token. The KV heads cause all of that gap and a little more. Keeping 8 saved sets per layer
+instead of 2 costs 4 times as much, and the `3B` model’s 4 extra layers pull that back down to 3.6.
+
+A model can keep so few saved sets because several lookups share each one, a design called
+**grouped-query attention**. The `3B` model keeps only 2 sets in each layer for all of its lookups
+to share, while the `8B` model keeps 8.
+
+### A whole conversation’s notes
+
+One token’s notes are small, but a conversation holds thousands of tokens, and the **Context
+length** slider sets how many, from 512 up to 32,768. The lab starts at 4,096 tokens, and **Per
+stream at this context** multiplies that length by the cost of one token’s notes.
+
+For `8B` at 4,096 tokens, 128 KiB × 4,096 comes to 512 MiB, which is half a GiB for a single
+conversation. With 8 users, the cache is 8 × 0.5 = 4.00 GiB, which is already close to the 4.58 GiB
+that the weights take.
+
+The lab charges each conversation for its full context from the very start, even if it has used only
+a few tokens so far. That is the worst case, as if every conversation might run to its limit, and
+the part on paged attention shows how real servers do better.
+
+### The memory budget: will it fit?
+
+The machine the first three cards use, called `Lab default`, has 24 GiB of memory, and three things
+have to fit inside it. Those are the weights, every stream’s cache, and a flat 1 GiB for
+**activations + runtime**. That last part is working space for calculations in progress and for the
+serving program itself.
+
+**Streams that fit** is how many full conversations the leftover memory can hold, once the weights
+and working space have taken their share. To find it, take the 24 GiB, subtract the weights and the
+1 GiB of working space, and divide what is left by one conversation’s cache.
+
+At the start, 24 − 4.58 − 1 leaves 18.42 GiB, and dividing 18.42 by 0.5 gives 36.84. The lab rounds
+that down to 36, because a 37th conversation would only partly fit, and half a conversation is no
+use to anyone.
+
+**Headroom** is the memory still spare at the current load. With 8 users, the weights, cache and
+working space add up to 9.58 GiB, which leaves 14.42 GiB spare. The badge at the top of the card
+shows the same total as `9.58 GiB of 24.00 GiB`.
+
+In the bar itself, thin lines split the cache into one slice per stream, so you can count the
+conversations. A heavy line marks the 24 GiB limit, and anything that spills past it gets a dashed
+outline you can spot at a glance.
+
+### The book and the desk
+
+Here is a picture that holds the memory budget together, and it will also explain where the speed
+limits come from. Think of the weights as a giant reference book of numbers. The machine’s memory is
+a desk, and that book must lie open on it the whole time the model is in use.
+
+Each conversation keeps its own pile of notes on the desk, which is its KV cache, and every token
+adds a little to its pile. A small corner of the desk stays clear as working space, and the size of
+the whole desk decides how many piles fit beside the book.
+
+To write one token for a conversation, a reader flips through every page of the book and reads that
+conversation’s pile of notes. How fast the pages turn decides how quickly one person is served, and
+that page-turning speed is the idea behind the next part.
+
+The picture stops matching in three places, so keep them in mind as you use it. First, the book is
+not words that anyone reads with understanding, because it is numbers fed into calculations. Second,
+a real model keeps a separate pile of notes for every layer. So picture the book as having one
+chapter per layer, each chapter with its own notes. Third, reading a prompt works differently, as
+the part on the first token explains.
+
+### Writing speed: why the chip waits on memory
+
+A model handles a request in two stages. It reads your whole prompt first, which is called
+**prefill**, and then writes its answer, which is called **decode**. During decode, every new token
+needs a full trip through all the layers, which means reading every weight out of memory once. The
+next token cannot start until the last one exists, because each token looks back at all the ones
+before it.
+
+How fast memory can hand numbers to the chip that does the calculations is called **memory
+bandwidth**. It is measured in GB/s, or billions of bytes per second. The `Lab default` machine
+reads 400 GB/s, which sounds enormous until you remember that the weights alone are almost 5 billion
+bytes.
+
+Here is one decode step for a single user, which reads the weights, about 4.92 billion bytes, plus
+that user’s half-GiB cache, about 0.54 billion bytes. That makes about 5.46 billion bytes to read
+for every single token the user gets.
+
+At 400 billion bytes a second, reading those 5.46 billion bytes takes about 0.0136 seconds, which is
+about 14 ms. One token every 14 ms works out to 73.3 tokens per second, which is the number the lab
+shows for one user.
+
+Now compare that with the arithmetic, where each weight is used in about two calculations for every
+token, one multiplication and one addition. A single calculation like this on decimal numbers is
+called a **FLOP**, so each token of the `8B` model costs about 16 billion FLOPs.
+
+The `Lab default` chip can do 120 trillion FLOPs a second, written 120 TFLOP/s, so the arithmetic
+alone could produce about 7,472 tokens a second. That is roughly 100 times what memory allows, so
+the chip’s calculators spend most of each step sitting idle, waiting for numbers to arrive.
+
+When the time it takes to read memory sets the speed, rather than the time it takes to calculate, a
+task is called **memory bandwidth bound**. The **Throughput and latency** card has a badge that says
+`bandwidth bound` for this reason. In the book picture, writing is slow because of the page-turning,
+not because of the sums.
+
+### Batching: one flip through the book for many conversations
+
+If turning the pages is the slow part, the natural fix is to share each flip among many
+conversations at once. While the reader turns through the book once, they write the next token for
+every open conversation. Grouping streams into one step like this is called batching.
+
+In a real server, finished conversations leave the group at every step while waiting ones join it.
+Swapping conversations in and out at every step keeps the group full, which is why this is called
+**continuous batching**. The lab’s `Continuous batching` setting of the **Scheduler** control keeps
+it simpler, because a fixed number of streams share every step and nobody arrives or leaves. Every
+stream in the group shares one read of the weights.
+
+There is a catch, though, because each step still has to read every conversation’s own notes, and
+each one’s cache is different. So the more conversations share a step, the longer that step takes to
+finish.
+
+Here is the step for 8 users, which reads the weights once, 4.58 GiB, plus eight caches of half a
+GiB each, for 4.00 GiB more. Those 8.58 GiB are about 9.2 billion bytes, and reading them at 400
+billion bytes a second takes about 23 ms. That one step produces one token for each of the 8 users.
+
+So each user gets one token every 23 ms, which is 43.4 tokens per second. Together, the 8 users get
+8 × 43.4 = 347 tokens a second. Compared with one user alone, the machine now writes almost five
+times as many tokens in total, while each person’s tokens arrive more slowly.
+
+Those two numbers have names, starting with **throughput**, the total tokens per second across
+everyone, which the card shows as **Total**. **Latency** is how long one person waits, and here it
+is the gap between one person’s tokens, shown as **Time per output token**. **Per user** shows each
+person’s own tokens per second, which is one second divided by that gap.
+
+Batching raises throughput and worsens latency. This trade is what the card’s name, **Throughput and
+latency**, refers to, and its two charts show it side by side. The top chart, total tokens per
+second, climbs as you add users, while the bottom chart, each user’s own speed, sinks.
+
+Each extra user adds the same amount to every step, the time to read one more pile of notes. Early
+on, that is small next to the shared weights, so adding a second user costs each person only a
+little speed, from 73.3 down to 66.8 tokens a second.
+
+As the piles of notes become most of each read, the machine spends most of each step reading notes,
+so each extra user adds less and less to **Total**. The 2nd user adds about 60 tokens a second to
+**Total**, but the 9th adds only about 22. By the 36th user, each newcomer adds only about 3, and
+their tokens come mostly out of everyone else’s speed.
+
+### One at a time
+
+The other **Scheduler** setting, `One at a time`, has the reader serve a single conversation per
+flip through the book. Each step still produces only one token, so the total stays at 73.3 tokens a
+second however many people are waiting.
+
+With 8 users, those 73.3 tokens are shared out at 9.2 each, and every user waits 109 ms between
+tokens while the others take their turns. Batching gives each of those same 8 users 43.4 tokens a
+second, so here it is better for everyone, even though nobody gets the machine alone.
+
+### The first token: reading the prompt
+
+Prefill is different from decode, because the whole prompt is already there, so the machine can push
+every prompt token through each layer together. That means it reads the weights once for the whole
+prompt instead of once per token, which changes which limit matters. With thousands of tokens
+sharing one read, the reading is quick and the arithmetic becomes the wall, because each prompt
+token still needs 16 billion FLOPs.
+
+For a 4,096-token prompt, the `8B` model needs about 2 × 8.03 billion × 4,096 FLOPs, which is about
+66 trillion. At 120 trillion a second, that takes 0.548 seconds, or 548 ms, which is about half a
+second.
+
+That wait is the **time to first token**, which is how long you wait before the first token of the
+answer appears. In a real service it also includes any time spent waiting in a queue, but the lab
+ignores queues entirely. The lab also assumes a prompt that fills the whole context, so its **Time
+to first token** is the wait for the longest prompt allowed.
+
+Here the book picture needs one addition. For a prompt, the reader turns through the book once and
+handles every prompt token on each page, so page-turning costs little. The time spent on the sums,
+which the picture leaves out, becomes the limit instead.
+
+### The model this app runs: hybrid attention
+
+The app’s own model, `2B · this app`, is Qwen3.5 2B, and it saves its notes in a different way from
+the other three. It has 24 layers, but only every fourth one keeps a growing cache. Those 6 layers
+are called full-attention layers, because they look back over every earlier token.
+
+Run the same formula for those 6 layers, which have 2 KV heads and a head dim of 256: 2 × 6 × 2 ×
+256 × 2 bytes. That gives 12,288 bytes, or 12 KiB per token. If all 24 layers kept a cache, it would
+cost 48 KiB per token, four times as much.
+
+The other 18 layers are a different kind, called Gated DeltaNet layers. Instead of a pile of notes
+that grows, each one keeps a single running summary for each conversation. It rewrites that summary
+as every new token arrives, and a summary that is carried forward and updated like this is called a
+**recurrent state**.
+
+The summary never grows however long the conversation gets, and for all 18 layers together it takes
+19.27 MiB per conversation. The lab shows that as **Fixed state per stream**, and a model that mixes
+growing-cache layers with fixed-summary layers like this is using **hybrid attention**.
+
+In the book picture, 6 of the 24 chapters keep a growing pile of notes, while the other 18 keep one
+index card per conversation. That card gets rubbed out and rewritten again and again, but it never
+gets any longer.
+
+Here is the payoff. At 4,096 tokens, one conversation on this model needs 12 KiB × 4,096 = 48 MiB of
+cache. It also carries its 19.27 MiB summary, so the total is about 67 MiB per conversation. That is
+roughly an eighth of the 512 MiB the `8B` model needs at the same length.
+
+So 331 conversations fit in the same 24 GiB, where the `8B` model fits only 36. The 2B model’s
+weights are small too. The file this app downloads is 1.19 GiB, which works out to 5.445 bits per
+weight.
+
+### The machine, and what a million tokens cost
+
+So far the machine has been `Lab default`, but any real machine can be described by the same few
+numbers. The **Hardware, levers, and cost** card lets you change each one of them, starting from a
+preset:
+
+- **Memory** is the size of the desk, measured in GiB, and it decides how many conversations can fit
+  beside the book.
+- **Memory bandwidth** is how fast the pages turn, measured in GB/s, and it decides how fast one
+  conversation is served.
+- **Compute** is how fast the sums get done, in TFLOP/s, which decides how fast prompts are read and
+  only limits decode when the sums fall behind.
+- **Price** is the rent for the machine in dollars an hour, which you can edit to match any
+  provider’s price list.
+
+Bandwidth and memory do different jobs, and they are worth keeping apart. Bandwidth sets how fast
+one stream goes, while memory sets how many streams can share each read.
+
+**Cost per million tokens** turns the rent into a price for the tokens written, by dividing the
+price for an hour by the tokens written in that hour. The answer is then scaled up to a million
+tokens, so that it is a number you can compare across machines.
+
+Here is a worked example on `Lab default`, whose $1.00 an hour is a placeholder rather than a real
+quote. With 8 users, the machine writes 347.3 tokens a second, and since an hour has 3,600 seconds,
+that is about 1.25 million tokens an hour. If 1.25 million tokens cost $1.00, then a million tokens
+cost $1.00 ÷ 1.25 = $0.80, which is what the lab shows.
+
+To give that a size, suppose every reply were 500 tokens long, so that a million tokens would make
+2,000 replies. At $0.80 per million tokens, each of those replies would cost four hundredths of a
+cent.
+
+With one user, the machine writes only 73.3 tokens a second, about 264,000 an hour, so a million
+tokens costs $3.79 instead. The rent stays the same however many people share the machine, while the
+tokens it writes go up with every user. That is why batching makes each token cheaper, right up
+until memory is full and no more users can fit.
+
+The **Busy share of each hour** slider covers the time a machine sits idle. A machine that writes
+for only half of each hour still pays the full rent for half the tokens, so each token costs twice
+as much. The cost counts only the tokens written, not the prompt tokens read.
+
+### Three levers that change the budget
+
+The card also has three tricks that real servers use, which the lab calls levers, and each one
+changes a different part of the budget.
+
+**Paged attention** fixes the worst-case reservation by handing out cache space in small pages of 16
+tokens, as each conversation grows. Instead of a full 4,096-token space set aside for every
+conversation up front, each one holds only what it has used, wasting less than one page.
+
+In the book picture, this is like handing out single sheets of paper as they are needed, instead of
+a thick, empty notebook for every new arrival. The **Average fill of the reserved context** slider
+sets how full the average conversation is, and it starts at 50%. At that setting, each conversation
+holds 2,048 tokens instead of 4,096, so its notes take half the room and half the time to read.
+
+**KV-cache quantization** writes the notes in shorthand. The **KV cache type** control stores each
+saved number in `fp16` at 16 bits, `q8_0` at 8.5 bits or `q4_0` at 4.5 bits. Fewer bits mean a
+smaller cache to store and fewer bytes to read each step, at some cost in accuracy.
+
+The 2B model’s running summary is a separate kind of memory, so the shorthand does not shorten it.
+The app’s **engine**, the program that actually runs the model, keeps that summary in a 32-bit
+format.
+
+**Speculative decoding** adds a helper, a small and fast draft model that guesses the next few
+tokens for the big model to check. The big model checks all of the guesses in one step instead of
+writing them one at a time, keeping them up to the first one it turns down. After the kept guesses
+it always adds one token of its own, so every check moves the reply forward by at least one token.
+
+Checking can happen all at once, even though writing cannot, because the guessed tokens already
+exist. The big model can push them through its layers together, the same way it reads a prompt. At
+each spot, it works out the odds it gives every possible next token, and uses those odds to decide
+whether to keep the guess there.
+
+In the book picture, an assistant with a thin pocket version of the book scribbles four words ahead.
+The reader then checks all four in a single flip through the big book, rather than flipping once for
+every word.
+
+A model picks each next token partly by chance, like rolling dice that are weighted toward some
+words. A guess the big model finds likely is usually kept, and one it finds unlikely is usually
+thrown out. The checking is arranged so that those odds stay exactly the same as if the big model
+had written every token itself. So speculation changes the speed, not what the model is likely to
+write.
+
+Three sliders control the helper, and each starts at a set value:
+
+- **Acceptance rate** sets how often a guess is kept, and starts at 0.80, meaning 8 guesses in 10.
+- **Draft length** sets how many tokens the helper guesses each time, and starts at 4.
+- **Draft cost** sets what one guess costs as a share of a big step, and starts at 0.10, a tenth.
+
+At those values, the lab works out 3.36 tokens per check and a speed-up of 2.4 times. Going deeper
+counts out where both of those numbers come from.
+
+A lever only helps where the slow part is. Speculation speeds up decode while reading memory is the
+limit, because one check reads the book once for several tokens. If the sums are already the limit,
+the trick backfires. Each check works through five tokens per conversation, the four guesses plus
+the big model’s own, which means five times the sums.
+
+### Getting a model ready to serve: the export path
+
+Packing a trained model into the right kind of file, so that a server can run it, is the job of the
+export path. The **Export the model you trained** card walks through it with the 900-weight table
+from earlier labs in this app. That table belongs to the tiny model that guesses the next character
+of a text from 30 possible characters.
+
+The same five steps apply to a real 8-billion-weight model, and only the byte counts change from one
+to the other:
+
+1. **Merge the adapter**: a model can be taught a new job after training by adding a small extra
+   set of weights, called an adapter, as in the *LoRA & adapters* lab. Merging adds the adapter’s
+   numbers into the main table, so only one table is left. Serving that one table costs exactly
+   what the original model cost.
+2. **Quantize to Q4_K_M**, or to whichever format you picked. This rounds the weights in blocks,
+   using the block type of your format, the rounding recipe from the *Quantization* lab. For
+   `Q4_K_M`, the block type is `Q4_K`, which uses 4.5 bits per weight.
+3. **Write the GGUF file**: a **GGUF** file holds the rounded weights, notes on how they were
+   rounded, and the **tokenizer**, the tool that splits text into tokens. Everything travels
+   together in one file, behind a **header**, a short section at the start of the file that says
+   what is inside. A loading program can check the header before it trusts the rest.
+4. **Verify before running**: the server checks the header and the file’s **hash**, a short
+   fingerprint worked out from every byte in the file. If even one byte has changed, the fingerprint
+   no longer matches, so a damaged or swapped file is caught before it runs.
+5. **Serve it**: the server starts with the context length you budgeted and a cap on how many
+   conversations it accepts at once, no higher than **Streams that fit**.
+
+The cap in the last step does important work. Without it, a rush of users would push the cache past
+the memory limit and crash the server. With the cap, the extra users wait in a queue for a free
+slot, which is slower for them but keeps everyone else running.
+
+Two more parts of the job never show up as numbers in the lab. They are keeping a model working over
+time and deciding where people’s prompts go. The end of Going deeper covers both of them, under the
+heading “Operating it”.
+
+## Why it’s here
+
+The *Inference & KV cache* lab showed the machinery, meaning why a model saves its notes and why
+writing an answer is slower than reading a prompt. This lab turns that machinery into a budget you
+can blow, and then into a bill you have to pay.
+
+In real life the question arrives all at once: this model, this many people, this much context and
+this machine. Does it fit, how fast is it for each person, and what does a million tokens cost? Each
+part is a simple division, but the parts are tangled together, because one setting moves several
+answers at the same time.
+
+Adding users lowers the cost per token, but it also slows each person down and fills up the desk.
+Longer conversations fill the desk faster still, and they stretch the wait for the first token at
+the same time. A bigger weight format keeps more detail in each weight, but it takes more room and
+slows every single step. The lab puts all of these on one page, so that you can watch each knock-on
+effect as it happens.
+
+Picture a made-up school club that sets up the `8B` model on one 24 GiB machine to serve as a
+homework helper for the whole school. The members test it themselves, one or two at a time. The
+memory bar sits at about 6 GiB, so there seems to be room for a crowd.
+
+On launch day, 40 classmates log on at once, each with a conversation that may reach 4,096 tokens.
+Forty caches of half a GiB each come to 20 GiB. With the weights and working space added, the total
+is 25.58 GiB, which is more than the machine has, so the server runs out of memory.
+
+Nothing about the model changed between the test and the launch. Only the number of conversations
+changed, and that was the one cost the club never measured. A cap of 36 conversations would have
+kept the helper running, with the last 4 classmates waiting in a short queue for a free slot.
+
+This lab also finishes a story that the *Quantization* lab started, when it rounded weights and
+weighed the very file this app downloads. Here, the export checklist works out the file size of the
+900-weight table, using the block type of your chosen format. The `2B · this app` preset is that
+same downloaded file, now being served.
+
+## How to play with it
+
+The lab starts at `8B`, `Q4_K_M`, 8 users, 4,096 tokens and `Continuous batching`. At those
+settings, the **Memory budget** card shows weights of 4.58 GiB and a cache of 4.00 GiB, and 36
+streams fit. The steps below follow the lab’s own six steps in order, so you can check each one off
+as you go.
+
+### Add users
+
+**Try this:** drag **Concurrent users** from 1 up to 64 and watch the **Throughput and latency**
+card as the numbers change. With one user, **Total** and **Per user** both read 73.3 tok/s, because
+that one person has the whole machine to themselves.
+
+At 8 users, **Total** reads 347 tok/s while **Per user** reads 43.4, and **Time per output token**
+reads 23 ms. Now keep going, and past 36 users both charts turn shaded, because the saved notes no
+longer fit in 24 GiB. The shading is labelled `over 24.00 GiB beyond 36`, which marks the point
+where memory runs out.
+
+At 64 users, the **Memory budget** badge reads 37.58 GiB, which is more than one and a half times
+what the machine has. The warning below the bar says you are over budget by 13.58 GiB, and that only
+36 streams fit at this context.
+
+Through the whole drag, watch which part of the bar moves, because only the cache grows while the
+weights stay put at 4.58 GiB. The badge on the throughput card keeps saying `bandwidth bound`, since
+even 64 users reach only 652 tok/s, far below the 7,472 the arithmetic could handle.
+
+Then set the users back to 8 and switch **Scheduler** to `One at a time`, and watch **Total** fall
+to 73.3 and **Per user** to 9.2. **Time per output token** rises to 109 ms, so every one of the 8
+users is worse off than with batching. Switch back to `Continuous batching` before the next step.
+
+### Extend the context
+
+Set **Concurrent users** to 1, then drag **Context length** up to 32,768, and watch the cache
+segment of the bar creep up close to the weights. One conversation’s notes now take 4.00 GiB, which
+is the same as eight conversations took at 4,096 tokens.
+
+**Streams that fit** drops from 36 to 4, because each conversation now reserves eight times the
+room. **Time to first token** grows from 548 ms to 4,385 ms, more than four seconds, because the
+lab’s prompt now fills a context eight times as long.
+
+Here is a neat check on the speed rule: **Per user** now reads 43.4 tok/s, exactly what each of 8
+users got at 4,096 tokens. Each step reads the same number of bytes in both cases, the weights plus
+4.00 GiB of notes, so each step takes the same time.
+
+Now set **Context length** back to 4,096, then switch **Weight format** to `F16`, and the weights
+jump to 14.96 GiB. One user drops to 24.1 tok/s, even though nothing changed but how the weights are
+stored. Every step now reads about three times as many bytes, so every step takes about three times
+as long. **Streams that fit** also falls from 36 to 16, because the bigger book leaves less of the
+desk for notes.
+
+### Balance the budget
+
+Switch **Weight format** back to `Q4_K_M` and pick `2B · this app` under **Model**, and **Per token,
+per stream** drops to 12.0 KiB. A new readout, **Fixed state per stream**, appears and reads 19.27
+MiB, which is the running summary each conversation carries. Each conversation needs 48 MiB of notes
+plus that summary, so 331 fit where the `8B` model fits 36.
+
+The note under the controls explains why, since only the cache-holding layers are charged per token:
+12.0 KiB a token here, against 48.0 KiB if all 24 cached.
+
+Now set yourself a puzzle: find a **Model**, **Weight format**, **Context length** and **Concurrent
+users** that fit with room to spare, using **Streams that fit** as your cap. For example, say you
+need 8 users working on long documents of 16,384 tokens each, all with the `8B` model.
+
+At `Q4_K_M`, **Streams that fit** reads 9, so the 8 users fit with one slot to spare, and
+**Headroom** reads 2.42 GiB. Switch to `F16` and **Streams that fit** drops to 4, so the same plan
+is now over budget by 7.96 GiB. The more precise format would cost you half of your users, which is
+the kind of trade this step asks you to weigh.
+
+### Change the hardware
+
+Go back to `8B` at `Q4_K_M` and 4,096 tokens, set **Concurrent users** to 1, and open **Hardware,
+levers, and cost**. Under **Hardware**, pick `RTX 4090` and then `H100 SXM`, and compare the **Per
+user** readout on each of them.
+
+One stream gets 185 tok/s on the `RTX 4090` and 614 on the `H100 SXM`, which is 3.3 times faster.
+That matches how much faster the H100 turns its pages, which is its bandwidth, and not the 6.0 times
+by which its sums are faster. Decode spends its time waiting on memory, so all that extra arithmetic
+barely helps a single stream.
+
+The **Streams that fit** readout on this card tells the other half of the story, with 36 on the 4090
+and 148 on the H100. Read it here, not on the **Memory budget** card, which always uses `Lab
+default` and stays at 36 whatever machine you pick. The H100 preset has 80 GiB of memory to the
+4090’s 24, so its desk holds about four times as many piles of notes.
+
+Now set **Concurrent users** to 8 and read **Cost per million tokens**, which comes to $0.23 on the
+4090 against $0.33 on the H100. At this load, the H100 writes 3.3 times as many tokens an hour, but
+its rent is 4.7 times as high. So each of its tokens costs about 4.7 ÷ 3.3, or 1.4 times as much,
+and the cheaper card wins on cost.
+
+Then edit **Price** while the H100 is picked. The same chip is $3.49 an hour on one provider’s page
+and $4.29 on another’s, so try $4.29. At $4.29, the cost per million tokens rises from $0.33 to
+$0.41, and no preset stays pressed, because the machine is now your own description.
+
+Finally, try `M4 Max laptop` and `CPU box` at 1 user, where the laptop gets 100 tok/s from its 546
+GB/s. The CPU box gets 16.4 tok/s from its 89.6 GB/s. The presets set both prices to $0 because you
+already own the machines, so **Cost per million tokens** reads `$0.000`. That leaves out what the
+machine cost to buy and the electricity it uses, which you could enter yourself as an hourly
+**Price**.
+
+### Pull the levers
+
+Pick `Lab default` again with 8 users, then switch on **Paged attention** and leave **Average fill
+of the reserved context** at 50%. On this card, **Streams that fit** goes from 36 to 73 and **Per
+user** from 43.4 to 56.6 tok/s, because each conversation now holds and reads half as many notes.
+The levers work only on this card, so the **Memory budget** card above still reads 36.
+
+Switch paging off and set **KV cache type** to `q8_0`, and now 69 streams fit while each user gets
+55.6 tok/s. The cache costs about half as much per token, though not quite half, for a reason that
+Going deeper explains.
+
+Set the cache back to `fp16` and switch on **Speculative decoding**, and **Per user** jumps from
+43.4 to 104 tok/s, which is 2.4 times faster. **Cost per million tokens** falls from $0.80 to $0.33,
+while **Streams that fit** stays at 36. That is because the lab ignores the helper model’s own
+memory. In a real server, the helper’s weights and notes would take some desk space too.
+
+The bar list below the readouts keeps all of this in view. It has a row for `No levers`, one row for
+each lever alone, and one for `Your selection`. Each bar’s length shows total tokens per second, and
+its label shows the cost per million tokens for that row.
+
+Two more experiments show where speculation stops helping, and the first is to drag **Acceptance
+rate** down to 0, so that every guess is wrong. **Per user** falls to 31.0 tok/s, slower than with
+no levers at all, because you are now paying for guesses that never get used.
+
+Put **Acceptance rate** back to 0.80, then pick `CPU box`, whose arithmetic is slow at an assumed 1
+TFLOP/s. At 8 users, the sums are already the limit on this machine rather than memory, so watch
+**Total** as you turn **Speculative decoding** off and on. Speculation cuts **Total** from 62.3 to
+38.8 tok/s here. Checking five tokens per conversation means five times the sums, and the sums were
+already the slow part.
+
+### Export it
+
+Go back to `8B` and look at the **Export the model you trained** card, which follows your **Weight
+format**. At `Q4_K_M`, the heading reads `900 weights → Q4_K_M`, and the second step rounds the
+table into `Q4_K` blocks at 4.5 bits per weight. The badge shows the toy file at `507 B`, where B
+here means bytes, not billion. That is because 900 × 4.5 ÷ 8 is 506.25, which rounds up to whole
+bytes.
+
+Now compare that 4.5 with the note under **Serving controls**, which gives 4.90 bits per weight for
+a real `Q4_K_M` file. A real file keeps some of its weight tables in a bigger type, which costs
+extra bits. The toy has only one table, so there is nothing to keep bigger.
+
+Switch to `F16` and the badge grows to 1.8 KiB. The 900 weights at 2 bytes each make 1,800 bytes,
+and 1,800 ÷ 1,024 is about 1.76 KiB, which the badge rounds to 1.8.
+
+The last step, **Serve it**, shows the cap, such as `≤ 8 streams`, which is the smaller of your user
+count and **Streams that fit**.
+
+## What to notice
+
+- The weights never move when you add users or lengthen conversations. Only the KV cache grows,
+  which is how a model that loads with room to spare still runs out of memory under load.
+- Batching splits one read of the weights among everyone, so **Total** goes up while **Per user**
+  goes down, which is the trade between throughput and latency.
+- With `One at a time`, 8 users share 73.3 tok/s and each waits 109 ms between tokens, so batching
+  beats it for every one of them.
+- On the first three cards the badge says `bandwidth bound` at every user count, since even 64 users
+  reach only 652 tok/s against a ceiling of 7,472.
+- The `8B` model saves 128 KiB per token and the `3B` model only 36 KiB. That is because the
+  smaller model keeps only 2 saved sets per layer to the `8B` model’s 8.
+- Hybrid attention shrinks the notes another way, since the 2B model’s cache is a quarter of what 24
+  caching layers would cost and its summary never grows.
+- Bandwidth sets one person’s speed, while memory sets how many people share each read. The H100 is
+  3.3 times faster per stream and holds 148 conversations to the 4090’s 36.
+- **Cost per million tokens** is the hourly rent divided by the tokens written in that hour. On the
+  4090 it falls from $1.11 at 1 user to $0.14 at 36.
+- A lever helps only where the slow part is. Speculation is 2.4 times faster while memory is the
+  limit, but it cuts the `CPU box` from 62.3 to 38.8 tok/s.
+- A price is an input, not a fact about the model. The same H100 SXM is $3.49 an hour on one
+  provider’s page and $4.29 on another’s.
+
+## Where it breaks
+
+### What this lab fakes or simplifies
+
+Every number here is division from stated assumptions, with nothing timed on a real machine, and the
+arithmetic assumes 100% of peak bandwidth and compute. Real hardware never reaches its peak, so
+every speed in the lab is a best case rather than a forecast.
+
+The working space is a flat 1 GiB that never grows, whatever the load. Every conversation also
+reserves its full context from the start, unless you turn paging on. That reservation is the worst
+case rather than the usual one, so real conversations usually hold less. The lab also leaves out the
+arithmetic of the looking-back step itself, called attention, and counts only the arithmetic on the
+weights.
+
+**Time to first token** assumes a prompt that fills the whole context, and no queue at all. It
+prices the longest prompt allowed but ignores any waiting in line. The first three models all use
+one file-size rate per format, taken from real files of one 8-billion-weight model. The toy export uses only
+its block type’s bits per weight, such as 4.5 for `Q4_K`, while a real file mixes in some bigger
+types.
+
+The hardware figures were read on 30 September 2026 and will go out of date, while prices change
+faster still. Apple publishes no arithmetic figure for its laptop chip and the CPU box’s figure is a
+round number, so the lab labels both of those as assumptions. The makers quote the 4090 at 24 GB and
+the H100 at 80 GB, and the lab enters those numbers as GiB, which flatters both cards slightly.
+
+The lab also prices only memory and speed. It never measures how much quality is lost when the
+weights or the cache are stored in fewer bits. That loss is the third side of the trade, and the
+*Quantization* lab measures it.
+
+The levers are simplified too, because paging uses one average fill instead of a real spread of
+short and long conversations. Speculation uses one acceptance rate for all text and a draft whose
+cost is a fixed share of a big step, and the draft model’s memory is ignored. Finally, the cost
+counts only the tokens written and leaves out the time spent reading prompts, so real costs per
+token run higher.
+
+### Where the real thing differs
+
+Real serving programs reach only a fraction of the peak bandwidth the lab assumes, so real speeds
+come out lower than the lab’s numbers. Test with real traffic before you trust any number from a
+page like this one, however carefully it was worked out.
+
+Real servers also do better than the lab in places, and **paged attention** is what makes the
+average-fill idea real. The paper that introduced it measured earlier serving systems and found only
+20.4% to 38.2% of their cache memory holding actual token notes. The rest of that memory sat
+reserved but unused, which is exactly the waste that handing out small pages avoids.
+
+Sometimes every conversation starts with the same long set of instructions, called a system prompt.
+Prefix sharing stores that prompt only once, so it is nearly free after the first request. Chunked
+prefill breaks one long prompt into pieces, so that reading it does not stall everyone else’s
+writing, and the lab models neither trick.
+
+Real traffic also comes in bursts rather than as a steady number of users. The number that matters
+is usually the wait for the slowest few requests. That slowest wait is called a **tail latency**,
+and an average can hide it completely.
+
+Picture a made-up group chat where nearly every message arrives at once, but one in fifty takes ten
+seconds to appear. The average wait looks fine, yet that slow message is the one everybody notices,
+which is why real services watch their slowest requests as well as their average.
+
+**A common mix-up:** “the model is 4.6 GiB, so it needs 4.6 GiB.” That is only the part that never
+changes. The cache grows with every user and every token, and the cache is what runs out under load.
+The same weights also read as 4.9 GB, because a GB is a slightly smaller unit than a GiB, so check
+which unit a number uses before comparing.
+
+## Going deeper
+
+### Speculative decoding, counted out
+
+To see where 3.36 tokens per check comes from, picture 100 checks with **Acceptance rate** at 0.80
+and **Draft length** at 4. The first guess survives in about 80 of those checks, since each guess is
+kept 80% of the time. The second guess counts only if the first was kept too, so it survives in
+about 80% of those 80 checks, which is 64.
+
+The third guess survives in about 51 checks and the fourth in about 41, because each one needs every
+guess before it to be kept as well. On top of the kept guesses, the big model adds one token of its
+own in every check. That token is either a correction or an extra one after four good guesses.
+
+That adds 100 more, so the total is 100 + 80 + 64 + 51 + 41 = 336 tokens over 100 checks, or 3.36
+per check. The note under the bar list shows this number for whatever settings you choose.
+
+The guesses are not free, though, because each of the 4 draft steps costs a tenth of a big step. So
+one check costs 1 + 0.4 = 1.4 big steps. Dividing 3.36 tokens by 1.4 steps gives 2.4 tokens per big
+step, so speculation is 2.4 times faster than writing one token per step.
+
+Drag the sliders on `Lab default` with 8 users and the trade shows up. A better guesser helps, so an
+**Acceptance rate** of 0.95 lifts each user to 140 tok/s. A pricier guesser hurts instead, so at a
+**Draft cost** of 0.50, each user gets 48.7 tok/s, barely faster than with no helper at all.
+
+In real use, the acceptance rate depends on the text and on how closely the helper matches the big
+model. The 2.4 also holds only while reading memory is the limit, since the extra sums for checking
+five tokens per conversation are then hidden behind the wait for memory. The paper behind this
+method treats those sums as free, but the lab counts them, and that is exactly what slows the `CPU
+box` down.
+
+### Why `q8_0` is not exactly half
+
+The shorthand formats store the cache in blocks of 32 numbers. A `q8_0` block spends 8 bits on each
+of them, plus a 16-bit scale shared by the whole block. That makes 34 bytes for 32 values, or 8.5
+bits per value rather than 8.
+
+A `q4_0` block uses 4 bits per number plus the same scale, which makes 18 bytes for 32 values, or
+4.5 bits each. Against the 16 bits of `fp16`, the notes therefore take 0.53 or 0.28 as much room as
+before.
+
+That small extra is why `q8_0` fits 69 conversations at the starting settings, not the 73 that an
+exact half would fit, the same as paging at 50%. The KV cache type never touches the 2B model’s
+running summary, which the app’s engine keeps in a 32-bit format called float32 whatever you choose.
+
+### More on the export path
+
+A real export locks in more than the weights, because it also freezes the tokenizer and the chat
+template, the fixed pattern that marks out each message. It freezes the licence too, which says how
+the model may be used, so that every piece of a release is pinned down.
+
+This app carries out the last two steps for real, with its own engine and model. Before running
+either one, it verifies each one’s SHA-256 hash, a standard kind of fingerprint. It then starts
+llama.cpp’s server program, `llama-server`, on a loopback address, 127.0.0.1. A loopback address can
+be reached only by programs on the same computer, so nothing outside your machine can talk to it.
+
+### Operating it
+
+A served model is not finished once it fits and runs fast enough, because four more jobs keep it
+working from day to day. They are monitoring for drift, rolling out new versions safely, guardrails,
+and deciding where prompts go.
+
+### Monitoring and drift
+
+**Monitoring** means watching the same numbers this lab computes while the model is in use, along
+with how often requests fail or get refused. Those numbers are time to first token, time per output
+token, tokens per second, the length of the queue, and how full the cache is against **Streams that
+fit**.
+
+**Drift** is the quiet failure, when the requests or the answers change underneath you while no
+alarm goes off. Either way, yesterday’s test results stop describing today’s use, and nothing tells
+you so unless you look.
+
+Picture a made-up homework helper set up in September, when a **Context length** of 4,096 tokens was
+plenty for students’ questions. By exam season, students are pasting in whole essays, so the
+helper’s owners raise the context to 16,384 tokens to make room. The machine and the model have not
+changed, yet **Streams that fit** on the `8B` model falls from 36 to 9, a quarter as many students
+at once.
+
+The fix has two parts, one for each kind of drift. Drift in what people send, like the exam-season
+essays, shows up in the monitored numbers: longer prompts, a fuller cache and a longer queue. Drift
+in the answers is caught by rerunning a fixed set of test questions on a schedule and comparing the
+results, the kind of replay the *Evaluation* lab covers.
+
+### Versioned rollouts and rollback
+
+A **versioned rollout** names each release by its exact pieces, which are the model file, the engine
+that serves it, and the settings. This app pins one engine version and one model version, and it
+checks the fingerprint of both before it runs them.
+
+To roll out a new version, a service sends it a small share of the traffic first. It then compares
+the monitored numbers and the fixed tests against the old version. It widens the share only if the
+new version holds up, while the old one stays ready the whole time. Going back to the old one,
+called a **rollback**, is then a quick switch rather than a slow rebuild from scratch.
+
+This app runs one pinned pair, so changing either part means shipping a new version of the app. A
+larger service would run several versions side by side.
+
+### Guardrails
+
+**Guardrails** are checks and limits built around the model rather than inside it. They include a
+cap on conversations at **Streams that fit**, a limit on prompt length, and checks on what goes in
+and what comes out. Some models can also use outside programs, called tools, such as a calculator
+or a web search. A guardrail can list what each of those tools is allowed to do.
+
+Guardrails are ordinary computer code, so they have bugs of their own and need their own tests. The
+*Failure modes, safety, and security* lab covers what they miss.
+
+### Privacy and on-device inference
+
+Running the model on the user’s own machine is called **on-device inference**, and this app’s local
+guide is an example of it. The app starts and stops the engine itself on a loopback address, using a
+channel number, called a port, that it picks at random. The model file it runs is kept in the app’s
+data folder.
+
+Your prompts stay on your machine and nothing is billed per token, which are the two big gains of
+running the model on your own computer. On a Mac, the app runs every layer on the computer’s
+graphics chip, and on other computers it runs on the main processor. Those two ways of running are
+why the lab includes the `M4 Max laptop` and `CPU box` presets, and the app uses a 4,096-token
+context either way.
+
+The price is a small model and your own machine’s memory speed, so the 2B model’s ceiling at 1 user
+is 404 tok/s on the `M4 Max laptop`. On the `CPU box` it is 66 tok/s, and both figures are
+arithmetic rather than measurement. If you choose a cloud provider instead, your text leaves your
+machine, and that provider’s own terms apply to it.

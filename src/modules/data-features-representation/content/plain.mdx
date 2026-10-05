@@ -1,0 +1,292 @@
+---
+objectives: ["Encode a table row as a feature vector by hand","Explain why two encodings of the same rows can disagree about which examples are near each other","Show that a threshold gate reading a different feature cuts the street differently, and that an embedding is a geometry fitted for a loss (authored here, learned in Tokens & embeddings)","Turn a 3×3 picture and a short sentence into numbers, and say how a missing value, a duplicate row, or a mislabelled row changes a table summary or a nearest-neighbour answer"]
+terms: ["Feature","Representation","One-hot encoding","Normalization","Feature space","Distance","Categorical variable","Embedding","Label","Pixel vector","Vocabulary and token ID","Missing value","Duplicate row","Label noise"]
+---
+
+## The big picture
+
+A computer cannot look at a house, a photo or a sentence and take it in the way you do. Everything it works with has to be a number, so before any AI can learn from examples, a person has to decide how each example becomes a list of numbers. This module is about that step, which sounds like paperwork but quietly shapes everything that comes after it.
+
+The lab uses a tiny made-up street of six houses for sale. Each one has some number of rooms, a red, blue or green door, and either a park nearby or not. Every house also wears a price tag marked high or low, and you will turn the houses into numbers in several different ways to see how much that choice matters.
+
+### Where you have met it
+
+Every AI method in the later labs of this app starts from lists of numbers like these. Real pictures are made of thousands of tiny squares called pixels, and each pixel carries numbers for its brightness and color. Text gets the same treatment, because an AI system that reads text, such as a chatbot, first splits the words into pieces and swaps each piece for an ID.
+
+### Why it matters
+
+The numbers you pick decide which examples count as close to each other, and many AI methods work by finding examples that are close. If you number the same houses a different way, a different house can become the nearest match, even though no house changed at all.
+
+A **model** is the part of an AI system that learns a pattern from examples and then uses that pattern to make guesses about new ones. A model cannot use anything you left off the list, and a single blank cell, copied row or wrong price tag can change an answer without any warning.
+
+### What you will be able to explain
+
+By the end of this lesson, you should be able to explain each of these ideas in your own words:
+
+- How to turn one row of a table, such as one house, into a list of numbers by hand.
+- Why two different ways of numbering the same rows can disagree about which rows are near each other.
+- Why the same yes-or-no rule sorts the houses differently when it reads a different number. You will also say what an embedding is: a map of positions fitted so that a model does its job well. This lab draws one by hand, and the Tokens & embeddings lab shows one being learned.
+- How a tiny 3×3 picture and a short sentence can each be turned into a list of numbers. You will also say how a blank cell, a copied row or a wrong price tag can change a summary of the table or a nearest-match answer.
+
+### What the lab lets you do
+
+The lab has seven cards, which you can work through from top to bottom:
+
+- **The street** shows the six houses before they become numbers, so you can pick one to study.
+- **Packing slip** lets you choose how a door color turns into numbers, and shows the list of numbers that stands in for the house you picked.
+- **Who stands nearest** lines up the other five houses by how far their numbers are from the numbers of your house.
+- **The gate** sorts the houses with one rule, “is this number big enough?”, and lets you choose which number it reads.
+- **Two maps** compares a map where every door color is equally far apart with a hand-drawn map of the kind a model might learn later.
+- **Pixels and words** lets you draw a 3×3 picture and pick a sentence, then shows both of them as numbers.
+- **Messy rows** spoils the table with a blank cell, a copied row and a wrong tag, so you can see what each problem changes.
+
+Nothing in the lab learns from examples, and none of its numbers come from real house sales. Every number is worked out on the spot from the six made-up houses, the picture and sentence you choose, and your settings.
+
+## What it is
+
+### A packing slip that stands in for the house
+
+Picture a moving company that cannot ship a house, so it ships a slip of paper describing the house instead. Whoever receives the slip never sees the house, only what is written on the paper. A computer is in the same spot, because it only ever receives the numbers you write down.
+
+In the lab, each house starts as a row in a table, and Alder 12’s row says it has 2 rooms, a red door and a park nearby. Each thing you choose to write down about a house, such as its number of rooms, is called a **feature**. The slip gives each feature its own slot, and the number in that slot is the house’s value for that feature.
+
+A list of numbers kept in a fixed order is called a **vector**, so the slip is a feature vector. The whole slip, standing in for the real house, is called the house’s **representation**. Measuring distance, grouping houses and every later model all work on this representation, never on the street itself.
+
+Here is Alder 12 packed by hand with the lab’s starting settings. Its room count is already a number, so it goes in as 2, and its red door is written as 1, a number the lab calls the door’s stamp. “Near a park” becomes 1 for yes, where 0 would mean no, so Alder 12’s slip is (2, 1, 1).
+
+The price tag is left off that slip on purpose, because it is the **label**, the answer a model would later be asked to predict. If you copied it onto the slip, a model could read the answer straight off the list, which is called leaking the label. It would score perfectly on these six houses while learning nothing it could use on a new house, whose price nobody knows yet.
+
+The packing-slip picture stops matching in two places. A real packing slip only lists what is already in the box, while here you also invent some of the numbers, such as which stamp a red door gets. A person holding a real slip could also go and look at the house, but the computer never can, so anything left off the slip does not exist for it. With no park slot, for example, no later step could tell a park house from one without a park.
+
+### Numbers for things that are not amounts
+
+The room count is an amount, so 4 rooms really is twice as many as 2 rooms. Door color works differently, because red, blue and green are names rather than amounts. A column whose values are names like this is called a **categorical variable**, and it needs a decision before it can become a number.
+
+The lab gives you three ways to pack the door, chosen with **How to pack the door**:
+
+- **integer stamps** gives each color one whole number, which you set from 1 to 5 on the red, blue and green stamp pads. Before you change anything, red is stamped 1, blue is stamped 2 and green is stamped 3.
+- **one cubby each** gives every color its own slot, which holds a 1 if the door is that color and a 0 if it is not. This is called **one-hot encoding**, because exactly one of the color slots is “hot”, or set to 1.
+- **same-length rulers** divides rooms by 4, the most rooms any house has, and the color stamp by 5, the biggest stamp on the pads. After that, no slot can hold a number bigger than 1. Putting features onto shorter rulers of a similar size like this is called **normalization**, although, as you will see below, it does not make every range exactly equal.
+
+Integer stamps sneak in an order that paint does not have, because numbers come in a line while colors do not. With red 1, blue 2 and green 3, blue sits between the other two colors, which puts red closer to blue than to green. Nothing about paint puts blue in the middle, so that order comes entirely from the numbering.
+
+Picture a soccer coach who pairs up players for drills by how close their jersey numbers are. Player 7 always ends up with player 8, while player 7 and player 23 never train together, even if they play the same position. Jersey numbers are names, so treating them as amounts invents a closeness that was never there.
+
+One-hot encoding avoids that invented order by giving each color a slot of its own. Red becomes (1, 0, 0), blue becomes (0, 1, 0) and green becomes (0, 0, 1), which stretches Alder 12’s slip to five numbers: (2, 1, 0, 0, 1). Those five slots stand for rooms, red, blue, green and park, and the stamp pads stop mattering, because no slot reads them anymore.
+
+Normalization fixes a different problem, which is that a feature measured in bigger numbers can drown out the others. Picture a friend comparing two phones by adding up how different they are, where the prices differ by 50 dollars and the battery lives differ by 5 hours. If you add those two gaps as plain numbers, the 50 swamps the 5, only because prices come in bigger numbers, not because price matters ten times more.
+
+With same-length rulers, Alder 12’s 2 rooms become 2 ÷ 4 = 0.50, and its red stamp becomes 1 ÷ 5 = 0.20. The park slot stays at 1, so the slip reads (0.50, 0.20, 1.00), and since normalization only rescales numbers you already chose, it adds no new facts about the house.
+
+### How far apart two slips are
+
+To find which house is nearest to another, the lab measures the **distance** between their slips, which is the same straight-line distance you might work out on a map. If you walk 3 blocks east and then 4 blocks north, you end up √(3² + 4²) = √(9 + 16) = √25 = 5 blocks from where you started, in a straight line. To get there, you square each walk, add the squares, and take the square root.
+
+The recipe for two slips works the same way, except that a slip can hold more than two numbers. Subtract the numbers slot by slot to get the gaps, square each gap, add up the squares, and take the square root of the total. Each extra slot only adds one more square to the sum, so the recipe works for three numbers, five numbers or nine.
+
+Take Alder 12 at (2, 1, 1) and Elm 7, which has 2 rooms, a blue door and a park, so its slip is (2, 2, 1). The gaps are 0, 1 and 0, the squares add up to 1, and √1 = 1.00. Cedar 9 has 3 rooms, a green door and a park, which gives (3, 3, 1). Its gaps from Alder 12 are 1, 2 and 0, so the squares add up to 1 + 4 = 5, and √5 is about 2.24. With these stamps, then, Elm 7 is the house nearest to Alder 12, and Cedar 9 is more than twice as far away.
+
+You can think of each slip as a point, and each slot as one direction you can move in. Three slots work like the three measurements that pin down a spot in a room: how far along, how far across and how high up. Five slots give five directions, which you cannot draw, although the same recipe still measures the distance between two points. The space whose directions are the chosen features is called the **feature space**, and “near” in it only means near under the packing you picked.
+
+### Why the nearest house can flip
+
+Now stamp blue as 5 instead of 2, and although no house has changed, Elm 7’s slip becomes (2, 5, 1). Its gaps from Alder 12 are 0, 4 and 0, so the squares add up to 16, and √16 = 4.00. Cedar 9 has no blue door, so it stays about 2.24 away, while Elm 7 drops from first place to fourth.
+
+Dock 2 has 4 rooms, a red door and no park, which gives (4, 1, 0). Its gaps from Alder 12 are 2, 0 and 1, so the squares add up to 4 + 1 = 5, the same total as Cedar 9. Cedar 9 and Dock 2 were already exactly the same distance from Alder 12 under the starting stamps. Restamping blue cannot move either of them, because neither has a blue door. Now that Elm 7 has moved back, they tie for nearest, so the lineup marks both as **tied nearest** instead of quietly picking one.
+
+Switch to one cubby each and the stamps no longer count, because no slot on a one-hot slip reads them. Alder 12 is (2, 1, 0, 0, 1) and Elm 7 is (2, 0, 1, 0, 1), so only two color slots differ, by 1 each. The squares add up to 2, which makes the distance √2, about 1.41, whatever the stamps say. In fact, any two houses with different door colors are exactly √2 apart in their color slots.
+
+Same-length rulers shift things again. With the starting stamps, Elm 7 becomes (0.50, 0.40, 1.00). Its only gap from Alder 12’s (0.50, 0.20, 1.00) is 0.20 in the color slot, so the distance is 0.20. Cedar 9 becomes (0.75, 0.60, 1.00), with gaps of 0.25 and 0.40, so its squares add up to about 0.22 and it ends up about 0.47 away. Before the rulers, two room counts could differ by as much as 3 while the park slot could differ by only 1, so park had the quietest voice. After dividing, the biggest possible gap between two room counts shrinks to 0.75, and the biggest gap between two starting stamps shrinks to 0.40. The park slot still jumps a full 1 between yes and no, so it now has the loudest voice in most distances. Normalization moved the loudest voice from rooms to park rather than making every voice equal.
+
+So with integer stamps, Alder 12 and Elm 7 are 1.00 apart, or 4.00 apart once blue is stamped 5. With one cubby each, the same two houses are about 1.41 apart, whatever the stamps say. Distance is a sum over slots, so any slot you restamp or rescale can change who stands nearest, and it is the packing that chose those numbers, not the houses.
+
+### A flat picture can mislead
+
+The lineup also reports **First-two nearest**, which is the house that would win if you used only the first two numbers on each slip. That is like judging distance from a shadow on the floor, which keeps length and width but loses height. Two objects can look close together in their shadows while sitting far apart in real life. A flat picture made from only part of a longer list works the same way, and it is called a projection.
+
+With blue stamped 5, the first two numbers put Dock 2 only 2.00 from Alder 12, closer than Cedar 9, so **First-two nearest** reads Dock 2. Once the park slot is counted, Dock 2 moves out to about 2.24 and ties with Cedar 9. Whenever the first two numbers would name a house that is not nearest on the whole slip, a callout under the bars says so. In this example the callout stays hidden, because Dock 2 is still one of the two tied nearest houses. The flat picture only made the tie look like a win.
+
+To see the callout, keep blue at 5, switch to same-length rulers and select Elm 7 on **The street**. Its first two numbers put Birch 4 only 0.25 away. Birch 4 has no park while Elm 7 does, though, so on the whole slip Birch 4 is about 1.03 away. Cedar 9, at about 0.47, is the real nearest house, and the callout warns you that the flat picture got it wrong.
+
+### A map fitted for a job: embeddings
+
+So far, you have chosen every number by hand, but in later labs, training sets the positions instead. **Training** means letting a model practice on examples and adjusting its numbers after each round so that its guesses get better. While it trains, the model is scored by a **loss**, a single number for how badly it is doing its job, where lower is better. Training nudges the model’s numbers again and again to push that score down.
+
+Picture each house as a dot on a map. Instead of you choosing where each dot goes, training starts the dots anywhere and keeps nudging them. Say the job is guessing price. Two houses that always sell for the same kind of price get nudged toward each other, because that makes the guesses better and the loss lower. The finished set of dot positions is called an **embedding**, and it puts items that the job treats as alike close together. The positions are a tool built for one job rather than a discovery about the world. Two items can sit close together in an embedding and still differ in ways the job never cared about.
+
+The **Two maps** card puts two maps side by side so you can compare them. On the left, one-hot cubbies say every other door color is equally far away, √2, and they ignore rooms, park and price completely. On the right, a later map places houses with a similar park and price close together. That map was placed by hand to show what an embedding could look like, and nothing was trained to make it.
+
+You might wonder whether grouping by price is the label leak from earlier. It is not, as long as price is used in the right place. Training is allowed to look at the price tags, because they are what its guesses are scored against, so price shapes a map like this only through the loss. What it must never do is copy a house’s tag onto the slip it reads when it guesses. A brand-new house would be placed from its features alone, because nobody knows its price yet.
+
+With Alder 12 selected, the later map names Cedar 9 as nearest, at an **Embed dist** of 0.35, because both houses are near a park and both are tagged high. The one-hot color map names Dock 2 instead, because Dock 2 is the only other house with a red door. Neither map is wrong, because each one answers a different question about which houses are alike.
+
+### Pictures as numbers
+
+A picture can be packed into a slip in the same way as a house, by turning each tiny part of it into a number. The lab’s picture is a 3×3 grid of tiny squares called pixels, where each pixel is 1 for ink and 0 for blank. Reading the grid row by row, the way you read a page, gives nine numbers in a fixed order, which is called a **pixel vector**.
+
+The starting drawing is a plus sign, whose top row reads 0, 1, 0 and whose middle row reads 1, 1, 1. Its bottom row matches the top one, so its pixel vector is (0, 1, 0, 1, 1, 1, 0, 1, 0). Each of the nine pixels is its own direction, so the picture is a point in a space with nine directions, or nine dimensions.
+
+Distance works exactly the way it did on the street, using the same recipe of gaps, squares, a sum and a square root. The lab compares your drawing with three fixed templates: the plus, a ring and a bar. The ring inks the eight outside squares and leaves the middle blank, while the bar is a straight up-and-down line. Because every pixel is 0 or 1, each pixel that differs adds exactly 1 to the sum of squares, so the sum is a count of the pixels that differ.
+
+The plus and the bar differ only at the left and right ends of the middle row. Those two differing pixels make a sum of 2, so the two pictures sit √2 apart, about 1.41. The plus and the ring differ in five pixels, so they are √5 apart, about 2.24.
+
+### Words as numbers
+
+A sentence can become numbers by looking up each word in a fixed list. That list is called a **vocabulary**, and a word’s position in it is its **token ID**. A token is one piece of text, and in this lab every token happens to be a whole word.
+
+The lab’s vocabulary has eight slots, and seven of them hold words: the = 1, cat = 2, sat = 3, on = 4, mat = 5, dog = 6 and ran = 7. Slot 0 is saved for any word that is not on the list, and the lab shows it as `<unk>`, short for unknown. So “the cat sat on the mat” becomes (1, 2, 3, 4, 1, 5), with “the” getting ID 1 both times.
+
+Now try “the bird sat on the mat”, where bird is not on the list, so it becomes ID 0 and the sentence becomes (1, 0, 3, 4, 1, 5). Any other unknown word would also become 0, which means two completely different unseen words would look identical.
+
+IDs are names rather than amounts, so treating them as amounts walks straight into the jersey-number trap again. Cat is ID 2 and mat is ID 5, so subtracting puts them 3 apart, while dog is ID 6, which puts it 4 away from cat. Read as amounts, those IDs make cat look nearer to a mat than to another animal, an order the numbering made up. One-hot encoding would avoid this by putting any two different words exactly √2 apart, the same as two different door colors.
+
+This tiny list is not a real tokenizer, which is the tool real AI systems use to split text into tokens. Real tokenizers break text into word pieces from a far bigger vocabulary, and the Tokens & embeddings lab is where that happens.
+
+### Messy rows
+
+Real tables are rarely as clean as this street, so the **Messy rows** card spoils a copy of the table in three ways. It then shows what each problem does to a summary of the table and to one answer.
+
+That answer is about a new house that is not on the street: 3 rooms, a red door and no park, packed as (3, 1, 0). The lab finds the three listings nearest to it and lets them vote with their price tags, so the majority wins. On the clean table, the two nearest listings are Dock 2 at 1.00 away and Alder 12 at about 1.41, and both are tagged high. The third is Elm 7, about 1.73 away and tagged low, so two of the three votes are high and the **3-nearest answer** is high.
+
+One more house matters in a moment. Birch 4 has 1 room, a blue door and no park, which packs as (1, 2, 0), and it is tagged low. Its gaps from the new house are 2, 1 and 0, so it sits √5, about 2.24, away, exactly the same distance as Cedar 9, which is tagged high.
+
+This card always packs with the starting stamps, red 1, blue 2 and green 3, whatever you set on **Packing slip**. Its numbers stay the same while you experiment with the other cards.
+
+#### A missing value
+
+A **missing value** is a cell with nothing recorded in it, like a box someone forgot to fill in on a form. Switching on **Missing value** blanks Dock 2’s room count, and since the distance recipe needs a number, you have to decide what to do with the gap.
+
+Picture a class survey asking how many pets each student has, where one student leaves the box blank. If you count the blank as 0, the class average drops, as if that student had no pets. If you leave the form out, the class shrinks by one, and if you fill the box with the class average, you keep the student but guess their answer.
+
+The lab’s **Handle missing** control offers the same three choices, and each one moves the answer in its own way:
+
+- **read as 0** gives Dock 2 zero rooms, which moves it from 1.00 to 3.00 away from the new house, so it drops out of the three nearest. Third place is now a tie at about 2.24 between Birch 4, tagged low, and Cedar 9, tagged high. The lab breaks a tie by taking the house listed first in the table, which is Birch 4, so the answer flips to low.
+- **drop the row** leaves Dock 2 out of the summary and the vote, although the table still shows it, marked as dropped. The three nearest become Alder 12 (high), Elm 7 (low) and Birch 4 (low), after the same tie-break, so low wins two votes to one.
+- **fill with the mean** fills Dock 2’s blank with 1.8 rooms, the average of the other five houses. That puts it 1.20 away, still the nearest listing, so the answer stays high.
+
+The summary moves too, because on the clean table **Mean rooms** is 2.17, and reading the blank as 0 drags it down to 1.50. How you handle a gap is part of the packing, in the same way a door stamp is.
+
+#### A duplicate row
+
+A **duplicate row** is the same record listed more than once, so anything that counts rows ends up counting it twice. Switching on **Duplicate row** lists Alder 12 twice, which makes the table 7 rows long and adds an extra high tag. The **High-price share** rises from 50% to 57.1%, even though no new information about any house was added.
+
+A duplicate also fools a common way of checking how well nearest-match guessing works. **Leave-one-out accuracy** hides one row, guesses its tag from its single nearest other row, checks the guess, and then repeats this for every row. On the clean table it gets 3 of 6 right, and Alder 12 is one of the misses, because its nearest other row is Elm 7, which is tagged low.
+
+With the duplicate, each copy of Alder 12 finds its twin at distance 0 with the same tag, so both copies are counted right. The three rows that were right stay right, and both copies of Alder 12 now count as right, so the score jumps to 3 + 2 = 5 of 7, about 71%. That rise happens even though the table holds no new information, only an extra copy. Picture a teacher who checks how well you studied by using the exact questions from a practice sheet you already went over. You would score well, but the score would measure your memory of that sheet, not how you would handle a new question.
+
+#### A wrong label
+
+When some rows carry the wrong label, the data has what is called **label noise**. A model learns from a wrong label just as carefully as from a right one, because nothing on the slip says which tags are wrong. Switching on **Mislabelled row** flips Dock 2’s tag from high to low. The **High-price share** drops from 50% to 33.3%, which means from half of the houses to a third of them.
+
+Dock 2 is also the listing nearest to the new house, so its flipped tag changes its vote. Now only Alder 12 votes high, so the answer flips to low because of one bad tag.
+
+## Why it’s here
+
+Every method in the later labs, from a line that splits examples into two groups to a nearest-match search to a learned embedding, works only on the slip. That creates a specific problem, which is that the arithmetic cannot tell a measured number from an invented one. When it subtracts a red stamp from a blue one, it treats the gap as real, even though you made it up a minute ago.
+
+So the packing step quietly decides three things before any learning happens, and each one comes from the slots on the slip. It decides which examples count as similar, because distance is built from the slots. It decides what a rule is able to see, because a rule can only read numbers that are on the slip. And it decides what exists at all, because a feature you never wrote down cannot be recovered later.
+
+This is why, when two packings of the same houses disagree about who is nearest, the disagreement is a choice you made rather than something you discovered. The lab makes this visible by letting you change the packing while the street stays still.
+
+**The gate** shows the same idea for a rule instead of a distance. A rule family is one kind of rule with a setting you can adjust, like a gate whose height you can raise or lower. Here the family is “call the house high if this one number is at least t”, and t is the setting.
+
+Feed that same family the room count and then the door stamp, and it sorts the street in two different ways. What a model can do therefore depends on the features it is given, not only on the model itself.
+
+**Messy rows** is here because real tables always need cleaning before they are packed. Deciding what a blank cell means, spotting copies and catching wrong tags are all part of turning data into numbers. Each of those choices can change an answer as much as a door stamp can.
+
+This page does not split the houses into a group to learn from and a separate group to test on, which is called a train and test split. Every score here is measured on the same six houses that are being sorted, and the supervised learning loop lab is where that split first appears.
+
+## How to play with it
+
+Work through the cards in order, since each step builds on the one before it, and the headings below match the step names listed in the lab.
+
+### Walk the street
+
+On **The street**, click **Alder 12** to select it, and notice that clicking only moves the ring around a house, not any of its numbers. The windows show its rooms, the door paint is its color, and the tree means a park is nearby. The high or low pill hanging off the building is the price tag, which stays off the slip.
+
+### Stamp a door color
+
+On **Packing slip**, leave **How to pack the door** on **integer stamps** and read Alder 12’s slip: rooms 2, color 1 and park 1. Then press 5 on the blue door pad, and Alder 12’s own slip stays the same, because its door is red. Every house with a blue door, though, now carries a 5 in its color slot.
+
+### Watch the lineup
+
+On **Who stands nearest**, Elm 7 has dropped to fourth at d 4.00, where d means distance, while Cedar 9 and Dock 2 read **tied nearest** at d 2.24. The bars under the lineup show, slot by slot, how far Alder 12 is from its nearest house.
+
+**Try this:** switch **How to pack the door** to **one cubby each**, then to **same-length rulers**, and read **Nearest on the slip** after each change. With blue still stamped 5, one cubby each brings back Elm 7 at 1.41, while same-length rulers picks Cedar 9 alone at 0.47. That is three packings and three different readouts, a tie, then Elm 7, then Cedar 9, while not one house has moved.
+
+### Move the gate
+
+Before you open **The gate**, set **How to pack the door** back to **integer stamps** and press 2 on the blue pad, so your numbers match the ones below. The card writes its rule at the top as `ŷ = 1[one stamp ≥ t]`, which packs an ordinary idea into very few symbols. You can read ŷ, said “y-hat”, as the gate’s guess. The 1 in front of the square brackets means “1 if the statement inside is true, and 0 if it is false”. So the guess is 1, meaning high, when the stamp is at least t, and 0, meaning low, when it is not.
+
+Here is the rule worked through with **Stamp the gate reads** on **rooms** and **Gate height t** at 2.5. Cedar 9 has 3 rooms, and 3 is at least 2.5, so Cedar 9 walks into **Predicted high**. Alder 12 has 2 rooms, which is below 2.5, so it lands in **Predicted low** even though its tag says high. A struck-through pill marks that miss, and **Tags the gate matches** reads 5 of 6.
+
+Now switch **Stamp the gate reads** to **door color** and leave **Gate height t** at 2.5. Only the green doors, stamped 3, clear the gate, so Cedar 9 and Fir 1 walk into the high yard. Fir 1 is tagged low, so it is a miss in the high yard. Alder 12 and Dock 2 are tagged high but have red doors stamped 1, so they land in the low yard as two more misses. That makes three misses, so the score drops to 3 of 6, with the same rule and the same houses. Then slide **Gate height t** across its range, from 0 to 5, and watch which houses cross the fence.
+
+If you forget to switch back from same-length rulers, every number on the slips is 1 or less, so a gate at 2.5 sends every house to **Predicted low**. That is a useful reminder that the gate reads whatever packing you chose. Under one cubby each there is no single color number, so a gate set to **door color** reads only the red slot. That slot is 1 for a red door and 0 for blue or green.
+
+### Compare the two maps
+
+On **Two maps**, keep Alder 12 selected and compare the readouts: **Nearest on the later map** reads Cedar 9, while **One-hot color nearest** reads Dock 2. Click other houses on either map and see how often the two maps disagree about who is alike.
+
+### Draw a picture as numbers
+
+On **Pixels and words**, press the pixels at row 2, columns 1 and 3, to switch off the plus sign’s left and right arms. The **Picture as nine numbers, row by row** chip changes to (0, 1, 0, 0, 1, 0, 0, 1, 0). In the template table, the bar becomes **nearest** at 0.00, while the plus you started with is now 1.41 away.
+
+### Write a sentence as IDs
+
+Set **Sentence** to “the bird sat on the mat” and find the row where **In the list?** says no and **ID** says 0. Then compare **ID gap cat–dog**, which reads 4, with **ID gap cat–mat**, which reads 3.
+
+### Spoil the table
+
+On **Messy rows**, set **Missing value** to **Dock 2 rooms blank** with **Handle missing** on **read as 0**, and watch the **3-nearest answer** change to low. Move **Handle missing** to **drop the row** and then to **fill with the mean**, and compare the answers.
+
+Then set **Missing value** back to **off** so the next problem shows on its own, set **Duplicate row** to **Alder 12 twice**, and read **Leave-one-out accuracy**. Finally, switch that off too, set **Mislabelled row** to **Dock 2 tag flipped**, and watch the **High-price share** and the answer.
+
+## What to notice
+
+- Integer stamps invent an order, so putting blue between red and green is a spacing you wrote down, not a fact about paint.
+- One-hot gives each color its own cubby, so the stamp pads stop reaching the slip, and any two different door colors sit √2 apart.
+- Normalization only rescales what you already chose, shrinking rooms and stamps to 1 or less, which makes the 0-or-1 park slot the widest and lets it decide most distances.
+- Two houses can tie: with blue stamped 5, Cedar 9 and Dock 2 both sit √5 from Alder 12, and the lineup says **tied nearest** rather than quietly choosing one.
+- The first two numbers can name a different neighbor than the whole slip does, because a flat picture of a longer list is only a projection.
+- The same cut-off rule, the gate, sends different houses through when it reads rooms than when it reads door color.
+- A better gate score on these six houses is not a better description of the world. With integer stamps, stamp red as 5 and a door-color gate at 2.5 matches 5 of 6, only because of the number you typed.
+- Under one cubby each, a gate reading door color sees only the red slot, so blue and green both read 0 and the gate cannot tell them apart.
+- The distance between Alder 12 and Elm 7 changes with every packing you try, while neither house changes at all.
+- Switch off the plus sign’s left and right arms and the drawing becomes the bar, which is then 0.00 away, while the plus is √2, about 1.41, away.
+- A word that is not on the list becomes ID 0, whatever the word is. IDs also invent an order, because by subtraction cat sits nearer to mat than to dog.
+- A blank room count read as 0 sends Dock 2 from 1.00 to 3.00 away and flips the answer, while filling it with the mean of 1.8 rooms does not.
+- A duplicate raises leave-one-out accuracy from 3 of 6 to 5 of 7 without adding any information.
+- A single flipped tag drops the high-price share from 50% to 33.3% and flips the neighbors’ vote.
+
+## Where it breaks
+
+### What this lab fakes or simplifies
+
+The street is six listings made up for this lab rather than real sales, and the lineup always measures the whole slip. The first-two callout is the only flat projection the lab shows. The later map on **Two maps** was placed by hand, and no loss was lowered to put the houses there.
+
+Same-length rulers divide by fixed numbers, 4 for rooms and 5 for stamps, rather than numbers worked out from a set of training rows. The gate’s matches are counted on the same six tags it is sorting, not on new houses it has never seen, so they are not a fair test of anything.
+
+The picture has only nine pixels, each of which is 0 or 1, and there are only three templates. The vocabulary has eight fixed words, so it is not a real tokenizer, and nothing in **Pixels and words** is learned.
+
+The three problems on **Messy rows** were chosen so that each one shows up on a single row, and there is only one fixed new house. Real tables are much bigger, and one bad cell rarely flips an answer the way it does here.
+
+### Where the real mechanism fails
+
+In real projects, the usual failures are a label that leaks onto the slip, cells with missing values, duplicates and wrong labels. A sneakier one involves the numbers used for rescaling, such as the largest value or the average of a column. Those must be worked out from the training rows only and then kept fixed. Picture a bigger street where the training houses have at most 4 rooms, while one house kept back for testing has 9. If you find the biggest room count using the test rows too, you divide every training house by 9 instead of 4. The training numbers then quietly carry a hint about a house the model is supposed to be seeing for the first time, which is another form of leakage.
+
+Sometimes a duplicate ends up with one copy in the training rows and the other in the test rows. That inflates the test score in the same way the duplicate inflates the leave-one-out score here, because the test row gets answered by looking up its twin.
+
+A model also cannot recover a feature you never wrote down, however clever the later steps are. Real pictures have thousands of pixels, each with numbers for brightness and color. Real text is split into word pieces from a vocabulary of tens of thousands before it becomes IDs, and those IDs are then mapped to learned lists of numbers.
+
+A representation can be convenient and still be wrong as a fact about the world. A trained embedding can put similar items near each other and still be useless for the task you actually cared about. Two houses sitting close on a fitted map only tells you that grouping them helped training do its one job well. It does not prove the houses are alike in every way.
+
+**A common mix-up:** people treat a categorical column as if it were already a set of amounts, because a spreadsheet showed it as 1, 2 and 3. Those whole numbers are a packing you chose, not a measurement, so the order and the gaps between them mean nothing about the real things. People also treat an embedding as a discovery about the world, when it is a set of positions fitted for one job.
+
+## Going deeper
+
+The straight-line distance used all through this lab is known to mathematicians as Euclidean distance. The math you need lab explains why a list of numbers can be treated as a point with a distance to other points in the first place.
+
+The gate also shows why some mistakes cannot be fixed by moving t, however carefully you set it. Alder 12 and Elm 7 both have 2 rooms but different tags, so any single cut on rooms puts both of them in the same yard. That is why a rooms gate can never match more than 5 of 6 tags, wherever you set t. Only door color tells those two houses apart, so a model that is never given door color can never separate them.
+
+Classical machine learning draws a boundary in the kind of feature space you built here, rather than cutting on one number at a time. Tokens & embeddings then learns positions for words instead of having you assign stamps by hand. The supervised learning loop is where a train and test split first appears, and How we know a model works then shows how to read a test score.

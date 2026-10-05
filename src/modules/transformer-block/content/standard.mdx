@@ -1,0 +1,234 @@
+---
+objectives: ["Trace information through a transformer block", "Explain the role of the residual stream", "Explain why attention cannot tell word order by itself and what position information adds"]
+terms: ["Residual stream", "MLP", "Layer normalization", "RMSNorm", "Pre-norm", "Sublayer", "Skip connection", "Feed-forward expansion", "SwiGLU", "Position-wise", "Ablation", "Mixture of experts", "Positional encoding", "Permutation equivariance"]
+---
+
+## The big picture
+
+This module is about the transformer block, the unit a language model repeats. It answers a
+structural question: how can attention and a per-position network form one layer that stacks
+without losing each token's information? The answer is the **residual stream**, a running vector
+per token position. Each **sublayer**, attention or the per-position network, reads the stream,
+usually through a normalization, and adds its result to it.
+
+It builds on **Attention**, which studied self-attention alone. Here attention sits beside an
+**MLP** (multilayer perceptron) that transforms each position separately. The module ends on word
+order: attention by itself cannot tell it, so a **positional encoding**, a vector that depends on
+the slot, supplies it.
+
+### Where it shows up
+
+- **Language models.** GPT-2, Llama and their relatives are stacks of this block or a close
+  variant, with an embedding layer below that turns tokens into vectors and an unembedding layer
+  on top that turns the final vectors into scores over the vocabulary.
+- **Variants.** The original 2017 Transformer normalized after each addition (post-norm); the
+  standard choice now is pre-norm, which normalizes each sublayer's input. Blocks also swap in
+  RMSNorm (a cheaper normalization), a gated SwiGLU MLP, mixture-of-experts layers that send each
+  token to a few of many MLPs, or grouped-query attention, in which several query heads share
+  each key and value head.
+- **Position.** Order enters as a vector added before the first block, as in this lab, or inside
+  attention, as the rotary scheme in **Modern attention at scale** does.
+- **Interpretability.** In a pre-norm stack, a late representation is the input embedding plus
+  every earlier sublayer's write, so it can in principle be split into per-component writes,
+  the premise the interpretability and circuits labs build on.
+
+### Why it matters
+
+Each piece has a distinct job:
+
+- **Attention** is the only step where a token's vector depends on other tokens' content. The norms
+  and the MLP are **position-wise**: applied to each position alone, with shared weights.
+- **The MLP** is the block's main position-wise computation, a nonlinear transformation of each
+  vector, and it holds two-thirds of a classic block's parameters.
+- **Residual additions** overwrite nothing, so each sublayer only supplies a correction and
+  gradients keep an additive path to early layers.
+- **Normalization** fixes the scale each sublayer reads in pre-norm. In the lab's pre-norm block,
+  without it an 8× input collapses each head's attention onto a single token.
+- **Position information** breaks a symmetry. Without it, an unmasked block given reordered words
+  returns the same outputs reordered, so it cannot tell *the cat sat on the mat* from *the mat sat
+  on the cat*.
+
+### What you will be able to explain
+
+- Trace one token through a block, and say which step reads other positions.
+- Explain the residual stream as a running sum that sublayers add to but never overwrite.
+- Explain why attention alone cannot tell word order, and what a position vector adds.
+
+### What the lab shows
+
+The lab computes a tiny block exactly in the page: width 8, two causal attention heads (each token
+reads only itself and earlier tokens), a GELU MLP and LayerNorm. Its input is the fixed sentence
+*the cat sat on the mat*, each word a seeded vector plus a sinusoidal position vector. The weights
+are seeded and untrained, so the values show data flow, not learned features.
+
+On the **Transformer block** card, **Placement** (`Pre-norm` or `Post-norm`) and the
+`Layer norm`, `Self-attention` and `MLP` switches set what runs, and **Token** picks which of the
+six positions this card and the **Residual stream** card describe. The **Residual stream** card
+draws the token's input, attention write and MLP write as lanes per dimension, sets
+**Input scale**, and reads **Output shift if other words change**.
+
+The **Parameter count** card is closed-form arithmetic for full-size blocks: **Model width**,
+**Layers**, **MLP**, **Norm**, and **GPT-2 small** and **Llama 2 7B** presets.
+
+The key experiment is on the **Position** card, which runs the block on the sentence and on a
+reordering, with the causal mask lifted. Set **Word order** to `Swap cat ↔ mat` and **Position
+information** to `Off`: **Words whose output changed** reads 0 of 6. With the other cards at their
+default settings, switch it to `On` and all six outputs change.
+
+## What it is
+
+The block is the unit that gets repeated. A modern language model is essentially one of these
+stacked dozens of times, with an embedding layer before and an unembedding layer after.
+
+In its pre-norm form it is two lines:
+
+```text
+x ← x + Attention(Norm(x))
+x ← x + MLP(Norm(x))
+```
+
+Each line reads the stream, normalizes a copy, computes something, and *adds* the result back.
+The original `x` is never overwritten. This is the structural fact everything else depends on.
+
+### The residual stream
+
+Think of `x` as a shared bus running the full depth of the model, one copy per token position.
+Every sublayer reads from it and writes an increment into it. Nothing deletes; contributions
+accumulate by addition.
+
+This has three consequences. Gradients reach early layers through the additive path even when
+the sublayers attenuate them, which is what made very deep stacks trainable. Sublayers can
+specialize, because each only needs to supply a correction. And because the stream is a sum of
+many contributions, a late representation is decomposable in principle, the premise the
+interpretability labs build on.
+
+### The two sublayers do different jobs
+
+**Attention moves information between positions.** It is the only place in the block where one
+token's vector is affected by another token's content.
+
+**The MLP transforms each position independently.** The same weights apply at every position.
+The classic MLP expands the width by a factor of four, applies a nonlinearity such as GELU, and
+projects back down. That expansion holds two-thirds of each block's parameters.
+
+### Where order comes from
+
+Attention compares vectors and mixes values. Nothing in that arithmetic mentions where a word sits,
+so when every word may read every other, it is **permutation equivariant**: reorder the input words
+and the outputs are the same vectors, reordered the same way. The norms and the MLP are
+position-wise, so the whole block inherits this.
+
+A **positional encoding** fixes that. A vector that depends on the slot is added to each word's
+embedding before the first block, or applied inside attention, as the rotary scheme in **Modern
+attention at scale** does. The lab's input is a seeded token vector plus a sinusoidal position
+vector.
+
+### Normalization
+
+Layer normalization subtracts the mean and divides by the standard deviation across the feature
+dimension, then applies a learned scale and shift. RMSNorm skips the mean subtraction and the
+shift and divides by the root-mean-square, which is cheaper and works as well in practice.
+
+Placement matters more than the variant. **Pre-norm** normalizes the input to each sublayer and
+leaves the residual path unnormalized, and is the standard choice because deep stacks train
+stably with it. **Post-norm**, used in the original 2017 Transformer, normalizes after each
+addition and typically needs learning-rate warmup and careful initialization to converge at depth.
+
+### What this lab computes
+
+A real block runs in the page: width 8, two causal attention heads of width 4, a GELU MLP of width
+32, and LayerNorm, with seeded random weights. It is untrained, so its vectors show the data flow
+and the algebra, not learned features. The **Position** card runs the same block with the causal
+mask lifted, so that only word order is being tested.
+
+## Why it’s here
+
+From **Attention** came routing and from **Stacking neurons** the transformation; stacking the
+pair is where depth becomes the problem. Llama 2 7B, Llama 2 70B and Llama 3.1 405B repeat the
+block 32, 80 and 126 times, and only the residual path and normalization keep the signal and the
+gradients usable at that depth.
+
+It also gives you the right mental model for reading model cards. Width, layer count, MLP type,
+and vocabulary size nearly determine the parameter count, as the **Parameter count** card shows.
+
+## How to play with it
+
+Turn `Self-attention` off and read **Output shift if other words change**. The lab runs the block
+a second time with the other five tokens swapped, and the selected token's output moves by 0.900
+with attention on and exactly 0.000 with it off. The norms and the MLP are position-wise.
+
+Turn `Layer norm` off and set **Input scale** to 8×. Both heads' weights collapse to 100 percent on
+one token, and the attention and MLP writes grow from 1.83 and 2.25 at 1× to 9.18 and 11.19. With
+the norm on, the attention write is 1.57 at every scale, because `LN(s·x) = LN(x)`.
+
+Switch **Placement** to `Post-norm` and watch the norm rows move onto the rail. The output norm
+is now 2.83, which is √8, at any input scale: post-norm rescales the stream itself.
+
+In the **Position** card, set **Word order** to `Swap cat ↔ mat` and **Position information** to
+`Off`. **Words whose output changed** reads 0 of 6: the block returns the same six vectors in the
+other words' slots, so it cannot tell *the cat sat on the mat* from *the mat sat on the cat*.
+
+Switch to `On` and all six outputs move. Cat moves by 1.565 and mat by 1.286; the four words that
+kept their slots move by 0.389 to 0.465.
+
+## What to notice
+
+- In pre-norm, each sublayer's output is an *addition*. The **Residual stream** card shows every
+  dimension as input plus attention write plus MLP write, with the output diamond exactly at the
+  sum.
+- Turning off a sublayer does not sever the block. The skip path still carries the stream, which
+  is why residual architectures degrade gracefully.
+- Scale matters. For `mat` at 8× input with the norm on, cos(output, input) is 0.995: the same
+  writes that dominate a small stream are a small nudge on a large one.
+- Pre-norm keeps the stream's own scale; post-norm erases it at every addition.
+- With position information off, the Position card's shifts are zero at every setting of the other
+  cards. Norms, MLP, placement and input scale cannot supply order, because none of them looks at slots.
+
+## Where it breaks
+
+**In this lab.** The weights are random, so no vector means anything beyond the arithmetic. One
+`Layer norm` switch disables both norms at once, attention has no biases, and there is no
+dropout. Ablation here is exact, because nothing downstream was trained to expect the ablated
+sublayer. The Position card also lifts the causal mask. Under the mask the first word sees only
+itself and the last sees all six, so a masked block with no position vector already leaks some order.
+
+**In real systems.** Ablating a sublayer in a trained model is not a clean subtraction. The
+remaining layers were trained expecting its contribution, so removing one produces a
+distribution-shifted state, and the observed damage overstates what that component did in
+isolation. Mean-ablation and activation patching, in the circuits lab, exist to reduce this
+confound.
+
+Order has its own real-world caveat. A decoder-only model can recover some position from the causal
+mask alone, yet most models still supply explicit position information, and the scheme chosen
+affects how well they handle lengths beyond training. **Attention** compares the schemes, and
+**Modern attention at scale** shows rotary embeddings at work.
+
+Two further caveats. Layer normalization is not a passive rescaling: its learned scale parameters
+and its per-token statistics both carry information that downstream layers use. And the residual
+stream is a fixed-width channel shared by every sublayer at every depth, so capacity is contended,
+one mechanism behind the superposition problem in the interpretability labs.
+
+## Going deeper
+
+Parameter accounting falls straight out of the structure. Per block, attention has four `d × d`
+matrices for queries, keys, values, and the output projection, `4d²`. A classic MLP has
+`2 × d × 4d = 8d²`. So a block is about `12d²` weights, two-thirds in the MLP. With the **GPT-2
+small** preset, 12 such blocks plus biases, embeddings and a final norm give exactly 124,439,808.
+
+**SwiGLU** splits the up-projection into a gate and a value branch, multiplies the value by the
+Swish of the gate, and uses a hidden width near `8d/3` so three matrices still cost about `8d²`.
+The **Llama 2 7B** preset uses 11,008 = 8·4096/3 rounded up to a multiple of 256, and adds up to
+6,738,415,616. **Mixture-of-experts** blocks replace the single MLP with many and route each token
+to a few, decoupling total parameters from per-token compute.
+
+Grouped-query attention, covered in **Modern attention at scale**, shrinks the key and value
+matrices, so production attention is often below `4d²`.
+
+The stack ends with one more normalization and the unembedding projection to vocabulary logits.
+Reading the residual stream at intermediate depths through that unembedding, the logit lens,
+gives a rough view of the model's evolving prediction.
+
+Because sublayers only add to a shared stream, you can think of attention heads and MLP neurons
+as reading from and writing to subspaces of it. Composition between components at different
+depths then becomes overlap between what one writes and what another reads, the vocabulary the
+circuits lab uses.

@@ -1,0 +1,274 @@
+---
+objectives: ["Read the two halves of an induction circuit in attention and test them on a repeat period the model never saw", "Use ablation and patching to test causality", "State the limits of circuit claims"]
+terms: ["Circuit", "Activation patching", "Induction head", "Previous-token head", "Ablation", "Mean ablation", "Path patching", "Attribution patching", "Logit difference", "Clean and corrupted run", "Steering", "Causal scrubbing", "Self-repair", "Faithfulness"]
+---
+
+## The big picture
+
+This module is about **circuits**: claims that specific components of a network, connected in a
+specific way, implement a specific behavior. It asks which components a behavior actually depends
+on, and by which route the information it needs travels, which attention maps and correlations
+alone cannot settle.
+
+Where **Interpretability I: features** found candidate features by correlation, this module
+intervenes, in two ways. **Ablation** takes a component out to ask whether the behavior needs it.
+**Activation patching** asks where the information an answer depends on sits, using a clean run and
+a corrupted run: two nearly identical prompts that call for different answers.
+
+Both are aimed at one behavior, copying a repeated string, and at its textbook explanation, the
+induction circuit, in which a **previous-token head** in layer 1 feeds an **induction head** in
+layer 2 so that the model can copy whatever followed the current letter last time.
+
+### Where it shows up
+
+- **Induction heads in language models.** Elhage et al. (2021) showed they need at least two
+  layers, a previous-token head feeding an induction head, and Olsson et al. (2022) argued they may
+  be the source of much in-context learning.
+- **Head-level circuits.** Indirect object identification in GPT-2 small (Wang et al., 2022) was
+  mapped to 26 heads in 7 classes and scored on faithfulness, completeness and minimality: whether
+  the circuit reproduces the behavior alone, captures everything relevant, and needs every part.
+- **Feature-level circuits.** Anthropic's circuit tracing (Ameisen et al., 2025) builds attribution
+  graphs over interpretable features in a replacement model, rather than over raw heads.
+
+### Why it matters
+
+Intervention is what lets a circuit claim fail. Ablation can show that a behavior survives without a
+component, and patching can show that the information an answer needs sits somewhere other than
+where the story put it.
+
+The interventions have failure modes of their own. Zero-ablation feeds later layers a value they
+never saw, so it can overstate a role. When one component is removed, others can compensate
+(**self-repair**), so a small effect can hide a real role. And a patch's **recovery**, the share of
+the clean-minus-corrupted gap on a chosen metric that it restores, means nothing when that gap is
+tiny, because the gap is the divisor.
+
+### What you will be able to explain
+
+- Read the two halves of an induction circuit in attention, and say why changing the repeat period,
+  including to one the model never saw, separates a head that follows content from one that reads a
+  fixed distance back.
+- Use ablation to test whether a head is necessary and activation patching to locate the
+  information an answer depends on, and say what causal claim each supports.
+- State the limits of a circuit claim: the ablation's replacement value, self-repair, a gap too
+  small to divide by, and results from one prompt, one metric and one small model.
+
+### What the lab shows
+
+The model is the **Attention** lab's two-layer, four-head character transformer, run in your
+browser and checked against ONNX Runtime, so every live readout is measured from its forward
+passes. The live prompts are synthetic: capitals from one fixed pool, 24 letters long, repeating with
+the **Repeat period** you set, from 6 to 13.
+
+In **Copy task and attention**, the head buttons, `L1 H1` to `L2 H4`, choose which head's attention
+grid to show: solid green outlines mark the key an induction head would read, dashed outlines the
+previous letter. The decisive test sets **Repeat period** to 11 or 13, which the repeated-string
+training never used, and checks whether the induction heads' attention moves with the period.
+
+In **Head ablation**, toggle heads off individually or with **Ablate layer 1** and
+**Ablate layer 2**, and set **Ablation** to Zero or Mean; Mean substitutes each head's average over
+eight random repeats of the same period. Read **Change** and
+**Attention on the induction key, L2 H2 · L2 H3**.
+
+In **Activation patching**, **Corrupt** replaces one letter with `Y`: The letter to copy gives the
+main sweep, and An unrelated letter is a control whose **Gap** is too small for its recoveries to
+mean anything. Each grid cell pastes one residual-stream vector, **After block 1** or
+**After block 2** at one position, from the clean run into the corrupted one.
+
+The live sweep's metric is a **logit difference**, the right letter's logit minus that of the foil
+`Y`. **Sweep** also offers Cached · speaker and Cached · letters, two sweeps precomputed offline
+with the target logit alone as the metric. Cached · speaker uses a short
+ROMEO/JULIET prompt pair rather than the letter pool.
+
+## What it is
+
+The previous lab found candidate features by looking at what correlates with what. This lab asks the
+harder question: does a component actually *cause* a behavior?
+
+A **circuit** is a claim of the form "these components, connected this way, implement this
+behavior." Supporting one needs intervention, because observation alone cannot separate a component
+that computes the answer from one that merely correlates with it.
+
+### The model and the behavior
+
+Everything here runs on the course's real two-layer, four-head character transformer, the same file
+the attention lab uses: 1.4 million parameters, trained on Shakespeare plus synthetic repeated strings.
+Its weights are read in your browser and checked against ONNX Runtime.
+
+The behavior is copying: given `QXZRKWMP` repeated three times, predict the next letter. The textbook
+mechanism has two parts. A **previous-token head** in layer 1 writes into each position a note of
+the letter just before it. An **induction head** in layer 2 attends from the current letter to the
+letter after its earlier occurrence, by matching against those notes, and copies it.
+
+This model draws that picture: L1 H3 and L1 H4 look at the previous letter, L2 H2 and L2 H3 at
+the letter after the earlier match. The lab asks whether the picture is causal, and how far it goes.
+
+### Three instruments
+
+- **Attention** shows where each head looks. It is observation, not intervention.
+- **Ablation** removes a component and measures the damage: is it *necessary*? You can replace the
+  head's output with zero, or with its average over a reference set (**mean ablation**).
+- **Activation patching** runs a **clean and corrupted run**, two minimally different prompts, pastes
+  one activation from the clean one into the corrupted one, and measures how much of a chosen metric
+  returns: *where is the information?*
+
+## Why it’s here
+
+"Attention was high here" and "the answer depended on this" are different statements, and only the
+second is a finding.
+
+The same tools support practical safety work: localizing where a refusal is decided, and checking
+whether a fine-tune removed a capability or only its expression.
+
+## How to play with it
+
+1. In **Copy task and attention**, choose `L2 H3` and read the solid green outlines, the key an
+   induction head would read. Then choose `L1 H4` and read the dashed outlines, the previous letter.
+   Compare the table's two columns for all eight heads.
+2. In **Head ablation**, switch off `L1 H4`, then `L2 H3`, then `L2 H1`, reading **Change** and the
+   attention on the induction key each time. Then set **Ablation** to Mean and compare what `L2 H3`
+   costs.
+3. In **Activation patching**, click `After block 1` at the amber position, the letter being copied,
+   and then at the last position. Then set **Corrupt** to An unrelated letter and read the Gap.
+4. Set **Repeat period** to 11 or 13, which the model's repeated-string training never used, and
+   repeat step 1.
+
+## What to notice
+
+### The attention picture matches the textbook
+
+Copy accuracy is 94.5% at period 8 and between 88.0% and 97.2% at every period from 6 to 13,
+including the unseen 11 and 13. The weak spot is the first letter of the second repeat; from the
+second letter on, the mean is at least 95% at every period.
+
+Only L2 H2 and L2 H3 put much attention on the induction key: 0.66 and 0.67 at period 8, and 0.55 to
+0.84 across periods. No other head puts more than 0.10 there. L1 H3 and L1 H4 put 0.98 or more of their
+attention on the previous letter at every period.
+
+At short periods the prompt holds several earlier copies, and the induction heads spread across
+them. At period 6, L2 H2 and L2 H3 put 0.55 and 0.56 on the nearest copy and 0.89 and 0.93 on the
+letter after any earlier copy.
+
+### The period test passes
+
+At period 8 the key after the previous occurrence is 7 back, so a head that always looked 7 back
+would draw the same stripe and copy as well. Changing the period moves the previous occurrence but
+not a fixed distance.
+
+At every period from 6 to 13, the strongest offset of L2 H2 and L2 H3 is the period minus one, and
+the outlines and the weights move together. That includes 11 and 13, which the training windows
+never used.
+
+This is the test the induction hypothesis had to survive. Surviving it is evidence for content-based
+heads, not proof that no positional signal also helps.
+
+### Single heads are necessary
+
+At period 8 the intact model scores 94.5%. Zero-ablating one head leaves L1 H2 5.1%, L2 H3 6.0% and
+L1 H4 9.9%; L2 H2 50.2% and L1 H3 56.6%; and L1 H1, L2 H1 and L2 H4 89.2%, 95.8% and 99.6%. All of
+layer 1 leaves 1.9% and all of layer 2 leaves 0.4%.
+
+Removing L2 H4 raises accuracy. Necessary and useful are different words, and an ablation reports an
+effect on one metric, not what a head is for.
+
+### Layer 1 feeds layer 2, as far as ablation can say
+
+Switch off L1 H4 and the induction heads' attention on the green key falls from 0.66 and 0.67 to
+0.19 and 0.24. Switch off L1 H3 and L1 H4 together and it falls to 0.01 and 0.03. The layer-2 heads'
+attention depends on what the previous-token heads write, as the induction story predicts.
+
+The story is not complete. Switching off L1 H2 cuts the same attention to 0.30 and 0.21, though
+L1 H2 puts 0.98 or more of its attention exactly two letters back, not on the previous letter.
+What it contributes is not established here.
+
+### Zero overstates, and the layer-1 result survives
+
+Zero is a value the next layer never saw. With mean ablation, each head's output is replaced by its
+average over eight random repeats of the same period. L2 H3 then leaves 47.9% rather than 6.0%, and
+L2 H2 75.9% rather than 50.2%. L1 H2, L1 H4 and L1 H3 still leave 27.4%, 24.3% and 48.8%.
+
+Under mean ablation the two induction heads partly overlap: each alone leaves a good share of the
+copying, and both off leaves 2.4% (1.3% under zero). The same layer-1 heads matter either way; the
+induction heads' solo roles are smaller than zero suggested. Tests on random strings at periods 9 and
+13, which the lab does not show, find the same split.
+
+### Patching finds one route, with a large gap
+
+The metric is **logit difference**, `logit(Q) − logit(Y)`, where `Y` replaces the letter to copy.
+At period 8 the gap between the runs is 11.70 (clean 10.69, corrupted −1.01). Restoring the corrupted
+letter's own position after block 1 recovers 98.8%; every other position in that row stays within 0.6
+points of zero, including the last position (−0.5%).
+
+The corrupted run copies the planted letter: its top prediction is `Y`, at 48% for period 8 and 99.5%
+for period 13. The gap runs from 6.05 to 22.35 logits across periods 6 to 13, and on 16 random
+period-13 strings it averages 20.7 and never falls below 15.9.
+
+### A control shows what a bad measurement looks like
+
+Set **Corrupt** to An unrelated letter. The model still copies correctly, the gap falls to 0.16 at
+period 8 and stays under 0.35 at every period, and the warning appears. The grid still prints
+percentages, up to 43% in one cell after block 1, because recovery divides by a tiny number. Check
+the gap before reading any cell.
+
+## Where it breaks
+
+### In this lab
+
+- Prompts are synthetic capitals from one fixed pool, 24 letters long, one prompt per period. Tests
+  repeat the main contrasts on seeded random strings the lab does not show.
+- Ablation is per whole head. Patching is at block outputs in the residual stream, not per head or per
+  path, and the metric is one logit difference against one foil letter.
+- No path patching was run. "Layer 1 feeds layer 2" rests on the induction heads' attention falling
+  when layer-1 heads are off, and L1 H2 shows other layer-1 heads matter too.
+- Mean ablation here is one constant vector per head from eight random repeats. A position-by-position
+  mean or a resample ablation could give different sizes.
+- One trained model. A second training seed also passed the induction check offline, but only this
+  model is in the lab, and a 1.4-million-parameter character model says little about large ones.
+- The cached `speaker` pair differs in its final character, so its last position recovering 96% is
+  close to built in. It shows a pattern, not a discovery.
+
+### In real systems
+
+Zero-ablation is confounded by distribution shift. Wang et al. (2022) used mean ablation because
+zero is an arbitrary value and later components may rely on average activations as an implicit bias.
+Mean and resample ablation reduce the problem and do not remove it, as the L2 H3 result above shows.
+
+**Self-repair** complicates every ablation. McGrath et al. (2023) found that ablating one attention
+layer can make another compensate, calling it the Hydra effect, and Wang et al. found backup name
+mover heads that take over when the main ones are knocked out. A small measured effect is not proof
+of a small role.
+
+A circuit found for one prompt template may not transfer to a paraphrase, another model, or another
+training seed, and patching says where information passes, not which head wrote it.
+
+## Going deeper
+
+### More specific interventions
+
+**Path patching** patches a single connection between two components rather than a location, which
+separates "head A matters" from "head A matters because it feeds head B." It is the missing test for
+the layer-1 to layer-2 claim here. **Attribution patching** estimates a whole sweep from two forward
+passes and one backward pass, instead of one forward pass per cell.
+
+### Making claims falsifiable
+
+**Causal scrubbing** states a hypothesis as the set of computations that may be swapped without
+changing behavior, then performs every permitted swap. The period change in this lab is a small
+version of that idea: the induction hypothesis permits changing the period, and the stripe moved with it.
+
+Three criteria are now standard for a circuit: **faithfulness** (does the subgraph reproduce the
+behavior alone?), completeness (does it capture everything relevant?), and minimality (is every part
+necessary?).
+
+### The field's worked examples
+
+Elhage et al. (2021) showed that induction heads need at least two layers, with a previous-token head
+feeding an induction head, and Olsson et al. (2022) argued that induction heads may be the source of
+much in-context learning. Indirect object identification in GPT-2 small (Wang et al., 2022) mapped 26
+heads in 7 classes, scored by faithfulness, completeness and minimality; the authors say the
+criteria also point to remaining gaps in their understanding.
+
+Current work, such as Anthropic's circuit tracing (Ameisen et al., 2025), builds attribution graphs over
+interpretable features in a replacement model, in the spirit of the previous lab, rather than over raw
+heads. **Steering** along a feature's direction tests whether it has the causal role its label claims.
+The Attention and The transformer block labs show the heads and residual stream this lab
+intervenes on.

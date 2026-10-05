@@ -1,0 +1,9 @@
+numpy>=2.0,<3
+onnx>=1.17,<2
+onnxruntime>=1.20,<2
+scikit-learn>=1.5,<2
+tokenizers>=0.21,<1
+torch>=2.5,<3
+torchvision>=0.20,<1
+tqdm>=4.66,<5
+umap-learn>=0.5.7,<1

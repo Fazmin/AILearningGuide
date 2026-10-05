@@ -1,0 +1,747 @@
+---
+objectives: ["Name each stage of a training loop and what it produces", "Distinguish an epoch, a step, and a batch", "Use a checkpoint to inspect a model partway through training", "Read what one optimizer step changes: which rows move, and how the loss on its own batch differs from the whole-corpus loss", "Estimate training memory from parameters, precision, and optimizer, and say why large runs split it across devices"]
+terms: ["Epoch", "Step", "Minibatch", "Dataloader", "Forward pass", "Cross-entropy", "Perplexity", "Backward pass", "Optimizer step", "Checkpoint", "Nats per token", "Optimizer state", "Mixed precision", "Sharding"]
+---
+
+## The big picture
+
+The language model behind any chatbot you have used was made by a **training run**. A program showed
+the model a huge amount of text, checked its guesses about what comes next, and adjusted its numbers
+by a tiny amount. That cycle repeated many thousands of times, and this module takes one training
+run apart so you can watch every piece of it at work.
+
+The model in this lab is tiny on purpose. It is a table of 900 numbers that guesses the next
+character of a text from the one character before it. It learns from a short passage of notes about
+the weather in a harbor town, which is only 499 characters long. Because the model is so small, the
+lab retrains it from scratch whenever you change a training setting. Every number on the first four
+cards therefore comes from a real run, not from a drawing.
+
+The fifth card, about memory, is different. It works out its totals by multiplying, because no model
+with billions of numbers is trained here. A few things also stay fixed. The learning rate, a number
+that scales how big each adjustment is, is always 0.6. Every score is measured on the same text the
+model learned from.
+
+### Where you have met it
+
+Every trained model came out of a loop like this one, including the very large models behind
+chatbots. Their runs are vastly bigger, often use a different adjusting rule called Adam, and save
+their progress more carefully. Even so, they go through the same seven stages in the same order. One
+published run, for a family of models called Llama 2, made about 500,000 adjustments, and each one
+was based on about 4 million pieces of text.
+
+Size is where the difference shows most: the largest model on this lab's memory card has 70 billion
+numbers. Training it with Adam needs room for those numbers plus several extra numbers about each
+one. That comes to more than a trillion bytes, where one byte is about the space a single letter of
+text takes. The card counts how many memory chips that would fill if each chip holds 32 billion
+bytes, and it calls each such chip a "device". The answer is 35 devices.
+
+### Why it matters
+
+Without this loop, a model's numbers would stay where they started, and its guesses would be no
+better than picking a character at random. The loop is what turns a pile of text into better
+guesses, one small correction at a time.
+
+Knowing how the loop works also protects you from three common mistakes. You might compare two runs
+by how many times they read the text, when what actually counts is how many times they adjusted
+their numbers. You might trust a single adjustment because it helped the examples it was built from,
+even though it can make everything else worse. And you might plan a run around the size of the model
+alone, when the extra numbers kept for training take several times more memory than the model does.
+
+Saved copies of the model, called **checkpoints**, made along the way, matter too, because they let
+you look inside a run partway through. They also let a run that crashes start again from the last
+copy instead of from nothing.
+
+### What you will be able to explain
+
+By the end of this lesson, you should be able to explain each of these ideas in your own words:
+
+- the seven stages of a training loop, in order, and what each stage hands on to the next one;
+- the difference between a **batch**, a **step** and an **epoch**, and why two runs with the same
+  number of epochs can end up far apart;
+- how to load a saved copy of the model from partway through a run and test what it had learned by
+  then;
+- what one single update changes, meaning which rows of the table move, and why it helps its own
+  small group of examples far more than the entire text;
+- how to estimate a run's memory from three things: the model's size, how many bytes it uses for
+  each number, and which adjusting rule it uses. You will also be able to say why big runs spread
+  that memory across many chips.
+
+### What the lab lets you do
+
+The lab has five cards, and each one shows a different side of the same run:
+
+- **One pass through the training loop** walks through the seven stages and prints real numbers from
+  the run at each one.
+- **Measured training loss** draws how the model's error score fell from the first update to the
+  last one.
+- **Run controls and checkpoint timeline** lets you change how the run is set up, then reload a
+  saved copy of the model and read some text that it writes.
+- **Step one batch** replays a single real update and shows which rows of the 900 numbers moved.
+- **Where the memory goes** calculates how much computer memory training needs, for models from this
+  lab's size all the way up to 70 billion numbers.
+
+## What it is
+
+### The model: a sheet of guesses
+
+The model works with 30 symbols: the space, the letters `a` to `z`, a full stop, and two angle
+brackets, `<` and `>`, that only a later lab uses. Its job is to guess which of those symbols comes
+next in a text. It does that with a grid of numbers that has one row for each symbol, so you can
+think of it as a printed sheet of guesses.
+
+Each row answers a single question: if the last character was this one, how likely is each character
+to come next? A row holds 30 raw scores, one for every possible next character, and these scores are
+called **logits**. A higher logit means a likelier guess, and to read a row the model turns its 30
+logits into 30 chances, or **probabilities**, that add up to 100%. The rule that does this
+conversion is called softmax, and it always gives the highest probability to the highest logit.
+
+Thirty rows of 30 numbers makes 900 numbers, and those 900 numbers are the entire model. The numbers
+a model learns are called its **weights**, or its parameters, and training a model means changing
+them until its guesses improve.
+
+Here is one row at work: after the text `the fo`, the model looks only at the last character, `o`,
+and reads the `o` row. At the end of the default run, that row gives `r` a probability of 23.5%.
+That is because the training text has words like `harbor`, `morning`, `storm` and `before`, where
+`r` follows `o`.
+
+A model that looks back only one character is called a **bigram** model, from "bi", meaning two,
+because it works with pairs of characters. It cannot use the word or the sentence that the character
+sits in, which is the main reason its guesses stay rough.
+
+### The training loop as a study session
+
+Training is one cycle repeated over and over, and the lab's **Training loop stages** strip shows the
+seven stages of one trip around it. Before looking at each stage, it helps to have a picture of the
+whole cycle.
+
+Picture the guess sheet on a desk, next to a big stack of flashcards made from the training text.
+Each card shows one character on the front and, on the back, the character that came right after it,
+so making the deck is the job of the **Dataset** stage. Making the deck happens once, before the
+first round. At the start of each pass through the deck, you shuffle it once. A single round of
+study, which is one trip around the loop, then goes like this:
+
+1. Deal yourself the next small handful of cards from the top of the shuffled deck, which is what
+   the **Batch** stage does. When the deck runs out, that pass is over, and you shuffle again.
+2. For each card, find the row for the front character and read off the sheet's guesses, which is
+   the **Forward** stage.
+3. Flip each card over and mark how badly the sheet did on the real answer, which is the **Loss**
+   stage.
+4. Calculate how each number on the sheet should change so that it would do better next time, which
+   is the **Backward** stage.
+5. Rub out the old numbers on the sheet and pencil in the new ones, which is the **Optimizer step**
+   stage.
+6. Every so often, photocopy the whole sheet and file the copy away somewhere safe, which is the
+   **Checkpoint** stage.
+
+The picture stops matching in two places. A person studying these cards would use the whole word and
+its topic, but the guess sheet only ever looks at the single character on the front. You would also
+use judgement to fix the sheet, whereas the training program calculates every correction by exact
+arithmetic, the same way every time.
+
+### The seven stages, one at a time
+
+**Dataset** turns the text into flashcards, which the lab calls training pairs, where each pair is
+one character plus the character that followed it. The lab draws a space as `␣`, so the words "the
+fog", which have seven characters counting the space, give six pairs: `t→h`, `h→e`, `e→␣`, `␣→f`,
+`f→o` and `o→g`. Every character except the very last one starts a pair, so there is always one pair
+fewer than there are characters. That is why the stage displays **Characters** 499 and **Training
+pairs** 498, while **Vocabulary** counts the 30 symbols.
+
+**Batch** shuffles the pairs once at the start of every pass, then deals them out in handfuls in
+order. A handful is called a **minibatch**, or a batch for short. The **Batch size** slider sets how
+many pairs each handful holds, starting at 16, and the part of the training program that shuffles
+and deals is called the **dataloader**. The shuffle matters because the text runs in order, so
+without it a string of updates could all come from the sentence about winter. Those updates would
+drag the model toward that one passage, while a shuffled handful is a fair mix of the entire text.
+The stage's readouts are **Batch size**, **Batches / epoch** and **Total steps**, and the counting
+part below explains how they fit together.
+
+**Forward** takes each pair in the handful, reads the row for its first character, and turns that
+row's 30 logits into 30 probabilities. Nothing in the model changes here, because this stage only
+reads, and it is called the **forward pass**. Its readouts show the **Top prediction** and
+**Runner-up** after `the fo`, plus **Row width**, which is 30 logits.
+
+**Loss** checks each guess against the back of the card by looking at the probability the model gave
+to the character that actually came next. It turns that probability into a penalty and averages the
+penalties over the handful, and that average is called the **cross-entropy**. The next part explains
+how the penalty is scored, and the stage's readouts are **Loss at this checkpoint**, **Its
+perplexity** and the **Uniform baseline**.
+
+**Backward** calculates, for every one of the 900 weights, how the penalty would change if that
+weight went up a little. A positive number means raising the weight would make the penalty worse,
+while a negative number means raising it would make the penalty smaller. That list of 900 numbers is
+called the **gradient**, and the stage that works it out is called the **backward pass**. Like the
+forward pass, the backward pass only reads the weights and does not change anything yet.
+
+**Optimizer step** is the stage that finally changes the model, by multiplying each weight's
+gradient by the **Learning rate** and subtracting the result from that weight. Subtracting moves
+every weight the opposite way to its gradient, which is the direction that lowers the penalty, and
+the learning rate is fixed at 0.6 in this lab.
+
+The learning rate sets how big each change is: a larger one makes bigger jumps, and a smaller one
+makes more careful ones. For example, picture a weight of 0.50 with a gradient of +0.10. The step
+takes away 0.6 × 0.10 = 0.06, so the weight becomes 0.44. If the gradient were −0.10 instead, taking
+away −0.06 would raise the weight to 0.56.
+
+The rule that applies these changes is called the optimizer, and one use of it is one **optimizer
+step**, or one **step** for short. This lab uses the plainest optimizer there is, called SGD, which
+is short for stochastic gradient descent, where "stochastic" means working from randomly chosen
+handfuls. The word "descent" fits if you picture the penalty as your height on a hill. Each step
+moves the weights a little way downhill for the handful it was calculated from. As you will see
+later, that is not always downhill for the whole text.
+
+**Checkpoint** saves a copy of all 900 weights so that you can come back to them later. At the
+default settings the run saves nine copies (some settings save ten), including the untrained model
+at step 0, and the stage displays **Checkpoints**, **Selected step** and **Its loss**.
+
+### Scoring a guess: cross-entropy and nats
+
+The penalty follows one rule: the smaller the probability the model gave to the right answer, the
+bigger the penalty. Every time that probability is cut in half, the penalty grows by the same
+amount, about 0.69. Here is the ladder that rule builds, from a perfect guess down to a blind one:
+
+- Giving the right character 100% costs nothing, since the model could not have done any better.
+- Giving it 50% costs about 0.69, which is one halving away from being certain.
+- Giving it 25% costs about 1.39, which is two halvings away from being certain.
+- Keep halving: 12.5%, then 6.25%, then about 3.1% after five halvings, which costs about 5 × 0.693,
+  or 3.47. (The 0.69 above is 0.693 rounded off.)
+- Giving it 1 in 30, about 3.3%, sits just above that 3.1%, so it costs a little less: 3.401, which
+  is what blind guessing scores.
+
+The unit of this penalty is called the nat, so the lab reports the loss in **nats per token**. A
+token is one piece of text the model reads, and in this lab every token is a single character. Nats
+per token therefore means the average penalty for each character the lab scores. The Loss stage's
+title calls the penalty the "negative log-probability", which is a name from a part of maths you may
+meet later. The halving ladder above is all you need to read the numbers this lab displays.
+
+Lower is better, as in golf, and a model that has learned nothing spreads its guesses evenly across
+the symbols, so it scores 3.401 on every character. That score is the **Uniform baseline**, and the
+loss chart draws it as a dotted line labelled "knows nothing, ln 30". The ln there is a button on a
+scientific calculator, and ln 30 works out to 3.401.
+
+Read the ladder backwards and you get a handy rule that the Loss stage mentions. Whenever the loss
+falls by about 0.69 nats, the probability given to the right character has doubled, on average
+across the characters scored.
+
+The loss has a friendlier twin called **perplexity**, which turns the penalty back into a number of
+options. It asks this question: if the model were choosing evenly among some number of characters,
+how many would give this same score? Blind guessing among 30 symbols has a perplexity of 30, since
+that is exactly the situation the question describes. The default run ends at a loss of 2.277, which
+matches choosing evenly among 9.75 characters, so **Perplexity** reads 9.75.
+
+You can check that with the ladder. Three halvings, or 1 in 8, cost about 2.08, and four halvings,
+or 1 in 16, cost about 2.77. A score of 2.277 sits between them, so it matches choosing among a
+number of options between 8 and 16, which works out to 9.75. In everyday terms, the trained model's
+guesses are about as spread out as a multiple-choice question with ten options instead of thirty.
+
+**Better than chance by** says the same thing a third way, by measuring how far the loss has come
+down from blind guessing toward a perfect zero. The default run brought the loss from 3.401 down to
+2.277, a drop of 1.124. That drop is 33% of the full 3.401, so the readout displays 33%. It is not
+the share of guesses the model gets right, which is a different measurement that this lab does not
+show.
+
+One more detail matters when you read these numbers, because the lab scores the loss in two
+different ways. During training, each handful's loss is averaged over its own pairs, and each point
+on the chart's thin, jagged line is the average of a few handfuls' losses. The Loss stage instead
+scores the checkpoint you picked on all 498 pairs. The whole body of training text is called the
+**corpus**, so the lab calls that score the whole-corpus loss.
+
+### Calculating the gradient: the backward pass
+
+For this kind of model and this kind of penalty, the backward pass follows a rule short enough to do
+by hand. For each of the 30 logits in a row, take the probability the model gave that character,
+written as a decimal. Then subtract 1 from the probability of the character that actually came next,
+and the 30 results are that row's part of the gradient.
+
+The Backward stage draws this for one real pair from the text, `o` followed by `g`, from the words
+"the fog". At step 0, before any training, the model gives every character the same probability of 1
+in 30, which is about 0.033. So every other bar stands the same small height, +0.033, above the
+line, while the bar for `g` drops below it. Only the `g` bar carries a printed number, which is
+0.033 minus 1, or −0.967.
+
+The strip has its own key: a bar above the line means that logit will be pushed down, while a bar
+below it means the logit will be pushed up. That is because the optimizer step subtracts the
+gradient, so taking away −0.967 raises the score for `g`. Taking away each small +0.033 lowers every
+other score a little, and raising the right answer while lowering the others is the whole of what
+learning means for this row.
+
+On the **Run controls and checkpoint timeline** card, move **Checkpoint** to the end of the run,
+step 384, and the `g` bar still reads −0.957. That is 0.043 minus 1, because the trained model gives
+`g` only 4.3% after `o`. In this text, `r` follows `o` much more often than `g` does.
+
+The strip shows one pair, but a real step uses a whole handful. Each pair's gradient is added into
+the row for its first character, and then the total is divided by the number of pairs in the
+handful. For a full handful that number is 16. A shorter handful, like the one you will meet at the
+end of each pass, is divided by its own smaller count, so each of its pairs counts for more. A row that
+starts three of the pairs can therefore get up to three times the push of a row that starts one. A
+row gets nothing at all unless at least one pair in the handful starts with its character.
+
+The stage also measures how big a gradient is overall, as one number called the **gradient norm**.
+To calculate it, square every number in the gradient, add up the squares, and take the square root.
+For the `o→g` strip at step 0, each of the 29 small bars of 0.033 squares to about 0.001, and
+together they add up to about 0.03. The `g` bar of −0.967 squares to about 0.94. The total is about
+0.97, and its square root is about 0.98. A bigger norm means the step built from that gradient
+changes the weights more. **This pair's gradient norm** measures the strip, and **Last batch
+gradient norm** measures the run's final handful. **Peak batch norm in the run** displays the
+largest gradient norm that any handful in the run produced.
+
+### Three ways to count: batch, step and epoch
+
+A training run has three counts that sound alike but measure different things:
+
+- A **batch** is one handful of pairs dealt out together, and the **Batch size** slider sets how
+  many pairs each handful holds.
+- A **step** is one update to the weights, calculated from one batch, and steps are the only thing
+  that actually changes the model.
+- An **epoch** is one complete pass through all 498 pairs, and the **Epochs** slider sets how many
+  complete passes the run makes.
+
+Plain division ties the three counts together, as you can see with the default setting of 16 pairs
+per handful. One pass through 498 pairs needs 498 ÷ 16 = 31.125 handfuls, and since you cannot deal
+part of a handful, that rounds up to 32. Thirty-one full handfuls use 496 pairs, which leaves 2 for
+a small last handful. That is why **Batches / epoch** reads 32, and why the last handful of each
+pass holds only those 2 pairs. The default run makes 12 passes, and 12 × 32 = 384 steps, which is
+what **Total steps** displays.
+
+### Two cards that zoom in
+
+Below the loop, two more cards show what the stages hide, and **Step one batch** is the first. It
+replays one real optimizer step from the checkpoint you pick. It shows how many weights moved and
+lists the rows that moved most. The second, **Where the memory goes**, calculates how much memory a
+training run needs for a model of any size, and the next part explains what it adds up.
+
+### What training has to hold in memory
+
+Computers store every number as a pattern of 0s and 1s, where each 0 or 1 is called a **bit**. Eight
+bits make a **byte**, which is about the space one letter of plain text takes up. A KB is a thousand
+bytes, a GB is a billion bytes, and a TB is a trillion bytes, which is the same as 1,000 GB.
+
+To take a step, training has to keep three things in memory for every weight:
+
+- the **weight** itself, which the forward pass reads every time it makes a guess;
+- its **gradient**, which is the number that the backward pass calculated for it;
+- its **optimizer state**, meaning any extra numbers the optimizer remembers about that weight from
+  one step to the next.
+
+How much each of these costs depends on two choices, and the first is **Precision**, which means how
+many bytes each number gets. The full-size choice, fp32, gives every number 4 bytes, which is 32
+bits. The letters "fp" stand for floating point, the normal way computers store numbers with
+decimals. The other choice on the card, **Mixed 16-bit**, stores the weights and gradients in 2
+bytes each, which speeds up the arithmetic.
+
+More bytes let a number keep more digits, which is why this choice is called precision. A 2-byte
+number keeps only about three digits or fewer, so a tiny update, like adding 0.0001 to 1.5, gets
+rounded away and lost. So the optimizer also keeps a full 4-byte copy of every weight, called the
+master copy, where those tiny updates can build up. Doing the arithmetic in 16-bit numbers while
+keeping that 4-byte master copy is called **mixed precision**.
+
+The second choice is the **Optimizer**, and SGD, the kind this lab trains with, remembers nothing at
+all between steps. The **Momentum** optimizer keeps one extra 4-byte number for each weight. That
+number is an average of the weight's recent gradients, updated after every step, and it helps the
+weight keep moving in a steady direction. Adam keeps that same number, which the card's table also
+calls momentum. It adds a second number, called variance, which tracks how big the recent gradients
+have been.
+
+Add up the bytes that one weight needs, multiply by the number of weights, and you have the memory
+training needs before anything else is counted. That multiplication is all that the **Where the
+memory goes** card does.
+
+## Why it’s here
+
+### Each stage feeds the next
+
+The seven stages come in this order for a reason: each one uses exactly what the stage before it
+produced. The dataset makes pairs, the batch picks a few of them, the forward pass turns them into
+guesses, and the loss scores those guesses. The backward pass turns the score into a gradient, and
+the optimizer step uses it to change the weights. Every stage before the optimizer step only reads
+the weights, so that one stage is the only place where the model changes. Bigger runs change the
+scale, the optimizer and the plumbing around saving, but they do not change this order.
+
+### Why handfuls, and not the entire text
+
+Why not update the weights from all 498 pairs at once, or from one pair at a time? Using the entire
+text for every update would give the steadiest direction, but the model would change only once per
+pass. Using a single pair would change the model often, but every update would chase whatever that
+one pair happened to contain. A handful sits between these two extremes, and the **Batch size**
+slider lets you move along that trade-off and measure what happens.
+
+### Counting passes is not counting learning
+
+The loop is also where two counts get mixed up. Picture two friends studying the same deck of 498
+flashcards, and both of them go through the whole deck 12 times. One friend stops to fix their notes
+after every 2 cards, which adds up to 2,988 rounds of fixes. The other fixes their notes only after
+every 64 cards, which adds up to 96. Both can honestly say they went through the deck 12 times, yet
+one of them corrected their notes about 30 times as often as the other.
+
+The lab works the same way, since twelve epochs at a **Batch size** of 2 make 2,988 steps, while the
+same twelve epochs at 64 make only 96. The two runs end at very different losses, which is why
+**Total steps** is the honest number to compare between runs, and **Epochs** is not.
+
+### One step is only a rough guess
+
+A step is built from one handful, not from the entire text, so it is only a rough estimate of what
+would help everywhere. The lab measured this in its 12-epoch runs at batch sizes 2, 16 and 64. Every
+step lowered the loss on its own handful, but some steps made the model worse on the rest of the
+text.
+
+Picture a teacher who rewrites the class study guide after marking only two quizzes. The changes
+lean the guide toward the mistakes those two students made, but they might confuse everyone else in
+the class, who never had those problems. Marking sixteen quizzes first would give a fairer picture
+of what the whole class needs. Training has the same problem, but its steps point the right way on
+average, so the run still improves over many steps even when single steps misfire. The picture stops
+matching in one way: a teacher can rewrite anything, while a step only nudges the numbers a small,
+calculated amount toward the pairs in its handful.
+
+### Checkpoints let you look back
+
+Picture a long video game that only lets you save at the very end. If the power cuts out halfway,
+you lose everything, and you can never go back to see how you played on an earlier level. A training
+run without checkpoints is like that, because it reports one number at the end and nothing else.
+
+Saved copies fix both of those problems, because you can load the model from partway through and
+test it, which shows you when and how it improved. In a large run, a crash far into the run would
+otherwise throw away all of that work. With a recent saved copy, the run loses only the steps taken
+since that copy was made.
+
+### Memory is more than the model
+
+The last problem is space, because to take a step, training must hold the weights, the gradient and
+everything the optimizer remembers, all at the same time. Under Adam, the weights themselves take up
+only a small fraction of that total memory. For a large model the total is far more than one of the
+card's 32 GB devices can hold, so large runs have to plan carefully where every byte goes.
+
+## How to play with it
+
+### Walk the loop
+
+Start with the **Training loop stages** strip and click all seven stages in order, reading the
+title, the explanation and the three readouts that each one prints. At **Backward**, look at the
+strip of 30 bars for the pair `o→g` and find the one long bar, which belongs to `g`. The default run
+makes 12 passes at **Batch size** 16, which gives 32 **Batches / epoch** and 384 **Total steps**.
+Over on the **Measured training loss** card, **Final loss** reads 2.277 nats per token, while
+**Perplexity** reads 9.75.
+
+On that same card, compare the three lines that the chart draws, and notice how differently they
+behave. The thin line is the loss on handfuls, the thick line is the whole-corpus loss at each
+checkpoint, and the dotted line is the "knows nothing" baseline at 3.401.
+
+### Resize the batch
+
+**Try this:** leave **Epochs** at 12 and drag **Batch size** from one end to the other, watching
+**Total steps** and **Final loss** as you go. Before you drag, predict which end of the slider will
+finish with the lower loss, and decide why you expect it.
+
+- At a batch size of 2, the run takes 2988 steps and lands at a final loss of 1.877 nats.
+- At a batch size of 16, the run takes 384 steps and lands at a final loss of 2.277 nats.
+- At a batch size of 64, the run takes only 96 steps and lands at a final loss of 2.808 nats.
+
+The text and the learning rate never changed between these runs, so the difference in final loss
+comes mainly from the number of updates each run was allowed to make. Each small-batch update is
+also noisier, as the backfire experiment below shows.
+
+Then set **Batch size** back to 16 and drag **Epochs** on its own to watch the same effect from the
+other side. One epoch ends at 3.166 nats, while sixty epochs reach 1.921.
+
+### Reload a checkpoint
+
+Set the run back to 12 epochs at **Batch size** 16, then scrub **Checkpoint** from step 0 to
+step 384. Four separate readouts move together as you scrub, because all of them come from the same saved
+copy. They are **Its loss** on the Checkpoint stage, the big dot on the loss chart, the sample text,
+and the **Next character after "the fo" at this checkpoint** list. At step 0 every option in that
+list reads 3.3%, and by step 384 `r` leads with 23.5%.
+
+The stages card shows one stage at a time, so scrub once with the Checkpoint stage open. Then scrub
+again with the Backward stage open, and watch the `g` bar move from −0.967 at step 0 to −0.957 at
+step 384. It barely changes, because `g` is not what usually follows `o` in this text.
+
+The sample is 96 characters that the lab writes by picking each next character at random, weighted
+by the model's probabilities. A setting called temperature, fixed at 0.8 here, tilts each pick a
+little toward the likelier characters. The picks also use a fixed seed, which is a starting number
+that makes the computer's random choices come out the same every time. That means any change between
+checkpoints comes from the weights and not from luck.
+
+### Step one batch
+
+Now set **Checkpoint** on the Run controls card to step 0, scroll to **Step one batch**, and press
+the **Step one batch** button once. This applies the run's very first handful of 16 pairs to the
+untrained model. The pairs appear as small labels, such as `o→r` and `e→a`, drawn from all over the
+text. Then read the four readouts on the card, which report what that single update did:
+
+- **Batch loss, before → after** goes from 3.401 to 3.362, measured only on the 16 pairs in that
+  handful.
+- **Batch gradient norm** reads 0.2567, which measures how big that handful's whole gradient is.
+- **Whole-corpus loss, before → after** moves only from 3.401 to 3.396, because it is measured
+  across all 498 pairs in the text.
+- **Weights changed** reads 270 of 900 in 9 rows, one row for each character that started a pair in
+  the handful.
+
+The count of 270 comes from whole rows, because every weight in a touched row moves. Softmax gives
+every character some probability, so all 30 logits in that row get part of the gradient. Nine rows
+of 30 weights is 270, and the other 630 weights stay exactly as they were.
+
+Now look at the gap between the two losses. The step was calculated to fit those 16 pairs, so it
+helps them a lot. But 16 pairs are only about 3% of the 498, so their gain shrinks a lot once it is
+averaged over the whole text. The nine rows that moved also hold 308 of the 498 pairs, and inside
+them the effect is mixed. About 78 pairs, including the handful's own, get a little better, because
+they ask for the same next character as the handful. About 230 that needed a different next
+character get slightly worse. The other 190 pairs sit in rows that did not move, so they do not
+change at all, and the whole-corpus average barely moves.
+
+The table below the readouts lists up to eight rows with the biggest gradients, and its top row is
+`s`. It started 3 of the 16 pairs, and two of them asked for a space, so their pushes add up. The
+space row also started 3 pairs, but they asked for `f`, `m` and `r`, so their pushes partly cancel
+and its gradient is smaller. The **Target** column displays the next character a row was asked for
+most often, which for `s` is a space. **Target probability** shows the space's probability in the
+`s` row rising from 3.3% to 3.6%. On this first press nine rows moved, so the caption mentions one
+more row that changed less.
+
+Press twice more, and a different set of rows moves each time, because each press applies the next
+handful the run actually used. **Back to the checkpoint** returns you to the saved copy whenever you
+want to start over.
+
+### Watch a step backfire
+
+Now set **Batch size** to 2, put **Checkpoint** at step 1492, and press **Step one batch** again and
+again, up to its limit of 24 presses. **Batch loss** still falls on every press, but **Whole-corpus
+loss** rises on 17 of the first 24. For comparison, at **Batch size** 16, 24 presses from the
+checkpoint at step 192 never raise it.
+
+Here is how a tiny handful can backfire, using a made-up example. Picture a handful of two that holds
+the pair `e→a`, from a word like "sea". The step raises `a` in the `e` row, and because the
+probabilities in a row always add up to 100%, every other choice in that row loses some probability.
+That includes the space after `e`, which the text needs after every "the". The two pairs in the
+handful improve, while the many other pairs that need that space get a little worse. (Your 24 presses
+hold other `e` pairs, such as `e→v` and `e→r`, and they make the same kind of trade.)
+
+Every step makes this kind of trade, so why does it backfire so often here? By step 1492, the `e`
+row already gives `a` about 7%, which is close to its share of the text: 4 of the 55 pairs that
+start with `e`. A full push for one `e→a` pair overshoots that share. In a handful of two, that one
+pair also drives half the step, eight times the share it would get in a handful of 16.
+
+### Count the memory
+
+Last, scroll to **Where the memory goes**, which starts at **Model size** 7.5 billion, with
+**Precision** set to **Mixed 16-bit** and **Optimizer** set to **Adam**. Here is what a single
+weight costs at those settings:
+
+- The weight itself takes 2 bytes, because Mixed 16-bit stores it in 16 bits.
+- Its gradient also takes 2 bytes, because the backward pass stores it in the same 16-bit format.
+- The **optimizer state** takes 12 bytes: the 4-byte master copy, plus 4 for momentum and 4 for
+  variance.
+
+That adds up to 16 bytes, which is what **Bytes per parameter** displays. Multiply 16 bytes by 7.5
+billion weights and you get 120 billion bytes, or 120 GB. Weights and gradients take 15 GB each, and
+the optimizer state takes the other 90 GB. That is six times as much as the weights, which is what
+**Optimizer state ÷ weights** reports.
+
+A device here means one chip with its own memory, like the graphics chips, called GPUs, that big
+runs train on. Here the card uses the word "state" for everything training holds for each weight:
+the weight, its gradient and its optimizer state together. The card assumes each device holds 32 GB,
+and 120 GB ÷ 32 GB is 3.75, which rounds up to 4 whole devices. So **32 GB devices for state alone**
+reads 4 for this model.
+
+Now switch **Precision** to fp32 and predict the new total before you look. It stays at 120 GB. The
+weight and its gradient each grow from 2 bytes to 4, which adds 4 bytes, but fp32 needs no separate
+master copy, which takes 4 away. Each weight now costs 4 + 4 + 8 bytes, where the 8 is Adam's two
+4-byte numbers, so the total is still 16. Only the split between the parts changes.
+
+**A common mix-up:** "16-bit" sounds as if it should halve the memory, but it does not shrink what
+Adam needs at all. In both precisions each weight costs 16 bytes. Mixed precision only moves bytes.
+The weight and the gradient each shrink from 4 bytes to 2, and the 4 bytes saved go into the master
+copy in the optimizer state. Its gain is faster arithmetic, not a smaller total on this card.
+
+Then switch **Optimizer** to SGD, and momentum and variance disappear, so the total falls to 8 bytes
+per weight, or 60 GB. With fp32 still selected, the optimizer-state segment vanishes from the bar
+completely. Switch back to **Mixed 16-bit** and that segment returns at 30 GB, half the bar, because
+SGD in mixed precision still needs the 4-byte master copy. That copy is twice the size of the 2-byte
+weight, so each weight costs 2 + 2 + 4 = 8 bytes.
+
+Finally, switch **Optimizer** back to Adam and set **Model size** to 70 billion, then watch the
+total climb to 1.12 TB while the device readout jumps to 35.
+
+## What to notice
+
+- The thin batch-loss line on the chart stays jagged while the thick whole-corpus line drops
+  smoothly. Each point on the thin line averages only a few handfuls of 16 pairs, so it wobbles with
+  whichever pairs those handfuls happened to hold.
+- The last handful of each pass holds only 2 pairs, so it is the noisiest of all. The small ticks
+  under the chart mark where each pass ends, which is every 32 steps at the default setting.
+- Scrub through the nine checkpoints and the loss reads 3.401, 3.068, 2.816, 2.641, 2.530, 2.438,
+  2.374, 2.320 and then 2.277. The first 48 steps cut it by about 0.33, while the last 48 cut it by
+  only about 0.04. Each stretch of steps buys less than the one before, right from the start.
+- **Rows updated** on the Optimizer step stage reads 26 / 30, because four symbols never start a
+  pair in this text. Those four are `j`, `x` and the two angle brackets, so their rows are never
+  changed at all.
+- **Peak batch norm in the run** reads 0.749 at **Batch size** 16, but that peak comes from one of
+  the 2-pair handfuls left over at the end of a pass. No full handful of 16 reaches even half of
+  that. At a batch size of 2 every handful has 2 pairs, and the peak reaches about 1.09.
+- Averaging over more pairs makes each gradient shorter and steadier. Each pair supplies only one
+  sixteenth of a 16-pair gradient, and because the pairs push on different rows and characters,
+  their pushes add up only partly. Pairs in the same row that ask for different next characters also
+  partly cancel.
+- **Better than chance by** reads 33%, which is the same fact as **Perplexity** falling from 30
+  options to 9.75.
+- The Forward stage prints "the fo" but uses only the final `o`, because a bigram throws the rest
+  away. **Top prediction** is `r` at 23.5%, from words like `harbor`, `morning`, `storm` and
+  `before`, while at step 0 every option reads 3.3%.
+- The sample uses the same seed at every checkpoint, so early checkpoints print almost the same
+  string, and later ones still share their opening letters. Any change comes from the weights, not
+  from luck. Even at step 384, most of it is gibberish with real fragments inside, such as `the`,
+  `and` and `thin`.
+- One sample is not a measurement, so a 96-character sample can look worse at a later checkpoint
+  even while the loss fell. Trust **Its loss** over your eyes when the two seem to disagree.
+- One step helps its own handful far more than it helps the entire text: 0.039 against 0.005 nats at
+  step 0. Only rows that started a pair in the handful move, so 630 of the 900 weights are not
+  touched. The nine rows that did move still cover most of the text.
+- A step can make the entire text worse, and the smaller the batch, the more often it happens. At
+  **Batch size** 2, the whole-corpus loss rose on 1,174 of the 2,988 steps in the 12-epoch run. At
+  16 it rose on 5 of 384 steps, and at 64 it rose on none of the 96. The loss on each step's own
+  handful fell every single time, so the run improves on average, not at every step.
+- **Mixed 16-bit** does not shrink what **Adam** needs, which is 16 bytes per weight in both
+  precisions. In mixed precision the optimizer state is six times the weights, and in fp32 it is
+  twice the weights.
+- At 70 billion weights, the weights, gradients and optimizer state together come to 1.12 TB, which
+  fills 35 devices of 32 GB before a single activation is stored. The optimizer state on its own is
+  840 GB of that. An activation is an in-between result that a large model calculates during the
+  forward pass and keeps for the backward pass.
+
+## Where it breaks
+
+### What this lab simplifies
+
+Everything on screen is computed for real: the pairs, the shuffle, the probabilities, the loss,
+every gradient, every update and every saved copy of the weights. The run saves nine copies at the
+default settings and ten at some others. What is missing is structure, because the model sees one
+character of context and has only 900 numbers. It has no hidden layers, which are the extra stages
+of number-crunching that real models run between reading and guessing. It also has no tokenizer to
+split text into word pieces, and its training text is only 499 characters long. The **Learning
+rate** is stuck at 0.6, and there is no control to change it.
+
+Keep in mind that the stages do not all describe the same moment in the run. The Forward and Loss
+stages, and the Backward strip, describe the **Checkpoint** you picked. The counts, the batch
+gradient norms and the step totals describe the whole finished run.
+
+The loss is also measured on the training text itself, and there is no held-out text, meaning text
+the model never trained on. Nothing in this lab can therefore tell real learning apart from
+memorising these exact sentences, and the next lab, **Building a dataset**, adds that check.
+
+**Step one batch** is a replay, not a second run, because it rebuilds the handful that the run's
+seeded shuffle dealt at that step. It applies the trainer's own arithmetic, so pressing it again
+always gives the same numbers. Like the run itself, its update leaves out three extras that big runs
+use: momentum, gradient clipping and weight decay. The "Toy versus real" list at the end of the
+lesson explains the last two. A press past the final checkpoint deals the next pass's handful, which
+is a step the saved run never took, and the card says so.
+
+The Backward strip shows one pair's gradient at a saved checkpoint, which is not the same as the
+full handful's gradient that the optimizer applied at that step.
+
+**Where the memory goes** is multiplication, since nothing is set aside or measured. Activations are
+left out on purpose, so each total is the least a run could need rather than a forecast. The only
+real memory in this lab belongs to its own trainer: 3,600 bytes of weights and 3,600 bytes of
+gradient, with no optimizer state under plain SGD. Splitting a run across devices is described here
+but not simulated, so the card never shows how the bytes would be divided between chips.
+
+More epochs is not the same as more learning. Epochs count passes through the
+text, and only steps change the weights. Twelve epochs at **Batch size** 64 make 96 updates, while
+twelve at 2 make 2988 and end nearly a whole nat lower. Small batches win here by updating more
+often per pass, but the cost is that each update comes from fewer pairs. That is why, at **Batch
+size** 2, the whole-corpus loss rose on 1,174 of the 2,988 steps.
+
+### Where real training runs break
+
+Real runs differ in ways this one cannot show, starting with how they count. They count tokens seen
+rather than epochs, and the biggest make only one pass through their text, so the epoch stops
+meaning much. The **dataloader** also becomes a real bottleneck, meaning it can turn into the slow
+part that holds the whole run back.
+
+A run that restarts must carry on exactly as before, and Adam's remembered numbers shape every step
+it takes. So a **checkpoint** that can restart a run must save the optimizer state as well as the
+weights. That optimizer state can be twice the size of the weights, or six times in mixed precision.
+The checkpoint also needs the dataloader's place in the text and the state of the random shuffles.
+
+Memory is also more than the three parts of the card's bar, as a research paper called ZeRO points
+out, and the card's numbers follow that paper. It looks at a 1.5 billion weight model reading 32
+examples at a time, each 1,000 tokens long. In that case the activations take about 60 GB, which is
+more than twice the 24 GB of weights, gradients and optimizer state. Working the activations out
+again during the backward pass, instead of storing them, cuts them to about 8 GB. The paper also
+names short-term scratch space and wasted gaps in memory as costs that appear at large scale.
+
+Real loss curves also throw sudden spikes that a small, smooth toy run like this one never produces.
+The usual fix is to roll back to the last checkpoint and skip the handfuls that caused the spike,
+which only works if someone saved one.
+
+## Going deeper
+
+### Adam and the optimizer step
+
+Adam divides each weight's gradient by a running estimate of how large that weight's gradients
+usually are. That lets one learning rate work for weights whose gradients differ enormously in size,
+at the cost of two extra numbers to remember for every weight.
+
+### Building big batches
+
+Big batches are usually built by adding up: the run does several forward and backward passes, adds
+their gradients together, and then takes one **optimizer step**. This is called gradient
+accumulation, and the loss curve responds to the number of steps, not to how many smaller handfuls
+were added together for each one.
+
+### Saving checkpoints at scale
+
+At large scale, saving happens in the background and is split across many machines. Stopping
+everything to write out a huge optimizer state would leave every machine in the run sitting idle.
+Deciding how many checkpoints to keep becomes a policy: a few for restarting, a thin history for
+study, and a record of which one a released model came from.
+
+### Memory and parallelism
+
+The 16 bytes per weight have to live somewhere, so big runs divide them up rather than shrink them.
+Real models are built from many layers stacked one after another, each with its own grids of
+numbers, and there are three main ways to split the work across chips:
+
+- Data parallelism gives each chip a different handful of examples to work through.
+- Tensor parallelism splits each layer's grids of numbers into pieces held by different chips.
+- Pipeline parallelism gives each chip a different slice of the stack of layers, like stations on an
+  assembly line.
+
+A paper by Narayanan and colleagues shows how the three combine to train on thousands of GPUs. Data
+parallelism on its own still leaves every chip holding a full copy of the 16 bytes per weight.
+
+### Sharding
+
+**Sharding** is the fix for that wasted space, because it stops every chip from storing the same
+full copy. Picture a group project where, instead of everyone printing the whole binder of notes,
+each member keeps one chapter and borrows the others when needed. Sharding works the same way,
+because each chip keeps only a slice of the weights, gradients and optimizer state, and fetches the
+rest when it needs them. A method called ZeRO splits all three across the chips, and FSDP, a feature
+of the PyTorch training toolkit inspired by ZeRO, does the same kind of splitting. The card's 120 GB
+for 7.5 billion weights is the ZeRO paper's own example.
+
+### Why this matters for LoRA
+
+Fine-tuning means training an already trained model further on new examples, and only the weights
+that are being trained need a gradient and optimizer state. Training a small add-on, called an
+adapter, beside weights that stay frozen, meaning unchanged, therefore removes most of those two
+costs. The LoRA paper compares this with fine-tuning all of GPT-3, a 175 billion weight model, with
+Adam. It reports 10,000 times fewer trained numbers and 3 times less GPU memory.
+
+A related method, QLoRA, also stores the frozen weights in 4 bits each. Its paper reports
+fine-tuning a 65 billion weight model on a single 48 GB GPU, and the **LoRA & adapters** lab trains
+one of these adapters.
+
+### Toy versus real
+
+- **Updates:** this lab's default run takes 384 steps of 16 pairs each, which is tiny next to a
+  published run. Llama 2 reports 2.0 trillion training tokens at 4 million tokens per batch, which
+  works out to about 500,000 updates.
+- **Step size:** this lab uses plain SGD at a learning rate of 0.6, while runs that use Adam pick
+  far smaller rates. An Adam rate and an SGD rate work differently, though, so the two cannot be
+  compared directly. GPT-3's published rates run from 0.0006 for its smallest model down to 0.00006
+  for its largest. Llama 2 used 0.0003 for its two smaller models, and half that for its two
+  largest.
+- **Memory:** the lab's whole model is 3.6 KB, which is 900 weights at 4 bytes each. At 16 bytes per
+  weight, 7.5 billion weights take the card's 120 GB, before any activations are counted.
+- **What the loop adds:** the GPT-3 and Llama 2 papers both wrap these seven stages in three extras
+  that this lab leaves out. A warmup-and-decay schedule starts the learning rate small, raises it,
+  and then lowers it again over the run. Gradient clipping shrinks any gradient whose norm is over
+  1.0 back down to a length of 1.0. Weight decay, set to 0.1, pulls every weight a little toward
+  zero at each step.

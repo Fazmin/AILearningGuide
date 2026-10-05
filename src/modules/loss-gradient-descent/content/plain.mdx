@@ -1,0 +1,763 @@
+---
+objectives: ["Interpret loss as an optimization objective", "Predict a gradient step's direction", "Explain how the learning rate and curvature decide whether descent settles, overshoots, or diverges"]
+terms: ["Loss", "Gradient", "Objective function", "Learning rate", "Gradient descent", "Stochastic gradient descent", "Minibatch", "Momentum", "Curvature", "Convergence", "Divergence", "Local minimum", "Saddle point", "Learning-rate schedule"]
+---
+
+## The big picture
+
+Nobody sets the numbers inside an AI model by hand, because a model can have millions or even billions of
+adjustable numbers. Training has to find good values for every one of them on its own, one small change at
+a time. This lesson is about the rule that decides each of those changes, and about what happens when that
+rule is used well or badly.
+
+You can picture each of those numbers as a dial on a huge control panel, because turning it changes what
+the model does with its input. The rule for turning the dials is called **gradient descent**, and it runs
+as a loop. First it measures how wrong the model is, using a single number called the **loss**. Then it
+works out which way to turn every dial so the loss falls. Finally it turns each dial a small amount that
+way, and the loop starts again from the new settings.
+
+The picture you will carry through this lesson is a hiker walking downhill in thick fog. The hiker cannot
+see the bottom of the valley, but they can feel which way the ground tilts under their feet. So they take
+one step downhill, stop to feel the ground again, and keep going until the ground is level.
+
+### Where you have met it
+
+**A single neuron** showed how a model's dials decide what it outputs, and **The math you need**
+introduced the slope of a curve and a first downhill step. This lab puts those two earlier labs together
+and uses them to train a real, if very small, model.
+
+Every neural network in this course, meaning every model built from many small neurons, had its numbers
+set by some version of this loop. That includes the network in the **Stacking neurons** lab, which trained
+when you pressed a single button. It also includes the language models in later labs, the kind of program
+that sits behind a chatbot.
+
+You may also have heard people describe training that went badly, with phrases like "the loss blew up",
+"it plateaued" or "the learning rate was too high". Each of those phrases describes something you can make
+happen in this lab, and by the end you will be able to point at it on the screen.
+
+### Why it matters
+
+A real model has far too many dials for anyone to try every possible setting. Gradient descent gets
+around this because it only needs the tilt where the model stands now, which is why it works for models
+of any size.
+
+The tilt tells you which way to go, but it cannot tell you how big a step is safe. You choose that with a
+number called the learning rate, and choosing badly can ruin a whole training run. Steps that are too
+small make training crawl, while steps that are too large can make the loss grow without end. This lab
+shows exactly where the line between those two falls, and why it sits there.
+
+### What you will be able to explain
+
+By the end of this lesson, you should be able to explain these three ideas in your own words:
+
+- what the **loss** measures, and why training works to make it as small as possible, even though a small
+  loss is not quite the same as a good model;
+- which way one step of gradient descent will move the dials, worked out before you press the button from
+  the numbers the lab shows you;
+- how the step size, called the learning rate, and the bend of the valley, called its curvature, decide
+  whether the search settles, zigzags past the bottom, or flies off.
+
+### What the lab lets you do
+
+The lab fits a straight line to eight dots, and every number it shows is worked out for real from those
+dots rather than sketched by hand. The dots themselves were made up for this lesson, and the problem is
+kept tiny on purpose so that you can see all of it at once. Instead of billions of dials there are only
+two, which means every possible setting fits on a single map. The lab is spread across four cards, and
+each one shows a different view of the same search:
+
+- **Data and fit** shows the dots, the line, and a bar for each dot's miss, so you can see exactly what
+  the loss is made of.
+- **Loss surface** draws the loss for every possible setting of the two dials as a map, together with the
+  path the search takes across it.
+- **Optimizer controls** holds the step size, the starting point, the button that takes one step, and a
+  switch to a second way of stepping called momentum.
+- **Loss per step** draws the loss after each step of the run and reports whether the run settled, and if
+  it did, how quickly.
+
+You will set the starting point yourself, predict which way the first step goes, and then push the step
+size higher and higher until the search breaks.
+
+## What it is
+
+### Walking downhill in fog
+
+Picture yourself on a hillside in fog so thick that you cannot see more than a step ahead of you. You want
+to reach the lowest point of the valley, but you have no map, so all you can use is the ground under your
+feet. With every step, you can feel which way the ground tilts and roughly how steeply it slopes.
+
+So you follow a routine: you feel the tilt, take a step in the downhill direction, stop, and feel the
+ground again. Each step uses only what you can feel at the spot where you stand, yet if you repeat the
+routine enough times, you end up close to the bottom.
+
+Each part of that picture has a name in machine learning, and you will meet every one of them in the lab:
+
+- Your height on the hill is the **loss**, a single number that says how wrong the model is right now,
+  where lower is better.
+- The tilt under your feet is the **gradient**, which says which way is uphill and how steep it is, so you
+  step the opposite way.
+- How far you move with each step is the **Learning rate** times how steep the tilt is. The learning rate
+  is the part you choose, with a slider.
+- The routine itself, feeling the tilt, stepping the other way and repeating, is **gradient descent**,
+  where the word "descent" means going down.
+
+The rest of this section turns each part of that picture into something you can see and measure in the
+lab, one piece at a time.
+
+### The model: a line with two dials
+
+The lab has eight blue dots on a graph, and its model is a straight line that tries to pass as close to
+all of them as it can. Any straight line can be written as `ŷ = w·x + b`, where `w·x` means w times x, and
+`x` is a position along the bottom of the graph. The symbol `ŷ`, read "y-hat", is the height of the line at that position, which
+is the line's guess for the dot that sits there.
+
+The line is controlled by two dials: the **slope** `w` sets how steeply it climbs, and the **intercept**
+`b` sets the height where it crosses the vertical axis. The numbers a model adjusts while it learns are
+called its **parameters**, so this small model has exactly two parameters to set.
+
+The heading of the **Data and fit** card always shows the current line, and at the lab's starting point it
+reads `ŷ = −1.00·x + 1.20`. That means w is −1 and b is 1.2 when the run begins. A negative w makes the
+line run downhill from left to right, while the dots climb from the bottom left to the top right. So this
+starting line is a poor fit, and it was chosen that way on purpose to give the search somewhere to go.
+
+### Loss: one number for how wrong the line is
+
+To score the line, the lab looks at each dot and measures the gap between the dot and the line, straight
+up or straight down. That gap is called a **residual**, and the lab draws each one as a short orange
+segment between the dot and the line. A residual is positive when the line passes above its dot, and
+negative when the line passes below it.
+
+The lab then squares each residual and takes the average of the eight squares, and that average is the
+loss, shown on the **Loss L** readout. The lab also prints the formula for this in a note under the bars,
+written with symbols:
+
+```
+L = (1/8) Σ (ŷᵢ − yᵢ)²
+```
+
+The formula looks heavier than it is, because each symbol stands for one small instruction. The Σ is the
+Greek capital letter sigma, which means "add these up", and the small i means "do this for dot 1, then dot
+2, and so on". The symbol ŷᵢ is the line's guess at dot i, and yᵢ is that dot's real height. So the
+formula says to take the guess minus the real height for each dot, square the result, add up all eight,
+and divide by 8.
+
+Here are the first dot and the last dot worked out for the starting line. For dot 1, the guess is
+−1.00 × 0.1 + 1.20 = 1.10, and for dot 8 it is −1.00 × 1.9 + 1.20 = −0.70. The rest of the arithmetic for
+these two dots is laid out below:
+
+```
+dot 1   x = 0.1   guess  1.10   real height −0.33   miss  1.43   squared  2.04
+dot 8   x = 1.9   guess −0.70   real height  2.15   miss −2.85   squared  8.12
+```
+
+The bars under the chart show all eight squared misses, and these two sit at either end, with 2.04 on the
+far left and 8.12 on the far right. Do the same for all eight dots and the squares add up to about 20.09.
+Divide that total by 8 and you get 2.511, which is the number **Loss L** shows at the start.
+
+Squaring the misses, instead of using them as they are, does two useful jobs:
+
+- It turns every miss into a positive number, so a line that is 2 too high and a line that is 2 too low
+  both pay a cost of 4. Without squaring, misses above and below the line could cancel each other out and
+  hide a bad fit.
+- It makes big misses count far more than small ones, because one miss of 2 costs 4, which is as much as
+  four misses of 1. That means the line gets pushed hardest to fix its worst misses.
+
+You can check that second job in the numbers printed under the bars. After one step at the starting
+learning rate, the 8.12 on the far right drops to 4.55, even though the 2.04 on the far left grows a
+little, to 2.56. The bars are redrawn after every change so the tallest one always fills the chart, so
+compare the printed numbers from step to step, not the bar heights.
+
+This recipe, the average of the squared misses, is called **mean squared error**, because "mean" is
+another word for average. It suits problems where the right answer is a number, like a height or a price,
+while language models use a different recipe called cross-entropy, described in Going deeper.
+
+### Loss as the goal of training
+
+A loss is built to be a single number where lower means better, and it is built to change smoothly as you
+nudge a dial. That smoothness is what gives it a tilt you can measure at every possible setting. Together,
+those two features turn the wish "make the model good" into a clear job: find the settings of the dials
+that give this number its lowest value.
+
+Searching for the best settings of something is called **optimization**, and the number being pushed down
+is called the **objective function**, or the objective for short. Mean squared error and cross-entropy are
+two different objective functions, and each one sets its own rules for which misses cost the most.
+
+Training pushes down exactly the number you give it and nothing else, so the objective has to be a good
+stand-in for what you actually care about. You will meet a case in Where it breaks where the two come
+apart, even while the loss keeps falling.
+
+### The map: the loss surface
+
+Every pair of settings for w and b gives one line, and every line gets one loss, which means you can draw
+a map. Put w along the bottom and b up the side, and mark every position with the loss of the line it
+stands for. The **Loss surface** card draws exactly that map, worked out from the eight dots for every
+position in view.
+
+The map uses contour lines, like a hiking map, where each contour line joins places that are at the same
+height. Here each contour joins dial settings that give the same loss, and three of the lines are labelled
+with their loss, from 0.5 on the inside to 8 farther out. Darker shading means higher loss, so the map
+gets darker as you move away from the bottom.
+
+The lowest point on the map is marked with a green ×, at w = 1.443 and b = −0.542. The loss there is
+0.0205, which is the smallest value this loss can ever reach. The **Data and fit** card draws the line for
+that position as a green dotted line, which its legend calls the least-squares line. That means the best
+possible line, worked out directly with a formula rather than by stepping.
+
+Notice that even the lowest loss is not zero, because the eight dots do not lie on one straight line. The
+best line still misses each dot by a little, so 0.0205 is as low as the loss can go for these dots.
+
+Look at the shape of the contours as well: they are long, thin ovals, which means the map shows a long,
+narrow valley rather than a round bowl. The ground rises steeply as you move across this valley and only
+gently as you move along its floor, and that difference turns out to matter a great deal.
+
+### The gradient: which way is uphill
+
+Back in the fog, you could feel the tilt under your feet, and the lab gives you that tilt as two numbers
+under the map, **∂L/∂w** and **∂L/∂b**. This lesson calls them tilts to keep them apart from the line's
+slope `w`, but you will often hear them called slopes as well.
+
+The first one, **∂L/∂w**, answers one question: if you nudge w up a tiny amount while b holds still, does
+the loss go up or down, and how fast? You can read it aloud as "the change in L for a small change in w".
+The curly ∂ is a kind of letter d, and it means that only one dial moves while every other dial stays
+fixed. The second readout, **∂L/∂b**, asks the same question about the other dial, b.
+
+The sign of each tilt tells you which way descent will turn that dial:
+
+- A positive tilt means that raising the dial would raise the loss, so descent turns the dial down.
+- A negative tilt means that raising the dial would lower the loss, so descent turns the dial up.
+- A tilt close to zero means that turning the dial barely changes the loss from where you stand right now.
+
+At the starting point, **∂L/∂w** reads −3.039 and **∂L/∂b** reads −1.403, so both tilts are negative and
+raising either dial would lower the loss. The w tilt is about twice as big once you ignore the minus
+signs, which means the loss reacts more strongly to w than to b at this particular position.
+
+Taken together, the two tilts make up the **gradient**, and you can read the pair as an arrow on the map.
+Picture an arrow that moves −3.039 in the w direction and −1.403 in the b direction. Since w runs along
+the bottom of the map and b runs up the side, that arrow points left and a little down. It points the way
+the loss climbs fastest, straight uphill, so gradient descent always flips it and steps right and a little
+up instead.
+
+On the map, the lab draws that downhill direction as a pink arrow labelled **−∇L**. The upside-down
+triangle ∇ is the usual symbol for a gradient, so −∇L means "minus the gradient of the loss", the steepest
+way downhill from where you stand. The arrow is always the same length because only its direction matters
+here, and the two readouts below the map give its size.
+
+Two things about that arrow are worth checking with your own eyes before you move on:
+
+- It crosses the nearest contour line at a right angle. Moving along a contour line does not change the
+  loss at all, so any part of a step that runs along the line is wasted. The steepest way down has no
+  wasted part, so it cuts straight across the line. Rain running down a real hillside crosses the contour
+  lines on a hiking map in the same way.
+- It does not point at the green ×, because it shows the steepest way down from this one position, not the
+  direction of the bottom. In a long, narrow valley, those two directions can be very far apart.
+
+### One step, worked out
+
+A gradient descent step moves each dial against its tilt, by an amount equal to the learning rate times
+the tilt. Written out in words, the rule for each dial looks like this:
+
+```
+new value = old value − learning rate × tilt
+```
+
+The learning rate starts at 0.1 in this lab, and its slider shows it as "η 0.10", using the Greek letter
+eta, the usual symbol for a learning rate. Here is one full step from the starting point at that rate,
+with both dials worked out:
+
+```
+w:   −1.000 − 0.1 × (−3.039)   =   −1.000 + 0.304   =   −0.696
+b:    1.200 − 0.1 × (−1.403)   =    1.200 + 0.140   =    1.340
+```
+
+Subtracting a negative number is the same as adding, so both dials go up, exactly as the negative tilts
+predicted. The new line fits the dots better, and **Loss L** falls from 2.511 to 1.619 after this single
+step.
+
+Now picture doubling the learning rate to 0.2 before you take that first step, which makes each change
+double as well. The changes become +0.608 for w and +0.281 for b, so the step points the same way but is
+twice as long. The learning rate can stretch a step, but it can never turn one, because the direction
+always comes from the gradient alone.
+
+### Curvature: how sharply the valley bends
+
+The tilt tells you how steep the ground is where you stand, while **curvature** tells you how quickly that
+tilt changes as you move. In other words, curvature is how sharply the ground bends. A narrow canyon,
+where the ground changes from steeply down to steeply up within a few steps, bends sharply, while a wide
+valley floor barely bends at all.
+
+The valley in this lab lies at a slant on the map, so "across" and "along" are not the w and b
+directions, and each one mixes both dials. The lab calls the direction across the valley the **steep
+axis** and the direction along its floor the **shallow axis**. These are not the w and b axes of the map,
+but two slanted directions of their own.
+
+In this lab's valley, the curvature across the valley is 4.363, but along the floor it is only 0.307. To
+see what that means, picture moving 0.1 across the valley, which changes the tilt in that direction by
+about 0.44, or 4.363 × 0.1. Moving 0.1 along the floor changes the tilt there by only about 0.03.
+
+So the valley bends about 14 times more sharply across than along. The lab writes the larger curvature as
+λ_max, using the Greek letter lambda, where max is short for maximum. You will see that symbol on the
+ruler under the **Learning rate** slider.
+
+Curvature puts a speed limit on your steps, and you can see why by picturing a step across a narrow canyon
+toward its floor. A short step takes you partway down the wall, while a longer step can carry you right
+past the floor and up the far wall. A step that is too long lands you higher on the far wall than where
+you started, where the ground is even steeper, so your next step is even longer.
+
+The lab can measure this exactly. In this valley, each step of plain descent, the basic method you have
+used so far, multiplies your distance from the valley floor by one fixed number. Here is why:
+
+- Each step is the learning rate times the tilt, so a steeper tilt means a longer step.
+- Across this valley, the tilt is the curvature times your distance from the floor, so the farther out
+  you are, the steeper it gets.
+- So one step removes learning rate × curvature of that distance, and what is left is 1 minus that
+  amount.
+
+Take a learning rate of 0.20. One step removes 0.20 × 4.363, about 0.87, of the gap, so about 0.13 of it
+is left. The **Loss per step** card shows this number as **Steep axis ×**, a name that means "your
+distance across the valley is multiplied by this on every step". Here it is worked out for three learning
+rates that you will try in the lab:
+
+```
+η 0.20   1 − 0.20 × 4.363  =   0.13    13% of the gap is left, on the same side
+η 0.40   1 − 0.40 × 4.363  =  −0.75    lands on the far side, and the gap shrinks to 75%
+η 0.48   1 − 0.48 × 4.363  =  −1.09    lands on the far side, and the gap grows by 9%
+```
+
+A negative number means the step jumps across the floor and lands on the far wall. That is fine as long
+as the number's size, ignoring the minus sign, stays under 1. In that case each jump is smaller than the
+one before, but once the size goes past 1, each jump is bigger than the last and the run flies off.
+
+So two learning rates mark the edges between three kinds of behaviour, which the lab calls **regimes**.
+You can find both edges from the multiplier:
+
+- At a learning rate of 0.229, the number 1 − 0.229 × 4.363 comes to 0, so a single step lands exactly
+  on the floor. With any bigger rate, the number turns negative and the step jumps past the floor, which
+  is why the first edge is 1 divided by the curvature.
+- At 0.458, the number reaches −1, so each jump lands exactly as far out on the other side as where it
+  started. With any bigger rate, each jump grows and the run blows up, which is why the second edge is 2
+  divided by the curvature.
+
+The ruler under the **Learning rate** slider colours all three regimes, and a badge beside the **Loss
+surface** heading names the one you are in:
+
+- Below 0.229, every step lands on the same side of the valley floor, and the lab calls this regime
+  **one-sided**.
+- Above 0.229 but below 0.458, steps jump across the floor and zigzag, yet the zigzag keeps shrinking, and
+  the lab calls this regime **overshoots**.
+- Above 0.458, each zigzag is wider than the last and the loss grows without limit, and the lab calls this
+  regime **diverges**. Because every step multiplies the gap by the same number, starting closer to the
+  floor only delays the blow-up. Only a smaller learning rate stops it.
+
+The note under the ruler writes the same two edges with symbols, as `1/λ_max = 0.229` and `2/λ_max =
+0.458`.
+
+### The slow direction along the floor
+
+The steep direction sets the speed limit, but the gentle direction along the floor sets the pace of the
+whole run. The same rule works along the floor, where each step multiplies your distance from the bottom
+by 1 minus the learning rate times 0.307. Because 0.307 is so small, that number stays close to 1, which
+means each step closes only a small part of the remaining distance. The lab shows this number as **Shallow
+axis ×**.
+
+Set the learning rate to 0.20 and **Shallow axis ×** reads 0.939, which is very close to 1. So each step
+removes only about 6 percent of the distance still left along the floor, and the run needs dozens of steps
+to finish.
+
+You cannot fix that by raising the learning rate very far, because the steep direction blows up above
+0.458. The best rate for this valley is about 0.43, because at that rate the gaps across the valley and along
+the floor shrink at the same pace. Even then, the gap along the floor shrinks by only about 13 percent a
+step. One learning rate has to serve both directions at once, so a valley that is steep one way
+and nearly flat the other way is slow to finish.
+
+If you try 0.43 in the lab, though, **Settles by** reads step 21, a little later than the step 19 you
+will see at 0.40. That is not a mistake. "Best" here means the slower of the two directions shrinks as
+fast as it can, and at 0.43 both **Steep axis ×** and **Shallow axis ×** come to about 0.87 in size. At
+0.40 the floor shrinks almost as fast, at 0.877, while the zigzag across the valley dies down much faster,
+at −0.75. From where this run starts, that quicker zigzag lets 0.40 finish a couple of steps sooner.
+
+### Momentum: a rolling ball
+
+So far, the hiker stops dead after every step and starts the next one from rest. **Momentum** changes
+that, so picture a ball rolling on the same hill instead, carrying some of its speed from one moment to
+the next. On a long, steady slope the ball keeps picking up speed, which is exactly what the slow valley
+floor needs.
+
+In the lab, the ball keeps a running speed called its velocity, which is updated on every step before the
+dials move. The new velocity is the old velocity times a number β, plus the current tilt, and then each
+dial moves by the learning rate times the velocity. The number β is the Greek letter beta, which you set
+with the **Momentum β** slider, and it decides how much of the old speed carries over.
+
+The ball picture needs one small correction here. A real ball is slowed by friction, which takes away
+some of its speed all the time. In the lab, β alone decides how much speed survives each step. A β near 1
+is like a ball on almost frictionless ice, which keeps nearly all its speed. A β of 0 is like so much
+friction that the ball stops dead after every step.
+
+To see what that rule does, suppose β is 0.8 and the tilt stays at 1 on every step, as it does on a steady
+slope along the valley floor:
+
+```
+step 1:   0.8 × 0      + 1   =   1.00
+step 2:   0.8 × 1.00   + 1   =   1.80
+step 3:   0.8 × 1.80   + 1   =   2.44
+step 4:   0.8 × 2.44   + 1   =   2.95
+```
+
+The velocity keeps creeping toward 5 without ever quite reaching it. That limit is 1 divided by (1 − β),
+so on a steady slope momentum ends up taking steps about five times as long as plain descent would.
+
+Now suppose instead that the tilt flips sign on every step, +1 then −1 then +1, as it does when the path
+zigzags across a narrow valley:
+
+```
+step 1:   0.8 × 0        + 1   =    1.00
+step 2:   0.8 × 1.00     − 1   =   −0.20
+step 3:   0.8 × (−0.20)  + 1   =    0.84
+```
+
+The pushes in opposite directions partly cancel each other out, so the velocity stays small. This
+cancelling only helps when the steps are already zigzagging, as plain descent does at learning rates
+above 0.229.
+
+At a small learning rate like 0.05, plain descent does not zigzag at all. There, momentum's carried speed
+is what makes the path swing past the floor. That swinging is the price of momentum, because a ball that
+has built up speed does not stop at the bottom. It rolls past the floor and partway up the other side before it turns
+back, and with too much momentum it keeps swinging back and forth for a long time.
+
+When you read the lab, keep in mind that the first step with momentum is exactly the same as a plain step,
+because the velocity starts at zero. Setting β to 0 keeps none of the old speed, which turns momentum back
+into plain descent exactly. Plain descent and momentum are two different optimizers, which means two
+different rules for turning tilts into steps, and the **Optimizer** switch in the lab picks between them.
+
+## Why it’s here
+
+### Opening the button from the last lab
+
+The previous lab, **Stacking neurons**, trained a whole network every time you pressed a single button,
+without showing what happened inside. This lab opens that button to show the loop inside, and it adds
+three things the button hid: curvature, the three regimes, and momentum.
+
+### Why not work out the answer directly?
+
+For a single straight line there is a shortcut, because a direct formula called least squares gives the
+best w and b in one go. That formula is how the lab knows where to put the green ×, without walking there.
+
+A real network has no such shortcut, because its loss depends on millions or billions of dials in a far
+more tangled way. Its lowest point is unknown and cannot be found in one go, so training has no target to
+aim at. What can be worked out cheaply is the tilt at the current point, for every dial at once, and the
+Backpropagation lab shows how that is done. Gradient descent needs nothing more than that tilt, which is
+why the same rule can train models of any size.
+
+That is also why the fog picture fits a real network even better than it fits this lab. Here you can see
+the whole map, but a real model's map has one direction for every dial, so nobody could ever draw it.
+Training a real model really is walking in fog, with nothing to go on but the tilt at the current
+position.
+
+### Where the words for broken training come from
+
+When training goes wrong, people describe it with a few stock phrases, and each one is a shape you can
+make in this lab:
+
+- "The loss exploded" is a learning rate past the stability limit, which is the 0.458 edge in this lab, so
+  each swing across a steep direction grows bigger.
+- "It plateaued" means the loss stopped falling for a long stretch, which is often a direction with very
+  little curvature, like the flat floor of this valley.
+- "It oscillates" means the run keeps swinging back and forth, which is overshoot across a steep
+  direction, like the zigzag path you will see at 0.40.
+
+Picture a made-up team that leaves a model training overnight and finds, in the morning, that the loss
+curve has shot off the top of the chart. The first few steps looked fine, but after that the loss climbed
+faster and faster. Someone says "the learning rate was too high", and after this lab you can say exactly
+what that means. Each step was long enough that every swing across a steep valley landed farther out than
+the one before.
+
+## How to play with it
+
+The lab walks you through four steps, named Measure error, Read the slope, Take steps and Compare
+momentum, and this section follows the same order.
+
+### 1. Measure the error by hand
+
+Start at step 0, which is where the lab opens, and drag **Start w** and **Start b** while you watch the
+**Data and fit** card. You can also click anywhere on the **Loss surface** map to start the run from that
+position instead. As you drag, the purple line turns and slides, the orange residuals grow and shrink, and
+each bar below the chart shows one squared miss.
+
+Keep an eye on **Loss L** while you drag, because a dashed line across the bars marks their average, and
+that average is always what **Loss L** shows. The default start, with **Start w** at −1.00 and **Start b**
+at 1.20, is the one this lesson uses throughout. At that start, **Loss L** reads 2.511, the same value
+worked out step by step earlier in this lesson.
+
+See how low you can push **Loss L** by hand, using the green dotted line as a guide. Lining the purple
+line up with it gets you close to 0.0205, but nothing you try gets you any lower. When you are done, set
+**Start w** back to −1.00 and **Start b** back to 1.20, so your numbers match the ones in this lesson.
+
+### 2. Predict the first step
+
+Stay at step 0 and read **∂L/∂w** and **∂L/∂b**, which are −3.039 and −1.403 at the default start. Before
+you press anything, use their signs to predict which way w and b will move.
+
+Both tilts are negative, so descent will raise both dials, which on this map means the first step should
+head up and to the right. Check that the pink **−∇L** arrow points that way, that it crosses the nearest
+contour at a right angle, and that it misses the green ×. It misses because it shows the steepest way down
+from where you stand, and in this narrow valley that direction points mostly across the valley rather than
+toward the bottom. Up and to the right is what "raise both dials" looks like here, because w runs along
+the bottom of the map and b runs up the side.
+
+### 3. Take steps and change the step size
+
+**Try this:** Press **Take one gradient step** a few times and watch the orange ball, which marks where
+the run is now, move across the map. The solid blue path shows the steps taken so far, and the dashed blue
+line shows where the full 80-step run goes. Then drag **Step** to 80 to see the whole run, and set **Learning rate** to 0.05,
+0.20, 0.40 and 0.48 in turn. Each time, read **Settles by** on the **Loss per step** card and the regime
+badge on the **Loss surface**.
+
+**Settles by** names the first step after which the loss stays within 0.01 of the lowest possible loss,
+all the way to step 80. A run that dips close to the bottom and then swings back out again does not count
+as settled. Here is what you should see at each of the four learning rates:
+
+- At 0.05 the badge says one-sided, and **Settles by** reads "not in 80", because the run is too slow to
+  finish within 80 steps.
+- At 0.20 the badge still says one-sided, but the bigger steps now let the run settle by step 39.
+- At 0.40 the badge says overshoots, and the path zigzags across the valley, yet the run settles even
+  sooner, by step 19.
+- At 0.48 the badge says diverges, **Settles by** reads "not in 80" again, and the path flies right off
+  the map.
+
+Watch the shape of the dashed blue line change as you go. At 0.05 it slides smoothly down into the valley and
+then along the floor, while at 0.40 it bounces from wall to wall on its way to the bottom. The runs at
+0.05 and 0.48 both show "not in 80", but for opposite reasons, which is why you need the badge to tell
+them apart. The lab opens at a learning rate of 0.10, which settles by step 78, with very little time to
+spare.
+
+You can press **Back to step 0** at any time to replay a run from its start. Because the dashed blue line
+always shows the full run, you can see where a run is heading before you step through it.
+
+### 4. Compare momentum
+
+Put **Learning rate** back to 0.05 and switch **Optimizer** from **Plain descent** to **Momentum**, and a
+new **Momentum β** slider will appear, set to 0.90. Try **Momentum β** at 0.5, 0.8, 0.9 and 0.95, reading
+**Settles by** each time, and remember that plain descent at this rate had not settled after 80 steps.
+
+- At β 0.5 the run settles by step 77, which is only a little better than plain descent.
+- At β 0.8 it settles by step 26, the fastest of the four settings you try.
+- At β 0.9, the slider's starting value, it settles by step 46, so more momentum has already made things
+  slower.
+- At β 0.95 it does not settle within 80 steps at all, because the rolling ball keeps swinging past the
+  bottom.
+
+Watch the path on the map as well, because under momentum it swings past the valley floor and curls back.
+It can also overshoot the green × along the length of the valley, not only across it. In Momentum mode,
+the **Steep axis ×** readout adds the word "swing" when the motion across the valley swings from side to
+side. At learning rate 0.05 it shows for every β you try, so watch the map to see the overshoot along the
+valley. In plain mode the readout never says "swing", and a zigzag shows as a negative number instead.
+
+## What to notice
+
+### The direction comes from the gradient alone
+
+The learning rate makes every step longer or shorter, but it never turns a step in a new direction. If the
+pink arrow points right and up, the first step goes right and up at every learning rate you choose, and
+only its length changes. That is why too large a learning rate overshoots across the valley instead of
+finding a better route: it can stretch the step but never aim it.
+
+### Steps shrink on their own near the bottom
+
+Watch the dots along the solid blue path as a run nears the green ×, and you will see them bunch closer
+and closer together. Nothing in the lab changed the learning rate along the way, so the shrinking must
+come from somewhere else. The tilt gets smaller as the ground flattens out near the bottom, and each step
+is the learning rate times the tilt, so the steps shrink by themselves.
+
+Settling down like this, until the loss stops improving because the run has reached the bottom, is called
+**convergence**. Right at the bottom the tilt is exactly zero, so a step taken there would not move the
+dials at all.
+
+### A fast drop, then a long crawl
+
+In this narrow valley, the steepest way down points mostly across the valley rather than along it toward
+the bottom. So a plain run drops quickly down the steep wall and then crawls along the nearly flat floor
+for a long time.
+
+You can see both parts on the **Loss per step** card, which draws the loss after every step of the run.
+Its vertical axis uses a log scale, which means each gridline stands for ten times the value of the
+gridline below it. That spacing lets a loss near 2.5 and a loss near 0.02 fit on the same chart, which an
+ordinary scale could not show clearly.
+
+At learning rate 0.05, the curve drops fast for a few steps and then bends into a long, gentle slope. The
+fast drop is the steep direction finishing its work, and the slow tail is the shallow direction along the
+floor. **Shallow axis ×** reads 0.985 at this rate, so each step closes only 1.5 percent of the distance
+left along the floor. That slow pace is what stretches the tail out across the rest of the chart.
+
+### Zigzagging is not the same as blowing up
+
+Between 0.229 and 0.458, the orange ball lands on the far wall with every step, yet the loss still falls on
+every step. Try learning rate 0.40 and watch the path zigzag back and forth across the valley while the
+loss curve heads steadily downward. Each landing is closer to the floor than the one before, so
+overshooting by this much is not a failure, and here it even settles sooner than 0.20 does. The reason is
+the slow direction along the floor, which closes faster at the bigger rate, because **Shallow axis ×**
+drops from 0.939 to 0.877.
+
+Above 0.458 the story changes, and a learning rate of 0.48 shows how quietly the trouble can begin. The
+first step still lowers the loss, from 2.511 to 2.392, so the start of the run looks like progress. After
+that, every swing across the valley is about 9 percent wider than the last, so the loss climbs slowly at
+first and then faster and faster.
+
+The orange ball leaves the map by step 16, and if you drag **Step** past that, a warning on the map says the run
+is off the map. The loss passes 100 by step 25, and the **Loss per step** card marks that moment with a
+red note at the top of the chart. A loss that grows without limit like this, because each step is too long
+for how sharply the valley bends, is called **divergence**.
+
+### Momentum helps, up to a point
+
+With momentum, the very first step is identical to a plain step, because the ball starts with no speed at
+all. After that it builds up speed along the valley floor, which is exactly where plain descent crawls.
+With β at 0.8, momentum settles by step 26, while plain descent at the same learning rate has still not
+settled by the end of the run.
+
+More momentum is not always faster, though, because at β 0.95 the ball keeps so much of its speed that it
+swings up the far side again and again. You can see this on **Loss per step**, where the loss rises and
+falls in waves instead of settling. It drops to about 0.06 at step 16, then climbs back above 0.6 by step
+20 as the speed carries the ball uphill. There is a best β for this
+valley, and it is not the largest one on the slider.
+
+## Where it breaks
+
+### What this lab simplifies
+
+Every number in this lab is computed, from the loss and the tilts to the regime edges and the settling
+steps. What makes the lab unrealistic is how small and tidy its problem is, in all of these ways:
+
+- It has only two dials, while a real network has millions to billions of them.
+- The eight dots were made up for this lesson rather than collected from the real world.
+- Every step uses the exact tilt measured from all eight dots, so the steps have no noise in them.
+- The loss is a smooth valley with one lowest point, so it has no false bottoms, no flat plateaus and no
+  saddle points (a kind of flat spot explained below).
+- You can see the whole map and its lowest point, which is never true when training a real model.
+- The learning rate stays fixed for the whole run, with no planned changes and no safety limit on how big
+  a step can get.
+- Once a run's loss passes one million, the lab stops updating it, so a diverging run stops changing
+  instead of growing forever. At learning rate 0.48 that happens at step 76, and at 0.50 it happens at
+  step 41.
+- The shading on the map only helps your eye, so read loss values from the contour labels and the
+  readouts, not from how dark a spot looks.
+
+The fog picture is honest about one thing, which is that gradient descent only ever uses the tilt right
+where it stands. It makes everything else easier than real training, because in this lab the tilt you feel
+is exact and the valley is smooth with a single bottom.
+
+### Where the picture stops matching
+
+- A hiker picks a comfortable stride, but in gradient descent each stride is the learning rate times the
+  tilt, so steps shrink as the ground flattens.
+- A hiker walks on a hill with two directions to move in, but a model's hill has one direction for every
+  dial, which can mean billions of directions.
+- A real hiker wants to reach the bottom and may guess where it is from how the land slopes around them.
+  Gradient descent has no goal and makes no guesses. It always steps along the steepest way down from the
+  exact spot it is on, even when that points away from the bottom.
+
+### Where real training is harder
+
+A real network's loss is not a simple valley like this one, and its curvature changes from place to place as training moves
+through it. So a learning rate that is stable early in a run can turn unstable later, once the run reaches
+a more sharply curved region. A real network's lowest point is also unknown, so nobody can measure
+"settled" against it the way this lab does.
+
+Real training does not use the exact tilt either, because measuring it from every example in a huge
+dataset before every step would be very slow. Instead, each step estimates the tilt from a small random
+handful of examples, called a **minibatch**. Gradient descent run this way is called **stochastic gradient
+descent**, where the word "stochastic" means "involving chance".
+
+Picture a made-up student council that wants to know which lunch the whole school prefers. Asking every
+student would take all week, so they ask ten students picked at random in the lunch queue instead. The
+answer comes back quickly, but it is a little off each time, and asking forty students would give a
+steadier answer at the cost of more time.
+
+A minibatch works the same way: each step is cheaper but noisier than a step that uses every example. A
+larger minibatch gives a steadier direction, but it takes more work to compute each time. That noise is
+why real loss curves look jagged, while the curve in this lab is perfectly smooth.
+
+**A common mix-up:** People often picture training getting trapped in a small dip that is not the true
+bottom. A point that is lower than everything around it is called a **local minimum**, and on a two-dial
+map like this one it is a natural thing to picture. In a model with millions of dials it is rarely the
+real problem, because a true dip must curve upward in every one of those directions at once. At a flat
+spot where the loss is still high, it is very unlikely that all of those millions of directions curve
+upward at once. Usually at least
+one direction still leads down, so the run can keep going.
+
+The usual trouble spots are different. A **saddle point** is a spot where the ground is level right
+under your feet, but curves down in some directions and up in others. Picture standing in the middle of a mountain pass, where the ground rises
+toward the peaks on either side but falls toward the valleys ahead and behind.
+
+In a big model, most flat spots at high loss are saddles rather than dips. Saddles and long, flat
+stretches slow real training down more often than bad dips do, because the tilt there is too small to
+feel. The dips that large networks do end up in also tend to have similar loss to one another. So landing in one
+dip rather than another rarely changes the loss by much.
+
+### Low loss is not the real goal
+
+Loss is a stand-in for what you actually want, which is a model that makes good predictions on data it has
+never seen. A line can fit its own eight dots closely and still predict a ninth dot poorly. A small loss
+only tells you that the misses on these particular eight dots are small, and nothing about new dots.
+
+Picture a made-up student who prepares for a test by memorising the answers to last year's practice paper.
+Their score on that paper becomes perfect, but the real test has new questions, so the memorised answers
+do not help at all. A model can fall into the same trap, and the **Training dynamics** lab shows the loss
+on practice data still falling while the loss on fresh data rises.
+
+## Going deeper
+
+### Smarter steps: AdamW
+
+Large real training runs rarely use plain descent, and they typically turn to an optimizer called AdamW
+instead. AdamW keeps a running average of each dial's tilt and of its squared tilt, and it divides each
+dial's step by the square root of that second average. In plain words, it keeps track of how big each
+dial's tilts usually are, and it takes smaller steps on dials whose tilts are usually large.
+
+That rescales every direction by its own typical tilt, which is a cheap stand-in for the curvature this
+lab works out exactly. As a result, one learning-rate setting can work across very different parts of a
+model. On top of that, AdamW shrinks every dial slightly toward zero on each step, a habit called weight
+decay, because the dials of a network are often called weights. It applies that nudge to the dials
+directly, rather than folding it into the tilt. Keeping it separate means the shrinking is not changed by
+AdamW's own step-size adjustments.
+
+### Planned changes to the step size
+
+The learning rate in this lab stays fixed, but real runs change it on purpose as they go, following a plan
+called a **learning-rate schedule**. Large runs usually warm up first, starting near zero and growing over
+the first few thousand steps, because the earliest tilts are large and unreliable. After that the rate
+decays, shrinking along a smooth curve or a straight line, so the late steps can settle into the bottom.
+
+A second safety valve is called gradient clipping, and it checks the size of the tilt before every step.
+If the tilt is bigger than a set limit, clipping shrinks it down to that limit, so one strange minibatch
+cannot throw the whole run off course.
+
+### Reading real loss curves: cross-entropy and perplexity
+
+Language models are not scored with mean squared error, because their answer is not a number but a choice
+of the next piece of text, called a token. For each example, the model gives every possible next token a
+chance, written as a number between 0 and 1 and called a probability. Their loss, called
+**cross-entropy**, looks only at the probability the model gave to the token that actually came next.
+
+The note under the **Data and fit** card describes cross-entropy for a classifier, which is a model that
+picks one answer from a list. There it is written as "−log of the probability it gave the correct class",
+which uses a piece of math called a logarithm. You do not need logarithms to follow the idea, because the
+pattern in the numbers is what matters:
+
+- If the model gave the correct token a 100% chance, the score is 0, which counts as a perfect answer.
+- If it gave the correct token a 50% chance, the score is about 0.7, a small but real cost.
+- If it gave the correct token only a 10% chance, the score rises to about 2.3.
+- As the chance falls toward zero, the score grows without limit, so a confident wrong answer is very
+  costly.
+
+The loss of a language model is usually the average of this score over every token, which keeps runs with
+different minibatch sizes fair to compare.
+
+A friendlier way to read that average is **perplexity**, which works out roughly how many choices the
+model is torn between. A loss of 2.3 is a perplexity of about 10, as if the model were choosing evenly
+among 10 possible tokens. A loss of 2.4 works out to a perplexity of about 11, so even a small drop in
+loss can mean about one fewer choice.
+
+### Where the tilt comes from
+
+In this lab the tilt has a short formula, because the model is a single straight line with two dials. A
+deep network is a long chain of calculations, far too long for anyone to write that formula out by hand.
+The **Backpropagation** lab shows where a real network's tilt comes from instead, working it out one small
+piece at a time.

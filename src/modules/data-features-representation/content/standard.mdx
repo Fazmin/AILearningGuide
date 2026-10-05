@@ -1,0 +1,122 @@
+---
+objectives: ["Encode a table row as a feature vector by hand","Explain why two encodings of the same rows can disagree about which examples are near each other","Show that a threshold gate reading a different feature cuts the street differently, and that an embedding is a geometry fitted for a loss (authored here, learned in Tokens & embeddings)","Turn a 3×3 picture and a short sentence into numbers, and say how a missing value, a duplicate row, or a mislabelled row changes a table summary or a nearest-neighbour answer"]
+terms: ["Feature","Representation","One-hot encoding","Normalization","Feature space","Distance","Categorical variable","Embedding","Label","Pixel vector","Vocabulary and token ID","Missing value","Duplicate row","Label noise"]
+---
+
+## The big picture
+
+This module is about how a raw example, whether a table row, a 3×3 picture, or a short sentence, becomes a vector of numbers: its **representation**, in which each coordinate is a **feature**. The question it answers: when two examples land near each other, is that a fact about the data or about the encoding you chose?
+
+In *The math you need* you read a dot product as a weighted sum of features; this module asks where those features come from. The lab's main case is six apartment listings, whose door color is a **categorical variable**: a category rather than an amount, with no number until you assign one. Each listing's high or low price tag is the **label** y and stays off the vector.
+
+### Where it shows up
+
+- **Tables:** categorical columns become integer codes or **one-hot** vectors, with one 0/1 slot per category, and numeric columns may be rescaled.
+- **Images:** pixels read in a fixed order form a vector. Real images have thousands of pixels with brightness and color channels.
+- **Text:** real text is split into subword pieces, and each piece becomes an integer ID from a vocabulary.
+- **Embeddings:** later models fit coordinates so that items a loss treats as similar end up nearby, as *Tokens & embeddings* does for tokens.
+- **Data quality:** missing values, duplicate rows, and wrong labels are among the usual failures in real tables.
+
+### Why it matters
+
+Distance and threshold rules read only the numbers, so they treat whatever the encoding invents as real. Integer codes give colors an order and a spacing; one-hot encoding makes every pair of different colors equally far apart; **normalization**, rescaling a numeric column, adds no measurement but changes which axis dominates.
+
+Data errors act through the same numbers: a blank cell, a repeated row, or one flipped tag can move a summary, inflate an accuracy score, or flip a nearest-neighbour vote. The same blank cell gives different answers when it is read as 0, dropped, or filled.
+
+### What you will be able to explain
+
+- How to encode a table row as a feature vector by hand.
+- Why two encodings of the same rows can disagree about which examples are near each other.
+- Why a threshold gate reading a different feature cuts the street differently, and what an embedding is: a geometry fitted for a loss, placed by hand here as a stand-in and learned in *Tokens & embeddings*.
+- How a 3×3 picture and a short sentence become numbers, and how a missing value, a duplicate row, or a mislabelled row changes a table summary or a nearest-neighbour answer.
+
+### What the lab shows
+
+Nothing is trained or measured: every readout is a closed-form calculation on fixed, authored data and on the codes, drawing, and settings you choose. **The street** holds six fixed listings; click one to select it. On **Packing slip**, **How to pack the door** chooses **integer stamps**, **one cubby each**, or **same-length rulers**, and the red, blue, and green stamp pads set each color's code from 1 to 5.
+
+**Who stands nearest** ranks the other houses by Euclidean (straight-line) distance on the whole slip, and a callout that appears when the first two slip numbers alone would pick another house is the lab's only projection.
+
+**The gate** predicts high when one feature reaches a threshold, ŷ = 1[stamp ≥ t]: **Stamp the gate reads** picks rooms, door color, or park, and **Gate height t** sets t. **Tags the gate matches** counts agreement with the same six tags, not a holdout.
+
+**Two maps** compares one-hot color distance with a later map placed by hand, not fitted to a loss. **Pixels and words** reads a 3×3 drawing as nine 0/1 numbers and ranks three fixed templates by distance, and **Sentence** turns a preset sentence into IDs from a fixed eight-word vocabulary that is not a real tokenizer.
+
+**Messy rows** spoils a copy of the table with **Missing value**, **Duplicate row**, and **Mislabelled row**, each authored to show on one row, while **Handle missing** sets how the blank is treated. It recomputes the summary, the **3-nearest answer** for one fixed new listing, and **Leave-one-out accuracy**, which predicts each row from its nearest other row. Its distances use the default integer stamps (red 1, blue 2, green 3), whatever **How to pack the door** and the pads say.
+
+The key experiment: select Alder 12 and stamp blue as 5. Elm 7, its nearest house at 1.00 under the default stamps, moves to 4.00 and loses first place. Under **one cubby each**, which ignores the stamps, it is nearest again at 1.41.
+
+## What it is
+
+A feature is one constructed coordinate. A representation is the numeric slip that replaces a raw listing. Categorical variables become integer stamps or one-hot cubbies; numeric columns may be rescaled. Feature space is the geometry of those chosen axes. A label is the target y; it is not a feature unless you leak it.
+
+An embedding is a later kind of representation: coordinates fitted so items a loss treats as similar end up nearby. The later map on this page is authored to show that geometry. It is not trained.
+
+### Why distances flip
+
+Take two listings that differ only in door color: Alder 12 (2 rooms, red door, park) and Elm 7 (2 rooms, blue door, park). Distance is the square root of the summed squared gaps, slot by slot.
+
+On the default integer stamps (red 1, blue 2) the slips are (2, 1, 1) and (2, 2, 1). The gaps are (0, 1, 0), so the distance is √1 = 1.00 and Elm 7 is Alder 12's nearest house. Cedar 9 (3 rooms, green 3, park) has gaps (1, 2, 0), so it is √5 = 2.24 away.
+
+Stamp blue as 5 and the apartments do not change, but Elm 7's slip becomes (2, 5, 1). The gaps are (0, 4, 0) and the distance is √16 = 4.00. Cedar 9's slip never read the blue stamp, so it stays at 2.24, and Cedar 9 is now nearer than Elm 7. The neighbor order flipped.
+
+Under one-hot cubbies the slips are (2, 1, 0, 0, 1) and (2, 0, 1, 0, 1). Two color slots differ by 1 each, so the distance is √2 = 1.41 whatever the stamps are. Every pair of different doors is √2 apart: equal spacing instead of an invented order.
+
+Same-length rulers (rooms ÷ 4, stamps ÷ 5) shrink Elm 7's gap to 0.20 and Cedar 9's to 0.47, and make the 0/1 park slot the widest axis. A distance is a sum over slots, so any slot you re-stamp or rescale can change who stands nearest. Nothing in the apartments chose 1.00, 4.00, or 1.41. The encoding did.
+
+### Pictures and words as numbers
+
+A 3×3 picture whose pixels are 0 or 1, read row by row, is a vector of nine numbers: the plus is (0, 1, 0, 1, 1, 1, 0, 1, 0). Distance works on it exactly as on the street. The plus and the bar (0, 1, 0, 0, 1, 0, 0, 1, 0) differ in two pixels, so they are √2 = 1.41 apart, and one flipped pixel always changes the squared distance by 1.
+
+A sentence becomes integer IDs by looking each word up in a fixed list. In the lab's eight-word vocabulary, the cat sat on the mat is (1, 2, 3, 4, 1, 5), and bird, which is not on the list, becomes ID 0. IDs are labels, not amounts: by subtraction cat (2) is 3 from mat (5) and 4 from dog (6), an order the numbering invented. This list is not a real tokenizer.
+
+### Messy rows
+
+Real tables are spoiled. Switch on Missing value, Duplicate row, or Mislabelled row and read a table summary and a three-nearest-neighbour answer for a new listing: 3 rooms, red door, no park. On the clean table its nearest listings are Dock 2, Alder 12, and Elm 7, so the answer is high.
+
+A blank cell must be handled. Read as 0, Dock 2 moves from 1.00 to 3.00 away and the answer flips to low; dropping the row flips it too; filling with the mean of the other rows (1.8 rooms) keeps it high.
+
+A duplicate (Alder 12 listed twice) raises leave-one-out accuracy from 3 of 6 to 5 of 7 for free, because each copy is checked against its twin. A flipped tag on Dock 2 moves the high-price share from 50% to 33.3% and flips the vote.
+
+## Why it’s here
+
+Every later method — a linear boundary, a nearest neighbor, a token embedding — consumes this slip. If two packings disagree about neighbors, the disagreement is in the map, not in the apartments.
+
+The gate is here so “same model, different features” is a yard the houses walk into, not a slogan. Train/val/test is a later data concept; this page does not split the six listings.
+
+## How to play with it
+
+Click a house on the street. How to pack the door chooses integer stamps, one cubby each, or same-length rulers. The red, blue, and green pads are the hand-assigned integer codes.
+
+The packing slip lists the numbers actually stored. The lineup orders the other five houses by slip distance and names the nearest. Distance is the straight-line (Euclidean) length between two slips: square each difference, add, take the root. Two different one-hot colors are √2 apart. If the first two coordinates would have picked someone else, a callout says so.
+
+Stamp the gate reads plus Gate height t runs ŷ = 1[stamp ≥ t] on rooms, door color, or park. Two maps compares color cubbies with an authored later map.
+
+On Pixels and words, press the cells of the 3×3 pad to draw, then read the nine-number vector and the distance to each template; Sentence chooses one of four sentences to turn into IDs. On Messy rows, Missing value, Handle missing, Duplicate row, and Mislabelled row spoil a copy of the table, and the summary, the neighbour answer, and the leave-one-out accuracy are recomputed.
+
+## What to notice
+
+- Integer stamps invent order and spacing.
+- One-hot makes colors orthogonal (distance √2) and ignores the pads.
+- Normalization rescales rooms by 4 and color stamps by 5. It does not add a new measurement, and it makes the 0/1 park slot the widest axis.
+- Distances can tie: with blue stamped 5, Cedar 9 and Dock 2 are both √5 from Alder 12. The lineup reports the tie rather than breaking it silently.
+- Slip-nearest and first-two-nearest can disagree. The plane is a projection.
+- The same threshold rule on rooms versus door color sends different houses through the gate.
+- One-hot color distance ignores park and price. The authored map does not.
+- Alder 12 and Elm 7 are 1.00, 4.00, or 1.41 apart depending only on the encoding.
+- Switching off the plus's left and right arms turns the drawing into the bar: the bar is then 0.00 away and the plus √2 = 1.41.
+- A word that is not in the vocabulary becomes ID 0, whatever it is. IDs invent an order: cat is nearer to mat (3) than to dog (4).
+- A blank room count read as 0 sends Dock 2 from 1.00 to 3.00 away and flips the neighbour answer; filling with the mean (1.8) does not.
+- A duplicate raises leave-one-out accuracy from 3 of 6 to 5 of 7 without adding information. A flipped tag drops the high-price share from 50% to 33.3%.
+
+## Where it breaks
+
+In this lab the street is six authored listings. The lineup uses the whole slip; the first-two callout is the only projection. The later-map coordinates are authored, not fitted. There is no fitted scaler and no holdout. Gate matches are training accuracy on these six tags.
+
+The picture has nine 0/1 pixels and three templates, and the vocabulary has eight fixed words; it is not a real tokenizer. The three messy-row problems are authored to be visible on one row each, with one fixed query. Real tables are larger, and one bad cell rarely flips an answer.
+
+In the real mechanism, target leakage, missing values, duplicates that straddle a train and test split, wrong labels, and a scaler fitted on test statistics are the usual failures. Real images have thousands of pixels with brightness and color channels, and real text is split into subword pieces before it becomes IDs.
+
+A representation can be convenient and still be wrong as a fact about the world. A trained embedding can put similar items nearby and still be useless for the task you cared about.
+
+## Going deeper
+
+The math you need supplies the geometry. Classical machine learning draws a boundary in this plane. Tokens & embeddings learns coordinates instead of assigning them. The supervised learning loop is where a split and a holdout first appear, and How we know a model works then teaches how to read that holdout.

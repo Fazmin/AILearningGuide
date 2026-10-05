@@ -1,0 +1,157 @@
+---
+objectives: ["Read a dot product as a weighted sum of features and a matrix as the map behind Wx+b","Say what a derivative, a gradient step, a conditional probability, and a logarithm each change in a calculation","Distinguish a convex bowl from a tilted double well without treating local minima as mythology","Use Bayes' rule to turn a prior and a likelihood into a posterior, read a Gaussian's mean and variance, and turn a logit into a probability with the sigmoid"]
+terms: ["Vector","Dot product","Matrix","Linear layer","Derivative","Gradient","Gradient descent","Probability","Likelihood","Bayes' rule","Mean and variance","Sigmoid and logit","Logarithm","Cross-entropy"]
+---
+
+## The big picture
+
+This module collects the arithmetic later labs lean on: vectors and dot products, matrices and the
+linear layer Wx + b, derivatives and gradient descent, probability, and logarithms. It answers a
+practical question: when a later lab says score, layer, slope, distribution or loss, which
+calculation does it mean?
+
+It follows **What AI actually is**. Each idea is shown four ways that must agree, ending in the
+exact formula the page evaluates.
+
+### Where it shows up
+
+- **Dot products.** **Attention** scores each query against each key with one, and **Tokens &
+  embeddings** compares embeddings by cosine, a dot product divided by both lengths. **Data,
+  features, and representation** shows where the feature vectors come from.
+- **Linear layers.** Layers apply Wx + b. A production layer is the same map in thousands of
+  dimensions.
+- **Training.** Training follows a slope downhill. **Loss & gradient descent** applies the same
+  update to both parameters, w and b, of a fitted line instead of to one isolated w.
+- **Sampling and losses.** Sampling reads a distribution, and a loss adds log-probabilities.
+- **Classical models.** In **Classical machine learning**, naive Bayes multiplies a prior by
+  Gaussian likelihoods, and logistic regression reports σ(w·x + b) as P(y=1|x). **Stacking
+  neurons** uses the same sigmoid curve.
+
+### Why it matters
+
+Each calculation guards against a specific misreading:
+
+- A large dot product can come from length rather than alignment.
+- On the convex bowl, a step size η above 0.5 overshoots the minimum on every step.
+- A likelihood stays a product of tiny fractions until a logarithm turns it into a sum.
+- Reading the likelihood alone misjudges a rare class; Bayes' rule keeps the prior in the answer.
+- A Gaussian's height is a density, not a probability, so it can exceed 1.
+- Descent can settle in a shallower valley rather than the global minimum.
+
+### What you will be able to explain
+
+- Read a dot product as a weighted sum of features, and a matrix as the map behind Wx + b.
+- Say what a derivative, a gradient step, a conditional probability and a logarithm each change in
+  a calculation.
+- Tell a convex bowl from a tilted double well without treating local minima as mythology.
+- Use Bayes' rule to turn a prior and a likelihood into a posterior, read a Gaussian's mean and
+  variance, and turn a logit into a probability with the sigmoid.
+
+### What the lab shows
+
+Every readout comes from fixed 1-D or 2-D formulas: no model is trained and nothing is measured.
+Two quantities are found numerically rather than in closed form: bisection finds the minima shown
+in **Nearest minimum** and marked on the plot of L(w), and numeric integration finds the area
+within μ ± σ.
+
+The two loss surfaces are printed formulas, and the probability count table, its likelihoods and
+the four-number Gaussian sample are authored. A gradient step changes only w, once per press of
+**Take a downhill step**.
+
+The six-way **Topic** control on the **Topic picker** card chooses which widget the **Active
+refresher** card mounts, each with its own controls, such as **Nudge ε**, **Loss surface**,
+**Probability idea** and **Model q**. **Worked arithmetic** and **Live formula** reprint the same
+live numbers in words and in closed form.
+
+The key experiment is on optimization: set **Loss surface** to *two wells*, leave **Step size η**
+at its default 0.15, start **Parameter w** at 1.4 and then at −1.4, and press **Take a downhill
+step** repeatedly. The two starts settle in different valleys; on the *convex bowl* both reach the
+one minimum.
+
+## What it is
+
+A vector is an ordered list treated as a point or an arrow. The dot product is the sum of paired coordinates, equal to |a||b|cos θ, and it is also the linear score w·x. A matrix is a linear map: each output coordinate is a row dotted with the input. A linear layer is y = Wx + b, affine unless b = 0.
+
+A derivative is the local slope. The gradient of a loss is the direction of steepest increase; descent steps the other way. A probability is a non-negative share in a set that sums to one. Conditional probability P(y|x) restricts that set. Likelihood is the probability the model assigned to the data you saw. A logarithm turns a product into a sum. Cross-entropy is expected surprise of p under q.
+
+`topic` selects which identity this page focuses.
+
+### Four representations, one number
+
+Each widget shows the same calculation as words, a picture, a tiny table or walk-through, then a closed form. If those four disagree, the page is wrong.
+
+### A derivative by hand
+
+On f(x) = x² at the default x = 1.2, f = 1.44 and the tangent slope is 2x = 2.4. Nudge by the default ε = 0.4: f(1.6) = 2.56, so the secant slope is (2.56 − 1.44) / 0.4 = 2.8. That is exactly 2x + ε = 2.4 + 0.4.
+
+Shrink the nudge to ε = 0.05 and the secant reads 2.45. The gap to the tangent is the nudge itself, so the derivative is the number the ratio settles on as ε goes to zero. In training the thing you nudge is a parameter, and the slope it returns is the gradient.
+
+### A matrix by hand
+
+Take the default W = [[1, 0.4], [0, 1]], x = (1, 0.2), and b = (0.2, 0.1). Row one dotted with x is 1·1 + 0.4·0.2 = 1.08, and adding 0.2 gives 1.28. Row two is 0·1 + 1·0.2 = 0.2, and adding 0.1 gives 0.30. So Wx + b = (1.28, 0.30).
+
+The determinant is 1·1 − 0.4·0 = 1, so areas keep their size: this W shears the square sideways rather than stretching it. Each output coordinate is one row of W dotted with x, which is why a linear layer is a bank of dot products.
+
+### A logarithm by hand
+
+Set True p = 0.25 and Model q = 0.60. Under q the two outcomes surprise by −ln 0.60 = 0.511 and −ln 0.40 = 0.916 nats. Weighted by the truth, H(p,q) = 0.25·0.511 + 0.75·0.916 = 0.815.
+
+The truth's own entropy is H(p) = 0.25·1.386 + 0.75·0.288 = 0.562. The gap is KL = 0.815 − 0.562 = 0.253, the price of believing q when the world is p. Move q onto p and the gap closes to 0. Because a log turns a product into a sum, a loss adds terms like these instead of multiplying tiny fractions.
+
+### Bayes' rule: prior, likelihood, posterior
+
+Bayes' rule updates a belief: P(y|x) = P(y) P(x|y) / P(x). The prior P(y) is what you believed before seeing x. The likelihood P(x|y) is how probable x is if y holds. The evidence P(x) rescales the result so the posterior sums to one.
+
+On the count table, P(x=1|y=1) = 3/4 and P(x=1|y=0) = 1/4. At the table's own prior of 0.50 the posterior is 0.75. Lower the prior to 0.10 and the same evidence only reaches 0.25. In odds form, posterior odds = prior odds × 3, so a rare class needs strong evidence.
+
+### Mean and variance: the two numbers of a Gaussian
+
+The mean is the average, the center of the bell. The variance is the average squared distance from the mean, and its square root σ is back in the units of x. For the sample −1, 0, 1, 2 the mean is 0.50 and the variance is 1.25.
+
+A Gaussian N(μ, σ²) is fixed by those two numbers. About 68% of its area lies within one σ of μ, and its height is a density, not a probability. Naive Bayes in Classical machine learning fits one such pair per class and per feature.
+
+### From logit to probability
+
+A logit is any real number z. The sigmoid σ(z) = 1/(1 + e^−z) maps it to a probability between 0 and 1, with σ(0) = 0.5, and the logit is the log-odds ln(p/(1−p)). With two classes, softmax is the sigmoid of the logit gap: P(A) = σ(A − B), so shifting both logits changes nothing.
+
+Logistic regression computes z = w·x + b and reports σ(z) as P(y=1|x). The curve is drawn here before Stacking neurons uses it.
+
+## Why it’s here
+
+Later modules need a shared arithmetic, not a new metaphor each time.
+
+The 1-D loss surface is here so “local minimum” is a stationary point you can occupy, not a legend about deep nets.
+
+Bayes' rule, the Gaussian's mean and variance, and the sigmoid are here because Classical machine learning uses them without stopping to teach them.
+
+## How to play with it
+
+Topic is a six-way control. The original deep-link strings still work; optimization is the extra surface.
+
+On vectors, edit a and b and recompute the product table. On matrices, move W, b, and x. On derivatives, move x and shrink Nudge ε; the secant on x² is exactly 2x+ε. On optimization, switch Loss surface, then Take a downhill step.
+
+On probability, Probability idea has four views. In counts and softmax, read P(y=1|x) from the counts, then raise a logit. In Bayes' rule, lower Prior P(y=1) and watch the posterior fall while the likelihoods stay put. In mean and variance, press Fit μ and σ² to the sample, then raise Variance σ². In logit to probability, raise Logit A and Logit B together. On logarithms, move True p and Model q until KL is near 0.
+
+## What to notice
+
+- Cosine isolates angle; the raw dot product still mixes length. The foot of the dotted drop is the projection onto b.
+- Distance |a − b| is the straight-line gap between the two arrow tips, the length of a − b. It is 0 only when a = b, and unlike cosine it changes when you stretch an arrow without turning it. Nearest-neighbor methods rank by it.
+- The columns of W are where (1, 0) and (0, 1) land, det W scales area, and b translates the whole parallelogram. A stack needs a nonlinearity before it can bend.
+- For f(x)=x² the gap between secant and 2x is exactly ε.
+- The tilted well has two valleys of different depth, near w = −1.04 (L ≈ 0.24) and w = 0.95 (L ≈ 0.94). Settling in the shallower one is a real local minimum. On the bowl, L'' = 2, so η above 0.5 overshoots each step. That 1-D picture does not describe a high-dimensional network.
+- Softmax is bookkeeping. Likelihood of A,A,B is P(A)²P(B). Cross-entropy equals entropy only when q = p.
+- A rare class stays rare. At a prior of 0.10 the same 3-to-1 evidence lifts the posterior only to 0.25, because posterior odds = prior odds × likelihood ratio.
+- Raising the variance widens the bell and lowers its peak, since the area is fixed at 1. A density can exceed 1 when the variance is small. A probability cannot.
+- Two-class softmax is the sigmoid of the logit gap. Raising both logits by the same amount leaves P(A) unchanged.
+
+## Where it breaks
+
+In this lab the widgets are 1-D or 2-D closed forms. The parabola is y = x² sampled at 81 points. The two loss surfaces are the formulas printed on the card. Counts in the probability table, its likelihoods, and the four-number Gaussian sample are authored.
+
+In the real mechanism, a Bayes update multiplies many estimated likelihoods rather than reading one from a table, and the posterior still depends on a prior you must justify. A Gaussian is one shape among many, and real features are often not bell-shaped.
+
+Automatic differentiation traces a much larger graph. Discrete samples have no derivative until you choose a surrogate. A production layer is the same Wx+b in thousands of dimensions. High-dimensional loss geometry is not a double well, and “all local minima are terrible” is the mythology this page refuses.
+
+## Going deeper
+
+Data, features, and representation constructs vectors from a table. Classical machine learning uses Bayes' rule and Gaussian means and variances in naive Bayes, and the sigmoid in logistic regression. Tokens & embeddings and Attention reuse the dot product. Loss & gradient descent is the slope widget with a real parameter.

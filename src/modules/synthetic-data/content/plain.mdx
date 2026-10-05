@@ -1,0 +1,269 @@
+---
+objectives: ["Describe synthetic data as model-generated text that becomes another model's training set", "Explain model collapse as the loss of rare patterns when models train on finite samples of their own output", "Judge a filter or verifier by what it keeps and what it can never restore", "Explain what a fixed, stronger teacher changes: it breaks the loop and can add patterns the seed lacked, but only what it knows"]
+terms: ["Synthetic data", "Seed data", "Recursive training", "Model collapse", "Tail", "Finite-sample error", "Temperature", "Distribution narrowing", "Verifier", "Rejection sampling", "Data accumulation", "Contamination", "Teacher model", "Held-out coverage"]
+---
+
+## The big picture
+
+Some of the text that AI models learn from was never written by a person at all, because another AI model wrote it. This module is about what happens when one model's writing trains the next model, whose writing then trains the model after that, round after round.
+
+If you have used a chatbot, you have seen how quickly it can fill a page. Text like that is cheap to make and there is no limit to it, while more of the web is written by models every year. So the text future models learn from will include model-written text, sometimes by accident when text is gathered from the web. Sometimes it is on purpose, when people use one model to write practice examples for another.
+
+This matters because, done carelessly, the loop quietly drains away the rarest patterns in the text, a little more each round, and nothing inside it can bring them back. The writing can even look cleaner while this happens, which makes the damage hard to spot. Done with care, model-written text can genuinely help, and the lab shows what that care looks like.
+
+By the end of this lesson, you will be able to explain:
+
+- what **synthetic data** is: text that a model wrote, which then becomes the training text for another model;
+- why models trained on their own writing, round after round, lose their rarest patterns first, which is called **model collapse**;
+- how to judge a filter that checks model-written text, by asking what it keeps and what it can never bring back;
+- what changes when a fixed, stronger model does the writing: the loop breaks and new patterns can come in, but only patterns that the stronger model has.
+
+In the lab, a very small model learns which letter tends to follow which, using eight short sentences that people wrote about the weather in a harbor town. You run ten rounds of the loop and watch three things change. A chart shows how much variety is left, a grid crosses out the letter pairs that are lost, and a sample shows what each round writes.
+
+You can also keep or drop the human sentences, switch on a spelling filter, and make the model lean harder on its likeliest letters or spread its picks out. Other controls change how much text each round writes and hand the writing job to a stronger model. Every number in the lab is worked out for real, and the chart shows eight separate runs for each setting along with their average.
+
+A few parts of the lab are fixed and kept small on purpose. The stronger model is the same kind of tiny letter-pair table, trained once on about four times as much harbor text and never changed. The spelling filter only checks words against the 57 different words in the human notes. One measure tests each model on extra harbor sentences that no model ever trains on. The model is tiny, but the reason it loses patterns carries over to much larger models.
+
+## What it is
+
+### Text that a model wrote
+
+**Synthetic data** is training text that a model wrote rather than text that people wrote and someone collected, and the word "synthetic" means made rather than found. This lab is built around a loop: train a model, let it write the training text for the next model, train that one, and repeat. Repeating this round after round is called **recursive training**, and the lab runs ten rounds of it.
+
+Each model in the chain is called a **generation**, and the lab counts them from 0. The first model, the one that learns from human writing, is generation 0. The model trained on its writing is generation 1, the model trained on generation 1's writing is generation 2, and so on up to generation 10. The lab's **Generation** slider picks which one you are looking at.
+
+The loop has to start somewhere, so the first model learns from human writing. Here that is 499 characters of harbor notes, where a character is any single letter, space or full stop. The notes are eight short sentences, and the first one reads "the morning fog settles over the harbor and the air feels cool." This starting text is called the **seed data**, because every later round grows out of it, the way a plant grows from a seed.
+
+### The model: a table of letter pairs
+
+The model in this lab is about as simple as a model of language can be. It reads the seed one character at a time and counts, for every character, which character came straight after it. In the seed, `t` is followed by `h` 21 times, which makes sense in text full of the word "the". The letter `q` shows up only once, in the word "quiet", so the pair `q` then `u` was seen exactly once.
+
+Those counts go into a grid with one row for each character and one column for each character that might come next. The lab's alphabet has 30 symbols: the 26 letters, the space, the full stop, and two spare symbols that never get used. That makes a 30 × 30 grid with 900 boxes, and a grid like this, built from pairs, is called a **bigram table**, where "bi" means two. The grid you see on screen later leaves out the two spare symbols, so it has 28 rows and 28 columns.
+
+To turn counts into chances, which the lab's notes call probabilities, the model divides each box by the total for its row. After `q`, the only thing the seed ever shows is `u`, so the chance of `u` after `q` is 1 out of 1, which is 100%. In the `t` row, `h` holds 21 of the 46 counts, which gives `h` a probability a little under half, while `e`, `o` and others share the rest. Building a table this way from some text is what the lab calls **fitting** a model to that text.
+
+Each different pair, such as `t` then `h`, is called a transition, and the seed holds 157 different ones. The chart's **Transitions** measure counts how many different pairs are still in a round's training text, which tells you how much variety that round's model has left.
+
+### How the model writes
+
+To write, the model acts as if it has just seen a space, and it picks the next character from the space's row. The pick works like a spinner whose slices are sized by the probabilities. A likely letter has a big slice and gets picked often, while a rare one has a thin slice and is easy to miss. Then the model moves to the row for the character it picked and picks again, so it builds text one character at a time. Because it only ever looks one character back, it often glues pieces of real words together into words that do not exist.
+
+For example, it can write `theze`, even though that word appears nowhere in the notes. Every step in it is a real pair from the seed: `t` then `h`, `h` then `e`, `e` then `z` from "freezes", and `z` then `e`. That is why only about 7% of the words the first model writes are real words from the seed, even though every pair it writes is real.
+
+One rule follows from all this, and it drives everything that happens in the lab. If a pair never appears in a model's training text, its box holds a count of zero, which gives it a probability of zero. A model can never write something it gives zero probability, so a table built by counting can only write pairs that its training text showed it. A table trained in a different way, like the teacher you meet below, works a little differently, as the lab will show.
+
+### The marble jar picture
+
+Picture a jar of coloured marbles, where each colour stands for one letter pair and common pairs have many marbles. You draw a handful, then fill a fresh jar with marbles in the same colours and the same mix as your handful, then repeat with each new jar. A colour that misses one handful is gone from every jar after it, and rare colours with only a marble or two are the likeliest to miss.
+
+Here is where the picture stops matching: a model does not copy its handful of text letter for letter. Instead, it learns the odds of what follows each character and writes fresh text from those odds. So it can invent new words, but it can never invent a new pair, and that is the part of the picture that matters here.
+
+### Two ways to build each round's training text
+
+The **Training data** control decides what each new model is fitted to, and it has two settings.
+
+- **Synthetic only**: each round's training text is only the newest batch, the one the previous model wrote, while the human notes train only generation 0 and are then dropped.
+- **Real + synthetic**: each new batch is added to the human notes and to every earlier batch, instead of replacing them. Keeping the original data and adding to it like this is called **data accumulation**.
+
+In the marble picture, Real + synthetic means pouring the original jar's marbles into every new jar as well, so no colour from the original jar can ever disappear.
+
+### Who does the writing
+
+The **Generator** control decides who writes each round's text, and it also has two settings. With **The model itself**, each round's model writes the next round's text, which is the loop described above. With **A stronger teacher**, a separate model does all the writing instead, and a model used like this is called a **teacher model**.
+
+The teacher is the same kind of letter-pair table, but it learned from much more text. On top of the 499 characters of human notes, it learned from 1,515 more characters of harbor notes that the student never sees. That makes 2,014 characters in all, about four times as much as the seed.
+
+The teacher was trained once and is never changed after that. Instead of counting, it was trained with a method the lab calls SGD, which improves a table's numbers in many small steps. One side effect of training this way matters later: SGD never gives any pair a chance of exactly zero.
+
+The student is the same counting table as before, and it never sees the teacher's extra notes. It only sees the text the teacher writes, along with the human notes when **Training data** is on Real + synthetic. In the marble picture, the teacher is a much bigger jar that every handful comes from, and it is never swapped for a jar built from a handful. A colour missing from one handful can still turn up in the next.
+
+## Why it’s here
+
+The problem this lab is built around is what happens to rare patterns when each model learns from a limited amount of another model's writing.
+
+### Small samples miss rare things
+
+Every batch of text has a fixed length, and a sample of fixed size can miss rare things purely by chance. Think back to the pair `q` then `u`, which the seed contains only once. A pair that rare turns up about once in every 500 characters the first model writes, so a 500-character batch often misses it. The common pair `t` then `h` turns up about 20 times in a batch that size, so it is almost never missed.
+
+The gap between the true odds and what a limited sample happens to contain is called **finite-sample error**, where "finite" means limited. If you drew a bar graph of the seed's pairs from most common to least common, the rare ones would form a long, low stretch at the end. That stretch of rare patterns is called the **tail**, and it is where finite-sample error does its damage.
+
+### One miss is forever
+
+Under Synthetic only, each new model is fitted to the last batch and nothing else. If a batch misses `q` then `u`, the next table has a zero in that box, so the next model can never write that pair. From then on, that pair is missing from every batch that follows, however many rounds you run. One unlucky miss becomes permanent, while every round gives the remaining rare pairs another chance to be missed. This slow, one-way loss of variety, with the rarest patterns going first, is called **model collapse**.
+
+Picture a family that makes a fresh recipe book every year by copying only the recipes it cooked that year. Pancakes are made every week, so they always make it into the new book. A plum cake that someone bakes only now and then might skip a year by chance. If it does, it is missing from the next book, so nobody bakes it the year after either. It is gone for good, and the books get a little plainer each time this happens. Unlike the family, a model does not copy whole recipes. It mixes pieces it has seen into new ones, but it still cannot bring back a piece that went missing.
+
+The same thing carries over to real models, although their tail is not rare letter pairs but rare facts, uncommon dialects and unusual cases. A model trained only on another model's limited output ends up with too few of exactly those things.
+
+### The same rule points to the fixes
+
+The same zero-chance rule also tells you what can stop the slide, and the lab tries out two ways of doing it. If the human notes stay in every round's training text, their pairs always keep a count above zero, so none of them can be lost. If the writer is instead a fixed model that covers more pairs than the student, the student's misses never reach the next round, because the student never writes anything. Meanwhile, the writer's extra pairs can flow into the student's training text.
+
+Picture two different ways you might practise speaking a new language. In the first, a chain of learners each learns only from the one before. Any word that one learner happens never to say is never heard by the next, so it is gone from the chain for good. In the second, everyone practises with a fluent speaker who never changes, so a word you happen to skip can still come up in the next conversation. You can also pick up words you never heard before, though only words that speaker uses.
+
+The rule also shows the limit of filters, which are checks that throw away bad-looking text before it is used for training. A filter can remove text, but it cannot add a pair the writer never writes, so it can make the text look cleaner without bringing back any lost variety. The lab lets you test all three of these ideas for yourself, one control at a time.
+
+## How to play with it
+
+When the lab opens, it is set up like this:
+
+- **Generation** is at 5, on a slider that runs from 0 to 10.
+- **Training data** is on **Synthetic only**, and **Measure** is on **Transitions**.
+- **Generator** is on **The model itself**, and **Filter** is on **No filter**.
+- **Temperature**, which controls how boldly the model picks its letters, is at 1.0, which the slider labels "as fitted". Step 4 explains it.
+- **Sample size**, how much text each round writes, is on **500 chars**, where "chars" is short for characters.
+
+The five steps below follow the lab's own steps and walk through its comparisons in order.
+
+### Step 1: read one generation
+
+Set **Generation** to 0 and look at the card called **What a generation writes**. It shows the first 240 characters that one run of the model writes, and at generation 0 that is the model fitted to the human seed. Even this first model mostly writes made-up words, because it only looks one character back. The **Real words here** readout shows how few of its words are real seed words.
+
+Now set **Generation** to 1 and compare the new sample with the one from generation 0. The **Trained on** readout changes from 499 human characters to 500 synthetic ones. This model learned only from text the first model wrote, and it never saw a word of the human notes.
+
+### Step 2: let the loop run on synthetic text only
+
+Keep **Training data** on **Synthetic only**, then drag **Generation** slowly from 0 to 10 while you watch the chart on the **Recursive training** card. Its line counts the different letter pairs left in each generation's training text, averaged over eight runs. At these settings, the line starts at 157 pairs at generation 0, which is every pair the seed contains. After one round it drops to 125, and after two rounds it is down to 105. The fall then slows down, and the line reads 75 at generation 5. By generation 10, only 51 pairs are left, about a third of where it started.
+
+The biggest drops come first, because that is when there are the most rare pairs left to miss. The chart draws each of the eight runs as a thin line and their average as a thick line. Each run makes its own random picks, so the eight runs come out a little different. The legend calls the eight thin lines "sampling seeds", because each run uses its own sampling seed, a number that decides which random picks that run makes. It has nothing to do with the seed data.
+
+The eight thin lines end between 46 and 58 at generation 10, so the drop is not the bad luck of one run. Both settings are always on the chart: Synthetic only is drawn as a solid line and Real + synthetic as a dashed one. **Training data** only changes which one is drawn more strongly and which setting the grid and sample cards follow. So for now, the dashed line sitting flat at 157 is the other setting, which Step 3 explains. Below the chart, the **Seed (generation 0)** readout shows the starting value, while the two readouts that begin with "Gen" show each line's average at the generation you picked.
+
+Now look at the card called **Which transitions survive**, which shows the same loss pair by pair. It is a grid with one row for each current character and one column for each next character, with the space shown as ␣. It has 28 rows and 28 columns, and it draws only the 157 pairs that appear in the seed, so pairs the seed never used are left blank. A filled box is a pair that is still present, and darker boxes are pairs the seed used more often. A box with a line through it is a pair that is lost, which the key below the grid marks as "crossed".
+
+Hover over a box to see its pair and how often the seed used it. The box for `t` then `h`, for example, says it was seen 21× in the seed. As you step from generation 1 to 10, watch the crossed boxes spread from the pale ones toward the dark ones.
+
+### Two more views of the same loss
+
+The **Measure** control changes what the chart's line shows, and two of its options look at the same loss in other ways.
+
+**Coverage** asks how much of the seed text the model could still write. Here a common pair counts many times, once for every time it appears in the seed. So `t` then `h` counts 21 times, while `q` then `u` counts just once. Under Synthetic only, Coverage starts at 100% and falls to 58.9% by generation 10.
+
+That is far less of a drop than the Transitions line shows, which keeps only 51 of its 157 pairs, about a third. The reason is that the pairs lost first are rare ones, and rare pairs fill only a small slice of the text.
+
+**Entropy** measures how unpredictable the next character is, which is another way to see how much choice the model still has. It is counted in units called nats, and two everyday examples give a feel for the scale. A fair coin flip has about 0.69 nats of uncertainty, while a roll of a fair six-sided die has about 1.79. The first model scores 1.787, which is about as unpredictable as a die roll.
+
+By generation 10 under Synthetic only, entropy is down to 0.912, closer to picking between two or three equally likely options. The full spread of chances across all the possible next characters is called a distribution. When entropy falls like this, the chances are bunching up on fewer and fewer likely letters, which is called **distribution narrowing**.
+
+### Step 3: keep the real data
+
+**Try this:** set **Measure** back to **Transitions**, then switch **Training data** to **Real + synthetic**, where each round adds to the human notes instead of replacing them. Drag **Generation** from 0 to 10 again. With **The model itself** writing, the line stays flat at 157 in every round and every run, while Coverage, if you check it, stays at 100%. Because the seed is part of every round's training text, each of its pairs always has a count above zero, so none can be lost.
+
+Now switch **Measure** to **Entropy** while staying on Real + synthetic. Here entropy still drifts a little, from 1.787 down to 1.713. Each new batch is a small sample, so its mix of pairs is a little off from the model's odds. A rare pair that should turn up about once in a batch is missed completely about a third of the time, and now and then it shows up twice. Its share of the growing pile wobbles up and down, and round after round these random wobbles tend to leave the odds leaning toward the common pairs. Keeping the seed stops pairs from being lost, but it does not stop the odds from tilting slowly toward the common ones.
+
+### Step 4: filter and sharpen
+
+Next, on the **Generator and filter** card, set **Filter** to **Real words only**. That switches on a **verifier**, a check that accepts or rejects pieces of model-written text before they are used for training. This one keeps a word only if it is one of the 57 different words in the seed, and throws everything else away. In the **What a generation writes** card, the words it would reject are struck through, and the **Filter keeps** readout shows what share of the characters survive.
+
+Then set **Measure** to **Real words**, which shows what share of each round's own writing is made of real seed words. Drag **Generation** under both **Training data** settings, and then switch **Measure** back to **Transitions** to see what the filter did to the variety underneath.
+
+Now, with the filter still on, lower **Temperature** to 0.6 and watch **Transitions** under both **Training data** settings again. Under Synthetic only, Transitions crash to just 4 by generation 5, while Real words reaches 100%. Under Real + synthetic, all 157 survive.
+
+**Temperature** controls how the model picks from its odds, and the note on the **Generator and filter** card gives the rule. When the model picks its next character, the lab raises every probability to the power 1/T, where T is the temperature. Then it rescales them all so they add up to 100% again.
+
+Here is a worked example with made-up odds, where after some letter the table gives `e` a 75% chance and `a` a 25% chance. Suppose you set **Temperature** to 0.5, so 1/T is 2, which means every chance gets squared.
+
+1. As decimals, the chances are 0.75 and 0.25.
+2. Squared, they become 0.5625 and 0.0625.
+3. Those add up to 0.625, so you divide each one by 0.625 to make them add up to 1 again.
+4. That gives 0.9 and 0.1, so `e` now gets 90% of the picks and `a` gets only 10%.
+
+So a temperature below 1 makes the likeliest letter even likelier, which the slider labels "sharper". At exactly 1, the odds are used as fitted, and above 1 they are evened out, which the slider labels "flatter".
+
+To see the flatter case, imagine a temperature of 2, which is past the slider's top setting of 1.2. Then 1/T is 1/2, which means taking square roots. The chances 0.75 and 0.25 become about 0.87 and 0.5, and after rescaling they are about 63% and 37%, so the odds are closer together than 75% and 25% were.
+
+A chance of zero stays zero at any temperature, because zero raised to any power is still zero. So temperature changes which text gets written, but it never adds a pair that the table lacks.
+
+### Step 5: bring in a stronger teacher
+
+For the last step, set **Temperature** back to 1.0, **Filter** back to **No filter**, and **Measure** to **Unseen text**. The numbers below were measured at those settings, so your screen will only match them if you reset all three. This measure tests each round's model on 586 characters of extra harbor sentences that no model in the lab ever trains on, not even the teacher. One of them reads "the fog lifts from the bay and the boats leave the harbor one by one." The measure asks what share of the letter pairs in those sentences the model could write at all. That score is called **held-out coverage**, where "held out" means kept out of training.
+
+The model fitted to the human seed scores 92.6%, because a few pairs in the test sentences never appear in the seed. With **The model itself** writing and **Synthetic only**, the score falls to 55.6% by generation 10.
+
+Now switch **Generator** to **A stronger teacher** and **Training data** to **Real + synthetic**, then drag **Generation** again. This time the line rises instead of falling, because the teacher keeps writing pairs that the seed never had. It reads 96.2% after the first round and passes 98% by generation 3, and it ends at 99.4% at generation 10.
+
+Switch **Training data** to **Synthetic only**. Now the teacher's line dips at generation 1, to about 88%, and then stays level instead of sliding further. Then set **Sample size** to **2000 chars** and compare the two writers at generation 10 by switching **Generator** back and forth. The teacher's student reaches 97.5% without any human text in any round, while the model itself, on the same settings, has decayed to 80.7%.
+
+Last, set **Sample size** back to **500 chars**, keep the teacher, and set **Filter** to **Real words only**. Then watch what the filter does to the teacher's gain under both **Training data** settings.
+
+## What to notice
+
+- **The rare pairs go first**, as the three bars under the grid in **Which transitions survive** show by grouping pairs by how often the seed used them. The grid shows run 1 of the eight. At generation 10 with the other settings at their defaults, that run has lost 63 of the 72 pairs the seed used only once. Of the 58 pairs seen 2–4 times, it has lost 35. Of the 27 pairs seen five or more times, it has lost only 8, so finite-sample error is eating away the tail first.
+- **With the model itself writing, nothing new ever shows up**, so the grid only loses boxes and, under Synthetic only, the Transitions line never rises in any run. Every pair a model writes had to be in its own training text, so this loop can lose pairs but can never gain them.
+- **Bigger samples slow the loss down, but they cannot stop it.** Under Synthetic only, about 34 transitions are left at generation 10 when **Sample size** is **250 chars**. With **2000 chars**, about 109 are left, because a bigger batch gives each rare pair more chances to be drawn.
+- **Lower temperature speeds the loss up.** It makes the likeliest letters even likelier, which leaves the rare pairs with even thinner chances, so each batch misses more of them. With **Filter** on **No filter**, the average at generation 10 falls to about 11 transitions at **Temperature** 0.8. At 0.6, every run ends up writing `the the the` by generation 6. That loop uses only four pairs: `t` then `h`, `h` then `e`, `e` then a space, and a space then `t`. That is distribution narrowing taken all the way to its end. At 1.2, the loss slows to 73 pairs, but it still does not stop.
+- **A filter can make the text look better while making it worse.** Under Synthetic only, the Real words verifier throws away about 95% of the first round's draft. It then pushes **Real words** above 99%, while Transitions fall to 16, fewer than the 51 left with no filter at all.
+
+  That sounds odd, since real words are made of real pairs. But a model that picks one letter at a time gets a word right mostly by luck. So nearly everything the filter keeps is short, common words such as `the`, `a`, `in` and `by`. Longer words like `quiet` or `freezes` almost never come out spelled right, so the pairs inside them never reach the next model, and it loses them at once. The text `the the the` scores 100% on Real words, which shows how a word check rewards repetition.
+- **Keeping the human text in every round is what protects the variety.** Under Real + synthetic, the same filter lifts Real words from about 7% to 82%, and all 157 transitions survive. Filtered model-written text plus the original data is the combination that helps.
+- **A fixed writer stops the slide, even with no human text in the mix.** With the teacher on Synthetic only, Unseen text stays level from generation 1 instead of falling. The teacher is never refitted to a student's mistakes, so a pair that one student misses can still turn up in the next batch.
+- **A level line is not the same as a high line.** At the default sample size, the teacher's Synthetic only student sits near 87%, below the 92.6% of the model fitted to the human notes. That is because a single batch from the teacher, like any limited sample, still misses some of the pairs the teacher could write. At **2000 chars** the same student reaches 97.5%, higher than the seed model's own score, with no human text in any round.
+- **A filter built from the human notes throws the gain away.** With the teacher writing and **Real words only** on, Synthetic only scores 42.2% on Unseen text at generation 1. Real + synthetic, which reached 99.4% without the filter, now ends at 93.0%. The teacher's extra pairs show up inside words, mostly made-up ones. A word that holds a pair the seed never had cannot be one of the seed's 57 words. So a filter built from the seed rejects the very text that carries the teacher's gain.
+- **A teacher can pass on only what its own training gave it.** The human notes plus the teacher's extra notes cover 99.5% of the pairs in the test sentences, which is roughly the most this teacher can pass on. Under Real + synthetic, **Transitions** can even climb past the 258 pairs in the teacher's data, to 275 at generation 10.
+
+  These extra pairs are not knowledge. SGD never pushes a chance all the way to zero, so the teacher spreads about 1% of its odds across the pairs its data never contained. Some of them leak into its writing. With big samples, a few of those happen to match test pairs by luck. That is why Real + synthetic at **2000 chars** can edge just past 99.5%, to 99.7%.
+
+Picture a writing contest where the judge scores essays only on spelling. An essay that says "the the the" all the way down the page would get full marks, while a lively essay with one typo would lose points. That is the Real words filter: it measures one narrow kind of quality, and it can push that score up while the variety underneath drains away.
+
+## Where it breaks
+
+### What this lab simplifies
+
+Everything on screen is computed rather than faked, from real random sampling, real refits and eight runs per line, so the lab's limits come from its small size. The model looks one character back and holds 900 numbers, while the seed is 499 characters long and the loop runs for only ten rounds.
+
+**Real words** is a spelling check against the 57 words in the seed, not a measure of quality. It cannot tell a sensible sentence from nonsense made of real words, and as `the the the` shows, it rewards repetition.
+
+This model is fitted by counting, so a missed pair drops to exactly zero. A table trained step by step with SGD keeps at least a tiny chance on every pair, so it never reaches exactly zero. Retrained on its own writing, a table like that drifts toward random jumble instead, writing pairs the seed never had while getting worse at predicting the real text. That is a second way the same loop goes wrong, and this lab does not show it.
+
+The teacher is a letter-pair table too, trained on four times as much text as the seed. It is stronger only in which pairs it covers, and in nothing like understanding.
+
+**Unseen text** asks only whether a pair can be produced at all, not how likely it is, so it rewards covering pairs rather than getting their odds right. The test sentences were written by hand in the seed's style and share its theme, as the teacher's extra notes do, so the test stays on familiar ground.
+
+The grid and the sample card show only run 1, and the sample is a single 240-character excerpt, while the chart averages eight runs over longer samples. A single run or excerpt can look better or worse than the average.
+
+### Where the real mechanism fails
+
+Real models have no letter-pair tails, but they do have a tail of rare facts, uncommon dialects, unusual styles and edge cases. The mechanism is the same: what a limited sample misses, the next model does not learn. Making model-written data look "clean" by favouring the likeliest words, which is what a low temperature does, speeds that loss up. Other settings that cut off unlikely words do the same.
+
+**A common mix-up:** "If model-written data is causing trouble, filter it harder." A filter can only throw text away, so it cannot bring back a pattern the model stopped writing, and a strict filter can make the loss faster. In the lab, the Real words filter left 16 transitions where no filter left 51. What protects variety is keeping the real data in every round, which is what Gerstgrasser and colleagues found in 2024 for the real models they tested.
+
+There is a second risk, called **contamination**, which involves benchmarks: standard tests that people use to score and compare models. A model that saw a benchmark's questions during its own training can write them back out in its synthetic text. Private text from the model's own training data can reappear in the same way.
+
+A copied test question reads perfectly well, so it passes any filter that only checks for fluent writing. A model trained on that text has then seen the test before taking it, so its score on that test means less. That is why model-written data needs the same checks for leaked test material, called decontamination, as text gathered from the web.
+
+Picture a class whose practice worksheets were written by someone who had seen the final exam. If a few exam questions slip onto the worksheets, a high score on the exam says less about what the class can really do.
+
+## Going deeper
+
+### Where synthetic data works
+
+The success stories pair a strong writer with a checker that can tell right from wrong. Computer code is kept only if it runs and gives the right results on a set of test cases, and math is kept only if the answer is right. Worked reasoning can be kept only when it reaches a correct result, which a 2022 method called STaR did. Drafting many attempts and keeping only those that pass is called **rejection sampling**, and the share you throw away is its cost. In this lab, at generation 1, the Real words filter keeps only about one character in twenty.
+
+### What a verifier can and cannot do
+
+A verifier shifts the kept text toward outputs that pass its check, but it cannot restore an output that the writer never produces. Variety has to come from somewhere else, such as the requests the writer is given, the seed data, or fresh human writing.
+
+### A stronger model as the writer
+
+Training a smaller model on a larger model's writing is also synthetic data, with the larger model as the writer, which is what the **Generator** control acts out. A well-known example is Stanford's Alpaca, whose team started from a LLaMA model labelled 7B, meaning it holds about 7 billion adjustable numbers. By comparison, this lab's whole table holds only 900 numbers.
+
+The Alpaca team trained that LLaMA model further on 52K, or about 52,000, examples of following instructions, each one a request paired with a reply. OpenAI's text-davinci-003 model wrote those examples, and paying to use it cost the team less than $500. As in the lab, the student can reach only as far as its teacher.
+
+### Whose rules the student inherits
+
+The Alpaca authors released it for academic research only, and they gave two reasons. They pointed to LLaMA's non-commercial licence, which ruled out using it to make money, and to text-davinci-003's terms of use. Those terms forbid developing models that compete with OpenAI (Stanford CRFM, 2023). Synthetic data carries the licence and rules of the model that wrote it.
+
+### Keep the original
+
+Adding new text to the old instead of replacing it is data accumulation, and it is the whole difference between the two lines on the chart. Shumailov and colleagues showed that the rare parts of the original data disappear when models train on model-written text. Their 2024 paper in the journal Nature uses the name model collapse. Gerstgrasser and colleagues found that keeping and adding to the original data avoided it in the models they tested.
+
+### Connections
+
+The Building a dataset lab covers removing repeated text and leaked test material, and both apply to model-written text too. Train one from scratch trains the same kind of table with SGD instead of counting. The Distillation & pruning lab trains a small model against a large model's full odds rather than its sampled text. Evaluation is where a leaked benchmark question would show up.
+
+### Toy versus real
+
+- **Scale:** The lab writes 250 to 2000 characters per round, for ten rounds. Alpaca's data was 52K instruction-following examples, written by text-davinci-003 for less than $500 (Stanford CRFM, 2023).
+- **The teacher:** The lab's teacher is a letter-pair table trained on four times as much text as the seed. A real teacher is a far larger model, and the student's gain is limited by what the teacher has, as the roughly 99.5% limit shows here.
+- **Collapse:** The lab loses 106 of 157 pairs under Synthetic only and none under Real + synthetic. Shumailov and colleagues report that rare parts of the original data disappear when models train on model-written text. Gerstgrasser and colleagues found that accumulating data avoids this in their models.
+- **Checkers:** The lab's checker is a list of 57 words that keeps about 5% of the first round's draft. Real checkers run code on test cases, or compare answers with known right answers.

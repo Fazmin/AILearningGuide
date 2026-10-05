@@ -1,0 +1,681 @@
+---
+objectives: ["Explain why pretrained weights beat random ones on a small corpus", "Measure catastrophic forgetting rather than assume it", "Predict what freezing parameters does to adaptation and to forgetting", "Decide when fine-tuning is the right route and when prompting or retrieval should come first", "Use replay to protect old behaviour, and judge a fine-tune on target sentences it never trained on"]
+terms: ["Transfer learning", "Full fine-tuning", "Catastrophic forgetting", "Freezing", "Forward transfer", "Adaptation budget", "Replay", "Domain shift", "Prompt engineering", "Overfitting", "Evaluation set"]
+---
+## The big picture
+
+Imagine a small program that has learned to guess the next letter of weather reports, and now you
+want it to guess the next letter of cooking instructions instead. Training a program like this means
+letting it practise guessing on a text and adjusting its settings a little after each guess, so its
+later guesses improve. You could throw it away and train a new one from a blank start, or you could
+keep it and carry on training it on the recipes. This module is about the second choice, which is
+called fine-tuning, and about what it gains you and what it quietly costs.
+
+### Where you have met it
+
+Almost no AI model in real use is trained from scratch for its exact job. Instead, people start from
+a general model that has already learned from a lot of text, and then they adapt it to the job. For
+example, one step in building the chat model Llama 2-Chat was fine-tuning the general Llama 2 model
+on 27,540 examples that people had prepared.
+
+Fine-tuning is not the only way to adapt a model, and it is often not the first one to try. If you
+have ever added an example to show a chatbot the format you wanted, you have used the cheapest
+route. It changes the message you send, called the prompt, not the model itself.
+
+Another route lets a system look up documents when you ask a question, so the answer can use the
+current text and show you the passage it came from.
+
+### Why it matters
+
+If you could not reuse a trained model, every new job would need a model trained from nothing. That
+would throw away everything an existing model has already picked up, and it hurts most when you have
+only a little text for the new job. In this lab, a model started from zero begins as a blind
+guesser, while the model that already trained on weather notes starts well ahead.
+
+The catch is that a model like this is really one big table of numbers, and it has only one.
+Training it on recipes changes the same numbers that handled weather notes, so it can get worse at
+its old job while it gets better at the new one.
+
+If nobody measures that damage, a team can end up with a model that is better at one thing and
+quietly broken at another. A fine-tuned model can also look better than it really is when you only
+test it on the sentences it practised on.
+
+### What you will be able to explain
+
+By the end of this lesson, you should be able to explain each of these in your own words:
+
+- why a model that has already learned from one kind of text beats a blank one when the new text is
+  small;
+- how to measure forgetting as a number, instead of assuming that it happens or that it does not;
+- what freezing part of the model does, both to how well it learns the new text and to how much of
+  the old text it loses;
+- when fine-tuning is the right tool, and when a better prompt or a document lookup should come
+  first;
+- how mixing old text back into training protects old behaviour, and why you should judge a
+  fine-tune on new sentences it never trained on.
+
+### What the lab lets you do
+
+Everything in this lab, apart from the last card, is real training that runs live as you move the
+controls, so every number you see was measured, not made up. Six cards each show one part of the
+story:
+
+- **Transfer against training from scratch** races the model that already trained on weather notes
+  against one that starts from zero, on the same recipe text.
+- **Forgetting meter** measures that one fine-tuned model on both kinds of text at once, so you can
+  watch it get better at recipes while it gets worse at weather notes.
+- **Fine-tuning controls** holds the two sliders that decide how hard the training pushes, plus
+  three readouts that sum up the result.
+- **Layer freezing** lets you lock parts of the model so they cannot change, and shows which parts
+  moved.
+- **Replay and held-out target** mixes some old text back in and keeps some new sentences out, so
+  you can test the model fairly.
+- **Should you fine-tune? Rule of thumb** asks four yes-or-no questions and suggests a route, and it
+  is a hand-written guide, not a measurement.
+
+## What it is
+
+### The model you start from
+
+In *Train one from scratch* you met a tiny model that reads one character and guesses the next one.
+It works with 30 symbols: the 26 letters, the space, the dot that ends a sentence, and two bracket
+signs, `<` and `>`, that never appear in the texts here.
+
+All this model holds is a table of 900 numbers, called **weights**. Picture the table as a notebook
+with 30 pages, one page for each symbol, where each page lists 30 scores, one for every symbol that
+might come next. When the model reads `t`, it opens page `t` and converts those scores into odds for
+the next character. Because `h` so often follows `t`, page `t` gives `h` a high score.
+
+This lab trains its own model of that kind once, on a text called Harbor weather notes. It makes a
+fixed 60 full passes through that text, and each pass is called an **epoch**, so the model reads all
+eight Harbor sentences 60 times over. They sound like this one: “the morning fog settles over the
+harbor and the air feels cool.”
+
+This first round of training is called pretraining, and its result is the base model that every
+fine-tune on this page starts from. It is not the copy you trained in the earlier lab, and no
+control on this page changes it.
+
+### How the lab scores a model
+
+To judge a model, the lab runs it along a whole text and checks, at every character, what odds it
+gave to the character that really came next. High odds for the right character earn a small penalty,
+while low odds earn a big one. The average penalty over the whole text is called the **loss**, so a
+lower loss means better guessing.
+
+The loss is measured in units called **nats** per character, and you do not need the math behind the
+unit, because two landmarks tell you how to read it. A loss of 0 would mean the model gave the right
+character 100% odds every single time, which no real model manages. A loss of 3.401 is what you get
+by giving all 30 symbols the same 1-in-30 chance, which is blind guessing.
+
+Any loss in between has an everyday meaning too: a loss of 2.556 means the model is, on average,
+about as unsure as someone choosing among 13 equally likely characters. A loss of 1.921 is more like
+choosing among 7. Before any fine-tuning, this lab’s base model has a loss of 1.921 nats per
+character on Harbor. On Recipe steps, the new text you want it to handle, its loss is 2.556.
+
+Most charts label the unit nats/char, but the first card says nats/token. For this model a token is
+one character, so the two labels mean the same thing.
+
+### Fine-tuning: carry on training on new text
+
+**Full fine-tuning** is the same kind of training that built the Harbor model, except that it starts
+from the Harbor model’s weights instead of a blank table. You keep those 900 weights and carry on
+training. This time, every batch of practice comes from Recipe steps, with sentences such as “warm
+the pan over medium heat and add a spoon of oil.” People often call one run of this training, and
+the model it produces, a fine-tune.
+
+The lab calls Harbor weather notes the source, since it is where the model came from. It calls
+Recipe steps the target, since that is where you want the model to go. That is why the readouts have
+names like **Source before** and **Target gained**.
+
+The training method itself stays the same as before. The trainer takes a small batch of character
+pairs from the text and works out which way each weight should move to give the real next characters
+higher odds. That direction is called the **gradient**. The trainer then nudges the weights a little
+in that direction, but only on the pages the model opened to make that batch’s guesses. That round
+of nudges counts as one step.
+
+For example, say the batch holds a `t` followed by an `h`. The trainer then raises the score for `h`
+on page `t` a little and lowers the other scores on that page. Step by step, this pushes the loss on
+the practice text down. A page changes only when its own character turns up in the practice text, so
+a letter that never appears there leaves its page untouched.
+
+The part of the trainer that makes these nudges is called the optimizer, so the lab counts them as
+optimizer steps. The word “full” means that all 900 weights are free to move.
+
+Two sliders on the **Fine-tuning controls** card decide how hard you push. **Fine-tune epochs** sets
+how many passes the model makes through the recipe text, from 0 up to 60. **Fine-tune learning
+rate** sets how big each nudge is, from 0.05 up to 2.00. Together they make the **adaptation
+budget**, how much change you allow, which works out roughly as the number of epochs times the
+learning rate.
+
+Beside the fine-tuned model, the lab trains a second model on the same recipe text, with the same
+budget and the same random seed. A seed is a number that fixes every random choice in a run, such as
+the order the practice batches are shuffled into, so both runs make the same choices.
+
+The second model starts from a table of zeros, which gives every symbol the same odds, and it
+appears as the dashed “started from zero” line. Until you freeze anything, the only difference
+between the two runs is where they began. The **Layer freezing** card, which comes later, locks
+parts of the fine-tuned model only, while the model started from zero always trains all 900 weights.
+
+The lab calls the fine-tuned model the transfer run and the one started from zero the scratch run,
+from the everyday phrase “from scratch”, which means from nothing. That is where the readouts
+**Transfer, target loss** and **Scratch, target loss** get their names.
+
+### What the two texts share, and where they differ
+
+Harbor weather notes and Recipe steps are both written in English with the same 30 symbols. A
+collection of training text like each of these is called a **corpus**, and two or more are called
+corpora.
+
+The two corpora also share habits. In both of them, about one character in five is a space, `e` and
+`t` are the most common letters, and `h` is the letter that most often follows `t`. Weights shaped
+by Harbor already expect those habits, which is why they are any use for recipes at all.
+
+What differs is the style. Harbor weather notes describes what the weather does, while Recipe steps
+gives orders such as warm, stir, add, pour and simmer. The gap between the old text and the new one
+is called the **domain shift**, and here it is a shift in style, not in the alphabet.
+
+Reusing weights trained on one kind of text as the starting point for another is called **transfer
+learning**, and it pays off because of what the two texts share.
+
+Here is a made-up picture of why that head start matters. Picture two friends playing a game where
+they guess the next letter of a hidden recipe, one letter at a time.
+
+One friend has spent weeks playing the same game on weather notes, while the other has never seen
+English writing and has to treat all 30 symbols as equally likely. Neither has seen a recipe before,
+yet the weather player already expects `h` after `t` and plenty of spaces, so they start far ahead.
+In this lab, the weather player is the pretrained model and the newcomer is the one started from
+zero.
+
+### One notebook, written in pencil
+
+Keep the notebook in mind for the rest of the lesson, because it is the main picture here. The
+weight table is one notebook written in pencil, with a page for each symbol. Learning Recipe steps
+means erasing and rewriting entries in that same notebook, with no second copy and no blank section
+set aside for recipes.
+
+Take page `o` as an example, since the two texts disagree about it. In Harbor weather notes, the
+letter after `o` is most often `r`, as in harbor, morning and storm. In Recipe steps it is most
+often `n`, as in onions and one. Fine-tuning pencils the score for `n` up on page `o` and the score
+for `r` down. After the default run, the odds for `n` on page `o` rise from about 7% to 24%. The
+odds for `r` fall from about 35% to 12%, so harbor, morning and storm become more surprising to the
+model.
+
+**Freezing** is taping over some pages so nothing can be written on them. A taped page keeps its
+Harbor scores, which protects what Harbor needs from that page, but it also means the recipe
+training can never improve it. In large models, freezing works on processing stages called layers.
+This tiny model has none, so the **Layer freezing** card tapes over groups of six pages instead.
+
+**Replay** is mixing a few old Harbor sentences into the recipe practice text, so that the pencil
+edits also have to keep those sentences well predicted.
+
+The picture stops matching in a few places. The entries are not facts you could read, like “the
+harbor is foggy”. Each one is a score for one pair of characters, and it is used every time the
+page’s character turns up in any word.
+
+Nothing is erased in a single stroke, since the scores drift a little at every step and the old text
+gets worse as a side effect. And in large real models, the weights do not line up with letters at
+all.
+
+### The extra card
+
+A further card, **Replay and held-out target**, runs a fine-tune of its own with two changes. Some
+Recipe steps sentences are kept out of training, or held out, so you can test the model on sentences
+it never practised on. Some Harbor sentences are mixed back in, which is replay.
+
+## Why it’s here
+
+### A small text needs a head start
+
+A model trained from zero has to learn even the most basic habits of the language from the new text
+alone. When that text is small, like the eight recipe sentences here, much of the training goes into
+habits any English text could have taught, such as where spaces go. Transfer gives the model most of
+those habits for free, because the pretrained weights already carry them, so more of the training
+budget goes on what is actually new.
+
+That is the first problem fine-tuning solves: getting a useful model for a new job out of a small
+amount of new text. Fine-tuning is one way to turn a general model into a specialist, and it is the
+way this lab measures. As the help-desk story below shows, though, it is usually not the first route
+to try.
+
+### The cost: catastrophic forgetting
+
+The other side of the bargain is the part that surprises people. As the model gets better at
+recipes, its loss on Harbor weather notes climbs, and this is called **catastrophic forgetting**.
+Despite the word “forgetting”, it is not wear or decay, and the model does not fade the way an
+unpractised memory might.
+
+The real reason is more direct. The loss that training lowers during fine-tuning is calculated on
+Recipe steps alone, so nothing in it gives the trainer any reason to protect Harbor. Every step
+moves the shared weights toward recipes, and those same weights were what made Harbor work, so
+adapting the weights and overwriting them are one and the same act.
+
+### Should you fine-tune?
+
+Since fine-tuning has real costs, it is worth asking whether you need it at all. Here is a made-up
+workplace story that maps onto the three routes you can take. Picture a new hire who answers
+customers at a help desk, and think of three ways to help them do it well.
+
+You could leave a clear note on their desk, which is quick to write and quick to take away. You
+could point them to the current handbook, which keeps their facts fresh and lets them show the
+customer the page. Or you could send them on a training course, which changes how they work every
+day. A course takes time, needs good material, and can overwrite habits they already had.
+
+Those are the three routes, and the cheaper ones come first.
+
+- **Prompting first** is the note, quick to write and quick to undo. **Prompt engineering** means
+  getting the behaviour you want from an unchanged model by changing what you send it: clearer
+  instructions, worked examples, or the right background. A behaviour you can get from a few example
+  lines is not worth a training run. When a prompt goes wrong, you repair it by editing the text,
+  with no training at all. A model picking up a pattern from examples inside the prompt is called
+  in-context learning, or ICL, and the *ICL & reasoning* lab shows why that works at all.
+- **Retrieval** is the handbook, which stays current and can be shown. A model’s weights stop
+  changing when training stops, so a fact learned in training goes stale the day it changes. The
+  model also cannot point to where that fact came from. Retrieval looks up the current document when
+  the question arrives and can show the passage it used, and *Retrieval-augmented generation* is the
+  lab for it.
+- **Fine-tuning** is the course, which changes the habits themselves. Style, format, tone, or one
+  narrow task done the same way every time are habits, and examples teach habits well. It can also
+  save money on a task that runs thousands of times a day. A long prompt has to be processed again
+  with every request. A small fine-tuned model can do the same job with a short prompt instead, or
+  replace a larger, costlier model.
+
+The picture stops matching in one important way. A person who took a course can still look things up
+on their own, but a model cannot look anything up unless you build retrieval around it.
+
+The cost side is what the last question on the **Should you fine-tune? Rule of thumb** card asks
+about: a fine-tune needs hundreds of good examples that someone wrote or checked. It also needs an
+**evaluation set**, which is a collection of examples kept out of training and used only for
+judging. It covers both the new task and the old behaviour you must not lose.
+
+That set shows whether the fine-tune worked and measures what catastrophic forgetting took, which is
+the same kind of measurement the meter in this lab makes. Finally, a fine-tune needs upkeep. When a
+newer, better base model comes out, your fine-tune does not carry over to it, so you have to
+fine-tune the new one all over again.
+
+## How to play with it
+
+### Step 1: the head start before any training
+
+First set **Fine-tune epochs** to 0, which the slider shows as “no adaptation”. **Transfer, target
+loss** reads 2.556 on Recipe steps, while **Scratch, target loss** reads 3.401, the blind-guess loss
+of a table full of zeros. That number is exact: it is `ln(30)`, which is what the ln key on a
+scientific calculator gives you for 30.
+
+The third readout, **Transfer is lower by**, shows a gap of 0.845 nats before a single step of
+recipe training, and that head start is called **forward transfer**. The pretrained model already
+beats chance on the new text, because the two texts share structure. In everyday terms, the
+pretrained model is about as unsure as someone choosing among 13 characters, while the blank one is
+choosing among all 30.
+
+### Step 2: the default run
+
+Now return to the defaults, 20 epochs at learning rate 0.6, and the badge on the first card shows
+that each run took 500 steps. **Transfer, target loss** reads 2.123 and **Scratch, target loss**
+reads 2.247, so the third readout says **Transfer is lower by** 0.123. The lab subtracts the
+unrounded losses, which is why it shows 0.123 rather than the 0.124 you get from the rounded
+readouts. Both models improved a lot, but the one that started from Harbor is still ahead.
+
+On **Fine-tuning controls**, **Source before** reads 1.921, the base model’s loss on Harbor, and
+**Source after** reads 2.065, the fine-tuned model’s loss on that same text. The **Forgetting**
+readout on the **Layer freezing** card is the difference between them, 2.065 − 1.921 = +0.144. In
+everyday terms, the model slipped from choosing among about 7 characters on Harbor to about 8.
+
+**Target gained** reads 0.433, which is how far the recipe loss fell, from 2.556 to 2.123, shown as
+a gain. Read it next to **Source after**, because each one alone tells only half the story of the
+run.
+
+**Try this:** drag **Fine-tune epochs** slowly from 0 up to 60 and watch the two lines on the
+**Forgetting meter** move toward each other and then cross. Both lines start from the base model, so
+the solid Recipe steps line begins higher, at 2.556, and the dashed Harbor line lower, at 1.921.
+
+At about 25 epochs the two lines meet at the right-hand end of the chart. By 60 epochs the Recipe
+steps line has fallen to about 1.96 while the Harbor line has climbed to about 2.22. The model now
+finds weather notes harder than recipes, the reverse of where it began. Every epoch that helps
+recipes hurts Harbor a little more, and the badge on that card counts the damage.
+
+### Step 3: freeze some pages
+
+Set the epochs back to 20, go to **Layer freezing**, and click two blocks, `␣abcde` and `fghijk`, so
+their labels change from trainable to frozen. The `␣` mark stands for the space. Each block covers
+six pages of the notebook, which the lab calls rows. So **Frozen rows** reads 12 / 30, and
+**Trainable weights** drops from 900 to 540, since 18 pages of 30 scores are left.
+
+At the same 20-epoch budget, **Transfer, target loss** only gets down to 2.345 instead of 2.123,
+while **Source after** holds at 1.990 instead of 2.065. On the first card, the third readout even
+flips to **Transfer is higher by**. The model started from zero ignores the freeze and still trains
+every page, so it still reads 2.247.
+
+That flip does not mean pretraining hurt. It means the twelve locked pages, which include busy ones
+such as space, `a` and `e`, cost more recipe learning than the head start was worth.
+
+Under the grid sits the row strip, with one bar per page showing how far that page’s scores moved.
+The twelve frozen pages are hatched, which means shaded with diagonal stripes, and they sit at zero.
+The pages you left trainable show how hard the recipe training pulled on them.
+
+### Step 4: spend the budget a different way
+
+Now test the idea that the two sliders share one budget: unfreeze both blocks, then halve
+**Fine-tune epochs** to 10 and double **Fine-tune learning rate** to 1.20. Since 10 × 1.2 and
+20 × 0.6 both make 12, the budget is about the same, and **Forgetting** lands back near +0.144,
+within a hundredth of a nat. Fewer, bigger nudges did roughly the same work as more, smaller ones.
+
+### Step 5: test on sentences it never saw
+
+Set the sliders back to 20 epochs and 0.60, then go to **Replay and held-out target** and leave
+**Held-out target sentences** at 3 and **Replay share** at no replay. This fine-tune trains on the
+first five recipe sentences and never sees the last three, such as “boil the pasta in salted water
+until it is tender.”
+
+Its table shows **Trained-on target** at 2.162 and **Held-out target** at 2.424, a gap of 0.262
+nats. The fine-tune looks better on the sentences it saw than on the three it never did, even though
+all eight come from the same recipe text. This card’s badge reads 320 steps instead of 500, because
+with three sentences left out, each pass has fewer character pairs to work through.
+
+Raise **Fine-tune epochs** to 60 and the gap widens to 0.472, with 1.927 against 2.399. Meanwhile
+the **Forgetting, all original sentences** row climbs to +0.296.
+
+### Step 6: mix old sentences back in
+
+Go back to 20 epochs and raise **Replay share** to 50%, which mixes the first four Harbor sentences
+into the training text. A second column, **With 50% replay**, appears beside **No replay**, so you
+can compare the two fine-tunes row by row. In each item below, the first number comes from the No
+replay column and the second from the replay column.
+
+In the No replay column, forgetting reads +0.123, less than the +0.144 on the first cards. That is
+because training on five recipe sentences instead of eight takes only 320 steps instead of 500, so
+the weights get fewer nudges away from Harbor.
+
+- **Forgetting, all original sentences** falls from +0.123 to +0.042, so far less of Harbor is lost
+  overall.
+- **Trained-on target** rises from 2.162 to 2.232, which means the model fits recipes a little less
+  closely, because the same pages are also being pulled toward Harbor. More training does not close
+  that gap: at 60 epochs the replay run still reads 2.052 against 1.927 without replay.
+- **Optimizer steps** doubles from 320 to 640, because every pass now also works through the four
+  Harbor sentences. Those happen to hold about as many characters as the five recipe sentences.
+- **Forgetting, the replayed sentences** goes from +0.119 to −0.038, a swing of about 0.16 nats.
+  With replay, those four sentences end about where the base model started, or slightly better,
+  because the fine-tune gave them 20 more passes of practice.
+- **Forgetting, the sentences not replayed** goes from +0.128 to +0.129, which means replay did
+  nothing for them.
+
+Push **Replay share** to 100% and the overall Forgetting row reads +0.001, almost no forgetting,
+because now every Harbor sentence is part of the training text.
+
+### Step 7: the decision card
+
+Last, on **Should you fine-tune? Rule of thumb**, leave all four answers on No, and the
+**Recommended route** reads Prompt first. Flip only “Do you need a consistent format, style or
+behaviour?” to Yes and it becomes Prompt with examples, then collect data. Flip “Do you have
+hundreds of good examples and an evaluation set?” to Yes as well, and it becomes Fine-tune.
+
+Now flip “Does the knowledge the answers depend on change often?” to Yes, and retrieval joins the
+route as Retrieval for the facts, fine-tuning for the style. The rule table under the controls lists
+all five rows in order, the first row that matches wins, and the winner is marked (matched).
+
+## What to notice
+
+### On the first four cards
+
+- The head start is biggest early: at small budgets the two target curves sit far apart, and the
+  longer both run, the more the started-from-zero model catches up. Pretraining mostly buys speed,
+  not a better final result.
+- **Forgetting** has no safe zone where recipes improve for free. The charts plot the model at saved
+  snapshots along the run, called checkpoints, and at the defaults the Harbor loss rises at every
+  one of them. It goes from +0.144 at 20 epochs to roughly +0.30 at 60, and only the very smallest
+  budgets, which barely help recipes either, keep it near zero.
+- Freezing moves both numbers at once: those 12 frozen rows cost 0.222 nats of recipe learning and
+  save 0.075 nats of forgetting. That makes freezing a trade between the two, not a fix.
+- In this lab, frozen rows still have their gradients worked out and then thrown away, so freezing
+  here saves no computing work. Real training tools usually skip working out those changes, which
+  saves memory, but as the section on real systems explains, it saves computing work only in some
+  cases.
+- The row strip shows which rows really moved: frozen rows sit at zero, and so do `j`, `q`, `x`,
+  `z`, `<` and `>`, even when they are trainable. None of them appears in Recipe steps at all, and
+  the trainer only edits a page when it reads that page’s character, so their pages never get a
+  gradient.
+- Blocks are not equal, since freezing `xyz.<>` alone changes almost nothing: `x`, `z` and the two
+  brackets never appear in Recipe steps, so those rows get no gradient either way. The other two,
+  `y` and `.`, are usually followed by a space in both texts, so their Harbor scores already
+  suit recipes.
+- The first block, `␣abcde`, is the opposite extreme: freezing it on its own costs 0.146 nats of
+  recipe learning, more than any other block. It holds several pages that recipes both use a lot and
+  need to change, such as `a`, space and `e`.
+- How often a page is used is only half of it, because what matters is how far recipes need that
+  page to move. Space is the most common character in the recipe text, yet freezing page `a` alone
+  costs more than freezing the space page alone.
+- The two lines on the **Forgetting meter** do not come from two models. They are one model scored
+  on two corpora at every checkpoint, so when the recipe line falls and the Harbor line rises, both
+  changes come from the same moving weights.
+- The **Forgetting meter** also shows two samples, which are short pieces of text the model writes
+  by itself, picking each next character at random, with likelier characters picked more often. They
+  are labelled **Before adaptation** and **After adaptation**. Both start from the same starting
+  text, or prompt, `the `, with the same random seed, so every difference between them comes from
+  the weights.
+- At the defaults, the before sample contains Harbor fragments such as `arbo`, while the after
+  sample has picked up fragments such as `pan`. Neither one is fluent, because a model that sees one
+  character at a time can only learn which letter tends to follow which.
+- Read **Source after** next to **Target gained**, because if you pick only one of them, you can
+  tell a flattering story about the very same run.
+
+### On the replay card
+
+A fine-tune can look better than it really is. The first cards score the very recipe sentences the
+model trained on, so their target loss is really a training loss. Hold three out and the same kind
+of fine-tune reads 2.424 on the new sentences against 2.162 on the practised ones.
+
+That gap grows with the budget:
+
+- at 10 epochs, it is 0.157;
+- at 20 epochs, it is 0.262;
+- at 60 epochs, it is 0.472.
+
+Trained-on loss keeps falling, while held-out loss flattens out near 2.40, because extra training
+mostly helps with the exact sentences the model keeps seeing.
+
+Here is a made-up story that shows the same thing. Picture a classmate who prepares for a quiz by
+drilling the same five practice questions over and over, until those five feel much easier. They do
+noticeably better on those five, but on three new questions of the same kind they do only a little
+better than before. Only the new questions reveal how much they really learned.
+
+The picture stops matching in one place. The model never aces anything, and it cannot memorize whole
+sentences. After 20 epochs it is still about as unsure on its five practice sentences as someone
+choosing among 9 characters. What it over-fits is how often each letter follows each other letter in
+those five.
+
+Fitting the practised examples much more closely than new examples of the same kind is called
+**overfitting**, and small training sets make it worse. Set **Held-out target sentences** to 4 and
+**Fine-tune epochs** to 30, and **Held-out target** reads 2.541, about its lowest point. Raise the
+epochs to 60 and it climbs back to 2.570, while **Trained-on target** keeps falling to 1.865. Only
+sentences kept out of training can show that rise, which is what makes overfitting measurable here.
+
+- Replay protects what it replays and little else: at 50% the replayed sentences end 0.038 nats
+  better than they started, while the same sentences with no replay forget +0.119.
+- The sentences that were not replayed get no protection at all, since they forget +0.129 with
+  replay and +0.128 without it.
+- The overall Forgetting number flatters replay, because the replayed sentences are part of what it
+  scores. That is why the card splits it into two rows, and why a replay set has to represent the
+  behaviour you want to keep.
+- Replay costs both fit and computing work, since Trained-on target rises from 2.162 to 2.232 at 50%
+  and the run takes 640 steps instead of 320. Held-out target barely moves, from 2.424 to 2.417.
+
+### On the decision card
+
+- Having examples is not a reason to fine-tune by itself. With the format question on No, flipping
+  the examples question changes no route. The data answer only matters once a consistent behaviour
+  is needed, and then it decides whether fine-tuning joins the route. Without retrieval, it turns
+  “Prompt with examples, then collect data” into “Fine-tune”. With retrieval, it turns “Retrieval”
+  into “Retrieval for the facts, fine-tuning for the style”.
+- A Yes to changing facts, a Yes to citations, or a Yes to both gives the same answer: retrieval is
+  part of the route, whatever the other two answers say. A fine-tune can neither show a source nor
+  be updated without training it again.
+
+## Where it breaks
+
+### In this lab
+
+The pretraining, both fine-tuning runs, the freezing and every loss are computed live, but apart
+from the replay card, nothing on this page is held out. The first cards score Recipe steps in full,
+which is also the whole fine-tuning set, and they score Harbor in full, which was the whole
+pretraining set.
+
+For measuring forgetting, that is the right comparison, because you want to know whether the old
+behaviour survived. But none of those numbers tell you how the model does on text it has never seen.
+
+Every run on this page also uses a single seed, not an average over several. So you never see how
+much a different shuffle of the practice batches would move the numbers, including gaps such as the
+0.123 head start at the defaults.
+
+The **Replay and held-out target** card holds out at most four of the eight recipe sentences, which
+is only a few hundred characters. Because these sets are so small, a difference under about 0.05
+nats there could come from luck rather than from the setting you changed. The luck could be as
+simple as the order the batches happened to be shuffled in. Its forgetting rows still score text the
+model pretrained on, including the replayed sentences, and the replayed sentences are always the
+first ones of Harbor, not a random pick.
+
+The **Should you fine-tune? Rule of thumb** card is the one exception to “computed live”. Its five
+rules were written by hand, nothing on it was trained or measured, and it squeezes each situation
+into four yes-or-no answers. Real choices come in degrees, such as how often facts change or how
+many examples you have. They also weigh cost, privacy, risk, and latency, which is how long each
+answer takes to arrive.
+
+The **Layer freezing** grid is the other compromise. Real models are built as a stack of processing
+stages called layers, but this model has none. So the grid groups the rows of the weight table, the
+notebook’s pages, into blocks of six symbols, and the lab says so on screen. The freezing itself is
+real, while the grouping by letters is a stand-in, since a real freeze grid would name layers or the
+large weight tables inside them.
+
+The model is also tiny: it sees one character of context, meaning it looks only at the single
+character before its guess. It holds 900 weights, trains on eight sentences per corpus, and has none
+of the attention machinery that large models use to look back over earlier text.
+
+**Replay** is the standard fix for forgetting, and the replay card gives it a control. In large
+models, replaying a well-chosen sample of old text is meant to protect the old behaviour in general,
+not only the replayed examples.
+
+A model this small can only memorize which characters follow which, so replaying a few sentences
+protects those sentences and little else. Replaying four Harbor sentences pulls the shared pages
+toward those sentences’ own letter pairs. That leaves the replayed four slightly better fitted than
+before. The other four get no help from that pull, so they forget as much as with no replay at all.
+
+A few settings are fixed or stretched on purpose. Pretraining is locked at 60 epochs, and
+**Fine-tune learning rate** goes up to 2.0, far past anything anyone would use. The “started from
+zero” model is a table of exact zeros, while a real model trained from scratch starts from small
+random numbers instead.
+
+The starting model also differs between labs. *LoRA & adapters* rebuilds this same 60-epoch Harbor
+table, but *Model merging* trains its own for 48 epochs, so its base reads 1.953 on Harbor and 2.553
+on Recipe steps. Each lab fixes its own epoch count and none of them tests the difference, so
+compare methods within one lab, not numbers between labs.
+
+**A common mix-up:** the model did not forget Harbor because the Harbor text was deleted, or because
+the model filled up and ran out of room. Nothing was deleted, and there are still exactly 900
+weights: with 100% replay, those same weights keep Harbor almost intact, at +0.001. The only thing
+that changed is which text the gradient steps came from, and Harbor was never in that text.
+
+### In real systems
+
+Real replay mixes a sample of earlier data into the fine-tuning set, sized so that the old behaviour
+stays in the loss. Forgetting is then checked on old tasks that were held out, not on the replayed
+examples themselves.
+
+The three routes are not exclusive, and real systems often combine them, but the cheapest route that
+passes your evaluation set is the right one. Fine-tuning can also teach facts, but it is a weak way
+to add new knowledge. It also cannot keep those facts current or point to where they came from,
+which is why the rule sends changing or cited facts to retrieval.
+
+Forgetting also shows up in ways a single loss number misses. A model can get worse at following
+instructions or at formatting its output. It can get worse at writing the exact commands it sends to
+other programs, such as a calculator or a search tool, or at refusing harmful requests. It can also
+lose calibration, which is how well its confidence matches how often it is right.
+
+All of that can fall apart while its loss on general text barely moves, so a single readout like
+**Source after** can understate the damage.
+
+In real systems, freezing saves less computing work than you might hope. Picture a real model as an
+assembly line of stations, called layers. Text goes in at the first station, each station reworks
+the numbers and passes them on, and the guess comes out at the last one.
+
+To work out how to change each station, training starts from the error at the end and traces it
+back, station by station, toward the start. Tools skip working out changes for the frozen stations
+themselves, which saves memory. But a frozen late station still has to pass the trace back to any
+trainable station nearer the start, so freezing only the late layers does not shorten that trace.
+
+Freezing the early layers is different. If every station from some point back to the start is
+frozen, the trace can stop before it reaches them, which saves real computing work.
+
+Real domain shift usually changes vocabulary, task and format all at once, not only the style. That
+usually makes the forgetting bigger than it is here, and how much head start is left depends on how
+much structure the two kinds of text still share. When they share too little, starting from the old
+model can even make things worse, which is called negative transfer.
+
+## Going deeper
+
+### Most defenses put the old data back
+
+Every defense that changes the training itself works in the same basic way. It puts the old data, or
+the old model, back into the loss that training is trying to lower. The old data goes back in as
+text to practise on, and the old model as a penalty for drifting away from it. **Replay** mixes
+original text into the fine-tuning batches, so the loss is calculated on it again. The **Replay
+share** slider is that mechanism, and its split rows show the catch: the loss protects only the text
+it is calculated on.
+
+Other methods add a penalty for moving the weights far from where they started, and some make that
+penalty bigger for the weights that mattered most to the old text. Some later training stages score
+the model’s answers and reward the good ones. They also add a penalty when the model’s odds drift
+too far from those of an untouched copy of the starting model. Freezing is the bluntest member of
+this family, because it acts like a penalty so large that the rows you picked cannot move at all.
+
+### Why the head start shrinks
+
+In this lab, the head start shrinks because both runs keep fitting the same eight recipe sentences.
+Given enough passes, almost any start ends up close to the same best fit for those sentences, so the
+gap closes. That is more practice on the same text, not new evidence.
+
+The same idea applies to data in general. Think of the pretrained weights as a starting guess and
+the target text as evidence. With little evidence, the starting guess dominates, so transfer looks
+decisive, but with plenty of evidence almost any sensible start ends up in a similar place. That is
+why transfer matters most where data is scarce.
+
+### How real practice freezes
+
+Real practice rarely freezes everything or nothing. Layers can be unfrozen one at a time as training
+goes on, starting from the output end, or given smaller steps instead of zero steps. The large
+lookup table at the very start of a model turns each piece of text into numbers, and it is called
+the embedding table. It is often frozen, because it is huge and general. Still, the cheapest defense
+is to stop early, because **Forgetting** grows with the budget.
+
+### Choosing a route is about testing
+
+Choosing between the routes is a testing problem before it is a training problem. Prompt first and
+score the results on held-out cases. Add retrieval when the failures are missing or stale facts.
+Fine-tune when the model keeps getting the format or behaviour wrong in a way a set of examples
+could fix. The *Evaluation* lab shows how to build the score you compare the routes with.
+
+### A full copy for every job
+
+One cost this lab does not charge you for is storage, because full fine-tuning leaves you a whole
+new 900-weight table for every task. Ten specialized models means ten complete copies to store and
+load, which is the problem the next lab, *LoRA & adapters*, goes after.
+
+### Toy versus real
+
+- **Learning rates are not comparable.** Llama 2’s fine-tune started its learning rate at 2 × 10⁻⁵,
+  which is 0.00002, and lowered it gradually over 2 epochs, with a batch size of 64. Pretraining its
+  7B model, the version with about 7 billion weights, used 3.0 × 10⁻⁴, which is 0.0003.
+- **Other fine-tunes use other rates.** The QLoRA paper’s LoRA fine-tunes, the kind the next lab
+  teaches, used 2 × 10⁻⁴, or 0.0002, for models of 7B and 13B weights. For the larger 33B and 65B
+  models they used half that, 1 × 10⁻⁴. This lab’s slider runs from 0.05 to 2 with a simpler
+  training method, so its numbers are in different units.
+- **Data size:** the fine-tuning stage of Llama 2-Chat stopped after 27,540 examples prepared by
+  people, and its paper describes tens of thousands as enough for high quality. This lab fine-tunes
+  on eight sentences.
+- **Tools:** TRL, a collection of ready-made training code from the AI company Hugging Face,
+  includes a trainer for fine-tuning called `SFTTrainer`. It also has trainers for two other
+  methods, DPO and GRPO, that train a model on feedback about which answers are better. Its
+  documentation lists PEFT, a toolkit for fine-tuning only a small part of a model, among the tools
+  it works with. That means the same training code can train the LoRA adapters of the next lab.
+- **Checks:** real fine-tunes score held-out sets for the new task and for the old behaviours, while
+  here only the replay card holds anything out.
+
+Sources: Touvron and others, *Llama 2* (arXiv 2307.09288), section 3.1 and Table 1; Dettmers and
+others, *QLoRA* (arXiv 2305.14314), Table 9; the TRL documentation at huggingface.co/docs/trl.

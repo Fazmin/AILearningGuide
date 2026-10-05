@@ -1,0 +1,797 @@
+---
+objectives: ["Describe a merge as arithmetic on task vectors that share one base, not as a second training run", "Separate the cost of shrinking each task vector from true interference between them", "Explain what TIES, DARE and SLERP each change about a plain average"]
+terms: ["Model merge", "Task vector", "Shared base", "Linear mode connectivity", "Weight averaging", "Task arithmetic", "Interference", "Sign conflict", "TIES-Merging", "DARE", "SLERP", "Adapter"]
+---
+
+## The big picture
+
+Picture a model, a computer program that learns from example text so it can guess what letter or
+word comes next. Say it has already learned from one kind of text, such as a few lines about the
+weather. Now picture two copies of it, where one copy practises on recipe steps and the other
+practises on proverbs, short sayings such as “a stitch in time saves nine”.
+
+Training a model a little further like this is called **fine-tuning**, and each copy is called a
+fine-tune. Each fine-tune gets better at its own new job, but what you really want is one model that
+can handle both jobs at once.
+
+This module is about **model merging**, a way to build that one model with arithmetic instead of
+more training. You work out what each round of extra training changed inside the model, combine
+those two sets of changes, and add the result back onto the original. The whole merge takes only
+seconds, and unlike training, it needs no training text at all.
+
+### Where you have met it
+
+Large language models, the kind of program behind a chatbot, are often adapted to a new job by
+training them a little further on new text. Each adaptation leaves behind its own full set of
+numbers, and people have built tools to combine several of those sets into one. One of them,
+mergekit, is described by its makers as “a toolkit for merging pre-trained language models”.
+
+The *LoRA & adapters* lab showed a cheaper way to adapt a model, in which each new job is stored as a
+small add-on file called an adapter. An adapter’s changes can be merged with exactly the same
+arithmetic, which is why software built for adapters offers the same merge methods you will try here.
+
+### Why it matters
+
+Without merging, there are two ordinary ways to get several skills out of one model, and both of
+them cost something. You can keep a separate model for every skill and switch between them, or you
+can gather all the training text and train again on all of it. Merging is a third route, which reuses
+the training you have already done instead of repeating it.
+
+The catch is that a merge is a guess, because nothing checks the combined numbers against either job
+while the arithmetic runs. A skill can quietly get weaker in the process, and the only way to find out
+is to test the merged model on every job. This lab runs those tests for you and shows exactly where
+each merge loses ground, and why.
+
+### What you will be able to explain
+
+By the end of this lesson, you should be able to explain these three ideas in your own words:
+
+- why a merge is arithmetic on the changes two fine-tunes made to one shared starting model, rather
+  than a second round of training;
+- how to tell apart two reasons a merge can score worse: each job’s own changes getting watered down,
+  and one job’s changes truly getting in the other’s way;
+- what three methods, called TIES, DARE and SLERP, each do differently from a plain average of the two
+  sets of changes.
+
+### What the lab lets you do
+
+Every number in this lab comes from real training inside the app, using a very small model that
+guesses the next letter of a text. The texts and training runs are fixed, and every score is measured on
+the same text the models trained on. The only random part you can redraw is DARE’s, with **New
+random mask**.
+
+The lab has three cards, and each one shows a different part of
+the story:
+
+- **Task vectors** draws the two lists of changes as two coloured maps, and counts where they agree
+  and where they pull in opposite directions.
+- **Merge recipe** lets you pick one of five merge methods, prints the exact arithmetic with real
+  numbers, and draws ten of the changes before and after the merge.
+- **Two task losses** scores every merge on both jobs at once, compares it with the models trained
+  for one job alone, and splits any lost skill into two causes.
+
+There is one surprise to watch for: the plainest merge, an even average, ends up worse at recipes
+than the recipe model and worse at proverbs than the proverb model. Yet in that same merge, each job’s changes actually helped the other
+job, and working out how both can be true is the heart of this lesson.
+
+## What it is
+
+### The model: a table of 900 scores
+
+The model in this lab reads one character and guesses which character comes next, using an alphabet
+of 30 characters. Those 30 are a space, the 26 letters, a full stop and two bracket symbols that
+never appear in the texts.
+
+Everything the model has learned sits in one table, with a row for each character it might read and
+a column for each character that might come next. Each cell holds a score, and a higher score makes
+that pairing more likely. For example, the cell in row `h` and column `e` grows high when the training
+text keeps putting an `e` after an `h`, as in “the”.
+
+To make a guess, the model turns one row of scores into chances that add up to 100%, giving bigger
+scores bigger chances. The raw scores, before they become chances, are called **logits**, which is
+the word the lab uses on its maps.
+
+The lab names each cell by its pair of characters, so `h→a` means the score for an `a` coming right
+after an `h`. With 30 rows and 30 columns, the table holds 900 numbers, which are called **weights**,
+and the lab’s formulas write the whole set as θ, the Greek letter theta.
+
+### The starting model
+
+The starting model, called the **base**, was trained on Harbor weather notes, which is eight short
+lines about fog, wind, rain and boats. It went through that text 48 times, and one full pass over the
+training text is called an **epoch**.
+
+The lab measures how well a model fits a text with a **loss**, the average of how surprised the model
+is by each real next character. If the model gave the real next character a high chance, say 90%, it
+is barely surprised. If it gave it only 1%, it is very surprised, and the loss goes up.
+
+A lower loss is better. The lab measures surprise in units called **nats**, so it reports each loss in
+nats per character.
+
+You do not need to know how a nat is defined, because one fact is enough to read the numbers. A model
+spreading its guesses evenly over all 30 characters would score about 3.4, so anything below 3.4 means
+the model has picked up real patterns from its training text. The base’s loss is 2.553 on Recipe
+steps and 2.684 on Proverbs, two texts it never trained on, so it already beats even guessing on both.
+
+### Fine-tuning leaves a list of changes
+
+Next, two copies of the base are trained further, one on Recipe steps and one on Proverbs, for 20
+epochs each. Recipe steps is eight lines such as “stir the onions until they turn soft and sweet”,
+and Proverbs is ten sayings such as “the early bird gets the worm”.
+
+This is the fine-tuning from the big picture, and the lab calls the two fine-tunes the
+**specialists**, since each one is trained for a single job. After training, the recipe specialist’s
+loss on recipes is 2.123, a clear drop from the base’s 2.553. In the same way, the proverb
+specialist’s loss on proverbs is 2.169, down from the base’s 2.684.
+
+Now compare each fine-tune with the base cell by cell. In each of the 900 cells of the table,
+subtract the base’s score from the fine-tune’s score. This uses the numbers in the table, not the
+losses you just read. That gives a list of 900 changes, one for each weight, telling you how
+far training moved every score up or down.
+
+A list of numbers like this is called a **vector**, so this list of changes is called the fine-tune’s
+**task vector**. The **Task vectors** card writes it as `τ = θ_tuned − θ_base`, where τ, said “tau”,
+stands for the task vector. The other two symbols, `θ_tuned` and `θ_base`, stand for the fine-tune’s
+weights and the base’s weights, so the formula reads “tuned minus base”.
+
+Here is one real cell, `h→a`, which is the score for an `a` coming right after an `h`. In the
+proverbs, an `a` follows an `h` five times, in words such as “what”, “has” and “than”, while in the
+recipe steps that never happens.
+
+So the proverb fine-tune raised the `h→a` score by 1.18, and the recipe fine-tune lowered it by 0.89.
+The two task vectors therefore hold +1.18 and −0.89 in that one spot, which is the kind of
+disagreement this lesson keeps coming back to.
+
+### Reading the two maps
+
+The card draws each task vector as a 30 by 30 map, `τ recipes` and `τ proverbs`, with rows for the
+previous character and columns for the next. A blue cell means the fine-tune raised that logit, a red
+cell means it lowered it, and grey means the cell did not change, or changed too little to show.
+
+The deeper the colour, the bigger the change, and both maps share one colour scale so that you can
+compare them fairly. A few rows stay grey on both maps, namely the rows for `j`, `q`, `x`, `z` and
+the two bracket symbols. None of those characters appears in either text, so training never gives
+their rows any reason to move.
+
+Every other row changes in all 30 cells, because training on a row nudges every score in it, raising
+the real next characters and lowering the rest. Both texts use the same set of 24 characters, so both
+fine-tunes change the same 24 rows. With 30 cells in each row, that makes 720 changed cells out of the
+table’s 900.
+
+### A picture to hold on to: two sound engineers
+
+Picture a sound desk at a concert, with a long row of sliders that each set how loud one microphone
+or instrument is. Say this desk has 900 sliders, and think of their starting positions as the base
+model.
+
+Two sound engineers each get an exact copy of that desk, and each one adjusts their copy for a
+different song. When they finish, each engineer writes down how far they moved every slider, such as
+“slider 3, up a lot” or “slider 7, down a little”. Each engineer’s list of moves is a task vector,
+because it records the change from the starting desk rather than the final positions.
+
+A merge takes a fresh copy of the original desk and applies some mix of the two lists of moves. The
+simplest mix moves every slider by half of what the first engineer did, plus half of what the second
+engineer did.
+
+Where both engineers moved a slider the same way, the merge moves it that way too. Where one moved it
+up and the other moved it down, the two moves partly cancel each other out. That clash is called a
+**sign conflict**, because the two changes have opposite signs, one plus and one minus.
+
+The picture stops matching in two places, and the first is about labels. On a real desk every slider
+has a label, such as “drums”, so you can read what each move does. In this tiny model you can read
+each number too, because each is the score for one pair of characters. In a big model, though, a
+single number usually has no meaning that anyone could name.
+
+The second difference is that on a desk each slider sets its own sound and nothing else. Here the 30
+scores in a row share out 100% of the chances between them, so raising one score lowers the chances
+of every other character in that row.
+
+### Why both must start from the same base
+
+The two lists of moves only make sense together because both engineers started from the same desk.
+That requirement is called the **shared base**, which means every model in a merge must have been
+fine-tuned from the same starting model. Then any one cell, say cell number 417, means the same thing
+in both task vectors, so adding them cell by cell adds like to like.
+
+Now picture two desks that were wired by different people, so slider 417 controls the drums on one
+desk and the singer on the other. Adding the two engineers’ moves slider by slider would then mix up
+sounds that have nothing to do with each other.
+
+Bigger models have the same problem, because between their input and their output they have inner
+parts called **hidden units**. Each hidden unit comes to respond to some pattern during training, and
+nothing decides ahead of time which unit ends up with which pattern.
+
+Before any training, a model’s numbers are set to random values, and training then adjusts them step
+by step. So two models trained from different random starting points can do the same job with their
+hidden units in a different order. Averaging them number by number would then mix unrelated units,
+exactly like the two desks wired by different people.
+
+Fine-tunes of one model avoid this problem, because both inherit the same wiring from their base and
+usually move only a short way from it. Imagine sliding from one fine-tune’s weights to the other’s,
+with every cell moving at the same steady pace.
+
+Say one cell holds 1.0 in the first fine-tune and 3.0 in the second, which are made-up numbers. A
+quarter of the way along, that cell holds 1.5, halfway it holds 2.0, and three quarters of the way it
+holds 2.5. Every other cell slides from its first value to its second in the same way, at the same
+time.
+
+Now check the loss at each stop along the way. For fine-tunes of one model, the loss usually stays
+low at every stop, with no hump in the middle where the model suddenly gets much worse. That property is called **linear mode connectivity**, and it is why averaging
+fine-tunes of one model works at all. Two models trained from different random starts usually do not
+have it, so somewhere between them the loss climbs.
+
+### Five ways to combine the lists
+
+The **Merge recipe** card offers five methods in its **Merge method** control, and all five start
+from the same two task vectors. All five also end the same way: the combined list is added onto the
+base, and the result is the model you would actually use.
+
+The lab calls that result **Served weights**, and it prints the formula for it with the current
+numbers filled in. The small line above the card’s title also says “no gradient step”, where a gradient step means one
+small training update, so merging trains nothing at all.
+
+#### Linear blend
+
+`Linear blend` takes a weighted average of the two fine-tunes, which is an average where each one can
+count for a different share. This is called **weight averaging**, and the **Blend t** slider sets the
+proverbs’ share, so at 30% the slider reads “70% recipes · 30% proverbs”.
+
+At 50% each list counts for exactly half, and the formula reads `θ = θ_base + 0.50·τ_recipes + 0.50·τ_proverbs`. In words, that means “the base, plus
+half of the recipe list, plus half of the proverb list”.
+
+For the `h→a` cell, half of −0.89 is about −0.45, and half of +1.18 is about +0.59. Added together,
+they move that cell up by only about +0.14, so the average gives neither task much of what it wanted.
+
+Because both fine-tunes share the base, averaging their task vectors gives exactly the same model as
+averaging the two fine-tunes’ own weights. A saved copy of a model’s weights is called a
+**checkpoint**, which is the word the lab uses when its formula note points this out. Here is why,
+using a made-up base score of 2.00 for the `h→a` cell:
+
+- the recipe fine-tune lowered that score by 0.89, so the recipe fine-tune holds 1.11 in the cell;
+- the proverb fine-tune raised that score by 1.18, so the proverb fine-tune holds 3.18 in the cell;
+- the average of those two scores is 2.145, which is the base’s 2.00 plus 0.145, the same as adding
+  half of each change to the base.
+
+#### Task arithmetic
+
+`Task arithmetic` adds both lists at full strength and then scales the total by one number, written
+λ, the Greek letter lambda. The **Scale λ** slider sets that number from 0 to 1.50, and adding task
+vectors to a base like this is called **task arithmetic**.
+
+At 1.00 the formula reads `θ = θ_base + 1.00·(τ_recipes + τ_proverbs)`, so the `h→a` cell moves by
+−0.89 + 1.18, which is +0.29. At a Scale λ of 0.5 it gives exactly the same model as the 50/50
+average, since half of the total is the same as half of each list.
+
+#### TIES
+
+`TIES` is short for **TIES-Merging**, which is named after its three steps of trim, elect sign and
+merge:
+
+1. **Trim:** keep only the biggest changes in each list, as a share set by the **Keep top** slider,
+   and set every other change to zero. Size alone counts here, so −0.89 is a bigger change than +0.5.
+2. **Elect:** for each cell, add up the kept changes from both lists, and whichever sign has the
+   larger total wins that cell’s vote.
+3. **Merge:** average only the kept changes that agree with the winning sign, and then scale the
+   result by λ, the same as in task arithmetic.
+
+In sound-desk terms, TIES checks which way each slider got the bigger total push, and then it uses
+only the moves that went that way.
+
+Take the `h→a` cell again, where both changes are big enough to survive a trim that keeps the top 20%
+of each list. Their total is +0.29, so plus wins the vote, and the recipe list’s minus change is left
+out of the average. Only the proverb change is left, so with **Scale λ** at 1.00 the merged cell gets
+the full +1.18 instead of the average’s +0.14.
+
+Where both lists agree and both changes survive the trim, TIES averages them, much as the plain blend
+does. Beyond that, TIES differs from the plain blend in three ways:
+
+- The trim throws away most of each list, so with **Keep top** at 20%, 678 of the 900 merged cells
+  end up at zero.
+- In a cell where only one list’s change survives the trim, that change goes in at full strength
+  instead of half, and the lab has 84 cells like that.
+- In a conflict cell where both changes survive, the losing side is left out instead of cancelling
+  the winner, as `h→a` showed.
+
+Those full-strength cells help explain why TIES with **Scale λ** at 1.00 lands close to plain task arithmetic
+at the same setting, as you will see in the lab.
+
+#### DARE
+
+`DARE` stands for Drop And REscale, and it works by making a random draw for every change in each
+list. Each change is thrown away, meaning set to zero, with a chance of p, which you set with the
+**Drop rate p** slider. The changes that survive are then multiplied by `1 / (1 − p)` to make up for
+the missing ones.
+
+At p = 0.5, each change has a 50% chance of being dropped, and the multiplier is 1 divided by 0.5,
+which is 2. So
+every kept change is doubled, which is why the slider reads `50% dropped · ×2.00` at that setting.
+After that, the two thinned lists are added together and scaled by λ, the same way task arithmetic
+does it.
+
+To see why doubling makes up for the losses on average, picture one change of +0.6, which is a
+made-up size. Half the time it is dropped to zero, and half the time it is doubled to +1.2, so over
+many draws it averages out to the original +0.6.
+
+In any single merge, though, that change is either zero or +1.2, and never the +0.6 it started as.
+The random choice of which changes to drop is called a **mask**, and the **New random mask** button
+draws a fresh one each time you press it.
+
+#### SLERP
+
+`SLERP` stands for spherical linear interpolation, and it blends along a curve instead of a straight
+line so that the blend does not shrink. To see what shrinking means here, you first need a way to
+measure the length of a list of numbers.
+
+Think of a list of two numbers, 3 and 4, as an arrow on graph paper that goes 3 squares across and 4
+squares up. Its length is the square root of 3² + 4², which is the square root of 25, so the arrow is
+5 squares long. That is the same rule you would use for the long side of a right-angled triangle.
+
+The same rule works for 900 numbers: square each one, add up all the squares, and then take the
+square root of the total. You cannot draw an arrow that needs 900 numbers to describe it, but its
+length, and the angle between two such arrows, still work exactly as they do on paper.
+
+The lab prints each task vector’s length under its map as `‖τ‖`, where the double bars mean “length
+of”, and both lengths are about 10. The badge on **Task vectors** reads cosine 0.34, where the
+**cosine** is a score for how closely two arrows point the same way.
+
+A cosine of 1 means the same direction, 0 means a right angle, and −1 means opposite directions. So
+a cosine of 0.34 means the two task vectors point partly the same way, at an angle of 69.9°, a little
+less than a right angle. The cosine on the badge and that angle are the same fact written in two
+different ways.
+
+Now picture two friends who start at the same lamp post and each walk a little over 10 steps, in
+directions about 70° apart. If you stand halfway along the straight line between where they stop, you
+are only about 8.5 steps from the lamp post. That is because cutting across the corner brings you back
+toward the start, which is exactly how an average shrinks.
+
+If you walk around the lamp post instead, on a curve that keeps your distance, you stay a little over
+10 steps away the whole time. A plain average takes the straight line between the two arrows, while
+SLERP takes the curve.
+
+In the lab, the halfway point of the plain average has a length of only 8.46, which is shorter than
+either task vector. SLERP’s halfway point has a length of 10.32, and you can read both numbers on the
+`‖τ_merged‖` badge of **Merge recipe**.
+
+At the halfway point, SLERP points in exactly the same direction as the average, and the only
+difference is that its arrow is longer. You can check this with the formula the lab prints, which
+uses sin, the sine key on a calculator.
+
+At **Blend t** 50%, the formula reads
+`θ = θ_base + (sin(0.50Ω)·τ_recipes + sin(0.50Ω)·τ_proverbs) / sin Ω`. Here Ω, the Greek letter
+omega, stands for the angle between the two lists, which is 69.9°, so half of it is 34.95°.
+
+Each list is multiplied by sin 34.95°, which a calculator gives as about 0.57. The total is then
+divided by sin 69.9°, which is about 0.94. Since 0.57 divided by 0.94 is about 0.61, SLERP takes about
+0.61 of each list.
+
+The plain average takes only 0.50 of each list, and that bigger share is what keeps SLERP’s arrow
+long. So at the halfway point, SLERP gives the same model as `Task arithmetic` with **Scale λ** at
+about 0.61, and the curve does nothing more than set that bigger share. SLERP can only combine two lists at a time, so it cannot merge three models in one go.
+
+## Why it’s here
+
+As the big picture said, merging gives you one fixed model with both skills from two fine-tunes you
+already have. It works even when you no longer have the text to train again.
+
+The trouble is that nothing tunes the merged numbers for either job, so whether both skills survive
+the arithmetic has to be measured. Measuring has a trap in it, though, because a merged model can
+score worse than a specialist for two quite different reasons.
+
+The first reason is **shrinking**, which happens when a method uses less than all of each job’s own
+list. The 50/50 average, for example, uses only half of the recipe list, so the recipe skill gets
+watered down even if the proverbs did nothing.
+
+The second reason is **interference**, which is the harm one job’s list does to the other job when
+both lists are added together. That is the real clash between the two skills, and it is a separate
+thing from shrinking, even though both make the score worse.
+
+### The water test
+
+Picture a friend who makes a strawberry and banana smoothie with half a cup of each fruit, instead of
+her usual full cup of strawberries. She complains that it tastes less of strawberry than usual, and
+she blames the banana for spoiling it.
+
+Before she blames it, she can make one more smoothie, with half a cup of strawberries and half a cup
+of water in place of the banana. The water version shows how much flavour she lost by halving the
+strawberries, and comparing it with the banana version shows what the banana really did.
+
+The lab runs that same test on every merge, and to measure interference on recipes it reruns the
+merge with the proverb list set to zeros. That list of zeros plays the part of the water, and the
+difference between the two scores is the interference. The picture stops matching in one way: the
+water smoothie is a real drink she could pour, while the lab’s water version is only a check it
+works out. Nobody would ever use it as a model.
+
+Here is the test with real numbers for the 50/50 average, scored on the recipe text:
+
+1. The recipe specialist, which uses the whole recipe list, scores 2.123 on recipes.
+2. Half the recipe list on its own, with zeros in place of the proverbs, scores 2.294, which is 0.171
+   worse, and all of that comes from shrinking.
+3. Half the recipe list plus half the proverb list scores 2.257, which is 0.037 *better* than the
+   water version’s 2.294. So the interference is −0.037, and the minus sign means the proverb list
+   helped the recipes.
+
+On **Two task losses**, the **Gap** column shows the total change from the specialist, which is 2.257
+minus 2.123, or +0.134. The **Interference** column shows the part caused by the other list, and
+whatever is left of the gap is the cost of shrinking.
+
+The two parts add up to the gap: 0.171 of shrinking plus −0.037 of interference gives 0.134. Because
+the proverbs helped a little, the total gap is smaller than the shrinking on its own.
+
+## How to play with it
+
+### Read the two task vectors
+
+Start on **Task vectors**, with **Task vectors from** left on `Full fine-tunes` and **Recipe epochs**
+and **Proverb epochs** both at 20. Each of those two sliders reads “20 passes” at that setting, since
+an epoch is one pass through the text.
+
+Under the maps, **Recipe specialist, recipes** shows 2.123 and **Proverb specialist, proverbs** shows
+2.169, the two specialists’ scores on their own texts. **Overlapping entries** reads 720 of 900, which
+counts the cells that both fine-tunes changed, and the badge above the maps reads cosine 0.34.
+
+**Sign conflicts** reads 96 (13%), so about 1 in 8 of those shared cells were pushed in opposite
+directions by the two fine-tunes. Look for the cells with a thin diagonal line through them, because
+those are the 96 conflicts, and they are marked on both maps.
+
+Then drag **Recipe epochs** down to 0, and watch the slider change to read `untrained · τ = 0` as the
+recipe map turns grey.
+
+Every merge now works with the proverb list alone, because an untrained
+fine-tune has a task vector made entirely of zeros. The one exception is SLERP, which needs two
+non-zero lists to measure an angle, so its row falls back to the base model’s losses. Set the slider back to 20 before you go on, so the
+numbers match the rest of this lesson.
+
+### Average, then split the cost
+
+On **Merge recipe**, leave **Merge method** on `Linear blend` with **Blend t** at 50%, where the
+slider reads “50% recipes · 50% proverbs”. The **Served weights** formula shows the arithmetic, and
+under it you can read the merged model’s loss on each of the two texts.
+
+Now go to **Two task losses**, whose plot puts the recipe loss along the bottom and the proverb loss
+up the side. Lower and further left is better on both jobs, so you want a merge’s point as close to
+the bottom left corner as it can get.
+
+The fixed markers are the `harbor base`, the `recipe specialist`, the `proverb specialist`, and a
+cross for `two separate models`. That cross sits at each specialist’s score on its own job, which is
+what you would get by keeping both models.
+
+The large filled circle is the merge you picked, while small hollow circles show the other four
+methods, each tagged with a short name: Lin, TA, TIES, DARE or SL. If a point would fall off the edge of the plot, it is drawn at the
+edge with a dashed outline and labelled with its true losses.
+
+In the table below the plot, the `Linear blend` row shows 2.257 on recipes and 2.330 on proverbs.
+Both are worse than the **Specialists** row, so the merge loses to each specialist at its own job, by
+gaps of +0.134 and +0.161.
+
+Then read the two **Interference** columns, which show −0.037 and −0.055, and notice that both of
+them are negative. The note under the table puts this into words, saying that adding each list helped
+the other task rather than hurting it.
+
+**Try this:** switch **Merge method** to `Task arithmetic` and set **Scale λ** to 1.00, which makes
+the losses 2.279 and 2.258. Interference now turns positive, at +0.156 on recipes and +0.089 on
+proverbs, so this time each list is hurting the other job.
+
+Then drag **Scale λ** slowly from 0 up to 1.50, and watch the large circle travel along the dashed
+line that the legend calls “task sum, λ from 0 to 1.5”. The dotted line beside it is the linear
+blend’s path. When you finish, set **Scale λ** back to 1.00, because TIES and DARE use
+the same slider and this lesson’s numbers assume 1.00.
+
+### Resolve sign conflicts
+
+Switch **Merge method** to `TIES`, where **Keep top** starts at 20% of each vector. Move it up to 100%
+first, and then slide it slowly down to 10% while you watch the strip of bars on **Merge recipe**.
+
+The strip shows ten cells, with the five biggest sign conflicts on the left and the five biggest
+agreements on the right. Each cell has three bars: the recipe change on the left, the proverb change
+in the middle, and the merged value on the right, with that value printed underneath.
+
+With TIES selected, any change that was trimmed away turns into a dashed outline, and the winning
+sign is printed as ▲ + above the merged bar or ▼ − below it. Find the conflict cell named `h→a`,
+whose merged bar reads +1.18, the full proverb change, where `Linear blend` gave only +0.14.
+
+### Drop and rescale
+
+Switch **Merge method** to `DARE`, then sweep **Drop rate p** from 0 up to 0.9 and watch the large
+filled circle, which now stands for DARE. In the strip, dropped changes become dashed outlines. A short tick,
+which the legend calls “height before rescaling”, marks how tall each kept change was before it was
+multiplied.
+
+On the way up, stop at 0.50 and read the `DARE` row in the table, which shows 2.762 on recipes and
+2.602 on proverbs. Those numbers belong to the starting mask, and once you draw a new one you cannot
+get that mask back, so read them first.
+
+Then carry on to 0.9 and press **New random mask** a few times. The button starts out reading
+`New random mask · #4`, and the number goes up by one with each press, as each press draws a fresh
+mask.
+
+### Curve instead of line
+
+Switch **Merge method** to `SLERP`, keeping **Blend t** at 50%, and look at the `‖τ_merged‖` badge,
+which now reads 10.32 instead of 8.46. The note under the formula gives the angle between the two
+lists as Ω = 69.9°, which matches the cosine of 0.34 on the first card.
+
+In the table, SLERP’s **Interference** cells show a dash, because SLERP has no version with one list
+taken out. It needs two arrows to measure an angle, so the lab cannot run its water test on it.
+Compare SLERP’s point with the `Linear blend` point at the same **Blend t** instead, which is what the
+lab’s note suggests.
+
+### Switch to LoRA task vectors
+
+Last, switch **Task vectors from** to `LoRA rank 4`, so that each task vector comes from a small
+adapter like the one in *LoRA & adapters*. The 4 is the adapter’s size setting from that lab, and a
+smaller number means a smaller add-on.
+
+Read **Sign conflicts** again, which should now read 331 (46%), and the cosine badge, which should
+read 0.19. Then set **Merge method** back to `Linear blend` at 50% and read the two **Interference**
+columns, which now sit close to zero.
+
+Finally, pick `Task arithmetic` with **Scale λ** at 1.00 and read the **Interference** columns again.
+They show about +0.51 on recipes and +0.38 on proverbs, roughly three to four times the full
+fine-tunes’ values.
+
+## What to notice
+
+### Shrinking, not clashing, explains the average
+
+- The average’s gap is mostly shrinking, because the recipe list at half strength, alone, scores
+  2.294, and adding half the proverb list *improves* that to 2.257.
+- Both texts are ordinary English, so the two lists point partly the same way, which is what the
+  positive cosine of 0.34 tells you.
+- The proverbs help here because the recipe list is only at half strength, so the recipe model still
+  has room to improve. Half the proverb list supplies some of that missing push.
+- At full strength the recipe list has already done its job, so the same overlapping push overshoots
+  and the interference turns positive, as the next section shows.
+- The cosine is 0.34 in both cases, so the cosine alone cannot tell you whether the other list will
+  help or hurt. How strongly each list is added matters just as much.
+- About 87% of the 720 shared cells agree in sign, so two lists can overlap almost everywhere without
+  being in conflict.
+
+### Full strength is where they collide
+
+- **Task arithmetic** at full strength is where the lists collide, costing recipes +0.156 and
+  proverbs +0.089 against the same merge without the other list.
+- In that row the **Gap** and **Interference** numbers match. With the proverb list removed, the merge
+  is exactly the recipe specialist, so the whole gap comes from the other list and none from shrinking.
+- **Scale λ** has a sweet spot, since both losses fall until λ is about 0.7 to 0.8 and then both rise
+  as the dashed path bends back.
+- At λ = 0.8, the losses are 2.218 on recipes and 2.241 on proverbs, which beats the 50/50 average on
+  both jobs.
+- Below the sweet spot each list is too weak, so turning λ up repairs the shrinking, while above it
+  the interference grows faster than the repair.
+
+### TIES picks a winner in each conflict
+
+- TIES changes the conflict cells most: in `h→a`, recipes wrote −0.89 and proverbs wrote +1.18, and
+  TIES keeps +1.18 where the average keeps +0.14.
+- At **Keep top** 20%, only 38 of the 96 conflicts survive the trim on both sides, so only those 38
+  need a vote.
+- In the other 58, at least one side was trimmed away first, so there was nothing left on that side
+  to vote with.
+- With 20% kept, TIES lands at 2.273 on recipes and 2.280 on proverbs, which is close to plain task
+  arithmetic in this lab.
+
+### DARE breaks this model
+
+- At p = 0, DARE drops nothing and multiplies by 1, so it gives exactly the same numbers as `Task
+  arithmetic` at the same **Scale λ**.
+- At p = 0.5, with the starting mask, DARE scores 2.762 on recipes and 2.602 on proverbs, worse than
+  every other method here.
+- At p = 0.9, nine in ten changes are dropped and each kept change is multiplied by 10, and the
+  losses climb to nearly 6.
+- That is 5.967 and 5.661, far worse than the score of about 3.4 for a model that spreads its guesses
+  evenly over every character.
+- The multiplying keeps each change right on average but not in any single draw, and this tiny model
+  has no spare copies of its changes to fall back on.
+- Losing changes alone would only drift the model back toward the base, with losses close to the
+  base’s own. Going far past even guessing comes from the other half of the rule.
+- Each surviving change is multiplied by 10, so those scores land ten times too far, and the model
+  becomes confidently wrong.
+- Each press of **New random mask** moves the DARE point, because a different set of changes is
+  thrown away each time.
+
+### SLERP keeps its length
+
+- SLERP at 50% scores 2.226 on recipes and 2.284 on proverbs, which beats the plain average on both
+  jobs.
+- The two lists are 69.9° apart, so the straight-line halfway point is only 8.46 long, while the
+  curve’s halfway point is 10.32 long.
+- Since both halfway points face the same direction, keeping more of each list’s strength is what
+  makes SLERP the better blend here.
+- SLERP at 50% is the same model as `Task arithmetic` at **Scale λ** about 0.61. The slider moves in
+  steps of 0.05, but at 0.60 the losses come out at 2.229 and 2.287, almost the same.
+- `Task arithmetic` at 0.80 does better still, so the curve is not special in itself.
+
+### LoRA lists clash far more
+
+- With `LoRA rank 4`, **Sign conflicts** reads 331 (46%), out of the same 720 shared cells, so nearly
+  half the shared cells are pushed in opposite directions.
+- That is far more than the roughly 1 in 8 for full fine-tunes, and the cosine drops to 0.19, so the
+  two LoRA lists point in less similar directions.
+- At the 50/50 average the LoRA interference stays near zero, while each list is only at half
+  strength.
+- The clash shows up once both lists are added whole: `Task arithmetic` at **Scale λ** 1.00 gives
+  interference of about +0.51 and +0.38, against +0.156 and +0.089 for full fine-tunes.
+
+### One file has a price
+
+No merge reaches the `two separate models` cross, and that leftover gap is the price of serving one
+model instead of keeping two.
+
+## Where it breaks
+
+### What this lab simplifies
+
+Every task vector, merge and loss in this lab is computed live from real fine-tunes, so nothing is
+recorded in advance or made up. The limits come instead from how small and narrow the experiment is,
+and each one is worth keeping in mind.
+
+There are only two tasks, and each fine-tune runs once with one **seed**, the starting number for its
+random choices. A different seed could give somewhat different lists. The model is
+also tiny, with only 900 weights, and its texts hold only eight recipe lines and ten proverbs.
+
+This lab’s base is its own 48-epoch run, not the 60-epoch Harbor model from the *Fine-tuning &
+transfer* and *LoRA & adapters* labs. That is why its loss on recipes is 2.553 rather than the 2.556
+you may remember. The difference is only 0.003, far smaller than the gaps between a merge and a specialist
+that this lesson studies, though no lab tests whether it matters.
+
+Each merge is also scored on the very sentences the fine-tunes trained on, so nothing is held back for
+a fair test. Picture a student who practises with the exact questions that will be on the exam, so a
+high mark shows only that they learned those questions. In the same way, these scores say which merge
+fits these sentences, not which one would do best on new recipes or proverbs.
+
+The strip shows only 10 of the 900 cells, picked because they are the biggest conflicts and
+agreements, while the other 890 cells still count in every loss.
+
+SLERP is applied here to the task vectors rather than to whole models, which lets you see the curve
+clearly. Real tools such as mergekit apply SLERP to whole models instead.
+
+Think of each whole model
+as one long arrow, made of the long base arrow plus a short arrow of changes. Two such arrows almost
+overlap, so there is hardly any corner to cut. In real use, SLERP on two fine-tunes of one base
+therefore gives nearly the same result as a plain blend.
+
+This model is a single table with no hidden units, so it cannot show what goes wrong when two models
+lack a shared base. Every task vector in the lab starts from the same base on purpose, so you only
+meet that failure in this lesson’s words.
+
+The lab also tilts against TIES and DARE, which were designed for huge models whose changes are small
+and highly repetitive. In such models most changes can be trimmed or dropped at little cost, while
+here every one of the 900 numbers matters.
+
+Picture a school play run by a crew of 900, where each person has a different job that nobody else
+knows how to do. If you send half the crew home at random and ask the rest to work twice as hard, the
+total effort might stay the same. Yet if the one person who knew the lights went home, nobody can work
+them.
+
+Now send nine in ten home, as DARE does at p = 0.9, and ask the rest to work ten times as hard. Worse
+than the missing jobs, each person who stays now overdoes their own job, so the sound person turns the
+music up far too loud. That is what DARE does to this lab’s tiny model.
+
+A huge model is more like a crew where many people can cover each job, which is the setting DARE was
+built for.
+
+DARE also uses a single random mask for each setting, and the lab never averages its results over many
+masks. **New random mask** shows you how far one fresh draw can move the result, which is the only
+spread you get to see.
+
+The LoRA maps carry one extra quirk, because adding the same amount to every score in a row changes no
+guess at all. If every score in the `h` row went up by 1, the gaps between them would stay the same, so
+the chances for the next character would not change.
+
+The model only cares how the scores in a row compare with each other, and full fine-tunes never add a
+shift like that. LoRA adapters do add such shifts, so part of what the LoRA
+maps and cosine show makes no difference to any prediction.
+
+**A common mix-up:** a merged model that loses to each specialist at its own job is not proof of
+interference.
+Averaging halves each task’s own list, and half a list scores worse even when nothing else is added at
+all. Only the **Interference** columns, which rerun the merge with the other list set to zero, measure
+what the other task really did.
+
+### Where real merging falls short
+
+Real merges are tuned and judged on held-out tests for every task at once, which means tests built
+from examples the models never trained on. The scale λ is tuned on those tests too, and choosing it
+well matters as much as choosing the method.
+
+Interference grows as you merge more tasks, and also as the tasks become more different from each
+other. Two tasks that share a lot, like the two English texts here, clash less than tasks that pull a
+model in very different directions.
+
+A merged model can keep its test scores while losing behaviour that no single score captures, such as
+the way it lays out its answers. It might also lose its habit of refusing requests it should refuse,
+or its **calibration**, which is how well its confidence matches how often it is right.
+
+No merge comes with a promise, because merging runs no training step, so nothing guarantees that any
+skill survives until you test it. Licences also travel with the weights, and a licence sets the rules
+for how a model may be used. So a merged model inherits every rule from every model that went into it.
+
+## Going deeper
+
+### Subtracting a task
+
+Task arithmetic works in reverse too, so you can subtract a task vector instead of adding one, written
+`θ_base − λ·τ`. This has been used to remove a behaviour that a fine-tune taught, such as writing
+toxic text, meaning text that is rude or hurtful.
+
+### Adapters are task vectors too
+
+An **adapter**, such as the LoRA add-on from *LoRA & adapters*, is a small trained update that is stored
+apart from the base. Its correction, written `(α / r)·B·A` in that lab, is a list of changes to the
+base’s weights, which makes it a task vector too. That is why the software built for adapters offers
+the same merge methods that you have tried in this lab.
+
+The `LoRA rank 4` option here uses adapters with a rank of 4 and an alpha of 8, as the line of text
+above the maps says. So each adapter’s correction is its two small tables multiplied together and
+then doubled, since 8 divided by 4 is 2.
+
+### Methods stack
+
+The methods can also be combined, and DARE is often used first to thin out the lists before they are
+merged with TIES. SLERP takes exactly two models, so merges of many models use the linear, TIES or
+DARE methods instead.
+
+Tools such as mergekit apply these rules to one block of weights at a time. They sometimes use a
+different blend for each layer, which is one of the stages a big model passes its input through.
+
+### The cosine, worked out
+
+The cosine on the badge comes from a short calculation that you could do by hand for a small list.
+Multiply the two lists cell by cell, add up all the products, and divide the total by the two lengths
+multiplied together.
+
+Take two short lists, 3 and 4, and 4 and 3, which are both arrows 5 squares long. Multiplying cell by
+cell gives 12 and 12, which add up to 24. Dividing 24 by 5 times 5, which is 25, gives a cosine of
+0.96, so those two arrows point almost the same way.
+
+Lists that rise and fall together give a cosine near 1, unrelated lists give one near 0, and lists
+that move in opposite ways give one near −1.
+
+### Other ways to combine skills
+
+*LoRA & adapters* made the kind of lists this lab combines, and *Distillation & pruning* takes a
+different route to a similar goal. It reaches one smaller model with many behaviours by training
+rather than arithmetic, which costs computer time but actually tunes the result for the job.
+
+### Merge, or serve the adapters side by side
+
+Merging is not the only way to get several tasks out of one base, and *LoRA & adapters* ends on the
+other route. That route keeps one copy of the base and many adapters, and it picks the right adapter
+for each request as it arrives.
+
+Serving software called vLLM does this when it is started with the `--enable-lora` option. A research
+paper called S-LoRA describes serving thousands of adapters at the same time from one shared base.
+
+The two routes trade differently, because serving keeps each task’s adapter exact but costs effort in
+scheduling requests and managing memory. A merge costs nothing extra when the model runs, but, as this
+lab measures, it can add interference between the tasks. How much depends on the method and the
+scale.
+
+Serve the adapters separately when tasks must never interfere, or when you need to add and remove
+them while the system is running. Merge them when one fixed model is enough and your held-out tests
+show that the interference is small.
+
+### Toy versus real
+
+- **Tools:** mergekit, from Arcee AI, describes itself as “a toolkit for merging
+  pre-trained language models”. You describe a merge in a short settings file, written in a format
+  called YAML, that names the models and the method.
+- **Methods:** mergekit’s methods include Linear, SLERP, Task Arithmetic, TIES, DARE and DELLA, among
+  others, and this lab rebuilds the first five on a table of 900 numbers.
+- **Memory:** mergekit works through a model one piece at a time instead of loading it all at once,
+  so a merge can run on a computer’s main processor alone. It can also use a graphics card with as
+  little as 8 GB of its own memory. A gigabyte, or GB, is about a billion bytes, and one byte holds
+about one letter of text.
+- **Testing:** here a merge is arithmetic on 900 numbers and the check is two losses, while a real
+  merge is judged on held-out tests for every task. On those tests, one score can hold steady while
+  another slips, so every task needs checking.
+- **Adapters:** in Hugging Face’s PEFT library, `merge_and_unload()` folds one adapter into its base
+  for good. The mergekit tool can go the other way with `mergekit-extract-lora`, building an adapter
+  that comes close to a full fine-tune’s changes.
+- **Side by side:** several adapters can also stay unmerged and be served side by side, as the section
+  above describes.
+
+### Where these facts come from
+
+The facts about tools come from the mergekit README (github.com/arcee-ai/mergekit) and the PEFT LoRA
+reference (huggingface.co/docs/peft/package_reference/lora).

@@ -1,0 +1,185 @@
+---
+objectives: ["Distinguish training and validation performance", "Recognize and respond to overfitting", "Predict how capacity, weight decay, learning rate, and batch size change a training run"]
+terms: ["Generalization", "Model capacity", "Overfitting", "Underfitting", "Training set", "Validation set", "Test set", "Generalization gap", "Early stopping", "Regularization", "Weight decay", "Dropout", "Distribution shift", "Data leakage", "Double descent"]
+---
+
+## The big picture
+
+This module is about how a training run unfolds over time, and how to tell a model that is learning
+structure that transfers from one that is memorizing its sample. *Loss & gradient descent* and
+*Backpropagation* built the machinery that fits parameters to data. Here it runs for thousands of
+epochs, and the question is when more fitting stops helping on data the model has not seen.
+
+The answer takes two measurements. **Training loss** is scored on the examples the optimizer fits and
+**validation loss** on held-out examples it never fits, so only the second shows **generalization**.
+Whether the two curves stay together or part depends on **model capacity** (the flexibility of the
+model family), on data size and training time, and on regularization. Learning rate and batch size
+mostly set the pace of the run and whether it stays stable or diverges.
+
+### Where it shows up
+
+- **Training pipelines.** Data is split three ways: one set to fit, one to choose settings and when to
+  stop, and a **test set** scored once at the end.
+- **Large language models.** Pretraining often sees most data about once, which keeps the two losses
+  close. Overfitting returns instead in fine-tuning on small datasets, in data repeated many times,
+  and in optimization against a learned reward model.
+- **Regularizers.** Weight decay, dropout, data augmentation, label smoothing, and early stopping all
+  discourage brittle fitting.
+- **Evaluation.** **Data leakage** between training and evaluation data, or **distribution shift**
+  between held-out data and real inputs, can make a healthy-looking held-out score misleading.
+
+### Why it matters
+
+Training loss is the cheapest number to improve and the least informative on its own. With enough
+capacity, a model keeps lowering it by fitting noise in its sample, which is **overfitting**, while
+held-out loss rises. Plotted alone, that failure looks like progress. Too little capacity
+**underfits**, leaving both losses high. Choosing model size, learning rate, and the epoch to keep all
+depend on the held-out curve.
+
+### What you will be able to explain
+
+- What training and validation loss each measure, why the **generalization gap** between them is the
+  diagnostic, and why a separate test set is still needed.
+- How overfitting shows up as a widening gap, and how early stopping and weight decay respond to it.
+- How capacity, weight decay, learning rate, and batch size change a run, so you can predict whether it
+  will underfit, fit, overfit, or diverge.
+
+### What the lab shows
+
+The model, its training, and every loss are real and computed in the browser. The data is generated
+from a known curve plus noise rather than collected, so the true curve and the noise variance are
+known, which no real project offers. Polynomials of degree 1 to 13 are each trained by minibatch
+gradient descent on 16 of 32 noisy samples and scored on the other 16, with both losses measured at
+83 checkpoints over 10,000 epochs.
+
+- **Training curves**: both losses by epoch, a ring at the lowest validation loss, and a status badge.
+- **Training dynamics controls**: **Epoch** and **Stop at lowest validation** choose the moment to
+  read, and **Polynomial degree** picks which of the 13 trained degrees to display. Changing a run
+  setting (**Weight decay**, **Learning rate**, **Batch size**, or **Noise draw**) retrains all 13.
+- **Fitted function**: the model's curve over the data and the true curve.
+- **Capacity sweep**: both losses for every degree at the current epoch.
+
+The badge applies thresholds the lab chose, and no test set is drawn. The key experiment: at
+**Polynomial degree** 11, drag **Epoch** to 10,000, then compare raising **Weight decay** with setting
+it back to 0 and pressing **Stop at lowest validation**.
+
+## What it is
+
+Two losses, measured on different data. **Training loss** is the error on the examples the optimizer
+fits. **Validation loss** is the error on examples held out from that fitting. Their difference, the
+**generalization gap**, is the diagnostic. Neither curve alone tells you much.
+
+### The run in this lab is real
+
+The lab draws 32 noisy samples of a known curve, `y = 0.8 sin(4x) + 0.4x`, with noise of standard
+deviation 0.25. Alternate samples form a 16-point **training set** and a 16-point **validation set**.
+
+A polynomial of the chosen degree, `ŷ = Σ θₖ φₖ(x)`, starts at zero and is trained by minibatch gradient
+descent for 10,000 epochs. Both losses are recorded 83 times. Because the noise is known, the chart can
+also show what no real project has: the noise variance σ² = 0.0625, the average loss of a perfect model.
+
+### The three regimes
+
+- **Underfitting.** Both losses stay high. A straight line (degree 1) settles at 0.322 on training and 0.279
+  on validation by about epoch 24 and stays there. It cannot bend to follow a sine.
+- **Fitting.** Both losses fall together. At degree 5, validation reaches 0.100 by epoch 11 and ends at
+  0.111.
+- **Overfitting.** Training loss keeps falling while validation turns up. At degree 11, validation bottoms
+  at 0.098 at epoch 13 and ends at 8.63, while training loss falls to 0.007. The true curve itself only
+  scores 0.081 on those training points.
+
+### Why the damage arrives late
+
+Gradient descent fits the smooth, strongly curved directions of the loss first, and the wiggly, weakly
+curved directions last. The noise lives mostly in the wiggly directions. So the useful fit happens in the
+first dozen epochs and the harmful fit creeps in over thousands. That ordering is why **early stopping**
+works as a regularizer.
+
+### Three splits, not two
+
+The training set fits parameters. The validation set chooses capacity, learning rate, and when to stop.
+Because you make decisions with it, its number becomes mildly optimistic. A third **test set**, touched
+once at the end, gives the honest estimate. This lab does not draw one.
+
+## Why it’s here
+
+Held-out measurement is the difference between a training loop and an engineering practice, and it
+underlies every capability claim. A benchmark score is a held-out measurement, and it means
+something only if the test data was absent from training. When it was not, the score measures
+memorization, and the failure looks like the gap in this lab, except nobody plotted the second curve.
+
+## How to play with it
+
+Read the split strip on **Training dynamics controls**: filled dots train the model, hollow dots only score
+it. Find the same dots on **Fitted function**.
+
+Drag **Epoch** from 0 to 10,000 at the default degree 5. Both losses fall together, and the green ring marks
+the lowest validation loss, 0.100 at epoch 11.
+
+Set **Polynomial degree** to 11 and drag **Epoch** to 10,000. The status reads overfitting from epoch 215.
+On **Fitted function** the curve bends toward individual training dots and swings to about 24 near the
+right edge.
+
+Now regularize two ways. Raise **Weight decay** to 0.03, and validation at epoch 10,000 drops from 8.63 to
+0.135. Or set it back to 0 and press **Stop at lowest validation**. Then try **Learning rate** and **Batch
+size**, and watch **Capacity sweep** as you move **Epoch**.
+
+## What to notice
+
+- Falling training loss proves nothing by itself. At degree 11 it falls at every checkpoint, including the
+  ones where validation is 88 times worse than its best.
+- A steady gap is normal on 16 points. At degree 5 the gap settles near 0.09 and stays there. A widening
+  gap is the signal.
+- A ten times smaller learning rate gives almost the same run, slower. At degree 11, η 0.01 reaches its
+  best, 0.097, at epoch 147 instead of 13. On the log axis the curves slide one decade to the right.
+- Learning rate and batch size interact. At degree 5, η 0.3 trains normally with batch 16 or 8 but
+  diverges at epoch 22 with batch 4. The loss on 4 points can curve far more sharply than the average over
+  16, so the same step overshoots.
+- On **Capacity sweep**, capacity barely matters at epoch 13 and matters enormously at epoch 10,000.
+  Overfitting depends on capacity, data, and training time together.
+
+## Where it breaks
+
+**In this lab.** The model, the data, the training, and every loss are real and reproducible from the seed.
+What is unrealistic is how much you know: the true curve, the noise level, and a one-dimensional input you
+can plot. Half the data is held out so the validation curve is not decided by a few points; real projects
+usually hold out 10 to 20 percent.
+
+The status label applies fixed thresholds the lab chose: 1.5 times the best validation loss so far, and
+training loss above 2σ². The overfitting here is also slow, spread over thousands of epochs, because a
+polynomial's wiggly directions are weakly curved. Networks overfit on their own schedules, sometimes within
+a few epochs of fine-tuning.
+
+**In real systems.** Validation curves are noisy, so one upward point is not a verdict. Practitioners
+smooth, average over seeds, or wait several evaluations before stopping. Loss and the metric you care about
+can disagree: validation loss can rise from overconfidence while accuracy still improves.
+
+The classical picture also does not transfer cleanly to large language model pretraining. Those runs often
+see most data about once, so training and held-out loss stay close for the whole run. Overfitting returns
+in fine-tuning on small datasets, in data repeated many times, and when a model is optimized against a
+reward model until it exploits it.
+
+Large models can also show **double descent**: held-out error rises as capacity approaches the point of
+fitting the training set exactly, then falls again well beyond it. This lab stops at degree 13, below the
+16 training points, so it never reaches that regime.
+
+## Going deeper
+
+Weight decay is one regularizer among several:
+
+- **Weight decay** adds λ times the sum of squared weights to the objective, pulling weights toward zero.
+  At degree 11 and epoch 10,000 it holds the weight size at 0.74 instead of 2.48. AdamW applies it directly
+  to the parameters.
+- **Dropout** zeroes a random fraction of activations on each step, so no unit can rely on one partner.
+- **Data augmentation** enlarges the dataset with label-preserving transformations. It attacks the cause:
+  too little data for the capacity.
+- **Early stopping** is regularization by budget.
+- **Label smoothing** stops a classifier from pushing its confidence all the way to 1.
+
+Two concerns show up in production. **Distribution shift** means a model that generalizes to held-out data
+from the same source can still fail on real traffic, so the validation set's provenance matters as much as
+its size. **Data leakage**, such as near-duplicates across the split or evaluation text inside pretraining
+data, makes the validation curve look healthy while measuring nothing.
+
+Later in the course, **Anatomy of a training run** returns to batch size on a real character model, and
+**Hyperparameters & schedules** trains four learning-rate schedules side by side.

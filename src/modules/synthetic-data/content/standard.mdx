@@ -1,0 +1,260 @@
+---
+objectives: ["Describe synthetic data as model-generated text that becomes another model's training set", "Explain model collapse as the loss of rare patterns when models train on finite samples of their own output", "Judge a filter or verifier by what it keeps and what it can never restore", "Explain what a fixed, stronger teacher changes: it breaks the loop and can add patterns the seed lacked, but only what it knows"]
+terms: ["Synthetic data", "Seed data", "Recursive training", "Model collapse", "Tail", "Finite-sample error", "Temperature", "Distribution narrowing", "Verifier", "Rejection sampling", "Data accumulation", "Contamination", "Teacher model", "Held-out coverage"]
+---
+
+## The big picture
+
+This module is about **synthetic data**, training text a model wrote rather than a person. It asks
+what survives when models learn from models: which patterns a model fitted to generated text
+keeps, which it loses for good, and what a filter, the original data, or a stronger writer
+changes.
+
+*Building a dataset* cleaned scraped text with deduplication and decontamination, and both apply
+to generated text unchanged. What is new here is the loop, **recursive training**: each model is
+fitted to text the previous one wrote, starting from human-written **seed data**.
+
+### Where it shows up
+
+- **The web crawl.** Generated text is cheap and unlimited, and a growing share of the web is
+  already model-written, so the next crawl contains text a model produced.
+- **Verified training sets.** Many training sets are generated on purpose. The ones that
+  work pair a strong generator with a check, such as a code test or a matching math answer.
+- **Distillation.** A large model writes a smaller one's training data, as OpenAI's
+  text-davinci-003 did for Stanford's Alpaca.
+- **Data governance.** Generated text carries the licence and policy of the model that wrote it.
+
+### Why it matters
+
+Synthetic data can only contain what its generator produces, so careless use fails in ways that
+can look clean:
+
+- **Replacing the data loses the tail.** A model trained only on the last model's output loses the
+  rarest patterns first (in real systems, rare facts, dialects, and edge cases), then variety.
+  That is **model collapse**. Sampling sharpened toward likely text, at low temperature
+  or with top-p, speeds it.
+- **Filtering can trade variety for quality.** A **verifier**, a check that accepts or rejects
+  generated examples, raises quality but can only remove text.
+- **Leaks pass fluency checks.** A generator that saw a benchmark can write its items back out.
+
+What helps is verified synthetic data added to the original data. New patterns need a writer that
+knows more than the student.
+
+### What you will be able to explain
+
+- What synthetic data is: model-generated text that becomes another model's training set.
+- Why model collapse happens: models trained on finite samples of their own output lose rare
+  patterns first, and the losses compound.
+- How to judge a filter or verifier by what it keeps, and why it cannot restore what the generator
+  no longer writes.
+- What a fixed, stronger teacher changes: it breaks the loop and can add patterns the seed lacked,
+  but only patterns it knows.
+
+### What the lab shows
+
+Every generation is the track's 30 × 30 character-bigram table, which predicts each character from
+the one before it and is fitted in closed form by counting. Generation 0 is fitted to a fixed seed
+of 499 characters of harbor notes, and ten generations follow. Sampling is real.
+
+The **Recursive training** card plots two regimes at once, each as eight runs with different
+sampling seeds plus their mean: **Synthetic only**, where each batch replaces the data, and
+**Real + synthetic**, where it joins the seed. **Training data** highlights one regime and picks
+which one's run 1 feeds **Which transitions survive** and **What a generation writes**, the cards
+that show that run's pairs and text.
+
+**Measure** picks **Transitions**, **Coverage**, **Entropy**, **Real words**, or **Unseen text**,
+and **Generation** steps from 0 to 10. **Generator and filter** sets **Generator** (**The model
+itself** or **A stronger teacher**), **Temperature**, **Filter**, and **Sample size**.
+
+The key experiment: at the defaults, under Synthetic only, drag **Generation** to 10 and watch
+Transitions, the number of distinct character pairs the table has seen, fall from 157 to about
+51, while the Real + synthetic line stays at 157. On Unseen text, the model itself decays under
+Synthetic only, and the teacher with Real + synthetic climbs.
+
+Some parts are fixed or simplified. The teacher is a bigram too, trained once by SGD on the seed
+plus 1,515 characters of extra notes the student never sees. The **Real words** measure and the
+**Real words only** filter, the lab's verifier, are both a spelling check against the seed's 57
+words. **Unseen text** asks only whether the pairs in 586 characters of hand-written held-out
+sentences can be produced.
+
+## What it is
+
+**Synthetic data** is training text a model wrote. This lab runs the loop that
+question raises: fit a model, let it write the next model's training text, and
+repeat for ten generations of **recursive training**.
+
+The model is the 30 × 30 character-bigram table used across this track, fitted
+exactly by counting what follows each character. Generation 0 is fitted to 499
+characters of harbor notes, the **seed data**. Its table holds 157 distinct
+character pairs, which the chart calls **Transitions**.
+
+Each later generation drafts text at a chosen **Temperature**, an optional
+**Verifier** keeps what it accepts, and the next table is fitted to the result.
+**Training data** decides what that fit sees:
+
+- **Synthetic only**: the latest generated batch replaces the data.
+- **Real + synthetic**: every batch is added to the human seed, which is
+  **data accumulation**.
+
+**Generator** decides who does the writing. **The model itself** is the loop
+above. **A stronger teacher** is a fixed **teacher model**: a bigram trained
+with the track's SGD trainer on the seed plus 1,515 characters of extra harbor
+notes, 2,014 characters in all. It writes every generation's data. The student
+is the same counting table as before and never sees those notes.
+
+## Why it’s here
+
+What survives when models learn from models turns on one mechanism. A model
+fitted to a sample gives probability
+zero to anything the sample missed, and it can never write what it gives zero.
+Losses compound across generations, and the first things lost are the rarest.
+This is the model collapse named in Shumailov et al. (Nature, 2024).
+
+The same mechanism explains the success case. When the writer is a fixed model
+that knows more than the student, nothing the student misses can reach the next
+round, and what the writer knows can flow in.
+
+## How to play with it
+
+Start at **Generation** 0 and read what the seed-fitted model writes, then
+step to 1. Keep **Training data** on **Synthetic only** and drag **Generation**
+to 10. At the defaults (temperature 1.0, no filter, 500 characters per
+generation) the mean of eight runs reads:
+
+- **Transitions**: 157, 125, 105 at generations 0, 1 and 2, then 75 at 5 and 51
+  at 10. The eight runs end between 46 and 58.
+- **Coverage**: 100% falls to 74.1% at generation 5 and 58.9% at 10.
+- **Entropy**: 1.787 nats falls to 0.912.
+
+Switch to **Real + synthetic**. Transitions hold at 157 and Coverage at 100% at
+every generation; Entropy only drifts to 1.713.
+
+Now set **Filter** to **Real words only** and **Measure** to **Real words**.
+Then lower **Temperature** to 0.6 and compare both regimes again.
+
+Last, set **Filter** back to **No filter** and **Measure** to **Unseen text**. It
+asks what share of the character pairs in 586 characters of held-out harbor
+sentences a generation can produce at all. The seed-fitted model scores 92.6%.
+With **The model itself** and **Synthetic only** it falls to 55.6% by generation 10.
+
+Switch **Generator** to **A stronger teacher** with **Real + synthetic**, and the
+line rises instead: 96.2%, 98.1%, 98.8%, and 99.4% at generations 1, 3, 5, and 10.
+With **Synthetic only** it stays level.
+
+## What to notice
+
+- **The tail goes first.** In **Which transitions survive**, run 1 at
+  generation 10 has lost 63 of the 72 pairs the seed used once, 35 of 58 used 2–4
+  times, and 8 of 27 used five or more times. That is **finite-sample error**: a
+  once-seen pair appears about once per 500 characters and is often simply missed.
+- **Nothing new appears.** The grid only ever loses cells. Under Synthetic only
+  the Transitions line can never rise, in any run.
+- **Sample size is the brake.** At generation 10, Synthetic only keeps about 34
+  transitions with 250 characters per generation, 51 with 500, and 109 with 2000.
+- **Temperature is the accelerator.** At 0.8 the generation-10 mean is about 11;
+  at 0.6 every run has fallen into the four-pair `the ` loop by generation 6. That
+  is **distribution narrowing** taken to its end. At 1.2 the loss slows to 73 but
+  does not stop.
+- **Quality and variety come apart.** Under Synthetic only the verifier keeps
+  about 5% of drafted characters at generation 1, pushes **Real words** above
+  99%, and leaves 16 transitions, fewer than with no filter. `the the the` is 100%
+  real words.
+- **Keeping the seed is what works.** Under Real + synthetic the same verifier
+  raises Real words from about 7% to 82% while all 157 transitions survive.
+  Verified synthetic data plus the original data is the combination that helps.
+- **A fixed writer stops the compounding.** With the teacher on Synthetic only,
+  Unseen text is level from generation 1 instead of decaying, because the
+  teacher is never refitted to a student's mistakes.
+- **A level line is not a high line.** At 500 characters per generation the
+  teacher's Synthetic only student sits near 87%, below the seed-fitted model's
+  92.6%: one finite sample of the teacher still misses pairs. At **Sample size**
+  2000 it reaches 97.5% with no human text in any round, where the model itself
+  has decayed to 80.7%.
+- **A verifier built from the seed throws the gain away.** With the teacher and
+  **Real words only**, Synthetic only scores 42.2% at generation 1, and Real +
+  synthetic ends at 93.0% instead of 99.4%. The teacher's extra knowledge is
+  mostly words the seed never used, which the verifier rejects.
+- **A teacher can only teach what it knows.** The seed plus the extra notes cover
+  99.5% of the held-out pairs, the most this teacher's data can offer. **Transitions**
+  can pass the data's 258 pairs, reaching 275 at generation 10, because SGD leaves
+  about 1% of the teacher's probability on pairs its data never contained.
+
+## Where it breaks
+
+### In this lab
+
+Every number is computed from real sampling and exact refits, averaged over
+eight sampling seeds. What is small is everything else: one character of
+context, 900 numbers, a 499-character seed, ten generations. **Real words** is a
+spelling check against 57 seed words, not a quality score, and it rewards
+repetition.
+
+The fit is by counting, so a missed pair is exactly zero. A table trained by SGD
+from zero weights never reaches zero; retrained on its own samples it drifts
+toward noise instead, emitting pairs the seed never had while its loss on the
+real text rises. That is a second face of the same loop, and this lab does not
+show it.
+
+The teacher is a bigram too, fitted to four times the text, so it is stronger in
+coverage and in nothing like understanding. **Held-out coverage** asks only
+whether a pair can be produced, not how likely it is. The held-out sentences were
+written by hand in the seed's style and share its theme, as the teacher's extra
+notes do.
+
+### In real systems
+
+The mechanism carries over: rare facts, dialects, and edge cases are the tail,
+and a model trained only on another model's finite output under-represents them.
+Low-temperature or top-p sampling for "clean" data accelerates it. Gerstgrasser et
+al. (2024) found that accumulating synthetic data alongside the original, rather
+than replacing it, avoids the collapse in the models they tested, which is what
+the Real + synthetic line shows.
+
+**Contamination** is the other risk. A generator that saw a benchmark can write
+its items back out, and the leak passes any fluency filter. Synthetic data needs
+the same decontamination checks as scraped data.
+
+## Going deeper
+
+**Where synthetic data works.** Its successes pair a strong generator with a
+check: code kept only if its tests pass, math kept only if the answer matches,
+reasoning traces kept only when they reach a correct result (Zelikman et al.,
+STaR, 2022). That is **rejection sampling**, and the acceptance rate is its cost.
+
+**A stronger model as the writer.** Distilling a large model's outputs into a smaller
+one is also synthetic data, with the teacher as the generator, which is what the
+Generator control stages. Stanford's Alpaca fine-tuned a 7B LLaMA model on 52K
+instruction-following examples generated by OpenAI's text-davinci-003, for less
+than $500 of API use.
+
+**What a verifier can and cannot do.** A verifier moves probability toward
+outputs that pass. It cannot restore an output the generator never writes, so
+diversity has to come from the prompts, the seed data, or fresh human data.
+
+**Whose terms the student inherits.** The Alpaca authors released it for academic
+research only. They cited LLaMA's non-commercial licence and the terms of use of
+text-davinci-003, which prohibit developing models that compete with OpenAI
+(Stanford CRFM, 2023). Synthetic data carries the licence and policy of the
+model that wrote it.
+
+**Connections.** Building a dataset covers deduplication and decontamination,
+which apply to generated text unchanged. Train one from scratch trains the same
+table by gradient descent. The Distillation & pruning lab trains a student against a teacher's
+probabilities rather than its sampled text, and Evaluation is where a leaked
+benchmark item would show up.
+
+### Toy versus real
+
+- **Scale.** The lab writes 250 to 2000 characters per generation for ten
+  generations. Alpaca's data was 52K instruction-following examples, generated from
+  text-davinci-003 for less than $500 (Stanford CRFM, 2023).
+- **The teacher.** The lab's teacher is a bigram trained on four times the seed.
+  A real teacher is a far larger model, and the student's gain is bounded by what
+  it knows, as the 99.5% ceiling is here.
+- **Collapse.** The lab loses 106 of 157 pairs under Synthetic only and none under
+  Real + synthetic. Shumailov et al. report that tails of the original
+  distribution disappear when models train on model-generated content (arXiv
+  2305.17493), and Gerstgrasser et al. that accumulating data avoids it in their
+  models (arXiv 2404.01413).
+- **Verifiers.** The lab's is a 57-word list that keeps about 5% of the first
+  generation's draft. Real ones are test suites and answer checkers.

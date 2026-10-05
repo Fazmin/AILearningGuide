@@ -1,0 +1,206 @@
+---
+objectives: ["Identify state, action, reward, policy, and discounted return in a small episode","Use the Bellman backup to explain credit assignment as value flowing backward from a delayed reward","Explain why learning from samples needs exploration, and why a misspecified reward is maximized anyway","Explain how a policy-gradient update turns sampled rewards into a better policy, and what a baseline and the learning rate change"]
+terms: ["State","Action","Reward","Policy","Episode","Return","Discount factor","Value function","Bellman equation","Value iteration","Credit assignment","Exploration","Policy gradient and baseline","Reward hacking"]
+---
+
+## The big picture
+
+This module is about reinforcement learning (RL): learning a **policy**, the rule that picks an
+action in each **state**, from a scalar **reward** paid after acting instead of a label for each
+output. The reward can arrive many steps late. The question RL answers is which actions, in which
+states, earn the largest **return**, the discounted sum of the rewards that follow.
+
+The module moves from planning to learning. On a small gridworld with a known transition table,
+which says where each move can land, value iteration computes every state's value with no trial and
+error: each sweep updates every cell from its neighbours' current values.
+
+On a four-armed bandit, a one-state problem whose arms pay at unknown rates, the agent learns from
+its own samples: first by averaging each arm's rewards, then with a **policy gradient** that shifts
+probability toward arms whose reward beat a baseline, here the running average reward.
+
+It builds on **How we know a model works**, which showed how a single tidy score can hide a
+failure. Here the score is also the training target.
+
+### Where it shows up
+
+- **Language-model post-training.** The next module, **Post-training**, follows how a language
+  model is tuned against a reward model learned from human preferences: reinforcement learning
+  from human feedback (RLHF). **Reasoning models** covers tuning one against a checker that
+  grades its answers.
+- **Policy-gradient methods.** The lab runs REINFORCE, the simplest one. Proximal policy
+  optimization (PPO) builds on the same update and clips it so the policy moves in small steps.
+- **Reward hacking.** A boat-racing agent once circled for points instead of finishing, and
+  **Post-training** shows a reward-model score rising while true quality falls.
+
+### Why it matters
+
+A reward scores what happened, not which move was right. That leaves three problems, and the lab
+shows each one:
+
+- **Credit assignment.** A late reward must be traced back to the moves that earned it. In value
+  iteration, value reaches the start one sweep per move of distance from the reward.
+- **Exploration.** An agent cannot improve its estimate of an action it never takes. With no
+  random pulls (ε = 0), the bandit agent keeps whichever arm paid first.
+- **Reward specification.** An optimizer picks whatever earns the most return, intended or not.
+  The lab's **Bonus tile H** pays +0.3 on every entry and does not end the episode.
+
+Value iteration avoids sampling only because it reads a known table. A language model has none, so
+it learns from noisy sampled returns. A baseline cuts that noise without changing the expected
+update.
+
+### What you will be able to explain
+
+- Identify the state, action, reward, policy and discounted return in one small episode.
+- Use the Bellman backup, the one-step update value iteration repeats, to explain credit
+  assignment as value flowing backward from a delayed reward.
+- Explain why learning from samples needs exploration, and why a misspecified reward is
+  maximized anyway.
+- Explain how a policy-gradient update turns sampled rewards into a better policy, and what a
+  baseline and the learning rate change.
+
+### What the lab shows
+
+No network is trained and no real-system data appears. The 5×4 gridworld, its rewards, the +0.3
+bonus tile and the 24-step episode cap are authored. Value iteration computes each sweep's values
+exactly from the known table, with no sampling. The episode follows the greedy policy; a slip, set
+by **Slip chance**, sends a move sideways, and slips are drawn from a seeded generator.
+
+The bandit's four arms pay 1 or 0 at fixed rates, and the 300-run averages use fixed seeds, so the
+same settings always give the same averages.
+
+On **Gridworld**, set **Value-iteration sweeps**, **Discount γ**, **Slip chance** and
+**Bonus tile H**, and read **V(S)**, the start cell's value after that many sweeps (the expected
+return once it converges). Click a cell to see its four action values on **Bellman backup**. **Return along the episode** scrubs one episode with
+**Episode step**, resamples its slips with **Episode seed**, and totals it as **Full return G₀**.
+
+**Explore versus exploit** sets **Exploration ε**, the chance of a random pull, and **Bandit seed**
+for the single run shown in the bars. **Policy gradient on the bandit** sets **Learning rate α**,
+**Baseline** and **Policy seed**.
+
+The key experiment raises **Value-iteration sweeps** one at a time from 0. At the default γ 0.95,
+with no slip and the bonus off, **V(S)** starts at 0, is negative on sweeps 1 to 5 and turns
+positive on sweep 6, when the +1 has travelled the six moves back from the goal G.
+
+At γ 0.95, **Bonus tile H** makes the optimal policy circle H instead of finishing. At
+**Learning rate α** 0.20, switching **Baseline** off raises **Runs below 50% on best arm**
+from 2 to 29 of 300.
+
+## What it is
+
+A **Markov decision process** has states, actions, a transition rule `P(s′|s,a)`, a **reward**
+`r(s,a,s′)`, and a **discount factor** `γ`. A **policy** chooses actions. The **return** from time
+`t` is `G = r₁ + γ·r₂ + γ²·r₃ + …`, and the **value function** `V(s)` is the expected return from
+`s`.
+
+This lab's MDP is a 5×4 grid. Entering G pays +1 and ends the **episode**. Entering T pays −1 and
+ends it. Every other move costs −0.04, the living cost from Russell and Norvig's classic 4×3 world.
+**Slip chance** sends a move sideways.
+
+### The Bellman equation
+
+The optimal value satisfies one recursion:
+
+`V(s) = maxₐ Σₛ′ P(s′|s,a) · [ r(s,a,s′) + γ·V(s′) ]`
+
+**Value iteration** applies that backup to every cell at once, starting from `V = 0`. The
+**Bellman backup** card writes out the four action values for one cell. The largest is exactly what
+the next sweep stores there.
+
+### Credit assignment, made visible
+
+A backup reads only the neighbours' current values. So the +1 at G can reach S only one move per
+sweep. S is six moves from G, and at the defaults `V(S)` stays negative through sweep 5, then jumps to
+0.593 on sweep 6. That delay is **credit assignment**: deciding which early moves earned a late reward.
+
+### A policy gradient on the bandit
+
+Value iteration needs the transition table. When the rules are unknown, an agent can learn a policy
+directly from sampled rewards. **Policy gradient on the bandit** runs REINFORCE on the four-armed bandit.
+
+A softmax policy starts at 25% on each arm, samples an arm and a reward `r`, and moves each preference by
+`α·(r − b)·(1[arm] − π)`. The bracket is the gradient of `ln π(arm)`, so an arm becomes likelier when its
+reward beat the **baseline** `b` and less likely when it fell short. Here `b` is the average reward so far.
+
+At α 0.20 with the baseline on, the average over 300 seeded runs ends with 92.1% of its probability on the
+best arm, and 2 runs in 300 end below 50% on it. With the baseline off, those are 84.9% and 29.
+
+## Why it’s here
+
+Post-training reuses these words. The state is the prompt plus the tokens so far, an action is the
+next token, the policy is the language model, and the reward is a score from a reward model or a
+checker.
+
+This is the reward-after-acting signal that **What AI actually is** sorted from labels and raw text. This
+page makes each word concrete on a problem small enough to solve exactly. Then the next lab's
+reward model reads as what it is: one designed scalar that an optimizer will follow.
+
+## How to play with it
+
+1. Set **Value-iteration sweeps** to 0 and raise it one sweep at a time. Watch the shading spread
+   backward from G and read **V(S)** and **Residual**.
+2. On **Return along the episode**, scrub **Episode step**. At the defaults the six rewards give
+   **Full return G₀** = 0.593, equal to **V(S)**.
+3. Move **Discount γ** from 0.95 to 0.50. **V(S)** falls to −0.046, yet the path still ends at G.
+4. Set **Slip chance** to 20%. **V(S)** drops to 0.314 and the arrow on the cell left of T turns away.
+5. On **Explore versus exploit**, compare **Exploration ε** at 0, 0.10, and 0.50.
+6. Set **Bonus tile H** to on at γ 0.95, then lower γ to 0.85.
+7. On **Policy gradient on the bandit**, compare **Baseline** on and off at **Learning rate α** 0.20, then
+   try α 0.02 and 1.00.
+
+## What to notice
+
+- Value arrives at a cell one sweep per move of distance from the reward. The **Residual** hits
+  exactly 0 once every cell has heard from G, because the grid with no slip is deterministic.
+- `V(S)` is an average over slips; **G₀** is one sampled episode. They agree only when nothing is
+  random and `V` has converged.
+- A discount below 1 shrinks the final +1 by `γ⁵` over six moves. At γ 0.50 that is 0.031, less than
+  the step costs on the way.
+- On the bandit, best-arm share averaged over 300 seeded runs is 33% at ε = 0, 72% at ε = 0.10,
+  and 56% at ε = 0.50. With no **exploration**, the agent keeps whichever arm paid first.
+- Subtracting a baseline leaves the expected policy-gradient update unchanged and cuts its noise. At
+  α 0.20 that is 92.1% against 84.9% on the best arm, and 2 against 29 stranded runs in 300.
+- The learning rate trades speed for lock-in. At α 1.00 with the baseline on, the policy has 65.1% on the
+  best arm after 50 pulls against 40.1% at 0.20, but 33 runs in 300 end below 50%. At α 0.02 it has
+  learned almost nothing after 400 pulls: 37%.
+- With **Bonus tile H** on, circling H is optimal at γ 0.89 and above. That is **reward hacking**:
+  correct optimization of a scalar that says the wrong thing.
+
+## Where it breaks
+
+**In this lab.** The transition table is known and has 20 states, so value iteration can sweep all
+of them. The rewards, the +0.3 bonus, and the 24-step episode cap are authored. The gridworld
+episode follows the greedy policy, so slips are its only randomness. A looping episode's **G₀** is
+cut at 24 steps and undercounts `V(S)`.
+
+The bandit has one state, four stationary Bernoulli arms, and ε-greedy only. Better strategies,
+such as upper-confidence bounds, usually beat it. The policy-gradient card is the simplest estimator, with
+a running-average baseline and a fixed 400 pulls. It has no value function, no clipping, and no KL penalty,
+so it is not PPO or GRPO.
+
+**In real systems.** A language model has far too many states to enumerate and no known transition
+table. It cannot run value iteration. It learns from sampled returns, which are noisy, so variance and
+instability dominate practical training. The baseline card shows that noise in miniature.
+
+A reward that is easy to maximize in an unintended way will be maximized that way. More optimization
+makes that worse, not better.
+
+## Going deeper
+
+**Learning without the table.** Q-learning estimates `Q(s,a)` from sampled transitions instead of
+the table. Policy-gradient methods skip values altogether and nudge the policy toward actions whose
+sampled return beat a baseline: `∇J = E[∇ log π(a|s) · (G − b)]`. REINFORCE (Williams, 1992) is the
+basic form, and the **Policy gradient on the bandit** card runs it. PPO (Schulman et al., 2017) clips each
+update so the policy moves in small steps.
+
+**The bandit is closer to RLHF than the grid.** The InstructGPT paper (Ouyang et al., 2022) describes
+its RL environment as a bandit that presents a random prompt and expects a response. One sampled
+response gets one score, so exploration matters there too: a behavior the model never samples
+cannot be rewarded.
+
+**The bonus tile has a famous ancestor.** In OpenAI's 2016 "Faulty reward functions in the wild"
+write-up, a boat-racing agent learned to circle a lagoon hitting respawning targets instead of
+finishing the race, because the score paid for targets.
+
+**Post-training** applies this loop to a language model with a learned reward and a KL leash.
+**Preference optimization in practice** runs DPO on a tiny model, and **Reasoning models** looks at
+policies post-trained to spend extra tokens before answering.

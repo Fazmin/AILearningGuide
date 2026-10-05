@@ -1,0 +1,233 @@
+---
+objectives: ["Read the compute-optimal frontier as a power law: a straight line on log-log axes once the floor is removed, with steady and slow returns", "Describe compute-optimal model and data balance", "Estimate N from a transformer's layer count and width, and say what that estimate leaves out"]
+terms: ["Scaling law", "Compute-optimal", "IsoFLOP curve", "Power law", "Irreducible loss", "Chinchilla ratio", "FLOPs", "Parameter count", "Token-to-parameter ratio", "Overtraining", "Emergent ability", "Data-constrained scaling", "Extrapolation", "Test-time compute"]
+---
+
+## The big picture
+
+This module is about scaling laws: empirical curve fits that predict a language model's loss from
+its parameter count `N` and its number of training tokens `D`. They answer a budgeting question.
+With a fixed amount of training compute, how large should the model be, how many tokens should it
+see, and what loss should it reach?
+
+**Training dynamics** followed loss within one run; a scaling law is fitted to the measured
+losses of many runs. **The transformer block** counted one block's weights, which this module
+scales up to a whole model's `N`, and **Inference & KV cache** showed the serving cost that a
+training-only optimum leaves out.
+
+Compute is counted in **FLOPs**, floating-point operations. An **isoFLOP curve** holds the compute
+budget fixed and trades model size against tokens; its lowest point is the **compute-optimal**
+split.
+
+### Where it shows up
+
+- **The model-to-data ratio.** Hoffmann et al. (2022), the Chinchilla paper, found that model size
+  and data should grow roughly in proportion; their headline rule of thumb is about 20 training
+  tokens per parameter. The earlier fits of Kaplan et al. (2020) had favored growing model size
+  much faster than data.
+- **Models built to be served.** Labs deliberately **overtrain** smaller models, training them on
+  far more tokens than the compute-optimal count, because smaller models are cheaper to serve.
+  Roughly 8B parameters on 15T tokens is Llama 3 8B's recipe.
+- **Other axes.** Mixture-of-experts models use only some of their parameters for each token, so
+  their fits separate active from total parameters. **Test-time compute**, spent at answer time on
+  sampling, longer reasoning or verification, has its own scaling behavior. Scaling fits also
+  track how the best learning rate and batch size shift with compute.
+
+### Why it matters
+
+Training compute is roughly proportional to parameters times tokens, so on a fixed budget a bigger
+model sees fewer tokens. Lean too far either way and loss rises: a large model is starved of
+tokens, and a small one is limited by its size.
+
+The fit also makes returns predictable. Once the **irreducible loss**, a fitted floor that no
+amount of scale removes, is subtracted, the compute-optimal frontier is a power law: each tenfold
+budget removes the same fraction of the reducible loss, the loss above that floor. The fitted
+constants hold only for the architecture, data mix, tokenizer, optimizer and schedule they were
+fitted with, and a lower loss does not guarantee a better score on a given task.
+
+### What you will be able to explain
+
+- Read the compute-optimal frontier as a power law: a straight line on log-log axes once the floor
+  is removed, with steady and slow returns.
+- Describe the compute-optimal balance of model size and data, and why a bigger model is not
+  automatically better at fixed compute.
+- Estimate `N` from a transformer's layer count and width, and say what that estimate leaves out:
+  embeddings, norm scales and the exact MLP shape.
+
+### What the lab shows
+
+Nothing is trained. Every readout is closed-form arithmetic: a published loss fit, `C = 6ND`, the
+ratio `D/N`, or `12·L·d²`. **Fit** chooses `Hoffmann 2022`, the constants Hoffmann et al.
+printed, or `Epoch 2024 refit`, Besiroglu et al.'s refit of them. The Chinchilla and Gopher crosses
+are the fit's predictions for their sizes, not their reported results, and most of the (N, D)
+plane the sliders reach is extrapolation beyond the fitted runs.
+
+On **Scaling law controls**, **Parameters** and **Training tokens** set `N` and `D`. **IsoFLOP
+curves** draws one thin U-shaped curve per budget, each with a small dot at its minimum. The thick
+curve is your own budget: your run is the filled circle on it, a diamond marks the fit's optimum
+and a square the 20:1 split. The card reads out **Predicted loss**, **Compute C = 6ND**, **Tokens
+per parameter** and **Gap to optimum**.
+
+The key experiment sets **Budget** to `Hold compute` and drags **Parameters**, so the filled
+circle slides along the thick curve until **Gap to optimum** reads `0.000` at the diamond. There
+the two doubling readouts on **Loss breakdown** nearly match: doubling either resource buys about
+the same.
+
+**Frontier power law** plots loss above the floor against compute on log-log axes and reads out
+its **Slope**. **N from dimensions** turns **Layers L** and **Width d** into a parameter count,
+which **Use as Parameters** puts on the **Parameters** slider, clamped to its 100M to 1T range.
+
+## What it is
+
+Scaling laws are empirical curve fits. Train many models at different sizes on different amounts
+of data, measure their loss, and fit a formula. The fit then predicts the loss of runs you have
+not done.
+
+The lab uses the parametric form from Hoffmann et al. (2022), the Chinchilla paper:
+
+```text
+L(N, D) = E + A / N^α + B / D^β
+```
+
+`N` is parameter count and `D` is training tokens, both as raw counts. `E` is the **irreducible
+loss**, a floor no amount of scale removes. The two power-law terms shrink with size and with
+data. In the printed fit, `E = 1.69`, `A = 406.4`, `B = 410.7`, `α = 0.34` and `β = 0.28`, with
+loss in nats per token on the paper's own data.
+
+### Why a budget must be split
+
+Training compute is approximately `C ≈ 6ND` FLOPs for a dense transformer: about 2 operations per
+parameter per token in the forward pass and 4 in the backward pass. Because the product `ND` is
+what costs money, a fixed budget is one **isoFLOP curve**. Along it, a bigger model means fewer
+tokens.
+
+Each isoFLOP curve is U-shaped. Too small a model and the size term dominates. Too large and the
+data term dominates. The bottom is the **compute-optimal** split, and at that point the marginal
+returns match: `α·A/N^α = β·B/D^β`.
+
+### The ratio that changed
+
+The first influential fits (Kaplan et al., 2020) concluded that model size should grow much faster
+than data. Hoffmann et al. used learning-rate schedules matched to each run's length and found the
+two should grow roughly in proportion. Their headline recipe, about **20 tokens per parameter**,
+implied that the largest models of the time were undertrained.
+
+## Why it’s here
+
+Scaling laws are why large training runs can be planned at all. You cannot afford to try a
+frontier configuration twice, so the configuration is chosen by fitting curves on small runs and
+extrapolating to the large one.
+
+They also explain the shape of the industry. Steady, predictable, sublinear returns justify large
+capital spending in a way that unpredictable returns would not.
+
+## How to play with it
+
+Start on **IsoFLOP curves**. The default run is 3.2B parameters on 28B tokens: **Predicted loss**
+2.416 at 5.4 × 10²⁰ FLOPs, only 8.8 tokens per parameter. The diamond on your curve is the fit's
+optimum at the same compute, 1.38B on 65B tokens at 2.393.
+
+### Two failures on one curve
+
+Set **Parameters** to `10B` and **Training tokens** to `2B`: loss 2.873. Then set `200M` and
+`100B`: loss 2.643. Both runs cost 1.2 × 10²⁰ FLOPs, so they sit on the same curve, on opposite
+sides of its minimum at 2.575.
+
+### Walk the curve
+
+Switch **Budget** to `Hold compute` and drag **Parameters**. Now the other slider moves with it,
+the dot slides along one curve, and **Gap to optimum** falls to `0.000` at the diamond. **Loss
+breakdown** shows why: `Doubling N lowers L by` and `Doubling D lowers L by` meet there.
+
+### Build N from dimensions
+
+Under **N from dimensions**, set **Layers L** and **Width d**. The defaults, 32 layers of width
+4,096, give 12 × 32 × 4,096² = 6.44B weights. Press **Use as Parameters** to put the slider there.
+Then double **Width d**: N becomes 25.8B, fourfold. Double **Layers L** instead and it is 12.9B,
+twofold.
+
+## What to notice
+
+- The bottoms are flat. At the default budget the 20:1 square is 0.006 above the diamond while
+  using a 54% larger model. Roughly right matters; exactly right barely does.
+- The bottleneck moves rather than disappearing. Push one resource and the other term becomes the
+  one worth buying.
+- Loss has a floor. Even at 1T parameters and 30T tokens the printed fit predicts 1.793 against
+  `E = 1.69`.
+- N follows the square of the width but only the first power of the layer count. Doubling the width
+  quadruples N; doubling the layers doubles it.
+- On **Frontier power law**, `L − E` along the frontier is a straight line on log-log axes with
+  slope −0.154. Each tenfold budget keeps 70% of the reducible loss.
+
+## Where it breaks
+
+**In this lab.** Nothing is trained. Every readout is the published formula evaluated in closed
+form, and the crosses for Chinchilla and Gopher are the fit's predictions for their sizes, not
+their reported results. The sliders reach 1T parameters and 30T tokens, far beyond the fitted runs
+(about 70M to 16B parameters, 5B to 500B tokens), so most of the plane is extrapolation.
+
+### The fit and the rule of thumb disagree
+
+Under the printed constants, the optimum at Chinchilla's own budget (5.76 × 10²³ FLOPs) is 32B
+parameters on 3.0T tokens, about 93 tokens per parameter, not 70B on 1.4T. Besiroglu et al. (2024)
+found the printed estimates inconsistent with the paper's other two methods. Their refit, the
+**Fit** option `Epoch 2024 refit`, puts that optimum at 72B on 1.33T, about 18 per parameter.
+
+The exponents are fragile too. With the more precise α = 0.3392 and β = 0.2849 listed in that
+replication, the same optimum moves to about 40B. Small changes in α and β move large-scale
+predictions a lot.
+
+### Limits of the mechanism
+
+Every term is conditional on architecture, data mix, tokenizer, optimizer and schedule. Loss is not
+capability: a smooth loss curve can sit under a metric that jumps, and much of the "emergent
+ability" literature turns on whether the metric is continuous or thresholded. The token supply is
+finite: Muennighoff et al. (2023) found about four epochs of repeated data nearly as good as fresh
+data, with value decaying after that.
+
+## Going deeper
+
+### From dimensions to N
+
+The fit's `N` is a parameter count, and for a dense transformer two numbers nearly set it: the layer
+count `L` and the width `d`. **The transformer block** counts a block's weights as `4d²` for
+attention (queries, keys, values, output) and `8d²` for a classic MLP, so `12d²` per block and
+`12·L·d²` for the model, with embeddings left out. Its toy block has `d` = 8: 12 × 8² = 768
+weights, or 840 with biases and norm parameters.
+
+The same formula works at scale. LLaMA's 6.7B model has 32 layers of width 4,096 (Touvron et al.,
+2023, Table 2), so 12 × 32 × 4,096² = 6.44B, about 4% under the paper's count. Its 65.2B model has
+80 layers of width 8,192, giving 64.4B, about 1% under. The shortfall is what the rule leaves out:
+embeddings, norm scales and the exact MLP shape.
+
+Embeddings matter more for small models. GPT-2 small has 12 layers of width 768 and a 50,257-token
+vocabulary (its Hugging Face configuration): the blocks hold 12 × 12 × 768² = 84.9M weights and the
+token table alone holds 50,257 × 768 = 38.6M. The blocks grow with `d²` and the table only with `d`,
+so the share falls as models widen.
+
+Which count a fit uses is part of the fit. Kaplan et al. fitted non-embedding parameters and
+Hoffmann et al. total parameters, and Pearce and Song (2024) attribute much of the gap between the
+two fits to that choice. Both fits in this lab are of Hoffmann et al.'s form.
+
+**Inference & KV cache** uses the same two numbers from the serving side. Its cache holds `2 ×
+layers × kv_heads × head_dim` values per token, which is `2·L·d` when every query head has its own
+key and value head. So layers and width set both what a model costs to train and what it costs to
+serve.
+
+### Overtraining and serving
+
+Compute-optimal is optimal for training only. A model served to millions of users spends more on
+inference than on training, so labs deliberately **overtrain** smaller models. Set 8B parameters on
+15T tokens, roughly Llama 3 8B's recipe: the printed fit charges 0.026 extra loss against a 36B
+optimum, and the refit 0.054 against an 81B one, for a model several times cheaper to serve.
+
+**Inference & KV cache** showed where that serving cost comes from: every generated token re-reads
+the weights and the cache, and that bill recurs on every answer.
+
+Mixture-of-experts models scale along a third axis: total parameters can grow while per-token
+compute stays fixed, so fits separate active parameters, total parameters and expert count.
+
+**Test-time compute** — sampling several candidates, longer reasoning, or verification — has its
+own scaling behavior and trades against training compute for a target accuracy. Scaling fits are
+also used to set hyperparameters, by fitting how the best learning rate and batch size shift with
+compute, or by using a parametrization such as μP that keeps them stable as width grows.

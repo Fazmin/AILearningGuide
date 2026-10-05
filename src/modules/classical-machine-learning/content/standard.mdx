@@ -1,0 +1,114 @@
+---
+objectives: ["Match each classical method to the shape of boundary or grouping it can draw","Say which methods store examples and which fit a small set of parameters","Read logistic output as P(y=1|x), name the SVM margin, and name naive Bayes' independence assumption","Say what a tree's Gini split, an SVM's margin and support vectors, and naive Bayes' product of per-feature likelihoods each compute on the 18 points"]
+terms: ["Linear model","Logistic regression","Support vector machine","k-nearest neighbors","Decision tree","Gini impurity","Random forest","Naive Bayes","k-means","Decision boundary","Inductive bias"]
+---
+
+## The big picture
+
+This module is about **classical machine learning**. It fits eight classical methods, ones that work on features you supply, to one fixed set of 18 points and asks why they split the same square differently: seven draw **decision boundaries**, the places where the predicted class changes, and k-means draws groupings without labels.
+
+*Data, features, and representation* turned raw examples into feature vectors; here each point is already two coordinates, x and y, with a 0 or 1 label. The points form an uneven XOR: class 0 holds the bottom-left and top-right corners, six points each, and class 1 holds the other two, four points top-left and two bottom-right. What a method can draw is set by its **inductive bias**, the restrictions it brings before it sees any data.
+
+### Where it shows up
+
+- **Tabular data:** when a table's columns are already the features, these methods fit on a CPU in milliseconds and set the baseline a larger model has to beat.
+- **Production variants:** regularization, kernels, and feature maps change what a linear method can do, and a production random forest also randomizes which features each split may use.
+- **Clustering:** k-means groups points without reading labels, and still requires a chosen k.
+- **Later in this course:** *The supervised learning loop* fits a chosen hypothesis class, the family of rules a fit can pick from, and is the first lab to score the fit on a holdout.
+
+### Why it matters
+
+Choosing a method chooses which boundaries are possible. On this uneven XOR, least squares (the **linear** option), logistic regression, and the linear support vector machine (SVM) each draw one line and misclassify the two bottom-right class-1 points: 16 of 18. A depth-1 tree and naive Bayes score only 14 of 18; k-nearest neighbors with k ≤ 4 and a depth-5 tree wrap both class-1 corners.
+
+The methods also store different things, so they fail differently. These three linear methods compress the points into three weights and cannot bend without new features. k-nearest neighbors keeps every point, so its memory and query cost grow with the data. A deep tree can isolate single points, so a perfect score on its own training points is not a test score.
+
+### What you will be able to explain
+
+- Which shape of boundary or grouping each of the eight methods can draw.
+- Which methods store the training examples and which fit a small set of parameters.
+- How to read logistic output as P(y=1|x) while its 50% line stays straight, what an SVM's margin is, and which independence assumption makes naive Bayes naive.
+- What a tree's Gini split, an SVM's margin and support vectors, and naive Bayes' product of per-feature likelihoods each compute on the 18 points.
+
+### What the lab shows
+
+The data is synthetic: the 18 points in the unit square are authored, and every fit runs in the page on them. Least squares (linear) and naive Bayes are closed-form: one solves the normal equations, and the other averages each class's points into a mean and variance per coordinate. Logistic regression and the SVM run short gradient and subgradient loops that stop close to, not at, their optima, and k-means runs 12 assign-and-average steps.
+
+The tree scores every candidate cut at each node and keeps the best, one node at a time, and knn has no fitting step: it votes among the stored points at query time. The forest's seven bootstrap samples, rows drawn with replacement, follow a fixed rule, so the forest is identical on every visit.
+
+**Algorithm** switches among linear, logistic, svm, knn, tree, forest, naivebayes, and kmeans; **k**, from 1 to 7, feeds knn and kmeans, and **Tree depth**, from 1 to 5, feeds tree and forest. **Decision surface** evaluates the fitted rule on a 28×28 grid and crosses out misclassified points. **Probe and inductive bias** prints what the method computes at **Probe x** and **Probe y**, or at a click on the canvas.
+
+**What it stored** reports **Keeps**, **Numbers stored**, and **Train accuracy**, or **Within-cluster SS** for kmeans. Every score is on the same 18 points the method was fitted to; nothing is held out.
+
+The key experiment: on linear, find the two crossed-out bottom-right points, then switch to knn and move k from 1 to 7. The pair keeps its corner up to k = 4 and is outvoted from k = 5.
+
+## What it is
+
+Classical here means methods that operate on features you supply: they fit a handful of parameters, or store the examples, rather than learning a representation. They train in milliseconds on a CPU and remain strong baselines on tabular data.
+
+The page fits eight methods on one 18-point uneven XOR: twelve class-0 points in two diagonal clusters, and six class-1 points split four top-left and two bottom-right. Linear least squares and logistic regression produce a 3-weight hyperplane. Logistic reads that score as P(y=1|x) = σ(w·x+b). A linear soft-margin SVM stores the same three-weight shape with a hinge and a margin slab.
+
+k-nearest neighbors stores the points. A Gini tree makes axis-aligned splits. A forest averages seven bootstrap trees. Naive Bayes assumes P(x,y|c) = P(x|c)P(y|c). k-means stores k centers and does not use labels, which makes it unsupervised; the other seven fit labeled points.
+
+### Decision tree: how a cut is chosen
+
+A node's Gini impurity is 2p(1 − p) for a share p of class 1: 0 when the node is pure, 0.5 when it is split evenly. The whole set has 6 class-1 points in 18, so p = 1/3 and the Gini is 0.444.
+
+For each candidate cut (x < t or y < t, with t between neighboring values) the tree takes the size-weighted Gini of the two children and keeps the cut with the largest drop, called the gain.
+
+The winner is x < 0.15. It sends 2 points left, both class 1 (Gini 0), and 16 right, 4 of them class 1 (Gini 0.375). The weighted Gini is (2/18) × 0 + (16/18) × 0.375 = 0.333, a gain of 0.111. The cut y < 0.86 scores the same and peels off the top two class-1 points; the code keeps the first one it tries.
+
+No single cut does better because the classes sit in an XOR, so the first cut only peels off a pure pocket and the depth-1 tree gets 14 of 18. A tree recovers by cutting again inside the pieces, one greedy choice at a time, never looking ahead.
+
+### SVM: the widest street
+
+A linear SVM draws the line w·x + b = 0 and the parallel lines w·x + b = ±1. The gap between those two lines, 2/‖w‖, is the margin. Minimizing ½‖w‖² therefore widens the street, and the hinge term C × Σ max(0, 1 − t(w·x + b)), with label t = ±1 and C = 8 here, charges every point inside the street or on the wrong side.
+
+A point with t(w·x + b) above 1 pays nothing and pulls on nothing, so deleting it leaves the optimum where it was. Only the support vectors, the points on or inside the street, set w and b. Here w = (−2.41, 2.80) and b = −1.23, so ‖w‖ = 3.70 and the street is 0.54 wide on a unit square.
+
+The classes are not linearly separable, so 12 of the 18 points are support vectors. Refitting on those 12 alone reproduces every weight to within 0.01, while deleting one support vector moves the bias by about 0.33. The two bottom-right class-1 points sit about 2.5 on the wrong side of the line and carry about two thirds of the objective.
+
+### Naive Bayes: a product of per-feature likelihoods
+
+By Bayes' rule (see The math you need), P(c | x, y) is proportional to P(c) P(x, y | c). The naive step splits the joint likelihood into one factor per feature, P(x | c) P(y | c), as if x and y were independent once the class is known. Each factor is a 1-D Gaussian with that class's mean and variance, fitted by averaging.
+
+Class 0 has prior 0.667 and class 1 has 0.333. At the default probe (0.50, 0.50), class 0 scores 0.667 × 1.446 × 1.632 = 1.574 and class 1 scores 0.333 × 1.217 × 1.298 = 0.527. Normalizing gives P(y=1|x) = 0.527 / (1.574 + 0.527) = 0.251, so the probe is called class 0.
+
+Why naive: inside each class the two coordinates are strongly correlated, r = −0.92 for class 1 (its corners lie on an anti-diagonal) and r = +0.91 for class 0, and the product assumes r = 0. Dropping that correlation discards exactly the structure that makes the set XOR-shaped, so naive Bayes gets 14 of 18.
+
+## Why it’s here
+
+Feature vectors from the previous lab predict nothing until a method turns them into a rule, and the boundary shape is a property of that method plus the features.
+
+Neural nets are a later hypothesis class. They are not classical methods on this page.
+
+The naive Bayes subsection above leans on *The math you need* for Bayes' rule and Gaussian means and variances, and logistic regression leans on it for the sigmoid.
+
+## How to play with it
+
+Algorithm switches the method. k is read by knn and k-means. Tree depth is read by the tree and the forest.
+
+Probe x and Probe y, or a click on the canvas, choose a query. The formula row is the number that method computes there. On tree it also prints the root cut's Gini, on svm the support-vector count, and on naivebayes each class's prior × density product.
+
+Compare linear to knn, logistic to SVM, a depth-1 tree to a depth-5 tree, then to the forest, then naive Bayes. The canvas is a 28×28 evaluation of the fitted rule.
+
+## What to notice
+
+- Logistic does not bend the linear cut; it only maps the score through a sigmoid. Opacity is P(y=1|x).
+- Least squares, logistic, and the SVM each place one line that takes the top-left corner and misclassifies the two bottom-right points: 16 of 18.
+- SVM's dashed lines are w·x+b = ±1, a street 2/‖w‖ wide. This set is not linearly separable, so the hinge stays busy and most points are support vectors.
+- knn with k ≤ 4 and a depth-5 tree wrap both anti-diagonal groups. At k ≥ 5 the two-point group is always outvoted.
+- Naive Bayes uses a false independence assumption: class 1's two opposite corners collapse into one wide axis-aligned Gaussian. With a 12:6 prior the posterior passes 0.5 only in the far top-left, along a curved boundary, because the class variances differ.
+- A forest vote usually looks less jagged than one deep tree. That is variance reduction, not a new shape family.
+- k-means colors are cluster ids. Matching a label mark is an accident.
+
+## Where it breaks
+
+In this lab fits are tiny and accuracy is training accuracy. The grid is a display. Forest split ticks are from tree 0 only. SVM is linear, not a kernel machine, and its fit is a few thousand subgradient steps rather than an exact solver, so its weights are close to, not exactly at, the optimum.
+
+The tree's root cut ties between an x cut and a y cut and keeps the first. Naive Bayes fits its Gaussians to just 18 points.
+
+In the real mechanism, regularization, kernels, and feature maps change what “linear” can do. A production forest also randomizes split features. A production k-means still requires a chosen k. The supervised learning loop is where a holdout first scores the fit.
+
+## Going deeper
+
+The supervised learning loop runs one table through encode, split, a chosen H, and a real fit. How we know a model works then reads that holdout as a confusion matrix. Stacking neurons later draws a boundary that can bend without an explicit kernel.

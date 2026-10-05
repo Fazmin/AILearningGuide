@@ -1,0 +1,14 @@
+{
+  "assets": [
+    {
+      "path": "assets/residual-sae.onnx",
+      "bytes": 2102241,
+      "sha256": "086aaac62ca4a3649d1496db759ded6e4f616f27a2aa309648b7188ca1bde21a"
+    },
+    {
+      "path": "assets/sae-top-activations.json",
+      "bytes": 345610,
+      "sha256": "57524d562632ae4f160af4026de076da8c32416db4d6e27ee2e1d002a06128d8"
+    }
+  ]
+}

@@ -1,0 +1,846 @@
+---
+objectives: ["Name the failure modes a cleaning pipeline removes", "Explain why held-out text must be separate from every training set", "Judge a dataset change by its validation loss rather than its size", "Explain when a model recites its training text, and why personal data, licences, and consent need checks that deduplication does not give"]
+terms: ["Boilerplate", "Exact deduplication", "Near-duplicate", "MinHash", "Trigram diversity", "Train/validation/test split", "Held-out loss", "Leakage", "Decontamination", "Data quality", "Data mixture", "Memorization", "Personal data", "Data governance"]
+---
+
+## The big picture
+
+Copy all the text from almost any web page and you get more than the article you wanted. You also
+get the menu, a box asking you to subscribe to a newsletter, a row of share buttons and a copyright
+line at the bottom. A program that collects web pages automatically picks up all of that too, and it
+often collects the same page, or a copy of it, more than once.
+
+Models like the ones behind chatbots learn from huge piles of text gathered in this way. A **model**
+here is a program that learns one job: guessing what comes next in a piece of text, one small piece
+at a time. Learning that job is called **training**, and it works by adjusting a fixed set of
+numbers inside the model.
+
+The collection of text that a model trains on is called its **dataset**, and this module is about
+building one. That means collecting raw text, cleaning out the junk, and then checking honestly
+whether the cleaning actually helped.
+
+That last step is the one people most often skip, even though it is the only step that tells you
+whether your work paid off. It is tempting to assume that deleting junk must help, or that more
+text must always be better. This lab tests both ideas with a real model that it trains in front of
+you, instead of leaving them as guesses.
+
+### Where you have met it
+
+The language models behind today’s chatbots are trained on text that somebody collected and
+cleaned, so choices like the ones in this lab help shape their habits.
+
+The problems in this lab also show up in real datasets, on a far bigger scale. Researchers found one
+61-word sentence repeated more than 60,000 times in C4, a large collection of web text used to train
+models. They also found that models trained on collections like it sometimes write out passages from
+their training text word for word.
+
+Another team got an older model called GPT-2 to write out real names, phone numbers and email
+addresses, though each had appeared in only one of its training documents.
+
+### Why it matters
+
+Because a model has only a fixed set of numbers to adjust, it has a limited amount of room, a bit
+like a notebook with a fixed number of pages. Every extra copy of a copyright line pushes those
+numbers toward guessing copyright lines, which leaves them a little worse at guessing the text you
+actually care about.
+
+You also need an honest way to tell whether a change helped, because a test can be fooled. If you
+test a model on text it already trained on, its score improves while the model gets no better at
+anything new. It is like a student who saw the quiz questions in advance and gets a higher mark
+without learning more.
+
+Removing copies does make a model repeat its training text less often, but cleaning has limits. A
+filter can spot a phone number on a page, but it cannot tell from the text alone whether you are
+allowed to keep it. Nor can it tell whether you may reuse the page’s words, or whether the website
+asked not to be collected.
+
+### What you will be able to explain
+
+By the end of this lesson, you should be able to explain each of these in your own words:
+
+- the kinds of junk that cleaning removes from collected text, including copies of test text, and
+  which filter catches each one;
+- why the text you test a model on has to stay out of everything the model trains on, and what goes
+  wrong when some of it leaks in;
+- why you judge a change to a dataset by the model’s score on new text, not by how much text you
+  kept or threw away;
+- when a model starts repeating its training text word for word, and why personal information,
+  permission to reuse text, and consent need checks that removing copies cannot give.
+
+### What the lab lets you do
+
+The lab gives you 20 lines that look like they were copied from a small weather website. They are a
+fixed, made-up page that you cannot change, and each line is tagged with whether the cleaning kept
+it or removed it, and why.
+
+You switch filters on and off and watch lines change their tags, while a chart shows how much text
+survives each filter. Every time you change a filter, the lab trains the same tiny model twice, once
+on the whole collected page and once on the lines you kept. It then scores both models on three
+sentences that neither one was trained on, so you can see for yourself whether your cleaning helped.
+
+Those scores come from real training, not from made-up numbers. Each one comes from a single fixed
+run, though, so a tiny gap between two scores can be luck.
+
+One button sneaks a test sentence into the training text, so you can watch a score improve for the
+wrong reason. A last card swaps in a simpler kind of model, which is only a table of counts and is
+not trained at all. You choose how many earlier characters it looks at. As you raise that
+number, you can watch for the point where it starts copying its training text word for word.
+
+## What it is
+
+### A pile of collected text
+
+Text copied automatically from web pages is called a **scrape**, or a **crawl** when the program
+follows links from page to page across the web. The lab’s scrape is 20 lines long, and each line
+stands in for a **document**, meaning one item in a dataset, such as one web page.
+
+The card **Source documents and cleaning verdicts** lists every line with a small tag, called its
+**verdict**, that says what happened to it. A verdict is one of `kept`, `boilerplate`,
+`too short`, `exact repeat`, `near-duplicate` or `held-out overlap`, and each line gets exactly
+one. The **Show** control switches the list between **All lines**, which shows everything with its
+verdict, and **Kept only**, which shows what would go into training.
+
+### Four kinds of junk, and one unfair copy
+
+Mixed in with real sentences about fog, wind and boats are four kinds of junk, and all four turn up
+in real crawls:
+
+- **Boilerplate** is text that belongs to the website rather than to any article on it, like
+  `copyright 2019 all rights reserved.` or `click here to subscribe to our newsletter.` Nine of
+  the 20 lines are boilerplate, and the copyright line alone appears four times.
+- An exact repeat is a line that matches an earlier line character for character. The sentence about
+  morning fog over the harbor appears twice, and removing copies like this is called **exact
+  deduplication**, since a duplicate is a copy.
+- A **near-duplicate** says the same thing with a tiny difference: one line writes `harbour`, the
+  British spelling, where an earlier line writes `harbor`, and nothing else changes.
+- Two fragments, `ok.` and `yes.`, are scraps with almost nothing in them for a model to learn
+  from.
+
+There is one more problem, which you can add yourself with a button described later. A test copy is
+a line that repeats one of the three sentences the lab keeps aside to test the model. The section
+How the lab keeps score explains those sentences. A test copy is not junk to a human reader, but it would make
+the test unfair.
+
+### How each filter decides
+
+The card **Cleaning stages** holds four switches, **Strip boilerplate**, **Drop exact duplicates**,
+**Drop near-duplicates** and **Decontaminate**, plus a slider called **Minimum line length**. Each
+filter removes lines by a rule you could say out loud, so you can check every decision it makes.
+
+The filters run one after another in a fixed order, like stations on a production line, and a chain
+of filters like this is called a cleaning **pipeline**. That is why the card’s small heading reads
+`Pipeline`. Each line gets the verdict of the first filter that catches it:
+
+1. **Strip boilerplate** removes any line containing one of five phrases: `copyright`,
+   `all rights reserved`, `click here`, `subscribe` or `share this page`.
+2. **Minimum line length** removes lines shorter than the number of characters you set, and it
+   starts at off.
+3. **Drop exact duplicates** keeps the first copy of a line and removes any later line that matches
+   it exactly.
+4. **Drop near-duplicates** removes a line that overlaps an already kept line by 0.7 or more, on a
+   measure explained below.
+5. **Decontaminate** removes a line that shares a run of 8 words in a row with the three test
+   sentences, which the lab keeps out of training. This is the filter that catches a test copy.
+
+A computer stores text as a row of small code numbers called **bytes**. That is why the note under
+**Drop exact duplicates** calls these copies **byte-identical**, meaning the same codes in the same
+order. Add or change one letter and the bytes change, which is why this filter misses the `harbour`
+line completely. Real pipelines find exact copies by turning each document into a short code number,
+called a **hash**, where the same text always gives the same code. They then keep only the first
+document with each hash.
+
+### Measuring how much two lines overlap
+
+To compare two lines, the near-duplicate filter chops each one into every run of three characters in
+a row, called a **trigram**. The word `harbor` gives `har`, `arb`, `rbo` and `bor`, while
+`harbour` gives `har`, `arb`, `rbo`, `bou` and `our`.
+
+Next, the filter counts the trigrams the two have in common and divides by the number of different
+trigrams found in either one. Here 3 are shared out of 6 different ones in total, so the overlap is
+3 divided by 6, which is 0.5. This measure is called the **Jaccard similarity**, and the lab
+shortens it to **J**.
+
+For the two full fog lines, one extra letter barely matters, because the rest of the line is
+identical. Only the few trigrams around the `u` differ, so the lines share 54 of their 59 different
+trigrams. That puts their overlap at about 0.915, well over the 0.7 cut-off. So when
+**Drop near-duplicates** is on, the `harbour` line gets the verdict `near-duplicate · J 0.92`.
+
+### A shortcut for billions of pages
+
+Comparing every pair of lines like this works for 20 lines. Real datasets hold billions of
+documents, though, and one web page can have thousands of trigrams, so comparing full sets of
+trigrams would take far too long.
+
+A note at the bottom of **Cleaning stages** shows a shortcut that real pipelines use, called
+**MinHash**. It gives each trigram a code number, then scrambles those codes in 64 different ways,
+like reshuffling a deck of numbered cards 64 times. From each scramble it keeps only the smallest
+code, so every line ends up with a list of 64 numbers, called its **signature**.
+
+To see why matching signatures tell you about overlap, take `harbor` and `harbour` again. Between
+them they have 6 different trigrams, and 3 are shared. One scramble gives each of the 6 a new random
+code, and any one of the 6 is equally likely to end up with the smallest code.
+
+If the smallest code lands on `har`, `arb` or `rbo`, both words contain it, so their smallest codes
+match. If it lands on `bor`, `bou` or `our`, only one word has it, so their smallest codes differ.
+That is 3 chances in 6, or 0.5, which is exactly their overlap.
+
+So the share of the 64 places where two signatures match is an estimate of the overlap. For the two
+fog lines, 5 of the 64 places differ, so 59 of the 64 places match. (This 59 is a coincidence, not
+the same 59 as the trigram count above.) That gives an estimate of 0.922, close to the exact answer of 0.915.
+
+A signature is always 64 numbers, however long the page is, so comparing two signatures is much
+quicker than comparing two full sets of trigrams. Real pipelines also add a grouping trick, described
+in Where it breaks, so that they do not have to compare every pair at all.
+
+### A picture to keep in mind
+
+Picture getting ready for a weather quiz by studying a stack of pages that someone printed from a
+website. On the quiz you will be given new sentences about the weather and asked to guess, letter by
+letter, how each one continues.
+
+Many of the pages end with the same copyright line, one page was printed twice, and another was
+reprinted with `harbour` spelled the British way. Two scraps of paper say only `ok.` and `yes.`,
+and a sensible student would ignore them, skip the footers and read the repeated page once.
+
+The model cannot skip anything, because it practises on every pair of neighbouring characters in the
+pile, and each copy of a line pushes its numbers all over again. Four copies of the copyright line
+push four times as hard as one copy, so repetition works like a vote rather than harmless clutter.
+
+The quiz also means something only if its sentences are not in the pile. If one of them were printed
+in the stack, a good mark would partly show what you had memorized rather than how well you predict
+new text.
+
+The picture stops matching in two places. A student understands what fog is, while this model only
+adjusts numbers that score which character tends to follow which. A student can also choose what to
+study, while the model trains on whatever is in its dataset, as many times as it appears.
+
+### How the lab keeps score
+
+The card **Validation loss for both datasets** is where the lab checks whether cleaning paid off. It
+trains the same small model twice, once on the whole collected page and once on the lines you kept,
+and nothing else differs between the two runs.
+
+The whole page is 20 lines, or 21 once you leak a test sentence into it. Only the four switches, the
+leak button and **Minimum line length** start new training. **Show** leaves the chart alone, and so
+does the **Context length** slider on the probe card, described below.
+
+The model is the simplest kind of language model, called a **bigram** model, which predicts each
+character from only the one character before it. It works with 30 symbols: the 26 letters, a space,
+a full stop and two spare symbols that this text never uses. For each symbol it keeps 30 numbers
+that score how likely each symbol is to come next, which makes 30 times 30, or 900 numbers in all.
+
+Training means going through the text and nudging those numbers so that the real next character
+gets a slightly higher score each time. Each character and the one after it form a training pair.
+For example, `fog` has 3 characters but only 2 pairs, `fo` and `og`, because the last character has
+nothing after it.
+
+In the same way, the raw scrape’s 899 characters give 898 pairs, and the default cleaned set gives
+515. Those are the numbers in the chart’s labels, `raw (898 pairs)` and `cleaned (515 pairs)`, and
+the cleaned one also appears as **Training pairs** on the card **Dataset statistics**.
+
+Both models go through their whole text 25 times, and each full pass through the text is called an
+**epoch**. Both are then tested on the same three sentences, 194 characters in all, which are in
+neither training set. Text kept out of training like this is called **held-out** text, and it is
+the only fair test of how a model handles text it was not trained on.
+
+### What the score means
+
+For every character of the held-out text, the model gives each of the 30 symbols a chance of coming
+next. After any character, those chances always add up to 100 percent, so giving more chance to one
+symbol always means giving less to the others.
+
+If the model gave the real next character a high chance, it collects a small penalty, and if it gave
+it a low chance, it collects a large one. A penalty score like this is called a **loss**, and the
+average penalty over the held-out text is the **held-out loss**, where lower is better.
+
+The loss is measured in a unit called **nats**, and the chart’s side axis reads
+`held-out loss (nats/token)`. A **token** is one piece of text, which in this lab is a single
+character. You do not need the maths behind nats, because a few reference points tell you what the
+numbers mean.
+
+A model with no idea at all, which gives every symbol the same chance, would score about 3.4 nats.
+A score of 2.3 nats is about as unsure, on average, as choosing among 10 equally likely characters.
+So a model that scores 2.3 has, in effect, narrowed 30 possible next characters down to about 10.
+
+Three numbers under the chart sum up the comparison: **Raw held-out** is the raw model’s score, and
+**Cleaned held-out** is the cleaned model’s score. **Difference** is the cleaned score minus the raw
+one, so a minus sign means cleaning lowered the loss and the cleaned model predicts new text better.
+That difference is the only claim the lab makes about whether cleaning helped.
+
+The chart itself draws both scores as training goes on, with a dashed line for the raw model and a
+solid line for the cleaned one. Below it, the card **Survival funnel** shows how many lines and
+characters are left after each filter, in the order the filters run.
+
+### The regurgitation probe
+
+The last card, **Regurgitation probe**, asks a different question: when does a model start giving
+back its training text word for word? To regurgitate means to bring back up something you
+swallowed, and a probe is a test that pokes at something to see how it reacts.
+
+This card uses a different kind of model, which is nothing more than a table of counts and is not
+trained at all. You set how many characters it looks back at with the **Context length** slider,
+and the characters it looks at are called its **context**. For every run of that many characters in
+its training text, the table records which character came next.
+
+Here is a made-up example. Say the context length is 3, and in the training text `the` is followed
+by a space 4 times and by `r` once. The table’s row for `the` then reads space 4, `r` 1. So after
+`the`, the model writes a space 4 times out of 5 and `r` 1 time out of 5.
+
+The table has one row like this for every different run of 3 characters it has seen, and each of
+those runs is one of its contexts. If a row lists only one next character, the model has no choice
+but to write it.
+
+At a **Context length** of 1, it predicts from one character, like the bigram on the chart, which is
+why the slider then reads `1 character · the bigram`. The card builds two of these tables, shown as
+**Trained on the raw scrape** and **Trained on the cleaned set**. Each one starts from the opening
+characters of its own training text and writes 300 characters.
+
+The card then measures how much of that writing is copied **verbatim**, which means word for word,
+or here, character for character. A character counts as copied when it sits inside a run of at
+least 16 characters that appears exactly in the training text. That is what the 16 in the readout
+**Copied verbatim (16+ chars)** refers to. The bigram model on the chart cannot copy like this, and
+the probe shows what changes when a model can look further back.
+
+## Why it’s here
+
+### Every copy pulls on the same numbers
+
+The model on the chart has only 900 numbers, and the same numbers serve every line it trains on.
+The number that scores `r` after `y` is the same number whether that `y` comes from `copyright` or
+from `sky`.
+
+To see what that means, follow the letter `y` through the raw scrape, where it is followed by `r`
+four times, always inside `copyright`. It is also followed by a space four times, in words like
+`sky` and `by`. So training pushes the raw model to give `r` about as much chance after `y` as it
+gives a space.
+
+The cleaned set has no copyright lines, so `r` never follows `y` there. The three held-out sentences
+use `y` in `stays` and in `every`, and neither one is followed by `r`.
+
+Remember that the chances after `y` always add up to 100 percent. So every bit of chance the raw
+model saves for `r` is taken away from the `s` or the space that really comes next in the test.
+That raises its penalty. The raw model’s habit of expecting `r` after `y` therefore costs it
+on the test and earns it nothing.
+
+Now repeat that for every letter pair in the footers, and you have the whole idea behind
+**data quality**. The term sounds like a slogan, but it is not one single property. In practice it
+means little duplication, text in the style you want, correct formatting and no test text mixed in.
+
+The first three of those come down to where the model’s limited room gets spent, while the fourth is
+about keeping the score honest, which the next part covers. How much a model can fit is called its
+**capacity**, and with 900 numbers this model has very little.
+
+A line that appears four times pulls those numbers four times as hard as a line that appears once.
+So the model’s habits lean toward whatever was copied most, not toward whatever matters most.
+
+### A test only counts if it is new
+
+Cleaning is only half the job, because you also need a fair way to tell whether a change helped.
+That brings in the second problem this lab is built to show, called **leakage**, which is when test
+text slips into the training data.
+
+Training on a test sentence nudges the model’s numbers toward that sentence’s exact letter pairs.
+So on the test, the model is partly marking its own homework. The score rewards it for having
+trained on that exact sentence rather than for predicting new text well. That is why the three
+held-out sentences are kept out of both training sets on purpose, and it is the only reason the
+chart’s comparison means anything.
+
+Careful teams go further and cut their data into three separate slices before training starts. The
+model learns from the training slice, you check your choices against the **validation** slice, and
+you save the test slice for one final check at the end. Together these are called a
+**train/validation/test split**, and the held-out score is often called a **validation loss**,
+which is where the chart’s card gets its name.
+
+Real crawls make it hard to keep test text out, because a test sentence can be quoted on some web
+page that the next crawl collects. The button **Leak a held-out sentence into the scrape** copies a
+test sentence into the page in that way, so you can watch what a leak does.
+
+## How to play with it
+
+### Read before you filter
+
+Set **Show** to **All lines** and read all 20 verdicts before you touch a switch. Try to spot the
+four kinds of junk yourself first: the footers, the repeated fog line, the `harbour` line and the two
+fragments.
+
+At the defaults, **Strip boilerplate** and **Drop exact duplicates** are on and everything else is
+off. That is why the `harbour` line, `ok.` and `yes.` are all still marked `kept`.
+
+### Walk through the switches
+
+Now step through the settings below in order, and write down **Cleaned held-out** at each one.
+Treat it as a small experiment where you change one thing at a time and compare.
+
+1. Turn every switch off and leave **Minimum line length** at off, so all 20 lines and 899
+   **Characters** stay in. **Cleaned held-out** reads 2.365, the two lines on the chart sit on top of
+   each other, and **Difference** reads +0.000, because both models trained on the same text. This is
+   your starting point, which scientists call the control: the setting you compare every other one
+   against.
+2. Turn on **Strip boilerplate** alone, which leaves 11 lines and 580 characters. The score falls
+   to 2.306, which is better.
+3. Add **Drop exact duplicates**, which brings you back to the defaults with 10 lines and 516
+   characters. The score is now 2.300, and **Difference** reads −0.065.
+4. Add **Drop near-duplicates**, which leaves 9 lines and 451 characters. The score rises to 2.312,
+   which is worse.
+5. Add **Minimum line length** at 20 chars as well, and the score moves to 2.316. That is a change
+   of only 0.004, which is too small to trust on its own, as Where it breaks explains.
+
+The −0.065 is small but real, and here it is in the “equally likely characters” terms from earlier.
+The raw model was about as unsure as choosing among 10.6 characters, and the cleaned one about as
+unsure as choosing among 10.
+
+The **Characters** readout counts letters, spaces and full stops the way the model receives them.
+Before counting, the lab turns anything outside the model’s 30 symbols into a space and squeezes
+repeated spaces into one. So `copyright 2019 all` becomes `copyright all`, and the digits do not
+count.
+
+**Try this:** switch **Strip boilerplate** off and leave **Drop exact duplicates** on, with
+everything else off. You get 13 lines and 623 characters, and **Cleaned held-out** reads 2.292, a
+little lower than the defaults, even though footer lines are back in the dataset.
+
+The verdicts show why: the footer lines are exact copies of one another, so
+**Drop exact duplicates** already removes every copy after the first. The 13 kept lines are the 10
+from the defaults plus one copyright line, one subscribe line and one share line, which together add
+107 characters.
+
+Once each footer appears only once, it stops acting like a loud vote. Its letter pairs, such as `th`
+in `this` and `on` in `on social media`, are ordinary English pairs that the weather sentences use
+too. So at one copy each, the footers cost the model almost nothing. In this one run they even come
+out slightly ahead, though a later section shows why a gap this small cannot be trusted.
+
+### Leak a sentence, then clean it out
+
+Go back to the defaults, with **Strip boilerplate** and **Drop exact duplicates** on and everything
+else off, and then press **Leak a held-out sentence into the scrape**.
+
+The button copies “the fog returns in the morning and the pattern repeats.” into the page, and that
+sentence is one of the three test sentences. This is how a quoted test item can end up in a real
+crawl, and four things change as soon as it lands:
+
+- **Cleaned held-out** improves from 2.300 to 2.245, which looks like progress until you read the
+  rest of the card.
+- **Raw held-out** improves too, from 2.365 to 2.324, because the raw model trains on the whole page,
+  copied sentence included. The leak flatters both scores.
+- The contamination check under the chart, which looks for test text mixed into the training text,
+  now finds a 10-word run shared with the test text. That run is the whole copied sentence, and the
+  check marks it as flagged.
+- A new line appears under the check, giving the cleaned model’s score on the two test sentences
+  that the leak did not copy. It reads 2.422.
+
+Now turn on **Decontaminate**, which removes training lines that overlap the test text, a step
+called **decontamination**. The copied line gets the verdict `held-out overlap` and leaves the
+cleaned training set, and **Cleaned held-out** goes back to 2.300.
+
+The line about the two untouched sentences now reads 2.397, which is the cleaned model’s honest
+score on them. **Difference** reads −0.024 rather than −0.065, because only the cleaned side was
+decontaminated, and the raw model still trains on the copied sentence.
+
+### Probe for recitation
+
+Before you start, press the leak button again so it reads `off`, and turn **Decontaminate** off, so
+you are back at the defaults. Then scroll down to the **Regurgitation probe** card, where the
+**Context length** slider starts at 3, and move it down to 1 first.
+
+Now step the slider up one notch at a time to 8, and at each step compare
+**Copied verbatim (16+ chars)** for the two models:
+
+- At 1 character of context, both models read 0 percent, and the samples are gibberish. The raw
+  model’s sample starts `l. cit cl wn yried`, which uses real letter pairs but no real words.
+- At 3, the raw model copies 52 percent of its sample and the cleaned one 39 percent. The raw
+  sample now starts `yright all with warms the fog settles`, which is scraps of real lines stitched
+  together.
+- At 4, the raw model copies 98 percent and the cleaned one 93 percent.
+- At 8, both read 100 percent, and the raw sample reads like a passage lifted straight from the
+  scrape: `all rights reserved. by noon the clouds break apart`.
+
+Keep an eye on **Footer text in the sample** as well, which counts how much of each sample comes from
+the footer phrases. At 8 characters of context, footer text makes up 21 percent of the raw model’s
+sample and none of the cleaned model’s.
+
+Below the two columns, a table runs the same test at eight context lengths at once: 1 to 6, 8 and
+12. It lets you compare them without moving the slider, and when the slider sits on one of those
+eight values, that row is shaded.
+
+## What to notice
+
+### The filters overlap
+
+Watch the badge on **Drop exact duplicates**, which reads −1 lines while **Strip boilerplate** is
+on, because the only copy left for it to catch is the repeated fog sentence.
+
+Switch boilerplate off and the same badge reads −7, because now it also catches three extra
+copyright lines, two extra subscribe lines and one extra share line. The two filters were partly
+removing the same lines, so you cannot judge how useful either one is by looking at it alone.
+
+### Lines and characters tell different stories
+
+The **Survival funnel** has one row per stage, named **Scraped**, **Strip boilerplate**,
+**Length floor**, **Exact dedup**, **Near-dup** and **Decontaminate**. **Length floor** is the
+**Minimum line length** slider, and dedup is short for deduplication. At the defaults, those rows
+read 20, 11, 11, 10, 10, 10 lines.
+
+Boilerplate takes 9 of the 20 lines, which is almost half of them. Yet it takes only 319 of the 899
+characters, about a third, because footer lines are short.
+
+So the same filter can look huge when you count documents and modest when you count characters.
+When someone reports how much a filter removed, it matters which of the two they counted.
+
+A stage that is switched on but removes nothing still shows a full row that reads
+`removes nothing here`. That is not a mistake. Either an earlier stage already took the lines it
+would have caught, or nothing on this page matches its rule, as with **Decontaminate** when no
+sentence has leaked.
+
+### Less text helped, but only up to a point
+
+At the defaults, cleaning removed about 40 percent of the characters and the score still improved.
+More text helps only when it brings something new, and the fourth copy of a footer brings nothing
+that the first copy did not.
+
+Removing more does not keep helping, though. In the walk above, adding **Drop near-duplicates** made
+the score slightly worse in this run, and adding **Minimum line length** moved it by too little to
+read. Neither one clearly helped, even though both delete lines that you would call junk if you
+read them.
+
+### When a change is too small to read
+
+Now compare what a **Minimum line length** of 20 does in two different setups. With
+**Drop near-duplicates** on, it moves the score from 2.312 to 2.316, which is slightly worse. With
+near-duplicates off, the same setting moves the score from 2.300 to 2.296, which is slightly better.
+
+In this one run, the same setting seems to help in one case and hurt in the other. These gaps are
+only 0.004 nats, though, which Where it breaks shows is too small to trust on its own. So take this
+as a warning, not a result: this lab cannot tell you whether a length floor of 20 helps.
+
+The badge on **Drop exact duplicates** showed the firmer version of the same lesson. A filter is
+always measured on whatever text the other filters left, so you cannot judge it by itself.
+
+At 12, **Minimum line length** removes only `ok.` and `yes.`, the two fragments, and nothing else.
+The shortest real sentence is 56 characters long, so the slider starts deleting real sentences at 57.
+
+### Diversity is counted per character
+
+**Distinct trigrams** counts how many different three-character runs the text contains. It drops
+from 366 in the raw scrape to 285 after cleaning. You might guess that is because the cleaned text
+is shorter, but it is not. With only **Drop exact duplicates** on, the text loses about a third of
+its length and still has all 366, because every copy repeats runs the first one already had. The
+drop comes from the footer lines. They hold runs like `cop` and `sub`, from `copyright` and
+`subscribe`, that no real sentence uses, so removing those lines removes those runs for good.
+
+**Repetition** is the share of all trigrams in the text that are repeats of ones already counted.
+For example, `ha ha ha` has 6 trigrams once you count the spaces: `ha␣`, `a␣h`, `␣ha`, `ha␣`,
+`a␣h` and `␣ha`, where ␣ stands for a space. Only 3 of them are different, so half are repeats and
+its repetition is 50 percent.
+
+Cleaning lowers **Repetition** from a **Raw repetition** of 60 percent to 45 percent. So the cleaned
+text has fewer different sequences in total, yet repeats itself less.
+
+The share of trigrams that are new rather than repeats is called **trigram diversity**, so it is the
+flip side of **Repetition**: 45 percent repetition means 55 percent diversity. It measures how varied
+the text is per character, not how much text there is.
+
+### The split bar
+
+At the defaults, the **train/validation/test split** bar on **Dataset statistics** reads `train 7`,
+`val 2` and `test 1`. It is cut by whole lines, so no sentence lands in two slices.
+
+The three held-out sentences on the chart are separate again, and the bar is only a picture of a
+split, since no model trains or scores on it.
+
+### A leak looks like progress
+
+Picture a class where one question from Friday’s quiz gets posted in the group chat the night before.
+Everyone gets that question right and the class average jumps, but the average now tells the teacher
+less about what the class can do, not more.
+
+The lab shows the model version of this, with one twist that makes the point even sharper. With the
+leak on, the headline score got better, but the cleaned model got worse on the two test sentences
+that were not copied. It scored 2.397 on them without the leak and 2.422 with it.
+
+That is not wobble, because the same happens when training is rerun in eight different shuffled
+orders. The lab does not show exactly why. The bigram cannot recite the copied sentence, but it has
+now practised every letter pair in it, so its shared numbers lean a little toward those pairs.
+
+That lean seems to have cost the other two sentences slightly. Either way, the better headline
+number came from one copied answer, not from a better model.
+
+### Ordinary overlaps are short; copies are long
+
+Without the leak, the longest run of words that the cleaned training text shares with the test
+sentences is two words long: “the morning”. Ordinary phrases overlap by a word or two, while a copied
+sentence shares 10 words in a row.
+
+That gap is why a check for 8 words in a row catches the copy and nothing else. A run of words in a
+row is called an **n-gram**, where n stands for the number of words. Here the pieces are whole words,
+while the trigrams earlier were three characters, so this check looks for shared 8-grams.
+
+Without the leak, turn **Decontaminate** on and its badge reads −0 lines, because no ordinary line
+shares 8 words with the test text.
+
+### Recitation switches on quickly
+
+When a model gives back a stretch of its training text after being handed the start of that stretch,
+it is called **memorization**. In the probe, it switches on over a narrow range of context lengths.
+Nothing is copied at 1 or 2 characters of context, and by 5 almost every character is.
+
+Picture a friend who knows every line of one film by heart. Say one word, like “the”, and they cannot
+tell which scene you mean, because dozens of lines contain it. Say eight words in a row, and only one
+line in the whole film starts that way, so they can carry on word for word.
+
+The probe works the same way, although it is only counting and understands nothing about the text.
+It also counts characters, not words, so 8 characters is only a word or two. In text this small,
+even that is enough to pin down one line.
+
+Set the slider to 8 and read the note under each sample, which counts how many contexts have only
+one possible next character. For the raw model, 541 of its 555 contexts are like that, so it has no
+choice but to carry on with the text it was built from.
+
+Set the slider back to 1 and the same note for the cleaned model reads 4 of 26. With one character
+of context, most contexts have several possible next characters, so the samples wander instead of
+copying.
+
+### Repeated footers get recited more
+
+Repeated lines carry more counts, so they get picked more often. At a context length of 8, footer
+text makes up 21 percent of the raw model’s sample, and the raw scrape holds four copies of the
+copyright line.
+
+To see that the copies are what matter, switch **Strip boilerplate** off and leave
+**Drop exact duplicates** on, so each footer survives exactly once. At a context length of 8, footer
+text now makes up only 6 percent of the cleaned model’s sample.
+
+Cleaning does not stop the cleaned model from copying its own sentences, though, because it copies
+100 percent at 8 as well. Removing copies changes which text gets recited and how often, not whether
+a model with enough context recites at all.
+
+## Where it breaks
+
+### What this lab simplifies
+
+Both models really train, and both held-out scores are real, so the lab is not faking its results.
+Its limits come from its small size and from the things you cannot adjust.
+
+Twenty lines is nowhere near a real dataset, and the gaps between the good settings are only a few
+thousandths of a nat. That is smaller than the wobble you would get from training on the same text
+in a different order.
+
+The order in which the model visits its training pairs is shuffled by a recipe that starts from a
+fixed number, called a **seed**. The same seed always gives the same shuffle, like dealing a deck of
+cards in the same order every time. The lab has no slider or switch to change it.
+
+So every score you see comes from a single run, with no **error bar**, a measure of how much a
+result would wobble if you ran it again.
+
+Behind the scenes, the people who built the lab trained both models again with every seed from 1 to
+8. Across those runs, the gap between the raw and cleaned scores always stays between 0.065 and
+0.085, so you can trust that cleaning helped.
+
+The gap between 2.292 and 2.300 points one way at some seeds and the other way at others, so you
+cannot say which of those two settings is really better.
+
+Picture two sprinters who finish a hundredth of a second apart, then swap places when they race
+again. That tiny gap tells you nothing about who is faster. A gap counts as evidence only when it is
+bigger than the usual wobble, and the gap between the two best settings here is not.
+
+The lab’s filters and readouts are also cruder than they look, in several ways:
+
+- The 20 lines are a fixed teaching page, not a real crawl, and you cannot paste in a page of your
+  own.
+- The boilerplate filter is a list of five English phrases, so it would miss a footer worded any
+  other way.
+- The near-duplicate test compares single short lines, while real near-duplicate checks compare
+  whole documents that can be thousands of words long. Its 0.7 cut-off is also fixed, with no
+  control to change it.
+- That test compares every pair of lines directly, which works only because there are 20 of them.
+  The **MinHash** number is computed for real, but the filter itself does not use it.
+- **Trigram diversity** counts letter sequences, so it calls a page varied for using many of them,
+  not for covering many topics.
+- The split bar on **Dataset statistics** never trains or scores a model, so the only held-out score
+  on the page is the three-sentence passage on the chart.
+
+The model on the chart predicts from one character, so it cannot recite long passages. All the
+chart can show is the model’s limited room being spent on the wrong patterns.
+
+The **Regurgitation probe** uses a table of counts built from only 516 to 899 characters. In so
+little text, almost every long context is always followed by the same character, so reciting is
+certain. A real model is far larger, picks up general patterns where this table cannot, and
+memorizes only part of what it was trained on.
+
+The probe also starts each sample from the opening characters of its training text. That mirrors
+how an attempt to pull text out of a real model starts from a known beginning. In this tiny table,
+starting from another point inside the training text would copy about as much, because almost every
+long context has only one continuation. A prompt that is not taken from the training text at all
+gives a model less to copy, so it usually copies less.
+
+The probe’s own seed is fixed as well, so each context length always prints the same text.
+
+**A common mix-up:** it is tempting to think that deleting data is what helped, but it is not.
+Removing about 40 percent of this scrape improved the score, but **Drop near-duplicates** removes
+even more and makes the score worse. Smaller is not automatically better, and neither is less
+repeated: the `harbour` line is a near-repeat, yet removing it did not help here. What tells you
+whether a change helped is the held-out score, not the character count and not which filter sounds
+more responsible.
+
+### Where real pipelines struggle
+
+Real pipelines face problems that this lab is too small to show, and each one is a place where the
+real mechanism can fail.
+
+**Finding copies at web scale:** checking for exact copies with hashes still works across the whole
+web, but it misses near-copies. Nobody can compare every pair among billions of documents, so
+near-copy search uses MinHash, or a similar method called SimHash, along with a sorting trick called
+locality-sensitive hashing.
+
+That trick only compares documents whose signatures land in the same group, which saves most of the
+work. Even so, near-copy search is one of the most expensive steps in the whole pipeline.
+
+**Judging quality:** real boilerplate removal uses a program trained to pick the main text out of a
+page, not a short list of phrases. Quality filtering usually means a **classifier**, a program that
+sorts documents into groups.
+
+A classifier scores each document by how much it looks like a reference collection, so whatever that
+collection leans toward, the filter leans toward too. If the reference is mostly one style of
+writing, other styles get pushed toward the bottom.
+
+Separate steps handle which language a page is in, personal data, licences and toxic text. Each of
+these is a policy decision as much as a technical one.
+
+**Keeping test text out:** teams search for long runs of words shared with **benchmarks**, the
+standard public tests used to compare models, and GPT-3’s report used runs 13 words long. Leaks
+still happen, because benchmark questions get quoted in posts that the next crawl collects, and
+reworded copies slip past a search for exact runs. In practice, a held-out set stays held out only
+until someone publishes it.
+
+**Counting in tokens:** near-copy and contamination checks run on text that has been tidied up first,
+for example by making it all lowercase. Real models split text into tokens in different ways: some
+use single characters like this lab, while others use whole words or pieces of words, such as `harb`
+plus `our`.
+
+So the same page can count as 900 tokens with one method and 200 with another. A funnel reported in
+tokens only makes sense for the method that counted them.
+
+**Memorizing a single copy:** removing copies lowers how often a model recites its training text,
+but a large model can still memorize text that appears only once. The next section shows why that
+matters for names, phone numbers and email addresses.
+
+## Going deeper
+
+### Choosing what gets seen twice
+
+Filtering decides what is allowed into a dataset, while the **data mixture** decides what share of
+the training each source gets. Giving a small, high-quality source a few extra passes is normal
+practice, so after deduplication removes the accidental copies, teams put some repetition back on
+purpose. The rule is not “duplicates are bad” but “you should be the one choosing which text gets
+seen twice”.
+
+Picture making a road-trip playlist: first you delete the songs that got added three times by
+accident, and then you choose to play your two favourites twice. The second step is still
+repetition, but it is repetition you chose, and that is the difference between an accidental
+duplicate and a mixture.
+
+### What a held-out score settles
+
+**Held-out loss** answers one question well: did this change help the model predict text like the
+held-out sample? It cannot tell you whether that sample looks like the text you actually care about.
+
+A filter that strips out blocks of computer code might look fine when you score on ordinary sentences
+and still ruin the model’s results on a coding test. That is why real pipelines score against
+several held-out sets and expect them to disagree.
+
+### Why the split has three parts
+
+You check the validation slice again and again while you tune your choices, so it slowly stops being
+truly held out. Picture trying 50 different filter settings and keeping whichever scores best on the
+validation slice.
+
+Part of the winner’s lead is luck that happens to suit those few sentences, like the sprinters’
+wobble. The more settings you try, the more your pick is tuned to the validation slice itself, so its
+score starts to flatter you. That is why the test slice stays untouched until one final check.
+
+Cutting the **train/validation/test split** by whole document rather than by sentence is what makes
+the whole thing work. Two sentences from the same page share so much wording that splitting a page
+between training and testing would leak one into the other.
+
+### Memorization and regurgitation
+
+**Memorization** is a model giving back a stretch of its training text when it is handed the start
+of that stretch. Carlini and colleagues measured it across several families of models and found it
+grows steadily with three things:
+
+- the model’s capacity, meaning how big it is;
+- how many times an example was duplicated in its training data;
+- how much context the prompt supplies, the prompt being the text you hand the model to start it
+  off.
+
+Each time one of these doubles, the amount memorized rises by roughly the same step. The probe’s
+slider is closest to the third one, though raising it also makes the table bigger, so it changes the
+model’s size as well.
+
+Of the three, duplication is the one that the people building a dataset can control. Lee and
+colleagues found that over 1 percent of what models wrote without any prompt was copied word for
+word from their training data. These were models trained on standard datasets, and in C4 the team
+found one 61-word sentence repeated over 60,000 times.
+
+Training on their deduplicated data produced models that gave out memorized text ten times less
+often, which is a big improvement but not the whole answer.
+
+In another study, Carlini and colleagues got GPT-2 to write out hundreds of word-for-word passages
+from its training text, including names, phone numbers and email addresses. Each of those passages
+appeared in only one document, and the team also found that larger models were more vulnerable.
+
+### Data governance: personal data, licences, consent
+
+Three questions about a dataset cannot be answered by reading its text: may this person’s details be
+used, may this text be reused, and did its owners agree? So no filter in this lab can answer them.
+Keeping records and rules about questions like these, such as where each document came from and what
+may be done with it, is called **data governance**.
+
+- **Personal data** is text that identifies a person, such as a name, phone number or email
+  address. Spotting it is a detection problem that a filter can help with, while deciding whether
+  it may be used is a legal one. The GPT-2 result above shows why even one appearance matters.
+- **Licences** are the rules that say who may reuse a piece of text, and how. An audit checked more
+  than 1,800 text datasets on the websites that host them. It found licence information missing in
+  over 70 percent of cases. In a separate count, it found licences labelled wrongly in over 50
+  percent, so the two figures measure different things and do not add up to one whole.
+- **Consent** is about whether the owners of a text agreed to its use. Websites state their wishes
+  in their terms of service and in a file called `robots.txt`, which tells automatic collectors what
+  they may and may not take. A 2024 audit of 14,000 web domains, which are website names, found
+  these restrictions rose sharply in a single year. If they were respected, over 5 percent of all
+  the text in C4 would now be fully blocked by `robots.txt` files. The audit also found that 45
+  percent of C4 is restricted by the sites’ terms of service.
+
+Rules are arriving, too, and one of them is a European Union law called the EU AI Act. It covers
+models built for many different tasks, called general-purpose AI models, and it asks their makers to
+keep a policy for following EU copyright law.
+
+Some rights holders, meaning the people who own the copyright in a piece of writing, have stated
+that their work may not be used this way. This is called reserving their rights. The makers’ policy has to
+cover these cases, and the law also asks them to publish a detailed enough summary of what they
+trained on.
+
+Both of these duties need a record kept alongside the data, not a better filter.
+
+### Toy versus real
+
+- **Scale:** the lab’s scrape is 20 lines and 899 characters, and its most repeated line, the
+  copyright footer, appears four times. Lee and colleagues found one 61-word sentence repeated over
+  60,000 times in C4.
+- **Overlap checks:** the lab flags an 8-word run shared with the test text, while GPT-3’s report
+  flagged any test example that shared a 13-word run with its training data. Lee and colleagues
+  also found that over 4 percent of the validation sets of standard datasets overlapped with their
+  training data.
+- **Reciting:** the probe copies everything at 8 characters of context because its text is tiny. In
+  the models Lee and colleagues trained, over 1 percent of what they wrote without a prompt was
+  copied word for word. Carlini and colleagues also found that memorization grows as models get
+  bigger, so a real model’s size affects how much it recites.
+- **What real pipelines add:** language detection, trained quality classifiers, detection of personal
+  data, records of licences and opt-outs, and a log of why each document was dropped.
+
+### Where these findings come from
+
+Every study named in this lesson is on arXiv, a free online library of research papers, and you can
+find each one by searching for its number. The two studies by Carlini and colleagues are 2202.07646,
+on what makes memorization grow, and 2012.07805, on pulling training text out of GPT-2.
+
+Lee and colleagues’ study of deduplication is 2107.06499, and the GPT-3 report by Brown and
+colleagues is 2005.14165. The two audits by Longpre and colleagues are 2310.16787, on licences, and
+2407.14933, on consent. The EU AI Act is officially called Regulation (EU) 2024/1689.

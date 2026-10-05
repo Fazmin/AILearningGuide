@@ -1,0 +1,262 @@
+---
+objectives: ["Explain superposition and sparse feature extraction", "Treat feature labels as hypotheses: check where their examples come from and score them as precision and recall", "Use steering as a causal test of a feature, judged against a random direction of the same length"]
+terms: ["Superposition", "Sparse autoencoder", "Polysemantic neuron", "Monosemantic feature", "Dictionary learning", "Sparsity penalty", "Reconstruction loss", "Feature splitting", "Dead feature", "Auto-interpretability", "Activation threshold", "Steering vector", "Window-start artefact", "Null control"]
+---
+
+## The big picture
+
+This module is about naming the parts of a transformer layer's activation, and how far such a name
+can be trusted. Neurons are **polysemantic**, responding to unrelated things, because of
+**superposition**: a layer packs more features than it has dimensions onto nearly orthogonal
+directions. A **sparse autoencoder** (SAE), a separate model, rewrites an activation as a few active
+features out of a much wider dictionary; each feature's label is a hypothesis to test, not a
+finding.
+
+**The transformer block** explained the role of the residual stream, a running sum that every
+sublayer adds to; this lab's SAE reads it after the last block. Like the VAE in **Diffusion & VAEs**, an SAE encodes and reconstructs, but its code is wider
+than its input and almost all zeros.
+
+### Where it shows up
+
+- Anthropic amplified a Golden Gate Bridge feature in Claude 3 Sonnet, and its replies to most
+  queries mentioned the bridge, even when irrelevant.
+- **Auto-interpretability** has a language model read a feature's top examples, propose a label,
+  and score it by how well it predicts activations on held-out text.
+- On the AxBench benchmark, steering with SAE features was not competitive with prompting (Wu et
+  al., 2025); a later paper reports that a supervised pipeline for choosing and labeling SAE
+  features gets close to a fine-tuned reference there.
+
+### Why it matters
+
+Superposition makes the model's own units unreadable, so without a decomposition there is no part
+with a single meaning to name. With one, each kind of evidence for a label can mislead in its own way:
+
+- Top examples can come from the first characters of the model's window, where the residual
+  depends on almost no context, and describe the window start rather than language.
+- A feature whose label fits every top example can still fire on many characters the label does
+  not describe.
+- Any added vector shifts the output, so a steering effect counts only when it beats a **null
+  control**: a random direction of the same length.
+
+### What you will be able to explain
+
+- Superposition: why neurons end up polysemantic, and how a sparse autoencoder extracts a few
+  active features from a wider dictionary.
+- Labels as hypotheses: how to check where a feature's examples sit in the model's window, and how
+  to score its label on new text as precision and recall at a chosen threshold.
+- Steering: why adding a feature's direction is a causal test of its label, and why the effect
+  counts only when it beats a random direction of the same length.
+
+### What the lab shows
+
+The lab runs the shipped 1.4-million-parameter character transformer and its SAE through ONNX.
+**Residual to sparse code** and **Sparsity and superposition** compute the residual, its 32 active
+features of 1,024, the unexplained share, the **Keep top k features** curve and the decoder
+overlaps from those weights and your **Probe text**; only the SAE's training curve is logged.
+
+**Feature evidence** reads fixed top examples, cached for 128 features, each with its window
+position. It scores author-written rules such as `Space` on your text at the **Activation
+threshold**: precision is the share of firings that match, recall the share of matches that fire.
+
+The key experiment is **Steer with a feature**, for five features whose labels measured cleanly.
+**Steering strength** adds a feature's decoder direction at **Steering position**, and the change in
+the label character's log probability is set against 20 seeded random directions, one of them
+shown by **Random control direction**. **Continue** writes greedy text three ways: no push, the
+feature, and that random direction.
+
+## What it is
+
+The obvious way to understand a network would be to read its neurons: inspect what activates unit
+1,432, name it, repeat. This fails quickly, because individual units respond to collections of
+apparently unrelated things. They are **polysemantic**, and that is the normal case rather than an
+anomaly.
+
+### Why that happens: superposition
+
+A layer has a fixed number of dimensions, and there are far more distinguishable features than
+that. A model could represent at most `d` features on orthogonal directions. Instead it represents
+many more on *almost*-orthogonal directions that overlap slightly.
+
+This works because features are sparse: almost none are present in any single input, so the
+interference between overlapping directions rarely matters. **Superposition** is a rational use of
+a dimension budget, and it is exactly what makes single units unreadable.
+
+### The proposed fix: sparse autoencoders
+
+A **sparse autoencoder** (SAE) unpacks the overlap. It is a separate model trained on recorded
+activations, here the transformer's residual stream after its last block, which it rewrites as a
+few active features out of many more, then reconstructs. The transformer itself is untouched.
+
+The shipped SAE, from `train_sparse_autoencoder.py`:
+
+- normalizes each 256-number residual with a corpus mean and one global scale;
+- encodes it as `ReLU(W_enc x + b_enc)` over 1,024 features, then keeps only the 32 largest (TopK);
+- decodes with `x̂ = W_dec f`, where each feature's direction has unit length;
+- trains on **reconstruction loss** plus a small L1 **sparsity penalty** (×0.002), for 10,000
+  steps on 1,600 windows of the corpus's training split.
+
+This is **dictionary learning** applied to a model's internals.
+
+### Three questions about one feature
+
+The lab asks them in order, and each one can come back "no":
+
+- **Where do its examples come from?** Every cached example records its position in the model's
+  64-character window. The first positions are not running text.
+- **Does its label survive new text?** Score the label as precision and recall at a threshold.
+- **Does turning it up do what the label says?** Add its direction to the residual and compare with
+  a random direction of the same length.
+
+## Why it’s here
+
+An SAE is one way to ask what a layer represents, and its parts are only as meaningful as their
+answers to the three questions above. A good reconstruction answers none of them: it says the code rebuilds the
+vector, not that its parts are the model's own.
+
+## How to play with it
+
+1. In **Residual to sparse code**, click positions 0, 1 and 4 of the probe text. Compare the 256
+   dense bars with the code's 32 spikes, read the unexplained share, and note which of the largest
+   features carry a `window start` mark.
+2. In **Sparsity and superposition**, move **Keep top k features** from 1 to 32, then read **Most
+   similar pair** and its signed cosine.
+3. In **Feature evidence**, keep `#876`, the first feature in the menu. Read the window position on
+   each example, then switch **Examples shown** to the top eight from position 4 on.
+4. Choose `#121`, set **Label to test** to `Space`, and move **Activation threshold** from 5 down
+   to 2 and up to 8. Then choose `#511` and test `Same character`.
+5. In **Steer with a feature**, keep `#160` at position 43 and compare its change with the random
+   range. Press **Continue**, then choose `#683` and compare what rises with what its label predicts.
+
+## What to notice
+
+### Reconstruction
+
+- At the first space of the default text, 32 of 1,024 features are active and 1.0% of ‖x‖² is left
+  unexplained. Keeping only the largest feature leaves 53.5%; keeping 8 leaves 4.6%.
+- The share is uneven: from 0.0% at position 0 to 22.3% at the K of KING, 7.0% on average. On 200
+  held-out windows the SAE leaves 5.1% unexplained.
+- The curve is not strictly falling. At the first space the 29th feature nudges the share from
+  1.00% to 1.03%, because the code was fitted as a whole and not to be rebuilt in order.
+
+### Overlap
+
+- The 1,024 decoder directions average |cos| 0.069: nearly, not exactly, orthogonal.
+  Superposition, measured in the dictionary.
+- The largest overlap is 0.992, between `#108` and `#499`, and its cosine is **negative**. They
+  point almost exactly opposite ways. Seven pairs exceed 0.9, and all seven are negative.
+- On 768 held-out characters, `#108` and `#499` are never active on the same character, and one of
+  the two is active on 734 of them.
+- They split the text between them. From position 4 on, `#499` is active on 101 of the 111 spaces
+  and `#108` on 6; on the 181 lowercase vowels it reverses, `#108` on 132 and `#499` on 41.
+
+That reads as a **sign split**. The encoder passes values through a ReLU, so an activation is never
+negative. A direction in the residual that takes both signs needs one feature for each side. It is
+not feature splitting, which needs a wider dictionary than this lab trains.
+
+### Where examples come from
+
+- The cache flags 21 of its 128 features as **window-start artefacts**, 18 of them position-0
+  artefacts. None of the 1,024 features fires only at position 0, but 24 are dominated by it.
+- The top-ranked feature, `#876` (maximum 56.9), is flagged. Its eight top examples sit at window
+  positions 1 and 2, so `First 4 characters` matches 8 of 8 of them.
+- It is not simply a first-character feature. `#876` is active on 31.6% of scanned characters, and
+  its largest example from position 4 on is 36.3, at position 19. On held-out passages it averages
+  13.3 at position 1 and 0.64 from position 8 on. The residual itself is large at the start: its
+  length, in the SAE's normalized units, averages 32.5 at position 0 and 21.5 at position 1, against 15.0
+  from position 4.
+- At the first space, the second-largest feature, `#499`, carries the same flag.
+
+### Scoring labels
+
+- `#121` looks like "a space". On the default text, `Space` at 5.0 scores 100% precision and 70%
+  recall; at 2.0 it scores 90% and 90%.
+- On 768 held-out characters the trade is clear: 96% precision and 91% recall at 5.0, 63% and 97%
+  at 2.0, 100% and 56% at 8.0. Lowering the threshold lets false alarms in.
+- `#511`'s eight top examples are commas, at about 14. At 5.0 on held-out text it fires on 18 of
+  19 commas and on 102 other characters: 15% precision. The label looked perfect from the top
+  examples and is poor on typical text.
+- An excerpt shows every line break as a space. `#53`'s eight examples all show a space, yet `Space`
+  scores 0% precision and 0% recall at 5.0, while `Line break` scores 41% precision and 62% recall.
+
+### Steering
+
+- `#160` fires on hyphens. At position 43 and strength 10, a hyphen goes from 1.3% to 43.0% and
+  becomes the top choice. Its log probability rises by 3.53; twenty random directions of the same
+  length move it by −0.53 to +1.36. The continuation is a row of hyphens; the random control writes
+  ` where is no`.
+- At strength 5, `#160` raises a hyphen's log probability more than any of the 1,024 decoder
+  directions: +2.09, against +1.68 for the next.
+- `#683` fires on y, yet raising it lowers y (0.55% to 0.14% at strength 5) and raises o most. It
+  ranks 1,011th of 1,024 directions for raising a y. The directions that raise y most are `#167`,
+  `#902` and `#737`, whose cached examples are b, m and t.
+- `#122`, which fires on m, changes log p(m) by +0.39, against a random maximum of +0.37: inside
+  the spread, so it says nothing about the label.
+
+## Where it breaks
+
+### In this lab
+
+- One SAE, trained once, on one layer of a 1.4-million-parameter character model. Labels were
+  written by this module's author and measured on 768 held-out characters; that is a small test set.
+- What the cache guarantees: every example carries its window position; flags are computed over
+  1,800 scanned windows; and features with early examples get an in-context list. It does not
+  guarantee that an unflagged feature is a good one: `#511` is unflagged and a poor comma label.
+- Only 128 of 1,024 features have cached examples, picked for large activations, not at random.
+  Excerpts show line breaks as spaces.
+- The probe text is one window starting at position 0, so its first characters are window-start
+  positions whatever you type.
+- Steering here is a direct effect only. The SAE reads the stream after the last block, so the added
+  vector acts through the final normalization and output matrix, at one position, and no later layer
+  can transform it. Twenty random directions are a rough, easy control, and five features were
+  picked because their labels measured cleanly.
+- A feature's activation is a correlation with the text. Nothing here shows that the transformer
+  uses a feature to decide anything; the steering card tests one direct effect at the last layer,
+  not a mechanism.
+- The top-k curve truncates a trained 32-feature code; an SAE trained with a smaller k would learn
+  different features.
+
+### In real systems
+
+An SAE trained with a different random seed finds different features: in one large Llama 3 8B
+setting only about 30% were shared across seeds (Paulo and Belrose, 2025).
+
+**Feature splitting** means the number of features found depends on the dictionary width chosen.
+**Dead features** never activate; this SAE has none among 1,800 scanned windows. **Absorption**
+makes a feature fail to fire where it should because a more specific one has taken over (Chanin et
+al., 2024).
+
+More fundamentally, a good sparse reconstruction does not prove the SAE found the model's own basis.
+On the AxBench benchmark, steering with SAE features was not competitive with prompting (Wu et al.,
+2025). A later paper reports that a supervised pipeline for choosing and labeling features gets
+close to a fine-tuned reference there (Jørgensen and Hansen, arXiv 2605.31183).
+
+## Going deeper
+
+### Choices of sparsity
+
+An L1 penalty shrinks active values and biases reconstructions. TopK, as here, fixes the count
+directly: exactly 3.125% of features were active at every logged step, and the L1 term added only
+9.7 × 10⁻⁵ to a final loss of 0.0471. JumpReLU variants learn a threshold. Each gives a different
+dictionary from identical activations.
+
+### From labels to causal tests
+
+**Auto-interpretability** has a language model read top examples and propose a label, then scores
+the label by how well it predicts activations on held-out text. That is still correlational. The
+causal test is a **steering vector**: add the feature's direction during generation and check
+whether behavior changes as the label predicts.
+
+Anthropic did this at scale. Amplifying a Golden Gate Bridge feature in Claude 3 Sonnet made its
+replies to most queries mention the bridge, even when irrelevant.
+
+The check that matters is the **null control**: how much does a random direction of the same length
+change the output? Without it, a change cannot be pinned on the feature. This lab's `#683` shows
+the other trap: a label describes where a feature fires, and what adding it writes can be
+something else.
+
+### Beyond one layer
+
+Transcoders approximate a dense MLP layer with a wider, sparsely active one (Dunefsky et al., 2024).
+Crosscoders learn features shared across layers or across models (Anthropic, 2024). The next lab, on
+circuits, asks what these components *do*. Every label, here and in the literature, is a hypothesis
+with evidence, not a finding.

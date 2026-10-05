@@ -1,0 +1,276 @@
+---
+objectives: ["Separate the fixed cost of weights from the per-stream cost of the KV cache", "Explain why batching raises throughput and lowers per-user speed", "List what an export has to produce before a model can be served", "Predict how hardware, paged attention, KV-cache quantization, and speculative decoding change streams that fit, speed, and cost per million tokens", "Name what operating a served model adds beyond speed: monitoring and drift, versioned rollouts, guardrails, and where prompts go"]
+terms: ["KV cache", "Memory bandwidth bound", "Continuous batching", "Throughput and latency", "Time to first token", "Paged attention", "Speculative decoding", "Hybrid attention", "KV-cache quantization", "Cost per million tokens", "Monitoring and drift", "Versioned rollout", "Guardrails", "On-device inference"]
+---
+
+## The big picture
+
+Serving a trained model means running it for real requests, often many at once, on hardware with
+a fixed amount of memory and bandwidth. This module budgets that work: the memory a configuration
+needs, how fast it produces tokens, and what a million of them cost. It then follows the export
+that makes a model servable, and what keeps a served model working once it is live.
+
+The question is concrete. For this model, this many concurrent users, this context length, and
+this hardware: does it fit, how fast is it, and what does a million tokens cost? Two terms
+dominate the memory side: the weights and the **KV cache**, the keys and values stored for every
+token a stream (one conversation in progress) has already processed.
+
+### Where it shows up
+
+- **This app.** Its local guide runs llama.cpp's `llama-server` on a loopback port from a pinned
+  Qwen3.5 2B file. The app checks the SHA-256 of engine and model first, and the guide's prompts
+  stay on the machine.
+- **Rented hardware.** The same H100 SXM is $3.49 an hour on one provider's page and $4.29 on
+  another's, so a price is an input to the budget, not a constant.
+- **Serving engines.** vLLM stores the cache in blocks of 16 tokens by default, allocated as a
+  stream grows (paged attention); the PagedAttention paper behind it (Kwon et al., 2023) found
+  earlier systems storing token states in only 20.4% to 38.2% of KV cache memory. llama.cpp can
+  store the cache as `q8_0` or `q4_0` instead of `f16`.
+- **Operations.** A live model needs monitoring for drift, versioned rollouts, and guardrails. In
+  this app, choosing a cloud provider instead of the local guide sends your prompts off the
+  machine, under that provider's terms.
+
+### Why it matters
+
+Without this budget, a deployment can pass a one-user test and still fail. The weights do not grow
+with load, but the KV cache grows with every user and every token of context, so a model that
+loads with room to spare can run out of memory under traffic. Without a concurrency cap, overload
+then crashes the server instead of queueing.
+
+The same arithmetic predicts the bill and shows which lever is worth switching on. Cost per
+million tokens falls as more streams share each read of the weights, until memory caps the batch.
+
+Each lever helps only while its bottleneck binds. In **speculative decoding**, a small draft model
+proposes several tokens and the large model checks them in one pass, so one read of the weights
+can yield several tokens. That pays while decode, the token-by-token generation phase, waits on
+memory reads. Once decode is compute bound instead, limited by arithmetic, the extra work of
+drafting and checking can lower throughput.
+
+### What you will be able to explain
+
+- How the fixed cost of the weights differs from the per-stream cost of the KV cache, and how the
+  two together set how many streams fit.
+- Why batching raises total throughput while each user's tokens arrive more slowly.
+- What an export has to produce before a model can be served, from merged weights to a verified
+  GGUF file, llama.cpp's single-file model format.
+- How hardware, paged attention, KV-cache quantization, and speculative decoding change streams
+  that fit, speed, and cost per million tokens.
+- What operating a served model adds beyond speed: monitoring and drift, versioned rollouts,
+  guardrails, and where prompts go.
+
+### What the lab shows
+
+Every readout is closed-form arithmetic on stated inputs: nothing is timed and no model runs. The
+model shapes are published ones. Quantized bits per weight come from real files (`F16` is 16 by
+definition): the `1.5B`, `3B`, and `8B` presets reuse the rates of llama.cpp's Llama-3-8B files,
+and `2B · this app`, the Qwen3.5 2B file this app runs, uses its own.
+
+The first three cards assume an accelerator with 24 GiB, 400 GB/s, and 120 TFLOP/s that is not a
+product. The other **Hardware** presets come from vendor documents and price pages read on 30
+September 2026. The `M4 Max laptop` and `CPU box` compute figures and the `CPU box` memory are
+labelled assumptions, the laptop and CPU box are priced at 0 because you own them, and the `Lab default`
+price of $1.00 an hour is a placeholder.
+
+**Serving controls** sets **Model**, **Weight format**, **Concurrent users**, **Context length**,
+and **Scheduler**. **Memory budget** stacks weights, KV cache (plus recurrent state on
+`2B · this app`), and activations + runtime against 24 GiB and reports **Streams that fit**;
+**Throughput and latency** plots **Total** and **Per user** tokens per second.
+
+The key experiment: at `8B`, `Q4_K_M`, and `Continuous batching`, drag **Concurrent users** from 1
+toward 64. **Total** rises, **Per user** falls, and the chart shades every count past
+**Streams that fit**. **Hardware, levers, and cost** reruns that load on another **Hardware**
+preset, or with **Paged attention**, **KV cache type**, and **Speculative decoding**, and reports
+**Cost per million tokens** from an editable **Price**.
+
+**Export the model you trained** names the five export steps for the 900-weight table from
+earlier labs and computes the toy table's weight bytes at the chosen block type's bits per weight.
+It does not write or verify a file.
+
+## What it is
+
+This lab is a roofline: first-order arithmetic that predicts which resource runs out first.
+Nothing is timed. The stated assumptions are a hardware profile (24 GiB, 400 GB/s, and 120
+TFLOP/s on the first three cards; the hardware card makes them editable), a flat 1 GiB for
+activations and runtime, two FLOPs per parameter per token, and an fp16 **KV cache**. The first
+three cards leave speculative decoding and prefix sharing off.
+
+The presets use real shapes: Qwen2.5-1.5B, Qwen2.5-3B, and Llama-3.1-8B, plus the model this app
+downloads, Qwen3.5 2B. The first three take their weight formats from llama.cpp's own file sizes
+for Llama-3-8B: `Q4_K_M` is 4.58 GiB, 4.90 bits per weight. The 2B preset uses its own file:
+1,280,835,840 bytes over 1,881,825,088 parameters, 5.445 bits per weight.
+
+### Memory: a fixed cost and a per-stream cost
+
+```text
+memory     = weights + KV cache + activations/runtime
+kv / token = 2 × layers × kv_heads × head_dim × 2 bytes
+```
+
+The leading 2 counts keys and values; the trailing 2 is fp16. The 8B shape (32 layers, 8 KV
+heads, 128 dims) costs 128 KiB per token; the 3B shape, with 2 KV heads, costs 36 KiB.
+
+### A hybrid model: the one this app runs
+
+Qwen3.5 2B uses **hybrid attention**. Of its 24 layers, only every fourth is full attention: 6
+layers with 2 KV heads of 256 dimensions. The formula charges those six, so the cache costs 12
+KiB a token, not the 48 KiB that 24 caching layers would. The other 18 are Gated DeltaNet layers
+that keep a fixed state per stream: 19.27 MiB in float32, whatever the context length.
+
+The layer layout is from the pinned file's GGUF header and the model card, and the state size is
+from the llama.cpp b10991 source, all read on 30 September 2026.
+
+### Speed: two ceilings
+
+Decode reads every weight and every stream's cache once per step, then emits one token per
+stream, so it is **memory bandwidth bound**:
+
+```text
+step = (weight bytes + all cache bytes) / bandwidth      total = streams / step
+```
+
+Prefill processes the whole prompt at once, so **time to first token** is compute bound.
+
+## Why it’s here
+
+The **Inference & KV cache** lab explained the mechanism; this one turns it into a budget you can
+fail, and then into a bill.
+
+It also closes the export path the Quantization lab started, and the 2B preset is the file that lab
+weighed.
+
+## How to play with it
+
+Start at `8B`, `Q4_K_M`, 8 users, 4,096 tokens, `Continuous batching`. Weights take 4.58 GiB,
+the cache 4.00 GiB, and 36 streams fit.
+
+Drag **Concurrent users**. One user gets 73.3 tokens/s. Eight users get 347 in total and 43.4
+each, 23 ms per output token. At 64 the arithmetic asks for 37.58 GiB, and the throughput chart
+shades everything past 36.
+
+Back at one user, drag **Context length** to 32,768: the cache reaches 4.00 GiB, **Streams that
+fit** drops to 4, and **Time to first token** grows from 548 ms to 4385 ms.
+
+Set **Context length** back to 4,096, then switch **Weight format** to `F16`: weights jump to 14.96 GiB and one user drops to 24.1 tokens/s.
+
+Pick `2B · this app`. A 4,096-token stream costs 48 MiB of cache plus 19.27 MiB of fixed state,
+so 331 streams fit where the 8B model fits 36.
+
+Open **Hardware, levers, and cost** on `8B` at 1 user. One stream decodes at 185 tokens/s on
+`RTX 4090` and 614 on `H100 SXM`: 3.3 times faster, the bandwidth ratio and not the 6.0 times
+compute ratio. But 36 streams fit on one and 148 on the other. At 8 users the cost is $0.23
+against $0.33 per million tokens, at the prices on the card.
+
+Back on `Lab default` with 8 users, switch on **Paged attention** at 50% fill: streams that fit
+goes from 36 to 73 and per-user speed from 43.4 to 56.6. Set the **KV cache type** to `q8_0`:
+69 streams, 55.6 tokens/s each. Switch on **Speculative decoding**: 104 tokens/s each, 2.4
+times faster, and the cost falls from $0.80 to $0.33 at the placeholder price.
+
+## What to notice
+
+- **Weights** never moves with users or context; the KV cache is the only term that does. That
+  is why a model that loads with room to spare runs out of memory under load.
+- **Continuous batching** trades per-user speed for total throughput. With `One at a time`, 8
+  users share 73.3 tokens/s, 9.2 each, and each waits 109 ms between tokens.
+- The first three cards say bandwidth bound everywhere. The 8B compute ceiling is 120 TFLOP/s ÷
+  (2 × 8.03 B) = 7,472 tokens/s, and 64 streams at 4,096 tokens reach only 652.
+- Grouped-query attention is the biggest architectural lever: the 8B shape pays 3.6 times the 3B
+  shape's cache per token. Hybrid attention is another: the 2B model's cache is a quarter of what
+  24 caching layers would cost.
+- Bandwidth sets how fast one stream decodes; capacity sets how many streams share each read of
+  the weights. The H100 is 3.3 times the 4090 in bandwidth and in single-stream speed, and holds
+  148 streams to its 36.
+- **Cost per million tokens** falls as users rise, until memory caps the batch: on the 4090 it
+  goes from $1.11 at 1 user to $0.14 at 36.
+- A lever helps only while its bottleneck binds. Speculation gives 2.40 times while decode is
+  bandwidth bound. On the `CPU box`, whose compute is an assumption, 8 streams are already compute
+  bound and speculation cuts total speed from 62.3 to 38.8 tokens/s.
+- A price is an input: the same H100 SXM is $3.49 an hour on one provider's page and $4.29 on
+  another's.
+
+## Where it breaks
+
+**In this lab.** Every number is arithmetic from the assumptions. The activation term is flat,
+every stream reserves its full context at once unless you turn paging on, attention FLOPs are
+ignored, and time to first token prices a prompt that fills the context with no queueing. One
+file-size rate per format is applied to the three Qwen2.5 and Llama presets, and the toy export
+uses block rates rather than a file mix.
+
+The hardware figures were read on 30 September 2026 and will go stale. Apple publishes no GPU
+FLOP/s figure and the CPU box's compute is a round number, so those two are labelled assumptions.
+Paging uses the average fill rather than a distribution of stream lengths, speculation uses one
+acceptance rate and a draft whose cost is a fixed share of a step, and cost counts output tokens
+only.
+
+**In real systems.** Engines reach a fraction of peak bandwidth. **Paged attention** is what
+makes the average-fill assumption real: the PagedAttention paper (Kwon et al., 2023) profiled
+existing systems storing token states in only 20.4% to 38.2% of KV cache memory.
+
+Prefix sharing makes a long shared system prompt nearly free after the first request, and chunked
+prefill keeps one long prompt from stalling everyone else's decode. Traffic comes in bursts and the
+metric that matters is usually a tail latency. Load-test before trusting any of this.
+
+## Going deeper
+
+### Speculative decoding
+
+A small draft model proposes `γ` tokens and the large model checks them all in one pass,
+accepting a prefix by rejection sampling, so the output distribution is unchanged. With
+per-token acceptance rate `α`, each pass yields `(1 − α^(γ+1)) / (1 − α)` tokens on average:
+3.36 at `α` = 0.8, `γ` = 4.
+
+Drafting is not free. Leviathan et al. (2023, Theorem 3.8) divide by `1 + γc`, where `c` is the
+cost of a draft step against a target step: 3.36 ÷ 1.4 = 2.40 at `c` = 0.1. While decode is
+bandwidth bound, `c` is roughly the draft's bytes over the target's. This lab adds a compute
+term, because verifying `γ + 1` tokens per stream is arithmetic the paper treats as free.
+
+### KV-cache quantization
+
+The cache can be stored in fewer bits. In llama.cpp, `--cache-type-k` and `--cache-type-v` take
+`q8_0` (34 bytes per 32 values, 8.5 bits) or `q4_0` (18 bytes, 4.5 bits) instead of `f16`, which
+cuts the bytes charged and read per token to 0.53 or 0.28 of fp16. The 2B model's recurrent
+state is not part of that cache: llama.cpp keeps it in float32.
+
+### The export path
+
+Merge the adapter so inference costs what the base cost. Quantize to the block type you chose.
+Write GGUF: tensors, quantization metadata, and tokenizer in one file with a checkable
+header. Verify the hash, as this app does for its own engine before starting `llama-server` on a
+loopback port. Serve with a concurrency cap no higher than **Streams that fit**, so overload
+queues instead of crashing.
+
+### Operating it
+
+Serving a model is not finished when it fits and is fast enough. Four things keep it working.
+
+**Monitoring and drift.** Watch what the lab computes: time to first token, time per output
+token, tokens per second, queue length, and cache occupancy against Streams that fit, plus error
+and refusal rates. Drift is the quiet failure. Traffic changes: if average context creeps from
+4,096 to 16,384 tokens, Streams that fit falls from 36 to 9 on the 8B shape. Or outputs change.
+
+Either way yesterday's evaluation stops describing today's use, so replay a fixed evaluation on a
+schedule and compare.
+
+**Versioned rollouts and rollback.** Name a release by its exact pieces: model file, engine, and
+configuration. This app pins llama.cpp b10991 per platform and one model revision, and checks the
+SHA-256 of both before running them. To roll out a new version, send it a small share of traffic,
+compare monitored metrics and the fixed evaluation against the old one, and widen only if they
+hold.
+
+Keep the old pinned version ready so that rollback is a switch. The app runs one pinned pair, so
+changing it means shipping a new app version; a service would run several side by side.
+
+**Guardrails.** Limits around the model rather than inside it: a concurrency cap at Streams that
+fit, a maximum prompt and context length, input and output checks, and permission lists for any
+tool the model can call. They are ordinary code, so they have bugs and need their own tests. The
+Failure modes, safety, and security lab covers what they miss, and the Evaluation lab covers replaying
+a fixed test set.
+
+**Privacy and on-device inference.** This app's local-first design is the example. The local
+guide runs llama.cpp on a random loopback port, started and stopped by the app, from a model file
+kept in the app's data directory. Prompts stay on the machine and nothing is billed per token.
+
+It puts every layer on the GPU on macOS and runs on the CPU elsewhere, with a 4,096-token
+context, which is why the lab has `M4 Max laptop` and `CPU box` presets. The price is a small
+model and the memory speed of that machine: the 2B model's decode ceiling is 404 tokens/s on the
+first and 66 on the second, as arithmetic, not measurement. If you choose a cloud provider
+instead, the text leaves the machine and the provider's terms apply.

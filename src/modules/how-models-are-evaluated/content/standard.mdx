@@ -1,0 +1,104 @@
+---
+objectives: ["Read accuracy, precision, and recall from the same confusion matrix","Explain why accuracy can look fine while the rare class is always missed, and why the same detector's precision falls as positives get rarer","Say why choosing a threshold on the test slice is leakage that inflates the held-out score, and how train versus val curves diagnose overfitting","Trace the precision-recall trade-off as the decision threshold moves on a population with a realistic share of positives"]
+terms: ["Accuracy","Precision","Recall","F1 score","Confusion matrix","ROC curve and AUC","Class imbalance and base rate","Held-out, validation, and test sets","Epoch","Leakage","Overfitting","Cross-validation","Stratified split","MSE, MAE, and RMSE"]
+---
+
+## The big picture
+
+This module is about turning a model's scores on held-out rows into a number you can publish, and about the ways that number can mislead. It asks which reading of a detector's performance is honest, and which rows may be used to compute it. It builds on **The supervised learning loop**, which scored a holdout loss; here the question moves on to a thresholded decision rule and the metric you publish for it.
+
+The shared object is the **confusion matrix**: counts of true against predicted class once a **decision threshold** t turns each score into yes or no. Accuracy (the share of rows classified correctly), precision (the share of alarms that were real), recall (the share of positives found) and F1 (the harmonic mean of precision and recall) all read that one table.
+
+### Where it shows up
+
+- **Thresholded detectors.** Any rule of the form score ≥ t is scored from a confusion matrix, and someone has to choose t.
+- **Model selection.** A validation (val) set is held out for choosing settings such as t or the epoch (one full pass over the training rows) at which to stop training, and a test set for one final score. Cross-validation rotates which slice is held out.
+- **Deployment.** The **base rate**, the share of positives, seldom matches between production and the evaluation set, so measured precision does not transfer.
+- **Regression.** MAE (mean absolute error), MSE (mean squared error) and RMSE (its square root) summarize the residuals y − ŷ, each true value minus its prediction; RMSE is back in the units of y.
+
+### Why it matters
+
+A reading of the matrix can be computed correctly and still be the wrong number to publish, and even the right reading misleads when it comes from the wrong rows. Four ways a published number goes wrong:
+
+- **A rare class vanishes behind accuracy.** A rule that never fires reads 99% accuracy and recall 0 when 99 rows in 100 are negative.
+- **Precision is credited to the detector alone.** At t = 0.50 the rule reads 69.6% precision at 1 positive in 5. With the same true and false positive rates (the shares of positives and of negatives it flags), the closed-form precision at 1 in 100 is 8.5%.
+- **A leaked holdout overstates the result.** Choosing t on the rows you then report as unseen, which is **leakage**, inflates the score, and nobody hands you fresh rows to expose it.
+- **A low training loss passes for success.** Only a val curve that bottoms out and turns up shows overfitting.
+
+### What you will be able to explain
+
+- How accuracy, precision and recall are each read from the same confusion matrix.
+- Why accuracy can look fine while the rare class is always missed, and why the same detector's precision falls as positives get rarer.
+- Why choosing a threshold on the test slice is leakage that inflates the held-out score, and how train versus val curves diagnose overfitting.
+- How precision and recall trade off as the decision threshold moves on a population with a realistic share of positives.
+
+### What the lab shows
+
+No model is trained or run. The lab scores 100 rows with fixed labels and detector scores: authored constants on **1 in 100 (rare)**, and bell-shaped draws from a fixed seed on **1 in 5 (about 20%)**, where the two classes' scores overlap. Counts and percents are exact for those rows. The two base-rate precisions are closed-form, from the current rule's true and false positive rates.
+
+On **Threshold and baseline**, **Population** picks the set, **Baseline** picks a constant rule or *score ≥ threshold*, **Decision threshold** sets t, and **Scored split** picks the slice that counts. **Confusion matrix** shows the four counts; **Four readings** adds Accuracy, Precision, Recall and F1, a threshold sweep, precision at two base rates, and an ROC plot of true against false positive rate as t falls, whose area is **AUC (ranking)**.
+
+The key experiment is on **Train, val, test**: on 1 in 5, set **Maximize** to *F1*, press **Set t from val**, then switch **Choose t using** to *test* and press **Set t from test**. **Holdout?** turns *leaked*, and a table sets each path's **Test claim** beside its **Fresh rows** reading on 400 seeded rows that no choice saw.
+
+**Learning curves** (**Pattern**) are closed-form sketches. **Cross-validation** (**Held-out fold**) rotates five folds and scores the fixed always-negative rule on each, without refitting. **Regression residuals** (**Outlier y**) moves one point against the fixed line ŷ = x.
+
+## What it is
+
+The scored object is a 2×2 of true versus predicted class. Accuracy is (TP+TN)/N. Precision is TP/(TP+FP). Recall is TP/(TP+FN). F1 is their harmonic mean. Class imbalance makes a constant-negative rule look accurate, and the base rate, the share of positives, also limits how precise a detector can be. A held-out set is the slice that must stay out of fitting and threshold choice. Using it to pick t is leakage, and it inflates the score you report.
+
+The lab scores two populations of 100 rows. Population 1 in 100 is the deliberate imbalance demo: one positive, so precision can only read 50% or 0%. Population 1 in 5 has twenty positives whose scores overlap the negatives' scores, which is what makes the precision-recall trade-off visible.
+
+Held-out data plays two roles. The validation set is where you may look while choosing settings such as the threshold t or the stop epoch. The test set is scored once, after those choices are final. Choose t on test and it quietly becomes a second validation set, so the number you report stops being a test.
+
+Overfitting is diagnosed when training loss keeps falling while validation loss turns up. Cross-validation rotates which slice is held out. The ROC curve plots true positive rate against false positive rate as t falls; AUC is its area. For regression, MAE is the mean absolute residual, MSE is the mean square, and RMSE is √MSE, back in the units of y.
+
+### Precision and recall by hand
+
+Set Population to 1 in 5, Baseline to score ≥ threshold, and Decision threshold to 0.50. The matrix reads TP 16, FP 7, FN 4, TN 73. Every reading comes from those four counts, and nothing below needs more.
+
+Precision is TP/(TP+FP) = 16/23 = 69.6%: of the 23 rows the rule flagged, 16 were real. Recall is TP/(TP+FN) = 16/20 = 80%: of the 20 real positives, 16 were found. F1 is 2TP/(2TP+FP+FN) = 32/43 = 74.4%, and accuracy is (16+73)/100 = 89%.
+
+F1 is a harmonic mean, so it also equals 2PR/(P+R) = 2·0.696·0.80 / (0.696+0.80) = 0.744. Nudge t up to 0.54 and two false alarms drop out while no true positive does: TP 16, FP 5, FN 4, so precision is 16/21 = 76.2%, recall is still 80%, and F1 is 32/41 = 78.0%, the best F1 on these rows.
+
+Now raise t to 0.60. TP falls to 11 and FP to 1, so precision climbs to 11/12 = 91.7% while recall drops to 11/20 = 55%. A higher t removes false alarms first and real positives later. Because the two score groups overlap, no t raises both.
+
+Precision also depends on how rare positives are. At t = 0.50 the true positive rate is 16/20 = 0.80 and the false positive rate is 7/80 = 0.0875. Keep both and make positives 1 in 100: precision = 0.80·0.01 / (0.80·0.01 + 0.0875·0.99) = 8.5%. The detector did not change; about nine alarms in ten would now be false.
+
+## Why it’s here
+
+Two populations are here on purpose. A single positive is enough to break accuracy but too few to show a trade-off, a base-rate effect, or how much a leak is worth. Twenty positives are enough for all three.
+
+## How to play with it
+
+Population switches between 1 in 100 and 1 in 5. Baseline chooses always negative, always positive, or score ≥ threshold. Decision threshold is ignored by the constant rules. Scored split selects all 100, train (0–69), val (70–84), or test (85–99).
+
+Choose t using plus Maximize plus Set t writes a threshold from a slice, maximizing accuracy, recall, or F1. A table beside it compares t chosen on val (intact) with t chosen on test (leaked), scored on the test slice and on 400 fresh rows. Pattern switches underfit, good fit, and overfit sketches. Held-out fold rotates a 5-fold split of the same 100 rows. Outlier y moves the fifth residual on ŷ = x.
+
+## What to notice
+
+- Always negative on all 100 of 1 in 100: accuracy 99%, recall 0. On 1 in 5 the same rule reads accuracy 80%, recall 0: it is right on every negative and wrong on every positive.
+- On 1 in 100, train and val contain no positives, so recall is 0/0 there and prints n/a, while accuracy prints 100%. Tuning recall on val therefore cannot find row 99 and falls back to t = 1.00.
+- On 1 in 5 every slice holds positives: 14 in train, 3 in val, 3 in test, exactly 20% each. That is a stratified split, which one positive in 100 rows can never give.
+- Sliding t on 1 in 5 from 0.30 to 0.70 moves precision from 29.9% to 100% and recall from 100% to 45%. F1 peaks at t = 0.54 and accuracy at t = 0.62.
+- The same rule's precision at t = 0.50 is 69.6% at 1 in 5 and 8.5% at 1 in 100. Precision is not a property of the detector alone.
+- Choosing t on test marks the holdout leaked. Choosing t on val, then scoring test, is the intact path.
+- On 1 in 5, maximizing F1 with t from val claims 66.7% on test and reads 77.9% on fresh rows. With t from test it claims 85.7% and reads 68.8%. Leakage inflated the claim by about 19 points and did nothing for the detector.
+- Maximizing accuracy on the rare set prefers never firing. Maximizing recall prefers a low t that fires on many rows. The sweep shows why: on 1 in 100 accuracy is nearly flat in t and recall is a step at 0.42.
+- AUC on all 100 rows of 1 in 100 is 98/99 ≈ 0.990: only row 12 outranks row 99. AUC grades the ranking across every t, so it can sit near 1 while recall at t = 0.50 is 0.
+- Overfit is a val curve that bottoms out (epoch 10 in the sketch) and turns up, not a low train number.
+- CV mean accuracy of a never-fire rule stays at 99% on 1 in 100, where only fold 4 can measure recall, and at 80% on 1 in 5, where every fold can.
+- MSE squares the outlier; MAE does not.
+
+## Where it breaks
+
+In this lab labels and detector scores are authored constants or draws from a fixed seed. On 1 in 5 each score is a bell-shaped draw (positives centred on 0.64, negatives on 0.30), clipped and rounded; real score distributions are neither bells nor known in advance.
+
+The seed is the lowest one whose draw shows the leak clearly. Across 400 re-draws of the same process, choosing t on test raised F1 by about 22 points on average, so the direction is typical and the size varies a great deal with 15 test rows.
+
+Learning curves are illustrative formulas, not a trained run. Cross-validation does not refit a model, and its folds span all 100 rows, test included. Readings with a zero denominator print n/a. The regression card uses ŷ = x, not a fitted line. There is no reliability diagram for either population. No model from the classical-ML or supervised-loop labs is scored here.
+
+In the real mechanism, choosing the threshold on the test split is leakage, and nobody hands you 400 fresh rows to expose it. Accuracy remains a legal reading of the matrix and can still be the wrong published number. The base rate in production seldom equals the base rate in the evaluation set, so precision measured on one does not transfer to the other. A val curve used for many decisions still needs a final untouched test.
+
+## Going deeper
+
+Evaluation later ranks checkpoints with a likelihood rule and a contamination switch. How we know a model works is the scalar-reading skill that lab assumes.

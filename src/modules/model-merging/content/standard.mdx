@@ -1,0 +1,207 @@
+---
+objectives: ["Describe a merge as arithmetic on task vectors that share one base, not as a second training run", "Separate the cost of shrinking each task vector from true interference between them", "Explain what TIES, DARE and SLERP each change about a plain average"]
+terms: ["Model merge", "Task vector", "Shared base", "Linear mode connectivity", "Weight averaging", "Task arithmetic", "Interference", "Sign conflict", "TIES-Merging", "DARE", "SLERP", "Adapter"]
+---
+
+## The big picture
+
+A **model merge** turns separate fine-tunes of one pretrained model into a single set of weights
+by arithmetic alone, with no training data and no gradient step. The question this module asks is
+whether skills learned in separate runs add together, and what each merging rule costs each task.
+
+Its unit is the **task vector**: the change a fine-tune made to its base's weights, entry by entry.
+*Fine-tuning & transfer* rewrote a base table's own weights, and *LoRA & adapters* left you one
+low-rank adapter per task; both changes are task vectors. This lab builds two from one Harbor
+base, for Recipe steps and Proverbs, and combines them five ways.
+
+### Where it shows up
+
+- mergekit, from Arcee AI, merges pretrained language models from a YAML configuration, and its
+  methods include all five this lab runs.
+- Adapter libraries apply merge methods to LoRA adapters too, because the low-rank update a LoRA
+  adapter adds, `(α / r)·B·A`, is itself a task vector. Hugging Face PEFT can also fold a single
+  adapter back into its base weights with `merge_and_unload()`.
+- Subtracting a scaled task vector instead of adding it has been used to remove a behaviour a
+  fine-tune taught, such as toxic generation.
+
+### Why it matters
+
+Serving many tasks otherwise means keeping one model or adapter file per task, or training one
+model again on all the data. A merge combines the files you already have, in seconds, with no
+training data, and costs nothing extra at inference.
+
+It assumes a **shared base**: every input was fine-tuned from the same checkpoint, so each entry
+means the same weight in all of them.
+
+### What you will be able to explain
+
+- How a merge works as arithmetic on task vectors that share one base, not as a second training
+  run.
+- How to separate the cost of shrinking each task vector from true **interference**: the change in
+  one task's loss caused by adding the other task's vector.
+- What TIES, DARE and SLERP each change about a plain average.
+
+### What the lab shows
+
+Nothing is synthetic. The app trains a 900-weight character bigram base and two fine-tunes of it,
+full or LoRA rank 4; every merge is exact arithmetic on their task vectors, and every loss is
+measured on the full Recipe steps and Proverbs corpora. Corpora, training seeds and learning rate
+are fixed, nothing is held out, and DARE's drop mask is the only random draw you can change, with
+**New random mask**.
+
+- **Task vectors**: **Task vectors from** (`Full fine-tunes` or `LoRA rank 4`), **Recipe epochs**
+  and **Proverb epochs** shape the two vectors, mapped cell by cell with sign conflicts struck
+  through. Under the maps, **Overlapping entries** counts the entries both vectors changed, and
+  **Sign conflicts** how many of those disagree in sign.
+- **Merge recipe**: **Merge method** picks `Linear blend`, `Task arithmetic`, `TIES`, `DARE` or
+  `SLERP` and shows only its own controls among **Blend t**, **Scale λ**, **Keep top**,
+  **Drop rate p** and **New random mask**. **Served weights** prints the operation with current
+  numbers.
+- **Two task losses**: every merge plotted by recipe and proverb loss against the base, the
+  specialists and the `two separate models` cross, with a table of each method's **Gap** and
+  **Interference**.
+
+The key experiment changes only how much of each vector is added: compare `Linear blend` at
+**Blend t** 50% (each vector at half strength) with `Task arithmetic` at **Scale λ** 1.00 (both
+whole), and read the **Interference** columns.
+
+## What it is
+
+A **model merge** combines trained weights with arithmetic and no gradient step. The unit it
+works on is the **task vector**: fine-tuned weights minus the base they started from,
+`τ = θ_tuned − θ_base`. Every method in this lab builds one combined vector from two task vectors
+and serves `θ_base + τ_merged`.
+
+The base is the 900-weight character bigram table, trained 48 epochs on Harbor weather notes. It
+scores 2.553 nats per character on Recipe steps and 2.684 on Proverbs. Two full fine-tunes start
+from it, 20 epochs each. The recipe specialist reaches 2.123 on recipes; the proverb specialist
+reaches 2.169 on proverbs.
+
+That base is this lab's own run, not the 60-epoch Harbor table of *Fine-tuning & transfer* and
+*LoRA adapters*, which reads 2.556 on recipes. Each lab fixes its own epoch count, and none tests
+the difference.
+
+### Why a shared base matters
+
+Both task vectors are differences from the same checkpoint, so entry 417 means the same weight in
+both. That **shared base** is what makes adding them meaningful. Two networks trained from
+different random initializations can compute the same function with their hidden units in a
+different order, and averaging them entry by entry mixes unrelated units. Fine-tunes of one
+pretrained model tend to share a low-loss basin, a property called **linear mode connectivity**.
+
+### The five recipes
+
+- **Weight averaging** (`Linear blend`): `θ_base + (1 − t)·τ_r + t·τ_p`, the same as averaging
+  the two fine-tuned checkpoints.
+- **Task arithmetic**: `θ_base + λ·(τ_r + τ_p)`. At λ = 0.5 it is the average.
+- **TIES-Merging**: trim each vector to its largest entries, elect one sign per weight, average
+  only the entries that agree.
+- **DARE**: drop entries at random with probability p, rescale survivors by `1 / (1 − p)`, then add.
+- **SLERP**: blend along the arc between the two vectors rather than the chord.
+
+## Why it’s here
+
+The cost of skipping training is that a merge is a guess. Nothing optimizes the combined weights
+for either task, so whether two skills survive the addition has to be measured. This lab measures
+it on both tasks at once, and separates two reasons a merge can lose: the method shrinking each
+task's own vector, and genuine **interference** from the other task.
+
+## How to play with it
+
+Start on **Task vectors**. At 20 epochs each, the cosine badge reads 0.34, **Overlapping entries**
+reads 720 of 900, and **Sign conflicts** reads 96 (13%). Struck-through cells on both maps are
+those conflicts.
+
+On **Merge recipe**, leave **Merge method** on `Linear blend` with **Blend t** at 50%. The table on
+**Two task losses** reads 2.257 on recipes and 2.330 on proverbs: gaps of +0.134 and +0.161 over
+the specialists. Now read the interference columns: −0.037 and −0.055.
+
+Switch to `Task arithmetic` at **Scale λ** 1.00: 2.279 and 2.258, and interference turns
+positive, +0.156 and +0.089. Sweep **Scale λ** and watch the dashed path on the plane.
+
+Pick `TIES` and move **Keep top** from 100% down to 10%. Pick `DARE`, sweep **Drop rate p** from 0
+to 0.9, and press **New random mask** a few times. Finally switch **Task vectors from** to
+`LoRA rank 4` and repeat the average.
+
+## What to notice
+
+- The average's gap is not interference. The recipe vector at half strength, alone, scores 2.294;
+  adding half the proverb vector *improves* that to 2.257. Almost all of the +0.134 gap is
+  **weight averaging** halving each task's own vector.
+- Interference appears when both vectors are added whole. **Task arithmetic** at λ = 1 costs recipes
+  +0.156 and proverbs +0.089 compared with the same merge without the other vector.
+- λ trades the two effects. Both losses fall until about λ = 0.7 to 0.8 (2.218 and 2.241 at 0.8),
+  then both rise.
+- **TIES-Merging** changes the conflict columns most. In the `h→a` column recipes wrote −0.89 and
+  proverbs +1.18: the average keeps +0.14, TIES keeps +1.18. At 20% kept it lands at 2.273 and
+  2.280, close to plain task arithmetic here.
+- **DARE** does not survive this model. At p = 0.5 the default mask gives 2.762 and 2.602; at
+  p = 0.9, 5.967 and 5.661. The rescale keeps each entry's expected value but not its actual value,
+  and these deltas carry no spare copies.
+- **SLERP** at t = 0.5 gives 2.226 and 2.284, better than the average on both. The vectors are 69.9°
+  apart, so the chord's midpoint is only 8.46 long while the arc's is 10.32.
+- LoRA task vectors conflict far more: 331 of 720 entries (46%), cosine 0.19.
+
+## Where it breaks
+
+**In this lab.** Every task vector, merge and loss is computed live. The limits are scale and
+selection. There are two tasks, one seed each, a 900-weight model and eight-to-ten-sentence
+corpora scored in full, so nothing is held out.
+
+The strip shows 10 of 900 coordinates, chosen as the largest conflicts and agreements. SLERP is
+applied to task vectors, not whole checkpoints. And a bigram table has no hidden units, so it
+cannot show the permutation failure that breaks merges without a **shared base**.
+
+The toy also tilts against TIES and DARE. Both were designed for large models whose fine-tuning
+deltas are small and highly redundant, where most entries can be trimmed or dropped at little
+cost. Here every entry of a 900-weight table matters.
+
+**In real systems.** Merges are tuned and judged on held-out benchmarks for every task at once, and
+λ matters as much as the method. Interference grows with the number of tasks and with how
+different they are. Merged models can keep benchmark scores while losing formatting, refusal or
+calibration behaviour that no single loss captures. Licences also travel with weights, so a merge
+inherits every constraint of its inputs.
+
+## Going deeper
+
+Task arithmetic also subtracts: `θ_base − λ·τ` has been used to remove a behaviour, such as toxic
+generation, learned by a fine-tune. The same algebra works on an **adapter**: a LoRA product
+`(α / r)·B·A` is a task vector, which is why adapter libraries offer the same merge methods.
+
+TIES and DARE compose. DARE is a pre-processing step, and its sparsified vectors are often merged
+with TIES rather than summed. SLERP combines exactly two inputs, so multi-model merges use linear,
+TIES or DARE variants instead. Tools such as mergekit apply these rules tensor by tensor, sometimes
+with a different t per layer.
+
+Merging sits beside two neighbours in this track. LoRA adapters produced the vectors this lab
+adds. Distillation and pruning reach one smaller model from many behaviours by training rather than
+by arithmetic, which costs compute but optimizes the result directly.
+
+### Merge, or serve the adapters side by side
+
+Merging is not the only way to get several tasks out of one base. *LoRA & adapters* ends on the
+alternative: keep one copy of the base and many adapters, and pick one per request. vLLM does this
+when started with `--enable-lora`, and the S-LoRA paper describes serving thousands of concurrent
+adapters from one base.
+
+The two routes trade differently. Serving keeps each task's adapter exact and costs scheduling and
+memory management. A merge costs nothing at inference and, as this lab measures, adds interference.
+Serve separately when tasks must never interfere or must be added and removed live. Merge when one
+fixed model is enough and your held-out evaluations show the interference is small.
+
+### Toy versus real
+
+- **Tools.** mergekit, from Arcee AI, is "a toolkit for merging pre-trained language models". A merge
+  is a YAML configuration that names the models and the method. Its methods include Linear, SLERP,
+  Task Arithmetic, TIES, DARE and DELLA, among others; this lab reproduces the first five on a
+  900-number table.
+- **Scale.** mergekit uses an out-of-core approach, so a merge can run entirely on CPU or with as
+  little as 8 GB of VRAM. Here a merge is arithmetic on 900 numbers and the check is two losses. A
+  real merge is judged on held-out benchmarks for every task, and one benchmark can hold while
+  another degrades.
+- **Adapters.** In Hugging Face PEFT, `merge_and_unload()` folds one adapter into its base. mergekit
+  can go the other way and extract a PEFT-compatible low-rank approximation from a fine-tuned model
+  with `mergekit-extract-lora`. Several adapters can also stay unmerged and be served side by side.
+
+Sources: the mergekit README (github.com/arcee-ai/mergekit); the PEFT LoRA reference
+(huggingface.co/docs/peft/package_reference/lora).

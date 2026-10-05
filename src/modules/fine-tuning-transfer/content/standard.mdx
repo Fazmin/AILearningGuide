@@ -1,0 +1,318 @@
+---
+objectives: ["Explain why pretrained weights beat random ones on a small corpus", "Measure catastrophic forgetting rather than assume it", "Predict what freezing parameters does to adaptation and to forgetting", "Decide when fine-tuning is the right route and when prompting or retrieval should come first", "Use replay to protect old behaviour, and judge a fine-tune on target sentences it never trained on"]
+terms: ["Transfer learning", "Full fine-tuning", "Catastrophic forgetting", "Freezing", "Forward transfer", "Adaptation budget", "Replay", "Domain shift", "Prompt engineering", "Overfitting", "Evaluation set"]
+---
+
+## The big picture
+
+This module is about **transfer learning**: reusing weights trained on one distribution as the
+starting point for another. **Full fine-tuning** does it by continuing ordinary training on the new
+data with every parameter free to move. The question is what that buys on the new corpus, and what
+the same weights lose on the old one.
+
+It builds on *Train one from scratch*: the same kind of 900-weight character bigram table, trained
+by the same minibatch SGD on cross-entropy, except that training now starts from weights already
+fitted to another corpus. It then adds
+two levers on the trade, freezing and replay, and the decision that comes first: whether to
+fine-tune at all.
+
+### Where it shows up
+
+- **Specializing a pretrained model.** Almost no model in production is trained from scratch for its
+  job. Llama 2's supervised fine-tune is one documented case, and Hugging Face TRL provides
+  `SFTTrainer` for that step.
+- **Guarding old behaviour.** Replay, the standard mitigation, mixes a sample of earlier data into
+  the fine-tuning set, and forgetting is checked on held-out old tasks. Reinforcement stages add a KL penalty that keeps outputs near a frozen
+  reference model.
+- **Next to prompting and retrieval.** Production systems often combine fine-tuning with those two
+  routes rather than choosing one.
+
+### Why it matters
+
+Transfer lets a small task dataset go far. Shared structure gives **forward transfer**, a
+better-than-chance score on the new corpus before any update, and that head start counts most
+exactly where data is scarce.
+
+The price is **catastrophic forgetting**: loss on the original data rising while loss on the new
+data falls. A fine-tune scored only on the target sentences it trained on hides that damage. It
+also hides **overfitting**, a fit to the trained-on examples that does not carry to new ones and
+grows as the set shrinks. Only a separate score on the old data shows the first, and only target
+sentences kept out of training show the second.
+
+### What you will be able to explain
+
+- Why pretrained weights beat a from-scratch start on a small corpus, and why the gap narrows as
+  the budget grows.
+- How to measure catastrophic forgetting rather than assume it.
+- How to predict what freezing parameters does to adaptation and to forgetting.
+- When fine-tuning is the right route, and when prompting or retrieval should come first.
+- How replay protects old behaviour, and why a fine-tune is judged on target sentences it never
+  trained on.
+
+### What the lab shows
+
+Every loss on the page is measured, not closed-form. The lab trains its own 900-weight bigram table
+once, for a fixed 60 epochs on Harbor weather notes, then fine-tunes it on Recipe steps live. Both
+corpora are fixed text, eight sentences each, and each run is a single seed, not an average over
+seeds.
+
+- **Transfer against training from scratch** pits the fine-tune against a run from a zeroed table
+  on identical data, seed and budget.
+- **Forgetting meter** scores that one model on both corpora at every checkpoint.
+- **Fine-tuning controls** sets the **adaptation budget** with **Fine-tune epochs** and **Fine-tune
+  learning rate**.
+- **Layer freezing** stops updates to chosen blocks of weight rows. The model has no layers, so the
+  blocks group the table by context character instead.
+- **Replay and held-out target** runs its own fine-tune with **Replay share** and **Held-out target
+  sentences**.
+- **Should you fine-tune? Rule of thumb** is a hand-written rule table over four yes/no questions.
+  Nothing on it is trained or measured.
+
+The key experiment: drag **Fine-tune epochs** from 0 to 60, and the **Forgetting meter** shows
+Recipe steps falling while Harbor climbs, both scored on the same weights.
+
+## What it is
+
+**Full fine-tuning** is ordinary training that starts somewhere other than zero. The base model
+here is a 900-weight character bigram table, the same kind of model as in *Train one from
+scratch*. It is not the model you trained there: this lab trains its own copy once, for a fixed 60
+epochs on Harbor weather notes, and no control changes it.
+
+Before anything else happens that base scores 1.921 nats per token on Harbor and 2.556 on Recipe
+steps.
+
+Fine-tuning continues the same minibatch SGD on softmax cross-entropy, but every batch now comes
+from Recipe steps and the starting weights are the pretrained ones. **Fine-tune epochs** and
+**Fine-tune learning rate** set the **adaptation budget**. Alongside it the lab trains a second
+model on identical data, seed, and budget from a zeroed table — the dashed "started from zero"
+curve. Nothing differs between the two runs except where they started.
+
+A further card, **Replay and held-out target**, runs a fine-tune of its own: some Recipe steps
+sentences are kept out of training, and some Harbor sentences are mixed back in.
+
+### What the corpora share, and do not
+
+Both are English at the character level, drawn from the same 30 symbols, with similar letter
+frequencies and the same dominance of spaces, `e`, and `t`. The **domain shift** is stylistic:
+Harbor weather notes describes, Recipe steps instructs. Shared character statistics are what
+**transfer learning** exploits; the style difference is what still has to be learned. There is only
+one weight table throughout, and the forgetting meter plots that single table scored on both
+corpora at every checkpoint.
+
+## Why it’s here
+
+Fine-tuning is one route from a general model to a specific one: the one this lab measures, and
+not the first one to try. Both halves of its trade become measurable here rather than assumed.
+
+**Catastrophic forgetting** is the half that surprises people, and it is not mysterious decay.
+The loss being minimized mentions only Recipe steps, so nothing in the objective has any reason
+to preserve Harbor behaviour. The weights that encoded the source distribution are the same
+weights being overwritten.
+
+### Should you fine-tune?
+
+Try the routes that are cheaper and easier to undo first.
+
+- **Prompting first.** **Prompt engineering** changes the input to an unchanged model: clearer
+  instructions, worked examples, the right context. A behaviour you can get from a few example lines
+  is not worth a training run, and a prompt is fixed by editing text. *ICL & reasoning* shows why
+  examples in a prompt work at all.
+- **Retrieval for facts that change or need sources.** Weights are frozen when training stops, so a
+  fact learned in training is stale the day it changes and points to nothing. Retrieval reads the
+  current document when the question arrives and can show the passage it used. *Retrieval-augmented
+  generation* is the lab.
+- **Fine-tuning for behaviour.** Style, format, tone, or one narrow task done the same way every
+  time are habits, and examples teach habits well. It can also pay for itself at scale: a small
+  fine-tuned model can replace a long prompt or a larger model on a task that runs very often.
+
+The cost side is what the rule's last question asks about. A fine-tune needs hundreds of good
+examples that someone wrote or checked. It needs an **evaluation set** to show it worked and to
+measure what **catastrophic forgetting** took, which is the meter in this lab. And it needs
+maintenance, because a new base model means doing the work again.
+
+## How to play with it
+
+Start by setting **Fine-tune epochs** to 0. The transfer model already sits at 2.556 on Recipe
+steps while the from-scratch model sits at 3.401 — a zeroed table gives every character equal
+probability, so its loss is exactly `ln(30)`. That gap, before one gradient step on the target,
+is **forward transfer**.
+
+Return to the defaults, 20 epochs at learning rate 0.6. **Transfer, target loss** reads 2.123 and
+**Scratch, target loss** reads 2.247, so the third metric reads **Transfer is lower by** 0.123.
+**Source before** is 1.921, **Source after** is 2.065, and **Forgetting** is +0.144. **Target
+gained** reports the same 2.556-to-2.123 drop from the other side.
+
+Drag **Fine-tune epochs** to 60: Recipe steps falls to about 1.96 while Harbor climbs to about
+2.22. Watch where the two target curves converge as you go.
+
+Then, on **Layer freezing**, freeze two blocks, for instance `␣abcde` and `fghijk`. **Frozen rows**
+reads 12 / 30 and **Trainable weights** drops to 540. At the same 20-epoch budget Recipe steps only
+reaches 2.345 instead of 2.123, and Harbor holds at 1.990 instead of 2.065. The row strip under the
+grid shows those twelve rows flat at zero.
+
+Then treat epochs and learning rate as one quantity: halve **Fine-tune epochs**, double
+**Fine-tune learning rate**, and compare **Forgetting** with what it was.
+
+Next, on **Replay and held-out target**, leave 3 recipe sentences held out, **Replay share** at no
+replay, and **Fine-tune epochs** at 20. **Trained-on target** reads 2.162 and **Held-out target**
+reads 2.424, a gap of 0.262 nats: the fine-tune looks better on the sentences it saw than on the
+three it never did. Raise **Fine-tune epochs** to 60 and the gap widens to 0.472, 1.927 against
+2.399, while the Forgetting row climbs to +0.296.
+
+Return to 20 epochs and raise **Replay share** to 50%. The Forgetting row for all original sentences
+falls from +0.123 to +0.042, Trained-on target rises from 2.162 to 2.232, and Optimizer steps double
+from 320 to 640. Now read the two split rows. The four replayed sentences end 0.038 nats better than
+the base started, while the four not replayed forget by +0.129, as much as with no replay. At 100%
+the overall row reads +0.001.
+
+Last, on **Should you fine-tune? Rule of thumb**, leave all four answers on No: the route reads
+Prompt first. Flip only the format question and it becomes Prompt with examples, then collect data.
+Flip the examples question as well and it becomes Fine-tune. Now flip the changing-facts question
+and retrieval joins the route. The rule table under the controls lists all five rows, and the first
+match wins.
+
+## What to notice
+
+- The head start is largest early. At small budgets the two target curves sit far apart; as the
+  budget grows the from-scratch run closes most of the distance. Transfer buys sample efficiency,
+  not a better ceiling.
+- **Forgetting** has no threshold. It grows checkpoint by checkpoint with the budget, from +0.144
+  at 20 epochs to roughly +0.30 at 60. There is no setting where adaptation is free.
+- Freezing works in both directions at once: 12 frozen rows cost 0.222 nats of adaptation (2.345
+  against 2.123) and save 0.075 nats of forgetting (1.990 against 2.065). It is a dial between
+  the two, not a fix.
+- Frozen rows still have their gradients computed here. The trainer works them out and discards
+  them, so **freezing** saves no compute in this lab. Frameworks usually skip that work, which is
+  where real freezing saves memory.
+- Blocks are not interchangeable. Freeze `xyz.<>` alone and almost nothing moves: `x`, `z`, and
+  the two reserved brackets never occur in Recipe steps, so those rows receive no gradient either
+  way. The row strip shows them at zero even when trainable, next to `j` and `q`. The block holding
+  the space row is the opposite extreme.
+- A fine-tune can look better than it is. The first cards score recipe sentences the model trained
+  on, so their target loss is a training loss. Hold three out and the same fine-tune reads 2.424
+  against 2.162, and the gap grows with the budget: 0.157 at 10 epochs, 0.262 at 20, 0.472 at 60.
+  Trained-on loss keeps falling while held-out loss flattens near 2.40.
+- Small data overfits. Hold four out and train 60 epochs: trained-on loss falls to 1.865 while
+  held-out loss bottoms out at 2.541 and ends at 2.570. Only sentences kept out of training can
+  show that, which is what makes **overfitting** measurable here.
+- Replay protects what it replays and little else. At 50% the replayed sentences end 0.038 nats
+  better than they started, against +0.119 for the same sentences with no replay. The sentences not
+  replayed forget +0.129 with replay and +0.128 without.
+- The overall Forgetting readout flatters replay, because the replayed sentences are part of what it
+  scores. That is why the card splits it, and why a replay set has to represent the behaviour you
+  want to keep.
+- Replay costs fit and compute. Trained-on target rises from 2.162 to 2.232 at 50% and the run takes
+  640 steps instead of 320. Held-out target barely moves, 2.424 to 2.417.
+- Both samples use the same prompt and the same seed, so every difference between them comes from
+  the weights. Neither is fluent.
+- Read **Source after** and **Target gained** together. Either alone lets you tell a flattering
+  story about the same run.
+- On the decision card, having examples is not a reason to fine-tune. With the format question on
+  No, flipping the examples question changes no route. The data answer only matters once a behaviour
+  is needed, and then it separates prompting with examples from fine-tuning.
+- Changing facts and citations give the same route, retrieval, whatever else is true. A fine-tune
+  can neither show a source nor be updated without training again.
+
+## Where it breaks
+
+**In this lab.** The pretraining, both fine-tuning runs, the freezing, and every score are
+computed live. But apart from the replay card, nothing on this page is held out. The first cards
+score Recipe steps in full, and it is also the entire fine-tuning set; Harbor is scored in full and
+was the entire pretraining set.
+
+For measuring forgetting that is the right comparison — you want to know whether the old behaviour
+survived — but none of those numbers say anything about generalization.
+
+The **Replay and held-out target** card holds out up to four of the eight recipe sentences, a few
+hundred characters, so differences under about 0.05 nats there are unresolved and every run is one
+seed. Its forgetting rows still score text the model pretrained on, including the replayed
+sentences.
+
+The **Should you fine-tune? Rule of thumb** card is the exception to "computed live". Its five rules
+are written by hand, nothing on it is trained or measured, and it reduces each situation to four
+yes/no answers. Real choices come in degrees and also weigh cost, latency, privacy and risk.
+
+The **Layer freezing** grid is the second compromise. This model has no layers, so the grid groups
+the weight table by which character a row predicts *from*, and the lab says so on screen. The
+mechanism is the real one; the grouping is not. A real freeze grid names layers, embeddings, or
+projection matrices.
+
+The model is also tiny: one character of context, 900 weights, no attention, eight sentences per
+corpus. **Replay** is the standard mitigation and the replay card gives it a control, but a bigram can
+only memorize which characters follow which, so replaying a few sentences protects those sentences
+and little else. Pretraining is fixed at 60 epochs on seed 1, and **Fine-tune learning rate** runs to 2.0,
+far past anything you would use.
+
+The starting model also differs between labs. *LoRA adapters* rebuilds this same 60-epoch, seed 1
+Harbor table, but *Model merging* trains its own for 48 epochs, so its base reads 1.953 on Harbor and
+2.553 on Recipe steps. Each lab fixes its own epoch count and none tests the difference, so compare
+methods within a lab, not numbers between labs.
+
+**In real systems.** Real replay mixes a sample of earlier data into the fine-tuning set, sized so
+the old behaviour stays in the loss. Forgetting is checked on held-out old tasks rather than on the
+replayed examples.
+
+The routes are not exclusive, and production systems often combine them. The
+cheapest route that clears your evaluation set is the right one. Fine-tuning can also teach facts,
+but it is a weak way to add new knowledge, which is why the rule sends changing or cited facts to
+retrieval.
+
+Forgetting is not only a perplexity number. Instruction following, output
+format, tool-call syntax, refusal behaviour, and calibration can all degrade while loss on a generic
+corpus barely moves, so a single source-loss readout understates the damage.
+
+Freezing is also not
+free out there: freezing the *early* layers lets you stop the backward pass short and does save
+compute, while freezing late layers still requires backpropagating through them to reach anything
+below. Real domain shift usually changes vocabulary, task, and format together rather than style
+alone, which makes both the head start and the forgetting larger than here.
+
+## Going deeper
+
+Every mitigation for forgetting works by putting the source back into the optimization. **Replay**
+mixes original data into the fine-tuning batches, so the loss mentions it again.
+
+The Replay share slider is that mechanism, and its split rows show the catch: the loss protects
+only what it mentions. Weight-space
+regularizers penalize distance from the pretrained weights, and elastic weight consolidation weights
+that penalty by how much each parameter mattered before. Reinforcement stages add a KL penalty
+against a frozen reference model, constraining the output distribution rather than the weights.
+
+Freezing is the crudest member of the family: it sets the penalty to infinity for a chosen subset.
+
+The shrinking head start has a simple reading. Pretrained weights are a prior and target data is
+evidence. With little evidence the prior dominates and transfer looks decisive; with enough evidence
+any reasonable starting point converges to a similar place. That is why transfer matters most exactly
+where data is scarce, and why gaps between initialization schemes narrow as datasets grow.
+
+In practice freezing is rarely all-or-nothing. Gradual unfreezing releases layers from the top down,
+discriminative learning rates give lower layers smaller steps instead of zero, and embeddings are
+often frozen because they are large and generic. The cheapest defense remains stopping early, since
+**Forgetting** tracks the budget.
+
+Choosing between the routes is an evaluation problem before it is a training problem. Prompt first and
+score it on held-out cases. Add retrieval when the failures are missing or stale facts. Fine-tune when
+the failures are a consistent format or behaviour gap that examples would close. *Evaluation* is where
+the score you compare them with comes from.
+
+One cost this lab does not charge you: full fine-tuning produces an entirely new 900-weight table per
+task, so serving ten specializations means storing and loading ten complete copies. That is the
+problem the next lab attacks.
+
+### Toy versus real
+
+- **Rates are not comparable.** Llama 2's supervised fine-tune used a cosine schedule from an
+  initial 2 × 10⁻⁵, with weight decay 0.1, batch 64, and 2 epochs, against 3.0 × 10⁻⁴ at
+  pretraining for the 7B model. The QLoRA paper's LoRA fine-tunes used 2 × 10⁻⁴ for 7B and 13B
+  models and 1 × 10⁻⁴ for 33B and 65B. This lab's plain-SGD slider, 0.05 to 2, is in other units.
+- **Data size.** Llama 2-Chat's supervised stage stopped after 27,540 annotations, which its paper
+  describes as tens of thousands being enough for high quality. This lab fine-tunes on eight
+  sentences.
+- **Tools.** Hugging Face TRL provides trainers for supervised fine-tuning (`SFTTrainer`), DPO and
+  GRPO, and its documentation lists PEFT among its integrations, so the same loop can train the LoRA
+  adapters of the next lab.
+- **Checks.** Real fine-tunes score held-out sets for the new task and for old behaviours. Here only
+  the replay card holds anything out.
+
+Sources: Touvron et al., *Llama 2* (arXiv 2307.09288), section 3.1 and Table 1; Dettmers et al., *QLoRA*
+(arXiv 2305.14314), Table 9; TRL documentation, huggingface.co/docs/trl.

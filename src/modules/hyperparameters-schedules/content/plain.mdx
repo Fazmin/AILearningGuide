@@ -1,0 +1,778 @@
+---
+objectives: ["Read a learning-rate schedule as a function of training progress", "Explain why decay lets you use a larger peak learning rate", "Tell an overshooting run from a diverging one, and see what a gradient clip changes", "Judge whether a difference between two runs is larger than the spread that the shuffle seed alone produces", "Explain how a gradient can explode or vanish with depth, and what a norm clip can and cannot fix"]
+terms: ["Learning rate", "Schedule", "Warmup", "Cosine decay", "One cycle", "Gradient clipping", "Gradient norm", "Weight decay", "Overshooting", "Divergence", "Seed", "Seed band", "Exploding gradient"]
+---
+## The big picture
+
+A brand-new AI model, trained from scratch, starts out knowing nothing. It learns through a training program that has it make
+guesses and then scores how wrong they were. After each score, the program nudges the model's
+internal numbers a little so that the next guesses come out slightly better, and the cycle repeats.
+
+Each nudge is called a step, and before the first one a person has to choose a handful of settings
+that the model never learns for itself. How big should each step be, and should that size change as
+training goes on? How many examples should the model look at before each step, and should any single
+step be capped? These choices are called **hyperparameters**, and this module is about making them
+well.
+
+The most important one is the size of each step, called the **learning rate**. Set it too small and
+the model creeps along, running out of time before it gets anywhere good. Set it too big and the
+model keeps leaping past the good answer, and in this lab it can finish worse than a model that
+never learned anything.
+
+A **schedule** is a plan for changing the learning rate as training goes on, and the usual plan lets
+the steps shrink toward the end. The same choices are made for large AI models trained on huge
+amounts of text. The teams behind two well-known ones, GPT-3 and Llama 2, published their settings,
+and both raised the step size gently over a short opening stretch. After that, both slid it down
+along a smooth curve, and both put a cap on how big the push behind any single step could be.
+
+Getting these settings wrong is costly, and the lab lets you see several of the ways that can
+happen. Without a schedule, one step size has to suit both the start of training and the end, and no
+single size does both jobs well. Without a fair way to compare two runs, you can crown a winner that
+only won by luck. And for the largest models, a wrong schedule cannot be fixed by running it again.
+A run that big uses so much computer time that it is done only once.
+
+By the end of this module, you will be able to explain:
+
+- how to read a learning-rate schedule, which is a chart of step size against how far through
+  training the model is;
+- why letting the step size shrink toward the end of training makes it safe to start with much
+  bigger steps;
+- how a run that keeps overshooting, stepping past the good answer, differs from one that truly
+  breaks, and what putting a cap on each push, called gradient clipping, changes;
+- how to tell whether one run really beat another, or whether the gap is no bigger than luck. The
+  examples are shuffled into a new order each time, and the order alone can move a result;
+- how big models, built from many stacked stages called layers, pass a message backward that tells
+  each stage how to change. That message can grow huge or fade to almost nothing, and a cap can fix
+  only one of those.
+
+The lab gives you five cards to work with, and each one shows a different part of the story:
+
+- **Learning-rate schedule shapes** draws four schedules as curves, so you can read how big the step
+  is at every point in a run.
+- **Loss for all four schedules** trains four real tiny models side by side, one per schedule. It
+  plots how wrong each one is as it learns, a score called its loss. Its **Seeds** switch retrains
+  every model with five different shuffles, so you can see how much luck alone moves each result.
+- **Optimizer controls** holds five dials, and the optimizer it is named after is the part of the
+  program that takes the steps. Its **Peak learning rate** dial sets the top step size, and it can
+  make a run end up worse than knowing nothing.
+- **Stability readout** shows how big the push behind each step was and whether a cap is cutting it
+  down. It also counts how many runs finished worse than a model that knows nothing and guesses
+  evenly.
+- **Gradient through depth** is a separate piece of arithmetic, not a trained model, that shows what
+  happens to a message passed back through many layers.
+
+The first card draws each schedule straight from its formula, while the loss and stability cards
+show numbers measured from real training runs. Those runs are retrained every time you move a dial.
+
+## What it is
+
+### The model and its loss
+
+The model in this lab is tiny: it reads a 499-character text called Harbor weather notes, which
+begins "the morning fog settles over the harbor". Its job is to guess each character of that text
+from the single character before it.
+
+It works with 30 characters: the 26 letters, a space, a full stop and two special marker symbols
+that never appear in this text. Everything it knows sits in a table of 900 numbers called
+**weights**, with one row of 30 scores for each character.
+
+To guess what follows a t, the model looks up the t row and turns its 30 scores into chances for the
+next character, with higher scores getting bigger chances.
+
+All 900 weights start at zero, so every score in a row is the same, and the model gives every
+character the same 1-in-30 chance. The examples it learns from are pairs of neighbouring characters,
+and the whole text holds 498 of them. The word "the", for instance, gives two pairs: t followed by
+h, and h followed by e.
+
+To learn, the model needs a score for how wrong it is, called the **loss**. The loss is low when the
+model gives the real next character a big chance, and high when it gives that character a small one.
+
+The lab averages the loss over all 498 pairs and measures it in units called nats per token, where a
+token here is one character. You will not need to work with the unit itself, because lower is always
+better, and a few landmarks give the numbers meaning:
+
+- A loss of 3.401 is what you get by spreading your bets evenly over all 30 characters, which is why
+  the dotted line on the loss chart sits there.
+- The dotted line's label reads "knows nothing · ln 30 = 3.401", where ln is a calculator function
+  that turns 30 into 3.401, and you will never need to work it out.
+- A loss of about 2.08 means the model is, overall, about as unsure as someone choosing fairly among
+  8 characters each time.
+- A loss of about 1.80 is about as unsure as choosing fairly among 6. That is where the best of the
+  four runs finish when the top step size, the **Peak learning rate**, is set high.
+
+### One step of training
+
+At each training step, the training program takes a small group of pairs called a **batch**, 16
+pairs by default. For every one of the model's weights, it works out which way to push that weight,
+and how hard, so that the loss on those pairs would go down.
+
+That list of pushes, one for each weight, is called the **gradient**. The program then moves every
+weight by its push multiplied by one number, the **learning rate**, which decides how big each step
+is.
+
+As a worked example, say the gradient's push for one weight is 0.5 and the learning rate is 0.6.
+That weight then moves by 0.6 × 0.5 = 0.3 in the direction that lowers the loss, and doubling the
+learning rate would double the move.
+
+One pass through all 498 pairs is called an **epoch**. With batches of 16 it takes 32 steps: 31 full
+batches, plus a last batch holding the 2 pairs left over. A full run of 25 epochs therefore adds up
+to 25 × 32 = 800 steps.
+
+The overall size of the gradient is called its length, or its **gradient norm**. To find it, you
+square every push, add the squares together and take the square root of the total.
+
+Picture a gradient with only two pushes, 3 and 4, whose squares are 9 and 16. Those add up to 25,
+and the square root of 25 is 5, so that gradient has a length of 5.
+
+It is the same sum you would do on a map: walk 3 steps east and 4 steps north, and you end up 5
+steps from where you started. A gradient's length is that straight-line distance, worked out over
+900 directions instead of two. It is not the number of pushes in the list.
+
+The part of the training program that takes these steps is called the optimizer, which is where the
+**Optimizer controls** card gets its name.
+
+### The picture: walking downhill in fog
+
+Picture standing on a hillside in thick fog, trying to reach the lowest point of the valley. You
+cannot see the bottom, so all you can do is feel which way the ground slopes under your feet, take a
+stride downhill, and then feel again.
+
+Training is that walk: your height is the loss, your position is the set of 900 weights, and the
+slope you feel is the gradient. The length of each stride is the learning rate times how steep the
+ground feels, so steep ground and a big learning rate both mean a long stride.
+
+Far from the bottom, long strides get you down quickly, but near the bottom a long stride carries
+you right across the valley floor and up the other side. Then the next long stride carries you back
+again, and the walk turns into a swing from side to side.
+
+That is **overshooting**: a step so long that it carries the model past the low point instead of
+down into it, so the loss stops falling or even rises. When a run keeps overshooting, step after
+step, its loss curve stops falling steadily and starts jumping up and down from one epoch to the
+next.
+
+### A schedule: stride length set by the clock
+
+A fixed learning rate keeps the same stride multiplier from the first step to the last, so the
+strides change only with the slope. A **schedule** changes the learning rate as the run goes on, by
+taking a top value, the **Peak learning rate**, and multiplying it by a factor of 1 or less. That
+factor depends only on how far through the run the model is.
+
+The first card, **Learning-rate schedule shapes**, draws that factor times the peak, with progress
+through the run along the bottom and the learning rate up the side. Progress is counted in epochs,
+so the bottom of the chart runs from 0 to 25.
+
+Here the valley picture stops matching, because a hiker who sensed the bottom was near could choose
+to take more careful strides. A schedule never makes that choice: it changes the learning rate by
+the clock, following its fixed curve whether or not the model is anywhere near a good answer.
+
+The ground in this lab also wobbles, because each step feels the slope of only one batch of 16
+pairs. That slope is rough and points partly the wrong way. Near the bottom the real slope is
+gentle, but each batch's rough reading is often much bigger. A big learning rate turns that rough
+reading into a big hop away from the bottom.
+
+Finally, the real valley has 900 directions to move in, one for each weight, while a hillside has
+only north-south and east-west.
+
+### The four shapes
+
+The four schedules hand out long and short strides at different points in the run, and the falling
+part of each curve is called its decay:
+
+- **Constant** holds the full peak rate from the first batch to the last, which means the same
+  learning rate for the whole walk.
+- **Cosine decay** starts at the peak and eases down to 3 percent of it, with no slow climb at the
+  start. Its name comes from cosine, a curve from trigonometry, but all you need is its shape: flat
+  at first, steepest in the middle and flat again at the bottom.
+- **Warmup + decay** climbs in a straight line from near zero to the peak, then falls in a straight
+  line to 5 percent of the peak. How long the climb lasts is set by the **Warmup fraction** slider.
+- **One cycle** starts at a tenth of the peak and climbs to the peak over the same warmup stretch,
+  set by the same **Warmup fraction** slider. Then it curves down to 2 percent of the peak, ending
+  below where it began.
+
+The climb at the start of the last two is called **warmup**. Each stride is the learning rate times
+how steep the ground feels, and the ground is at its steepest right at the start. The full peak rate
+there could give an extra-long first stride that throws the model off course. Warmup keeps the rate
+low for those first steps, then hands over to the long, fast strides.
+
+In this lab the start is only a little steeper than later on, so warmup changes the results very
+little. It matters much more with a different update method called Adam, which comes up under "Where
+it breaks".
+
+**Warmup fraction** sets the share of the run the climb takes: at its default of 15 percent, warmup
+lasts 120 of the 800 steps.
+
+As a worked example, the default **Peak learning rate** is 0.6. Take **Warmup + decay**: by epoch 12
+its climb is over and it has come part of the way down, so its factor is 0.63. The learning rate at
+that moment is then 0.6 × 0.63 = 0.378, which is the number the chart's dot shows at epoch 12.
+
+### A cap on any single step
+
+One more control works on the gradient itself rather than on the clock. **Gradient clipping** sets a
+maximum length: whenever a batch's gradient is longer than that cap, every push in it shrinks by the
+same factor until the length equals the cap.
+
+In the valley, clipping means the ground can never count as steeper than a set amount. So at a given
+learning rate, no stride can be longer than a set distance, however steep the ground feels, while
+the direction stays the same.
+
+Take the gradient with pushes 3 and 4, which has a length of 5, and set the cap at 1. Dividing both
+pushes by 5 gives 0.6 and 0.8, which still point the same way as before. Their squares, 0.36 and
+0.64, add up to 1, so the new length is exactly 1.
+
+A gradient already shorter than the cap is left alone, so a cap can be switched on and still do
+nothing. The lab's **Clip** readouts say "binding" when the cap shortened at least one gradient, and
+"never binds" when none was long enough to reach it.
+
+### Four real runs, one difference
+
+The next card, **Loss for all four schedules**, trains four real copies of the model at once, one
+for each schedule. All four read the same text, start from the same all-zero weights and see the
+pairs in the same order, so only the schedule differs.
+
+The pairs are shuffled into a new order at the start of every epoch, and a number called the
+**seed** fixes how that shuffle comes out. Use the same seed and you get the same order every time.
+In many models the seed also picks random starting weights, but here every weight starts at zero, so
+the shuffle order is the only thing the seed changes.
+
+Each curve shows the loss on the whole text at the end of each epoch. All four curves start on the
+dotted "knows nothing" line, because zeroed weights give every character the same chance.
+
+The **Worse than chance** readout on **Stability readout** counts how many of the four runs finish
+above that line. Lower loss is better, so finishing above it means doing worse than a model that
+knows nothing and spreads its bets evenly. That even guessing is the "chance" in the readout's name.
+
+### A switch and a card for what one run cannot show
+
+One run with one seed is one sample, and a different shuffle might have told a slightly different
+story. Switch **Seeds** to **Five seeds** and every schedule is retrained with five shuffles, and
+the range from its lowest result to its highest, the **seed band**, is shaded in.
+
+The trained model also cannot show one famous way that real training goes wrong, so the **Gradient
+through depth** card shows it with plain arithmetic instead. Large models, often called neural
+networks, are built from many **layers**, stages of calculation stacked one after another.
+
+To work out how to change an early layer, the gradient is passed backward from the output one layer
+at a time, and each layer multiplies it by some factor. It starts at the output because that is
+where the guess comes out and the mistake is measured.
+
+Picture a line of 24 people passing a message from the front of a hall to the back. The front of the
+line stands for the output layer, and the back stands for layer 1, where the input comes in.
+
+The first person speaks at normal volume, and everyone after that repeats the message 1.2 times as
+loudly as they heard it. Between 24 people there are 23 hand-offs, and each one multiplies the
+volume by 1.2. So by the back of the line it is 1.2 × 1.2 × 1.2 and so on, 23 times over, which
+makes it about 66 times as loud.
+
+A gradient that grows like this on its way back is called an **exploding gradient**. Now make the
+line 40 people long and turn the factor down to 0.8, so each person repeats the message at 80
+percent of what they heard.
+
+Over the 39 hand-offs the message fades to under a thousandth of its starting volume, which is
+called a vanishing gradient. The card lets you cap an exploding gradient and then watch the same cap
+fail to help a vanishing one.
+
+Where the picture stops: in a real network each layer's factor is different, changing with that
+layer's weights and the input. The card, by contrast, uses one fixed factor for every layer, which
+its **Gain per layer** slider sets.
+
+## Why it’s here
+
+The learning rate decides whether a run works at all. The sharper lesson is that a schedule is what
+lets you use a big peak rate without paying for it at the end of the run.
+
+One fixed rate has to do two jobs that pull against each other. Early on, the weights are nowhere
+near good, so long strides make fast progress down the valley. Late in the run, the weights are
+close to the bottom, and the same long strides keep carrying the model past it and back.
+
+Near the bottom the real slope is gentle, but each step sees only a batch of 16 pairs, and that
+batch's slope is still rough. A big fixed rate turns every rough reading into a big hop, so the
+model keeps getting knocked away from the bottom.
+
+That is also why bigger batches help: at a peak of 30, Constant finishes at 1.883 with batches of
+64, but at 3.020 with batches of 16.
+
+So a fixed rate forces a trade: pick one small enough to settle at the end, and the start of the run
+crawls. Pick one big enough for a fast start, and the end bounces around the bottom instead of
+settling there.
+
+Decay gets you out of that trade by letting one run be bold at the start and careful at the end,
+because shrinking the learning rate shrinks every hop.
+
+The trade also runs the other way, because when the peak is small, decay throws away useful steps.
+The model is still far from the bottom when its steps become tiny.
+
+Put together, that is why the winning schedule changes as you move **Peak learning rate**: at a
+small peak Constant wins, and at a big one a decaying schedule does.
+
+The lab also separates overshooting from two problems that can look similar. One is **divergence**,
+where the numbers blow up until the run cannot go on. The other is an exploding gradient, where the
+push grows layer by layer in a deep model.
+
+A cap on the push's length helps with overshooting and with an exploding gradient. No cap can rescue
+a gradient that has faded away, though.
+
+Finally, every training result depends partly on luck, because a different shuffle of the same
+examples gives a slightly different result. Without measuring how much the shuffle alone moves a
+result, you cannot tell a real improvement from a lucky draw, so the lab can retrain everything with
+five seeds.
+
+## How to play with it
+
+### Read the schedule before any loss
+
+Click through all four **Schedule** buttons, and at first watch only the schedule chart. The
+selected schedule is drawn as a thick solid line and the other three as thin dashed or dotted ones,
+while shaded bands mark its warmup and decay.
+
+Pick **Warmup + decay** and drag **Inspect epoch**: a dot slides along the curve and reads the
+learning rate at that moment. Its label looks like "lr 0.378 at step 384", where lr is short for
+learning rate.
+
+Set **Inspect epoch** to 1 and the rate reads 0.160, then set it to 3 and it reads 0.481, climbing
+through the shaded warmup toward the peak. Back at epoch 12 it reads 0.378, the example worked out
+above.
+
+Next, drag **Warmup fraction** on **Optimizer controls**: only the Warmup + decay and One cycle
+curves change shape, because Constant and Cosine decay never use that setting.
+
+Then move **Peak learning rate** and watch the schedule chart again: the numbers on its side change,
+but every shape stays the same. That is because the peak multiplies each schedule's factor, so it
+stretches every curve by the same amount without bending any of them.
+
+### Watch the winner change
+
+Three readouts sit under the loss chart, and the first is named after whichever schedule you picked.
+It reads **Cosine decay final loss** when the page first opens, but **Warmup + decay final loss** if
+you still have that schedule picked from the last step.
+
+The other two, **Best schedule here** and **Best final loss**, always name the winner of all four
+and its score.
+
+**Try this:** walk **Peak learning rate** up from 0.6 and watch **Best schedule here** change hands
+as the peak rises.
+
+- At 0.6, the default, **Constant** finishes at 2.075 and **Cosine decay** at 2.255, with the other
+  two decaying schedules within a few thousandths of Cosine decay.
+- So at the default peak, **Best schedule here** reads Constant, and it wins by a wide margin over
+  all three decaying schedules.
+- Somewhere between 4.5 and 5, **Best schedule here** stops reading Constant.
+- At 6, Constant finishes at 1.880 and Cosine decay at 1.846, so the order has flipped and a
+  decaying schedule now leads.
+- At 12, Constant has gone backwards to 2.093, while Cosine decay has kept improving and reaches
+  1.816.
+- At 30, Constant ends at 3.020, not far below the dotted line, while Cosine decay reaches 1.802.
+- Between 35 and 38, Constant's final point crosses the dotted line on seed 1, ending at 3.332 at a
+  peak of 35 and at 3.537 at 38.
+
+Look at the Constant curve itself at a peak of 30, though. It jumps up and down from epoch to epoch
+and already pokes above the dotted line at almost half of its points. So 3.020 is only where a jumpy
+curve happened to stop, which the seed band below will show again.
+
+Once the final point crosses, **Worse than chance** flips to 1 / 4, and the **Stability readout**
+names Constant as worse than a model that learned nothing. Meanwhile the three decaying runs, fed
+exactly the same peak, still finish near 1.80.
+
+### Break it, then cap it
+
+Set **Peak learning rate** back to 30 and set **Batch size** to 2, so every step averages over only
+2 pairs. A batch that small gives a rough, jumpy push, as the class-poll example under "What to
+notice" explains.
+
+The Constant run now ends at 12.325, far worse than knowing nothing, and its curve runs off the top
+of the chart, though the legend prints the true number.
+
+Now raise **Gradient clip** to `norm ≤ 0.50`, so any gradient longer than 0.50 is scaled down to
+that length before the step is taken. The same run comes back to 6.522, which is a real rescue even
+though it still sits well above the line.
+
+Then compare two more caps, starting with a tighter cap of `norm ≤ 0.10`, which helps even more and
+brings the run down to 2.154. The far left of the slider means off, not an even tighter cap.
+
+Caps slid up toward 1.40 cut fewer and fewer gradients, and by about 1.0 the rescue is gone. One run
+there even reads 12.889, slightly worse than no clip. With five seeds, though, the clipped and
+unclipped results overlap, so that small difference is shuffle luck rather than real harm.
+
+Next, set **Gradient clip** back to `norm ≤ 0.50` and click **Constant** on the **Schedule**
+control. The dots on the **Stability readout** and the caption under them follow whichever schedule
+is selected. **Peak gradient norm**, by contrast, is the longest gradient from any of the four runs.
+
+Each dot is one step's gradient length, a dashed line marks the cap, and the dots above it are drawn
+darker. Its **Clip** readout says "binding", and the caption under the dots counts how many steps
+the cap rescaled.
+
+Set **Batch size** back to 16 and keep that `norm ≤ 0.50` cap: Constant now ends at 2.884, against 3.020 with
+no cap. The seed band in the next part shows why a change that small might be luck.
+
+### Read the seed band
+
+Put **Peak learning rate** back to 0.6, keep **Batch size** at 16, slide **Gradient clip** back to
+off, and switch **Seeds** to **Five seeds**. Every schedule now gets a shaded band, and a table
+appears with each seed's final loss and a **Spread** column, which is the highest minus the lowest.
+
+The third readout also changes to **Best mean of five seeds**, because the winner is now picked by
+its average over all five shuffles. With five seeds on, the lab trains twenty runs, so the sliders
+respond more slowly.
+
+Read Constant's row first: it runs from 2.075 to 2.077, a band only 0.002 wide. The three decaying
+rows each move about 0.004 between shuffles, and they finish within 0.004 of each other.
+
+So Constant's average beats the best decaying schedule's average by 0.175. That is more than forty
+times the 0.004 that shuffling alone moves the decaying schedules, and every shuffle agrees that
+Constant wins at this peak.
+
+The decaying schedules are another matter: their order sits inside the band. The boxed note under
+the table warns that two schedules here cannot be told apart with one run.
+
+Raise **Peak learning rate** to 6, and Constant's band now runs from 1.880 to 2.008. The highest
+Cosine decay result is 1.847, lower than Constant's lowest, so all five shuffles agree that the
+order flipped.
+
+Raise it to 30, and Constant's band stretches all the way from 2.395 to 4.673. Seed 1's 3.020, the
+number you saw before, is just one of five results scattered across that wide range, and two of the
+five shuffles even end worse than chance.
+
+**Worse than chance** still reads 0 / 4, though, because that readout counts only the seed 1 runs.
+
+### Explode a gradient, then try to rescue a vanished one
+
+Last, scroll to **Gradient through depth** and leave **Layers** at 24 and **Gain per layer** at
+1.20. That slider reads "×1.20 · grows", meaning each layer multiplies the gradient by 1.20 on its
+way back.
+
+The chart draws each layer's gradient length, with layer 1, the input, on the left and the output on
+the right. Its side uses a log scale, where each gridline is ten thousand times the one below it:
+1e4 means 10,000, 1e0 means 1 and 1e-4 means 0.0001.
+
+On this kind of scale, multiplying by the same gain at every layer draws a straight sloping line. So
+an explosion shows as a steady climb from the output on the right to the input on the left.
+
+**Input ÷ output gradient**, the gradient's length at layer 1 divided by its length at the output,
+reads 66.2.
+
+**Whole gradient length** reads 120, because it combines all 24 layers the same way you found a
+gradient's length earlier. You square each layer's length, add the squares and take the square root.
+
+The layers near the input are so large that the total comes to 120, more than any one layer. That is
+over 100 times the output's length of 1, which is the card's test for an explosion. So the boxed
+note at the bottom of the card says the gradient has exploded.
+
+Set **Depth clip** to 1.0 and look at the table, where the Whole gradient row now reads 1.000 under
+After the clip. The **Whole gradient length** readout still shows 120, because it always reports the
+length before the clip.
+
+The clip has multiplied every layer's gradient by the same factor, 1 ÷ 120, which is about 0.0083
+and which the **Clip** readout rounds to 0.008.
+
+The first layer still gets 66 times what the output layer gets, because only the overall size
+changed. The boxed note now says the direction is kept and the whole gradient is scaled down to the
+threshold, which here means the cap.
+
+Then set **Layers** to 40 and **Gain per layer** to 0.80, and **Input ÷ output gradient** now reads
+1.66 × 10⁻⁴. That is a short way of writing 0.000166, because × 10⁻⁴ means "move the decimal point
+four places to the left".
+
+So the first layer now gets under a thousandth of the output layer's gradient, and no position of
+**Depth clip** lifts it back up. The boxed note says the gradient has vanished before it reaches the
+early layers, and that a clip cannot bring it back.
+
+Here the whole gradient is only about 1.67 long, so a **Depth clip** of 1.0 multiplies every layer
+by 1 ÷ 1.67, about 0.600. That makes the faded gradient smaller still, and from 2.0 upward the clip
+never binds at all.
+
+## What to notice
+
+### On the schedule chart
+
+- **Warmup fraction** moves only two of the four curves: **Warmup + decay** and **One cycle** read
+  it, while **Constant** and **Cosine decay** ignore it completely.
+- None of the shapes here reach zero, since Cosine decay stops at 3 percent of the peak,
+  Warmup + decay at 5 percent and One cycle at 2 percent.
+- How low to go is a real choice: many published training setups stop near 10 percent of the peak,
+  while others slide all the way down to zero.
+
+### On the loss chart
+
+- Constant does not get steadily worse as the rate rises, because it first improves from 2.075 at a
+  peak of 0.6 to about 1.86 near a peak of 4. It is already slipping by 6, where it finishes at
+  1.880.
+- After that it keeps getting worse, through 2.093 at 12 and 3.020 at 30, so the best fixed rate
+  sits in a narrow window.
+- Cosine decay bottoms out near 1.80 around a peak of 30, then creeps back up to 1.809 at the
+  slider's top of 60. So a schedule makes a big peak rate usable, but not free.
+- At a low peak, a decaying schedule can finish behind Constant because it spent the end of the run
+  taking tiny steps, so the run was not unstable, only unfinished.
+
+### On the stability card
+
+**Peak gradient norm** is the longest gradient any of the four runs produced, and peak here means
+longest, a different peak from **Peak learning rate**.
+
+It shrinks as **Batch size** grows. With **Peak learning rate** at 30, the longest gradient is about
+1.41 at a batch of 2 and about 1.00 at a batch of 16. At a batch of 64 it drops to 0.181, smaller
+still.
+
+Picture choosing a film for a class trip by asking classmates: ask 2 people, and the answer swings
+wildly depending on which 2 you happened to ask. Ask 16, and the strong opinions partly cancel each
+other out, leaving a steadier answer.
+
+A batch works the same way, because pairs from different parts of the text push the weights in
+different directions. Averaging more of them lets those pushes partly cancel, which gives a shorter
+and steadier gradient.
+
+The dots on the **Stability readout** show one gradient per step, and at the default settings, with
+a batch of 16, most of them sit near 0.2.
+
+A row of 25 higher dots, one per epoch, spreads from about 0.33 up to 0.8. Those belong to each
+epoch's last batch, which holds only 2 pairs because 498 does not divide evenly by 16.
+
+**Gradient clip** set above about 1.4 never binds anywhere in this lab, for a reason explained under
+"Where it breaks".
+
+### Weight decay is not a schedule
+
+**Weight decay** pulls weights a little toward zero on each step, like a rubber band tied between
+each number and zero. Despite the shared word, it is a different thing from a schedule's decay,
+because it shrinks the weights themselves rather than the step size.
+
+Here weight decay only makes the result worse: on **Constant** at a peak of 0.6, a weight decay of
+0.02 takes the final loss from 2.075 to 2.664.
+
+It also pulls only on the rows used in that step. So a character's row decays only on steps where
+that character was the first character of a pair in the batch.
+
+Weight decay exists to keep weights small, which stops a model from leaning too hard on the quirks
+of its practice text. That is meant to help it on text it has not seen. This lab never tests the
+model on such text, so it has nowhere to show that payoff.
+
+### On the seed table
+
+Picture two identical robot students, built exactly alike and starting with empty memories. They
+study the same deck of flashcards for the same test in exactly the same way, except that each deck
+is shuffled differently.
+
+One scores 41 out of 50 and the other 42, and since nothing else about them differs, that one-point
+gap came from the order of the cards alone.
+
+If one robot later tries a new study method and gains one point, you could not tell that gain from a
+lucky shuffle. The seed band is the lab's way of measuring that kind of luck.
+
+A gap between two runs counts as evidence only when it is bigger than the **seed band**, the swing
+the shuffle alone produces. At the default peak, Constant leads by 0.175 against a band of 0.004,
+which is a real lead.
+
+The closest pair, One cycle and Cosine decay, differ by only 0.0002 on average. That is only about a
+twentieth of their 0.004 spread, so one run cannot say which is better.
+
+The band is not the same width everywhere: Constant's is only 0.002 wide at a peak of 0.6, but 0.128
+wide at a peak of 6. At a peak of 30 it is 2.278 wide, nearly a thousand times wider than at the
+default.
+
+The decaying schedules stay under 0.011 wide at all of these peaks. For Constant at a high peak,
+though, the result of a single shuffle is close to a coin flip.
+
+The clip's rescue at **Batch size** 2 is bigger than the band. At a peak of 30, the five unclipped
+runs end between 9.854 and 12.325. Clipped at 0.50, they end between 6.168 and 6.522, so the two
+ranges never touch.
+
+At **Batch size** 16 it is a different story, because the clipped runs end anywhere from 2.308 to
+3.606, which overlaps the unclipped range. So seed 1's move from 3.020 to 2.884 does not, on its
+own, prove that the clip helped.
+
+### On the depth card
+
+- A clip shrinks the whole gradient by one factor, so every layer keeps its share of the total and
+  only the overall length is capped.
+- A clip can only shorten, so raising **Depth clip** never lifts a vanished gradient, and a clip set
+  above the whole length does not bind at all.
+- At a gain of exactly 1.00 every layer's gradient has length 1, so the squares are 24 ones that add
+  up to 24. The whole gradient is then the square root of 24, about 4.9.
+- The explosion or the collapse comes entirely from the gain being different from 1, multiplied in
+  once for every layer the gradient passes through.
+
+## Where it breaks
+
+### What this lab simplifies
+
+Four real runs give four real curves, and the single default **seed** makes sure the only difference
+between them is the schedule. That same fixed seed is also a limit, because every number you read is
+one sample from one shuffle.
+
+**Five seeds** adds the missing measure of luck, but five is a small sample. The band is only the
+lowest and highest of those five results, not a promise about where a sixth shuffle would land.
+
+The band also measures the shuffle order and nothing else, so it says nothing about how a different
+text, model size or set of peak rates would change things.
+
+**A common mix-up:** a rising loss is not an exploding gradient. This model cannot produce an
+exploding gradient at all, because of the way its pushes are built.
+
+Each pair pushes only the row of its first character. On that row, the push for the right next
+character is 1 minus the model's chance for it. The push for every other character is minus the
+model's chance for that character.
+
+Say the model is reading t and gives h a chance of 0.7 and e a chance of 0.2, spreading the last 0.1
+over the other 28 characters. If the right next character is h, the pushes on the t row are
+1 − 0.7 = 0.3 for h, −0.2 for e, and tiny negative amounts for the rest.
+
+The chances are between 0 and 1 and add up to 1, so these pushes can never get very long. The worst
+case is a model that is completely sure of a wrong character, say e.
+
+Then the push for e is 0 − 1 = −1, the push for h is 1 − 0 = 1, and every other push is 0. Squaring
+gives 1 and 1, which add up to 2, so the push's length is the square root of 2, about 1.41.
+
+A batch averages these pushes, so its gradient can be no longer than that either. An average can
+never go past its biggest member, in the same way that a class's average test score can never beat
+the top score.
+
+That is why the measured **Peak gradient norm** stays between about 0.17 and 1.41 at every setting
+the sliders reach. It is also why the **Stability readout** draws a dotted line labelled "√2 bound",
+and why a **Gradient clip** above that line could never bind.
+
+What a high rate causes here is **overshooting**, over and over, with step after step carrying the
+model past the low point instead of down into it. Real **divergence** is something else: the loss
+grows without limit until the weights become non-finite, values such as infinity that the computer
+can no longer calculate with.
+
+Once that happens no later step can recover them, but divergence never happens inside these slider
+ranges. So here is how to tell the two apart in this lab: an overshooting run still ends at a
+number, even a terrible one such as 12.325.
+
+A diverged run has no number left, and the legend, the final-loss readout and the seed table print
+"diverged" in its place. That label never appears here, because the worst run you can build stays
+finite and performs badly.
+
+**Gradient clipping** still helps, and it is worth being exact about why. It caps how far one step
+can travel, which limits the damage from a long step even when the gradient behind it was ordinary.
+It does the most at **Batch size** 2, where each batch gives the roughest estimate of the real
+slope.
+
+The **Gradient through depth** card is how this lab shows an **exploding gradient**, and it is a
+different kind of thing from the trained runs. It has no weights, no data and no training: each
+layer multiplies the gradient by the same gain, and the gradient at the output is set to 1.
+
+In a real network, each layer's factor changes with its own weights, with the kind of calculation
+that layer does, and with the input. So the card shows the mechanism, a multiplication that
+compounds once per layer, and what a clip does to it, but not how any real network behaves.
+
+The rest are this model's usual limits, starting with the fact that it sees only one character
+before each guess and has only 900 weights. It has no hidden layers, the extra stages of calculation
+that deeper models stack between input and output.
+
+It has no tokenizer, the tool real models use to cut text into the pieces they read, and it learns
+from a text only 499 characters long. Its **Peak learning rate** slider stops at 60.
+
+It also uses plain gradient descent, the simple rule described earlier of moving each weight by its
+push times the learning rate, instead of Adam.
+
+The plotted loss is training loss, measured on the same text the model learns from, so nothing here
+shows a setting helping the model handle new text.
+
+### Where the real mechanism fails
+
+Deep networks, the ones with many layers, differ in the way that matters most. Their gradients pass
+back through many layers and get multiplied together, so a small change in each factor compounds.
+
+Moving each of 24 factors from 1.20 to 1.25, for example, makes their product about 2.7 times
+larger. If each factor grows from 1.20 to 1.50 instead, the product grows more than 200 times, and
+more layers compound it further still. So after one update to the weights, a deep network's gradient
+norm really can jump tenfold, a hundredfold or more in a single step.
+
+A sudden spike like that is the warning sign of a step about to wreck the weights, and those spikes
+are what clipping was invented for. Both GPT-3 and Llama 2 clip the length of the whole gradient,
+measured across every weight in the model, at 1.0.
+
+This lab never produces one of those spikes from a trained model, so do not read its runs as a
+demonstration of one. Only the arithmetic on the depth card shows the shape of the problem.
+
+A clip also has a hard limit, because it can only shorten, so a gradient that has faded to almost
+nothing stays faded however you set the clip. Real models need other fixes for that, such as
+shortcuts that let the gradient skip past layers, called residual connections. Careful starting
+weights help too, and earlier labs cover both.
+
+A schedule is a bet, too, because it assumes the right step size changes in a fixed way as the run
+goes on. It goes by the clock rather than by how training is going, so the bet can be wrong for a
+given peak.
+
+That is why this lab trains all four schedules instead of trusting the schedule chart, since a curve
+that looks sensible can still lose.
+
+**Warmup** is also played down here, because it matters much more with Adam. Adam is a more
+elaborate update method that sizes each weight's step using an average of how big that weight's
+recent gradients have been. It keeps updating that average as training goes on.
+
+In the first few hundred steps, that average is built from almost nothing, so early steps can be
+large and badly aimed. Warmup holds them back until the average has had time to settle.
+
+## Going deeper
+
+### The shape large runs report
+
+A common choice is a short straight-line **warmup** followed by **cosine decay** down to 10 percent
+of the peak, which is what both GPT-3 and Llama 2 report.
+
+Its drawback is that the curve is drawn to reach its lowest point exactly at the planned last step.
+So you cannot extend the run later without redrawing the curve and throwing the old plan away.
+
+Warmup-stable-decay schedules avoid that by holding a steady rate for most of training and decaying
+only in a short final stretch. You can keep training as long as you like and add the short decay
+whenever you decide to stop.
+
+This lab does not include one, but on its chart such a schedule would sit between Constant and
+Warmup + decay.
+
+### Learning rate and batch size move together
+
+A bigger batch gives a steadier gradient, which can support a longer step, so the common rules raise
+the rate along with the batch. Double the batch, and those rules either double the rate or multiply
+it by about 1.4, the square root of 2.
+
+This lab shows the same link from the other side: hold the rate fixed and shrink the batch, and the
+run gets much worse. On **Constant** at a peak of 30, a **Batch size** of 64 finishes at 1.883,
+while a batch of 2 finishes at 12.325.
+
+### Weight decay in large runs
+
+There are two ways to add weight decay's pull toward zero: one folds it into each weight's push, so
+it travels along with the gradient. The other applies it to the weights directly, outside the push.
+
+With plain gradient descent, the update rule this lab uses, the two ways give the same step. Adam,
+though, resizes each weight's push by its own amount, so a pull that travels inside the push gets
+resized too.
+
+That makes the pull stronger for some weights and weaker for others. A version called AdamW keeps
+the pull outside the push, so every weight is pulled toward zero in the same proportion.
+
+### One shot at the real thing
+
+Picture a baker asked to make one enormous wedding cake, with no chance of a second try. Instead of
+experimenting on the big cake, they would bake small test cakes first, find the oven settings that
+work, and use a rule to scale them up.
+
+The largest AI training runs, sometimes called frontier runs, work the same way, because each one
+uses so much computer time that it is done only once. Their settings come from trial runs on much
+smaller stand-in models, plus a rule for carrying the results across, and a wrong schedule cannot be
+run again.
+
+### Toy versus real
+
+- **Peak rate:** this lab's default peak is 0.6, and its useful range runs from about 0.5 to 40,
+  using plain gradient descent. Runs that use Adam take far smaller rates, so the two kinds of
+  number cannot be compared directly. GPT-3's published peak rates run from 6.0 × 10⁻⁴, which is
+  0.0006, for its smallest version with 125 million weights. Its largest version, with 175 billion
+  weights, uses 0.6 × 10⁻⁴, which is ten times smaller. Llama 2's published peak rate is 3.0 × 10⁻⁴
+  for its 7 billion and 13 billion weight versions. Its 34 billion and 70 billion versions use half
+  that, 1.5 × 10⁻⁴.
+- **Warmup:** this lab warms up for 15 percent of the run, which is 120 of 800 steps, while Llama 2
+  warms up for 2,000 steps. Llama 2 trains on 2.0 trillion tokens, the pieces of text such models
+  read, at a batch of 4 million tokens, which makes about 500,000 steps in all. So Llama 2's warmup
+  is roughly 0.4 percent of its run. GPT-3 warms up over its first 375 million of 300 billion
+  tokens, which is 0.125 percent of its run. Both of those percentages are arithmetic on the papers'
+  own figures, not numbers the papers state themselves.
+- **The floor:** this lab's cosine decay bottoms out at 3 percent of the peak, while both papers
+  decay to 10 percent of it. Both papers also use a weight decay of 0.1 and clip the whole gradient
+  at a length of 1.0.
+- **Seeds:** this lab can afford five runs per setting, but a frontier run happens once, which is
+  why its settings come from trial runs on smaller stand-in models.
+
+The real-world figures come from the GPT-3 paper by Brown and colleagues and the Llama 2 paper by
+Touvron and colleagues.

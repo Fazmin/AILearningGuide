@@ -1,0 +1,346 @@
+---
+objectives: ["Match each classical method to the shape of boundary or grouping it can draw","Say which methods store examples and which fit a small set of parameters","Read logistic output as P(y=1|x), name the SVM margin, and name naive Bayes' independence assumption","Say what a tree's Gini split, an SVM's margin and support vectors, and naive Bayes' product of per-feature likelihoods each compute on the 18 points"]
+terms: ["Linear model","Logistic regression","Support vector machine","k-nearest neighbors","Decision tree","Gini impurity","Random forest","Naive Bayes","k-means","Decision boundary","Inductive bias"]
+---
+
+## The big picture
+
+Picture a square map with 18 dots on it, where each dot belongs to one of two groups. Your job is to shade the whole map, so that if someone drops a new dot anywhere, you can say which group it most likely belongs to. To do that, you have to draw a border between the groups, which could be one straight line, a patchwork of boxes, or a curve that hugs a cluster.
+
+That border-drawing job is what this module is about. When a computer works out a border like this from examples, instead of a person drawing it by hand, that is called **machine learning**. The older, smaller methods that sort things into groups this way are called **classical machine learning**. The lab runs eight of these methods on the very same 18 dots, one at a time, so you can compare the borders they draw.
+
+### Where you have met it
+
+You met the dots themselves in the previous lab, which turned rows of a table into points you could place on a graph. Those points sit there doing nothing until a method draws a border on them, and drawing that border is the step this lab adds.
+
+The methods here are fast, because most of them finish in a few thousandths of a second on an ordinary laptop. They are still the first thing people try on data that lives in a table of rows and columns, like a spreadsheet. They also set the score that a bigger, slower method has to beat.
+
+Later labs build up to neural networks, a different family that stacks many small pieces so that its border can bend. Neural networks became cheap enough to replace these older tools on many tasks, but they draw borders too, so the ideas you learn here carry over.
+
+### Why it matters
+
+The same dots can end up with completely different borders, depending only on which method you pick. A method that may only draw one straight line can never wrap around two opposite corners of the map, however long it runs. A method that asks the nearby dots, on the other hand, can wrap around both corners at once.
+
+If you do not know which shapes a method can draw, you cannot tell whether a mistake comes from the data or from the method’s built-in limits. Those built-in limits have a name, **inductive bias**, which means the assumptions a method brings with it before it sees a single dot. Every method needs some, because 18 dots cannot say on their own what belongs in all the empty space between them.
+
+### What you will be able to explain
+
+By the end of this lesson, you should be able to explain each of these ideas in your own words:
+
+- which shape of border or grouping each of the eight methods can draw, from one straight line to boxes, local patches and areas around center points;
+- which methods keep every dot they learned from, and which ones squeeze the dots down into a small handful of numbers;
+- how one straight-line method, called logistic regression, turns its score into a chance of belonging to a group, which the lab writes as `P(y=1|x)`;
+- how another straight-line method, called a support vector machine or SVM, picks the line with the widest empty street, called the margin, and which dots decide where it goes;
+- how a decision tree scores how mixed a group of dots is, using a number called Gini impurity, to choose where to cut the map;
+- how a method called naive Bayes multiplies one score for each of a dot’s two numbers to reach a chance, and which shortcut gives it the name “naive”.
+
+### What the lab lets you do
+
+The lab has four cards, and the first is the **Algorithm** card, where you switch between the eight methods. It also holds two sliders, **k** and **Tree depth**, that only some of the methods use. The **Decision surface** card shows the map, shaded by the group the method predicts in each small square, with a cross over every dot the method gets wrong.
+
+On the **Probe and inductive bias** card, you drop a test point, called the **probe**, anywhere on the map and read the exact number the method works out there. The **What it stored** card shows what the method keeps after learning from the dots, how many numbers that takes, and how many of the 18 dots it gets right.
+
+The 18 dots were placed by hand to make a tricky pattern, and every method runs in the page on those same dots. Every score is checked on the very dots the method learned from, so a perfect score here is not a test on new dots.
+
+Two of the straight-line methods, logistic regression and the SVM, find their tuned numbers in many small steps. They stop close to their best answers, not exactly at them. Another method, called a random forest, makes some of its choices by chance. Those draws follow a fixed rule, though, so it is the same forest every visit.
+
+## What it is
+
+### The map and the dots
+
+Each dot stands for one example, described by two numbers, called **features**, like the ones you built in the previous lab. Here the features are named x and y, and both run from 0 to 1, so x says how far across a dot sits and y how far up. Each dot also carries a **label**, either class 0 or class 1, which is the right answer the methods learn from.
+
+Working out a method’s rule from the labeled dots is called **fitting** or **training** the method, and the 18 dots it learns from are the **training** dots. **Train accuracy** counts how many of those same dots the finished rule gets right, such as 16 of 18.
+
+The 18 dots are arranged on purpose, with twelve class-0 dots in two clusters along the diagonal, one bottom-left and one top-right. The six class-1 dots fill the other two corners, with four in the top-left and two in the bottom-right.
+
+This checkerboard pattern is called an **XOR**, short for “exclusive or”, because a dot is class 1 when exactly one of its two features is large, but not both. The XOR here is uneven, with one big class-1 corner and one small one, which matters because some methods grab the big corner and give up the small one.
+
+The border where a method’s prediction switches from one class to the other is called the **decision boundary**. In the lab, it is the dark edge between the two shades on the **Decision surface** card, or the solid line for the three straight-line methods.
+
+### A town map and eight mapmakers
+
+Here is a picture to carry through the whole lesson: think of the square as a town map, and the dots as houses painted in two colors. You hire eight mapmakers to shade every empty lot in town by the color it most likely belongs to, and each one has to follow a strict house rule.
+
+One mapmaker may only use a ruler, so every border is a single straight line. Another shades each lot by asking the few houses closest to it, and a third may only build fences that run straight north-south or east-west. One mapmaker is even colorblind and groups the houses only by where they stand.
+
+Each house rule is that method’s inductive bias, and it fixes the kind of border a mapmaker can draw before a single house is looked at.
+
+The picture stops matching in one important way, because a real mapmaker looks at the town and uses judgment. These methods are fixed recipes of arithmetic instead, and each one turns the 18 dots into a rule, then applies that rule to every spot on the map. None of them notices that the dots form an XOR, and none of them can break its own house rule to fit the pattern better.
+
+### What “classical” means
+
+Classical methods work on the features you hand them, so here they only ever see x and y. Each one either fits a small set of tuned numbers, called **parameters**, or keeps the training dots themselves.
+
+What none of them can do is invent a new, more useful number on its own, such as x times y, which would help a lot with this checkerboard pattern. Newer methods called neural networks can build numbers like that for themselves. So a classical method is stuck drawing whatever border its house rule allows, using x and y alone.
+
+### Straight-line methods: linear and logistic
+
+A **linear model** gives every point a score by multiplying each feature by a number called a **weight**, adding the results, and then adding one more number on top. The lab writes this score as `w₀ + w₁x + w₂y`, where w₁x means w₁ times x. Here w₁ and w₂ are the weights for x and y, and w₀ is the extra number added on top.
+
+The whole model is those three numbers, and the lab fits them with a method called least squares. It treats each label as a target score, 1 for class 1 and 0 for class 0. Then it picks the weights that make the squared gaps between scores and targets as small as possible.
+
+A point scoring 0.5 or more is called class 1, so the border is the set of points scoring exactly 0.5, which always forms a straight line.
+
+A flat cut like this is also called a **hyperplane**, the general name for a straight line with two features or a flat sheet with three. You will see the word at the top of the **Probe and inductive bias** card, in “Inductive bias: a hyperplane”.
+
+For a worked example, leave the probe, the test point you can move, at its starting spot in the middle of the map, at (0.50, 0.50). The **Linear score** row reads 0.302, which is below 0.5, so the middle of the map is called class 0.
+
+The best straight line takes the four-dot corner in the top-left and gives up the two-dot corner in the bottom-right, so it gets 16 of 18 right. Those two bottom-right dots each get a cross on the map, and no straight line could save them. No single line can put both class-1 corners on one side and both class-0 clusters on the other.
+
+**Logistic regression** works out the same kind of three-number score, then passes it through an S-shaped curve called a **sigmoid**, written σ. The sigmoid squeezes any score into a number between 0 and 1, so very negative scores come out close to 0 and very positive ones close to 1. A score of exactly 0 comes out as exactly 0.5, right in the middle.
+
+That output is read as the chance that the dot is class 1, which the lab writes as `P(y=1|x)`. You can read that aloud as “the probability that the label y is 1, given the point x”.
+
+Careful, because this formula reuses letters. Here y means the label, 0 or 1, not the up feature, and x means the whole point, with both its across and up numbers. At the default probe, the **Logistic at the probe** row shows `P(y=1|x) = σ(-0.732)`, where −0.732 is the score before the S-curve. The result is 0.325, which means about a one-in-three chance of class 1.
+
+Logistic regression finds its weights in a different way from least squares, but its border is still a straight line. A score of 0 always turns into exactly 0.5, so the 50% border is the set of points scoring 0, the same kind of line as before.
+
+The shading fades as you get closer to the line, because the color strength shows how far the chance is from 50%. Logistic regression gets the same 16 of 18 as the linear model, since it misses the same two bottom-right dots.
+
+### SVM: the widest street
+
+A **support vector machine**, or SVM, also draws one straight line, but it chooses that line with a different goal. In the town picture, think of the line as the middle of a street between the two neighborhoods, with a curb on each side. The SVM looks for the line with the widest street, but it pays a penalty for every house on the street or on the wrong side.
+
+The SVM’s score is written `w·x + b`, the same kind of weighted sum as before. Here w stands for the pair of weights, and as in the logistic formula, x stands for the whole point, both of its numbers at once. The score is the first weight times the across number, plus the second weight times the up number, plus an extra number b called the offset.
+
+A point that scores 0 or more is called class 1, so on the map the solid line, where the score is exactly 0, is the border. The two dashed lines are the curbs, where the score is +1 on one side and −1 on the other.
+
+The width of the street is called the **margin**, and you can work it out from the SVM’s weights with nothing more than squares and a square root. Here the SVM settles on the weights w = (−2.41, 2.80) and the offset b = −1.23.
+
+Walk straight across the line, at a right angle to it. Every step of 1, the full width of the map, raises the score by the same amount, written ‖w‖. That amount is the length of the pair of weights. You find that length the same way you find the long side of a right triangle: square both weights, add them, and take the square root.
+
+Here 2.41 squared plus 2.80 squared comes to about 13.65, and its square root is about 3.7. The lab works with the unrounded weights, which give ‖w‖ = 3.70.
+
+To cross the street, the score has to climb from −1 to +1, which is a rise of 2, so the street is 2/‖w‖ wide. Dividing 2 by 3.70 gives a street 0.54 wide, which is about half the width of the whole map. The lab prints the same width as 0.541 in the **Signed margin score** row.
+
+Bigger weights make the score climb faster, which squeezes the curbs closer together, so the SVM keeps its weights small to keep the street wide.
+
+The penalty pulls the other way, because every house inside the street or on the wrong side has to pay. To work out a house’s penalty, first count its score toward its own side. Keep the score as it is for a class-1 house, and flip its sign for a class-0 house. A house at its own curb or beyond scores 1 or more this way and pays nothing.
+
+Any other house pays 1 minus that score, so the penalty grows the farther a house strays. A house exactly on the middle line scores 0 and pays 1, while a class-1 house scoring −2.5 pays 1 − (−2.5) = 3.5. This penalty is called the **hinge**, and a setting called C, which is 8 here, multiplies every penalty, so it says how heavily straying houses count against a wide street.
+
+Add up all of those penalties, together with a charge for narrowing the street, and you get the SVM’s total **cost**. That cost is the single number the SVM tries to make as small as possible.
+
+The dots that sit on a curb, inside the street, or on the wrong side are called **support vectors**, and the lab draws a ring around each one. Here “vector” is only another word for a dot’s pair of numbers. The lab’s test for them is `t(w·x+b) ≤ 1`, where t is +1 for a class-1 dot and −1 for a class-0 dot.
+
+In everyday words, a dot is a support vector when its score, counted toward its own side, is 1 or less.
+
+For example, a class-0 dot that scores −0.4 gives (−1) × (−0.4) = 0.4, which is 1 or less, so it sits inside the street and is a support vector. A class-0 dot that scores −2.0 gives 2.0, so it sits safely beyond its curb and is not one.
+
+Only the support vectors decide where the line goes, since a dot well outside the street on its own side pays nothing and pulls on nothing. So if you deleted a dot like that and fitted again, the best line would stay exactly where it was. The lab’s own fit is only close to the best line, so in the lab it moves by less than 0.01.
+
+Because no straight line can separate these two classes, the street cannot stay empty, and 12 of the 18 dots end up as support vectors. Refit the SVM on those 12 dots alone and every weight lands within 0.01 of where it was, so the other 6 dots had no say.
+
+Delete a support vector, though, and the line moves. Removing the class-0 dot at (0.16, 0.22) shifts the offset b by about 0.33. Removing one of the top-left class-1 dots instead swings the weights by more than 1, which turns the line.
+
+The two bottom-right class-1 dots score about −2.5, deep on the class-0 side, so each one pays a penalty of about 3.5, times C. That comes to about 28 each, or about 56 for the pair. The whole cost is near 85, so these two dots alone make up about two thirds of it.
+
+At the default probe, the **Signed margin score** row reads `w·x + b = -1.030`, so the middle of the map is called class 0. Because −1.03 is a little past −1, the middle of the map sits slightly outside the street, on the class-0 side. Like the linear model and logistic regression, the SVM gets 16 of 18 right.
+
+### k-nearest neighbors: ask the closest dots
+
+**k-nearest neighbors**, which the lab shortens to knn, does not draw a line at all. Instead it keeps all 18 dots, and when a new point arrives, it finds the k dots closest to that point and lets them vote. Whichever class gets more votes wins, and in this lab an even split goes to class 1.
+
+Picture moving into a new house and deciding which local team to cheer for by asking your nearest neighbors. Ask only the closest house and you copy it, but ask seven and a small group next door can be outvoted by a bigger group farther away. In the lab, the **k** slider sets how many neighbors get asked, anywhere from 1 to 7.
+
+The two bottom-right class-1 dots show this clearly, because when the lab checks one of them, the closest dot is itself and the next closest is its partner. The class-0 dots are all much farther away, so with k at 4 or below, those two class-1 votes win or tie, and a tie goes to class 1.
+
+At k = 5, though, each of them hears three class-0 votes against two class-1 votes, so the corner flips to class 0. **Train accuracy** drops from 18 of 18 to 16 of 18, which shows how a larger k smooths a small group away.
+
+With a small k, then, knn wraps both class-1 corners, and its border is a patchwork of local regions that follows wherever the dots happen to be. On the map, thin lines join the probe to its k nearest dots. At the default probe with k = 3, the **Local majority** row reads “0 of 3 nearest votes are class 1”, so the middle is class 0.
+
+For knn, the dataset is the model, because there is almost no fitting step and every dot is stored as 3 numbers: x, y and the label. That comes to 54 numbers for 18 dots, and both the memory it needs and the time it takes to answer grow as the dataset grows.
+
+### Decision trees: yes-or-no questions
+
+A **decision tree** sorts a point by asking a chain of yes-or-no questions, each about one feature, such as “Is x less than 0.15?” Every question splits the map with a cut that runs straight up and down or straight across, so the regions it makes are always rectangles. Cuts like these are called **axis-aligned**, because they line up with the x axis or the y axis.
+
+Each answer leads either to another question or to a final box, called a **leaf**, which predicts whichever class most of its training dots belong to. The **Tree depth** slider sets how many questions can come one after another, from 1 to 5. The green dashes on the map are the cuts, and each one only cuts across the rectangle that the question before it made.
+
+Picture a friend in a guessing game where only yes-or-no questions are allowed, who always picks the question that clears up the most right now. The tree does the same thing, but it never plans two questions ahead, and choosing the best move for this turn only is called a **greedy** choice.
+
+### Decision tree: how a cut is chosen
+
+To choose a question, the tree needs a way to score how mixed a group of dots is. The score it uses is called **Gini impurity**, and for two classes it is 2p(1 − p), where p is the share of the group that is class 1.
+
+A pure group has p = 0 or p = 1 and scores 0, because every dot in it belongs to the same class. A 50-50 mix has p = 0.5 and scores 0.5, which is as mixed as a two-class group can get.
+
+All 18 dots together hold 6 class-1 dots, so p = 6/18, which is 1/3. That makes the Gini 2 × 1/3 × 2/3 = 4/9, or about 0.444, which is the starting score for the whole set.
+
+The tree then tries every possible vertical and horizontal cut, each one placed halfway between two neighboring dot positions. For each cut, it works out the Gini of the two groups the cut makes, weights each group’s Gini by its share of the dots, and adds the two. The cut whose total falls furthest below the starting 0.444 wins, and the size of that fall is called the **gain**.
+
+The winner here is `x < 0.15`, which sends the 2 dots farthest to the left into one group. Both of those dots are class 1, so that group is pure and scores 0. The other 16 dots hold 4 class-1 dots, so p = 1/4 and the Gini is 2 × 1/4 × 3/4 = 0.375.
+
+When each group is weighted by its size, the total is (2/18) × 0 + (16/18) × 0.375 = 0.333, since 2 of the 18 dots went left and 16 went right. The gain is 0.444 − 0.333 = 0.111, or about a ninth. When you pick `tree`, the formula row on the **Probe and inductive bias** card prints the 2 and the 16. It also prints the starting 0.444, the weighted 0.333 and the gain 0.111.
+
+The cut `y < 0.86` has the same gain, because it peels off the top two class-1 dots instead. When two cuts tie, the lab’s code keeps the first one it tries, which is the x cut.
+
+No single cut does better, because in an XOR every straight cut leaves at least one side badly mixed. So the first question only peels off a small pure pocket, and a tree with depth 1 gets 14 of 18 right. The tree gets further by asking more questions inside each piece, one greedy choice at a time.
+
+At depth 5 the tree grows 7 leaves and gets all 18 dots right, but its last cuts fence off single dots one by one. In other words, it has memorized these 18 dots instead of finding a pattern that would carry over to new ones.
+
+The lab’s note calls depth 1 “high bias”, meaning the rule is too stiff to fit the dots. This “bias” is a cousin of inductive bias, because a tree allowed only one question has such a strong built-in limit that it cannot follow the dots. The note calls depth 5 “high variance”, meaning the drawing would change a lot if a few dots moved.
+
+A tree stores 2 numbers for each question, which feature and where to cut, and 1 number for each leaf, its class. At depth 5 that is 6 questions and 7 leaves, so **Numbers stored** reads 19.
+
+### Random forests: many trees vote
+
+A **random forest** grows several trees and lets them vote, and in this lab there are 7. Each tree grows from its own random draw of 18 dots out of the 18, with repeats allowed, which is called a **bootstrap sample**.
+
+Imagine the 18 dots as names in a hat. You pull one out, write it down, put it back, and do that 18 times. Some names get written twice and some never come up, so each tree gets its own slightly different list to learn from.
+
+In the town picture, it is like handing seven fence-builders slightly different copies of the map and then shading each lot by majority vote. Because the trees learned from different dots, they make different mistakes, and the vote tends to smooth away the jagged corners of any single deep tree. That smoothing is what the lab’s note means when it says averaging “usually lowers variance”.
+
+The pieces are still axis-aligned rectangles, though, so a forest is a calmer version of the same shape family, not a new shape. The **Forest vote** row shows how many of the 7 trees predict class 1 at the probe. The green dashes show only the first tree’s cuts, so the cuts you see and the shading can disagree.
+
+### Naive Bayes: one chance per feature, multiplied
+
+**Naive Bayes** works with chances directly, starting from a rule called Bayes’ rule, which is explained in the lab called The math you need. In plain words, the rule says your updated chance for a class comes from your chance before you looked, multiplied by how well the dot fits that class. The results are then scaled so that the chances for the two classes add up to 1.
+
+The chance before you look is called the **prior**, and it comes from how common each class is. Class 0 holds two thirds of the dots, so its prior is 0.667, while class 1 holds one third, so its prior is 0.333.
+
+To judge how well a dot fits a class, naive Bayes draws a bell-shaped curve, called a **Gaussian**, for each feature in each class. Each curve is centered on that class’s average value, its **mean**, and its width comes from how spread out the values are.
+
+That spread is measured by the **variance**, which is the average of the squared distances from the mean. This is a different use of the word from the tree’s “high variance”, although both describe how much something spreads or wobbles. The height of the curve at the dot’s value is the fit score, called the **likelihood**.
+
+Here is the naive step: instead of judging x and y together, naive Bayes judges x with one curve and y with another, and multiplies the two heights. That treats x and y as if they had nothing to do with each other once you know the class, an assumption called **independence**.
+
+At the default probe (0.50, 0.50), class 0 scores 0.667 × 1.446 × 1.632 = 1.574, using its prior and its two curve heights. Class 1, with its smaller prior, scores 0.333 × 1.217 × 1.298 = 0.527.
+
+The middle numbers are curve heights, not chances, so they are allowed to be bigger than 1, and a tall height means the class is crowded near that value. To turn the two scores into a chance, you divide class 1’s score by the total: 0.527 / (1.574 + 0.527) = 0.251. That is about a one-in-four chance of class 1, so the probe is called class 0.
+
+The updated chance is called the **posterior**, and the **Naive Bayes posterior** row shows it as 0.251, where `N(x|c=1)` means the height of class 1’s curve for x.
+
+In this row, c stands for the class, the same thing the logistic formula called y, while x and y are back to meaning the across and up features. The sign ∝ in that row means the right side still has to be divided by the total before it becomes a chance, the step you did by hand.
+
+The method is called naive because, inside each class, x and y are in fact strongly linked, and it ignores that link. A number called the **correlation** measures how two things move together, on a scale from −1 to +1. A value near +1 means one rises as the other rises, and a value near −1 means one falls as the other rises. A value of 0 means there is no straight-line link between them at all.
+
+Class 0’s clusters sit bottom-left and top-right, so inside class 0, x and y rise together, with a correlation of +0.91. Class 1’s corners sit top-left and bottom-right, so as x rises y falls, with a correlation of −0.92. Naive Bayes treats both of these as 0, which throws away exactly the link that makes the dots an XOR.
+
+Picture a friend who splits the week between two homes at opposite ends of town. If you describe where they live with an average, you land on a park in the middle where they never actually stay. The same thing happens to class 1, whose average dot sits at about (0.41, 0.63), near the middle of the map where no class-1 dot lives.
+
+The analogy shows a separate limit from the naive step, though. The average lands in the middle because naive Bayes fits one bell per class, and keeping the link between x and y would not move that average. What the naive step adds is that class 1’s bell cannot tilt to stretch toward both of its corners, so it spreads out as one wide, upright blob instead.
+
+A wide bell curve is also a low one, so class 1’s curves never get as tall as class 0’s. Its average sits a little left of and above class 0’s average, so class 1 does best toward the top-left. With half the prior of class 0, though, it only wins far out in that corner, where class 0’s slightly narrower curves have faded faster than its own.
+
+Because the two classes’ curves have different widths, the line where they score the same bends into a curve instead of running straight. Naive Bayes gets 14 of 18, because among the class-1 dots it only catches the two highest ones, at (0.10, 0.88) and (0.30, 0.90). The word “naive” names its independence assumption, which can be false and still be useful.
+
+### k-means: grouping without labels
+
+**k-means** is different from the other seven methods, because it never reads a label at all. It places k center points on the map, and in this lab the same **k** slider you used for knn now sets how many centers there are. Next it gives every dot to its nearest center. Then it moves each center to the average position of its dots and repeats, which the lab does 12 times.
+
+A method that learns without labels is called **unsupervised**, while the other seven methods, which learn from labeled dots, are called supervised.
+
+In the town picture, k-means is the colorblind mapmaker, which places k post offices and hands every house to the closest one. The area each post office serves is called a **Voronoi cell**, a phrase you will see at the top of the **Probe and inductive bias** card.
+
+The shading shows cluster numbers, not classes, and the dots keep their true colors only so that you can compare. With k = 4, the centers settle near the four groups of dots, which makes it look as if k-means found the XOR. That match is an accident of where the dots sit, and the method has no way of knowing that two of its groups share a label.
+
+With no labels, there is no accuracy to report, so the **What it stored** card swaps **Train accuracy** for **Within-cluster SS**. SS stands for “sum of squares”: for every dot, square its distance to its center, then add all of those up. Smaller means tighter groups, so at k = 2 the lab shows 1.251, while at k = 4 it drops to 0.193.
+
+### What each method keeps
+
+Some methods squeeze the 18 dots into a few parameters, while others keep the dots themselves. The **Keeps** and **Numbers stored** readouts on the **What it stored** card show you which is which, method by method:
+
+- Linear, logistic and SVM keep 3 weights, because the SVM’s support vectors only decided where its weights settled and are not needed afterward.
+- Naive Bayes keeps a mean and a variance for x and for y in each class, which comes to 8 numbers. Add one prior, since the other prior is 1 minus it, and you get 9, which the **Keeps** readout describes as “2 Gaussians”, one bell-shaped blob per class.
+- k-means keeps k centers, with 2 numbers for each center, so its count goes up by 2 every time you raise k.
+- A tree keeps its questions and leaves, so its count grows with depth, and a forest keeps all 7 of its trees.
+- knn keeps all 18 dots, 54 numbers in total, because for this method the data itself is the model.
+
+The two ends of this list fail in different ways, since a method that squeezes everything into 3 numbers is small and quick but stuck with its straight line. On the other hand, knn can follow almost any shape, but it has to keep every dot and search through them for each new question.
+
+### Eight methods, eight shapes
+
+Here is each method’s inductive bias, matched with the shape it can draw on the map, using the names from the **Algorithm** control:
+
+- `linear` draws one straight line, which the lab calls a hyperplane, so it can never hold two opposite corners.
+- `logistic` draws the same kind of straight line, with shading that you read as a chance of class 1.
+- `svm` draws a straight line with the widest street it can fit around it, set by its support vectors.
+- `knn` draws local patches, because it assumes that nearby points share a label.
+- `tree` draws axis-aligned rectangles, adding more of them as the depth goes up.
+- `forest` takes the vote of several axis-aligned trees, which gives calmer rectangles rather than a new shape.
+- `naivebayes` draws a smooth curved border, built from features that it treats as independent.
+- `kmeans` draws Voronoi cells around k centers, and it draws them without reading any labels.
+
+## Why it’s here
+
+As the big picture said, 18 dots leave most of the map empty, and many different borders get every dot right while disagreeing about the empty spaces. So the border you see depends on two choices people make, which method and which features, and not only on how the dots are colored. Same dots, different method: different border.
+
+This is why the lab keeps the dots fixed while you switch methods. It works like a fair test in science class, where you change one thing at a time, so any change in the shading must come from the method.
+
+Picture two friends who study the same set of practice questions but take different notes, where one writes a three-line summary and the other copies out every question. The summary is quick to carry but misses anything it left out, while the full copy covers everything but is slow to search. Fitting a few parameters versus storing the examples is the same trade-off, and it is a real choice people face when they pick a method.
+
+There is a reason to start with a method you know is limited, too. Picture a team with a new table of data. They fit a fast straight-line method first, which takes a moment, and note its score. If a bigger, slower method later cannot beat that score, the extra effort bought nothing, so the simple method sets the bar.
+
+Neural networks come later in the course, and they are another family of shapes rather than a replacement for the idea of a model. The deep-dive sections above lean on an earlier lab, The math you need. It covers Bayes’ rule and bell-curve means and variances for naive Bayes, and the sigmoid for logistic regression.
+
+## How to play with it
+
+The lab opens with **Algorithm** set to `linear`, **k** at 3 and **Tree depth** at 2. The probe starts in the middle of the map, at (0.50, 0.50), and the four steps below walk you through the lab in order.
+
+1. **Switch the algorithm:** with **Algorithm** on `linear`, find the two crossed dots in the bottom-right that the straight cut misses, while **Train accuracy** reads 16 / 18. Then switch to `knn` and watch the shading wrap both class-1 corners, as the crosses disappear and the score climbs to 18 / 18.
+2. **Change k or depth:** still on `knn`, move **k** from 1 to 7 and watch the bottom-right pair lose its corner at k = 5. Then switch **Algorithm** to `tree` and move **Tree depth** from 1 to 5 to watch new rectangles appear. Try `forest` at the same depths, where **Train accuracy** climbs from 14 of 18 at depth 1 to all 18 at depth 5.
+3. **Place a probe:** move **Probe x** and **Probe y**, or click anywhere on the map, then read the formula row for `logistic`, `svm`, `naivebayes` and `tree`. On `tree` the row also prints the Gini numbers for the tree’s first cut, called the root, on `svm` the support-vector count, and on `naivebayes` each class’s score.
+4. **Read what it stored:** on the **What it stored** card, compare **Numbers stored** across the methods. It reads 3 for the straight-line methods but 54 for `knn`, which stores every dot. Then check `naivebayes`, which stores 9, and `kmeans`, which stores 2 numbers for every center.
+
+Back in step 2, look closely at depth 5. The single tree shades a thin class-1 strip all the way down the left edge, even into the bottom-left class-0 corner. The forest’s vote clears the lower part of that strip.
+
+**Try this:** set **Probe x** to 0.85 and **Probe y** to 0.25, inside the small bottom-right corner, and look at the result on `linear`, `logistic` and `svm`. All three call that spot class 0, because their single straight line gave that corner up. Now switch **Algorithm** to `knn` with **k** at 3, and the **Local majority** row reads “2 of 3 nearest votes are class 1”, so the corner comes back.
+
+Next, drag the probe to the far top-left, at about (0.10, 0.90), and compare the chances that two methods give there. On `logistic`, `P(y=1|x)` reads 0.695, while on `naivebayes` the posterior reads 0.625. Both lean toward class 1 in that corner, but logistic gets there with a tilted straight line and naive Bayes with a curved border.
+
+Finish on `kmeans` with **k** at 2 and then 4, where the dots still show their true colors even though the method never read them. Never reading a label is what makes k-means unsupervised, and it is why the accuracy slot turns into **Within-cluster SS**.
+
+## What to notice
+
+- `linear`, `logistic` and `svm` all draw one straight line that takes the four top-left dots and gives up the two bottom-right ones, for 16 of 18. No straight line, however it is tilted, can hold both corners.
+- `logistic` only adds a sigmoid on top of the same weighted sum, so the fading color shows the chance of class 1, not a new shape.
+- On `svm`, the dashed lines are the curbs of the street, and 12 of the 18 dots wear a ring as support vectors. A set that no straight line can split never leaves the street empty.
+- `knn` with **k** up to 4 wraps both corners, but from k = 5 up the bottom-right pair is always outvoted, so a larger k smooths a small group away.
+- A tree at depth 1 gets 14 of 18, while depth 5 gets all 18 by fencing off single dots, which is memorizing rather than finding a pattern. A forest usually looks calmer than one deep tree, because it averages the votes of 7 trees.
+- `naivebayes` only predicts class 1 in the far top-left, along a curved edge, because its independence assumption cannot follow two opposite corners.
+- **Numbers stored** reads 3 for `linear` but 54 for `knn`, because one method compressed the data while the other method is the data.
+- `kmeans` can look like a classifier, but its shading shows cluster numbers, and the accuracy slot turns into **Within-cluster SS** because it never read a label.
+
+## Where it breaks
+
+### What this lab fakes or simplifies
+
+- The 18 dots were placed by hand, with only two features, so every fit is tiny, either one short calculation or a short run of repeated steps.
+- **Train accuracy** is measured on the same 18 dots the method was fitted on, and there is no held-out set of fresh dots on this page. A perfect score here is not a test score, and knn with **k** at 1 always scores 18 of 18, because every dot is its own nearest neighbor.
+- The SVM only draws straight lines, because it has no kernel, the add-on that lets a real SVM draw curved borders. Its weights come from 3,000 small nudges, each one pushing the weights in a direction meant to lower its cost. A single nudge can overshoot and raise the cost, so the lab keeps the lowest-cost set of weights it finds along the way. There is no formula here that gives the exact best answer in one go, so its weights are close to, but not exactly at, the best ones.
+- Logistic regression’s weights come from small steps too, so they are close but not exact in the same way.
+- The tree’s first cut ties between an x cut and a y cut, and the code keeps the first one it tries.
+- The forest’s green dashes come from the first tree only, and its “random” draws are fixed, so the lab shows the same forest every time.
+- Naive Bayes fits its bell curves to only 18 dots, and only 6 of those are class 1, which is very little to judge a spread from.
+- The map is a grid of 28 × 28 small squares, so the edges you see are stepped like a staircase, even where the real border is smooth.
+- On k-means, the shading cycles through only four tones, so the numbers beside the centers are what name the clusters. **Within-cluster SS** can even rise when **k** grows, as it does from k = 4 to k = 5, because each run only finds the best answer near its starting centers.
+- There is one probe and one number, with no range of uncertainty around any of the chances.
+
+Picture a classmate who memorizes the answer key to a practice quiz and then scores 100% on it. That score says nothing about the real test, and a depth-5 tree scoring 18 of 18 on the dots it learned from is in the same position.
+
+### Where the real methods fail
+
+- A linear model can only bend after you give it new features, such as x multiplied by y, or use a kernel. Change the features from the previous lab, and the same method draws a different cut. Real versions also often add a setting called regularization, which pushes the weights to stay small and changes which line gets picked.
+- A deep tree memorizes its training data unless you limit its depth, so a perfect training score can hide poor answers on new data.
+- k is a choice you bring, not a fact hidden in the data, so real k-means still needs someone to pick k.
+- A real random forest also picks at random which features each question may use, which this lab leaves out.
+- knn has to store and search every example, so it grows slow and memory-hungry on large datasets, and its answers depend on how you measure distance.
+- The naive Bayes assumption can be false and still be useful, but here it is false in exactly the way that hides the XOR.
+- None of these scores says how a method does on new data, and the next lab, The supervised learning loop, is where a held-out set first scores the fit.
+
+**A common mix-up:** people treat logistic regression as a different shape from a linear model, or think the sigmoid is what bends the border. It does not bend anything, because the border is still a straight line in the features you supplied, and the S-curve only turns a score into a chance.
+
+## Going deeper
+
+The next lab, The supervised learning loop, runs one table all the way through: it encodes the rows, splits off a held-out part, chooses a method and fits it. Then it scores the fit on rows the method never saw. The lab after that, How we know a model works, reads that held-out score as a confusion matrix, a table counting each kind of right and wrong answer.
+
+Later on, the Stacking neurons lab draws a border that bends without needing a kernel. The Why GPUs lab then explains why that stacking became cheap enough to replace these classical tools on many tasks.
+
+Here are a few extra details, for when you want to go further:
+
+- The lab writes the sigmoid as `σ(z) = 1/(1+e^{−z})`, where e is a fixed number, about 2.718. Any number to the power 0 is 1, so a score of 0 gives 1 / (1 + 1), which is exactly 0.5.
+- Gini impurity can also be written as 1 − p² − (1 − p)², which always gives the same value as 2p(1 − p). For the whole set, 1 − 1/9 − 4/9 = 4/9, the same 0.444 as before.
+- Logistic regression in the lab takes 80 small steps downhill on its error, starting from weights of 0, which is the idea behind the Loss & gradient descent lab.
+- The k-means loop of assigning dots and then moving the centers is known as Lloyd’s algorithm, the name you will see in the lab’s note.

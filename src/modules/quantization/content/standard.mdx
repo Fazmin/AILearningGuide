@@ -1,0 +1,275 @@
+---
+objectives: ["Explain what a scale and a zero point do, and when a symmetric grid wastes levels", "Trade bit width against scaling granularity in real bits per weight", "Read a GGUF block type or file name and predict its size and rough quality", "Compare fp32, fp16, bf16, and fp8 by their exponent and mantissa bits, and say whether a value runs into range or precision"]
+terms: ["Quantization", "Scale", "Zero point", "Symmetric quantization", "Per-tensor scaling", "Group scaling", "Bits per weight", "Outlier", "GGUF", "K-quant", "Post-training quantization", "Floating-point format", "Calibration"]
+---
+
+## The big picture
+
+A trained model is mostly a large array of floating-point weights that must be stored and read
+to run it. Quantization asks how few bits each weight can keep, and at what cost in quality. Its
+answer is a grid: each weight becomes a small integer code, and per-block metadata, a scale and
+sometimes a zero point, turns the codes back into approximate values.
+
+Two questions stay separate throughout: how much error the rounding adds, and what storage really
+costs once the metadata is counted, the bits per weight. The float ladder from fp32 down to fp8
+shrinks numbers another way: each format keeps one sign bit and splits the rest between exponent
+(range) and mantissa (precision).
+
+It builds on **Inference & KV cache**, which priced decoding in memory, and **Train one from
+scratch**, which trained the kind of logit table rounded here.
+
+### Where it shows up
+
+- **Local model files.** llama.cpp loads GGUF, a single-file model container. A name such as
+  `Q4_K_M` is a recipe across tensors: mostly `Q4_K` blocks, with some tensors kept wider.
+- **This app.** Its local model is a 1.19 GiB `Q4_K_M` file of Qwen3.5 2B, quantized with an
+  importance matrix, which llama.cpp computes by running sample text through the model and uses
+  to steer the rounding.
+- **The KV cache.** The llama.cpp server can store keys and values as `q8_0` or `q4_0`.
+- **Large models.** GPTQ and AWQ calibrate on sample text; LLM.int8() and SmoothQuant were built
+  around outlier channels in the activations.
+- **fp8.** Two 8-bit float formats split the same bits differently: after the sign bit, E4M3 has
+  4 exponent and 3 mantissa bits, E5M2 has 5 and 2. Micikevicius et al. (2022) propose the first for weights and
+  activations, the second for gradients.
+
+### Why it matters
+
+Quantization lets a model run in a fraction of the memory its floating-point weights would take.
+The file this app downloads averages 5.445 bits per weight; stored as fp16, the same weights
+would take about three times the space.
+
+It is also easy to misjudge. The code width is not the storage cost, one outlier coarsens a whole
+block, a format can hold perplexity on prose yet lose ground on code or long contexts, and a
+format helps only where a fast kernel exists for it.
+
+### What you will be able to explain
+
+- What a scale and a zero point do, and when a symmetric grid wastes levels.
+- How bit width trades against scaling granularity in real bits per weight.
+- What a GGUF block type or file name predicts about size and rough quality.
+- How fp32, fp16, bf16, and fp8 split exponent and mantissa bits, and whether a value runs into
+  range or precision.
+
+### What the lab shows
+
+The lab rounds a real trained model: a 30 × 30 character-bigram logit table of 900 weights,
+trained for 80 epochs. Every setting re-rounds it and re-measures rounding error against the
+original weights and perplexity on the training corpus, so perplexity shows reconstruction, not
+held-out quality. Bits per weight is closed-form accounting: the code bits plus 16 bits charged
+per block for the scale, and 16 more for an asymmetric grid's zero point, spread over the 900
+weights.
+
+**Quantization controls** sets **Bit width**, **Scaling granularity**, **Group size**, and
+**Range mapping**. **Rounding grid and per-weight error** draws every weight's error, and
+**Quality against bits per weight** plots measured cost against storage. The key experiment: at
+`Per tensor`, drag **Bit width** from 8 to 2 and watch **Quality cost** climb, then cycle the
+granularity at 4 bits.
+
+**Published quantization formats** emulates llama.cpp block layouts on the same table: each
+layout fixes its bits per weight; error and perplexity are measured on the table; the Llama-3-8B
+file sizes are quoted from llama.cpp. **The file you downloaded** is fixed data typed in from one GGUF header,
+so it reports size, not quality. **Float formats** computes each format's range in closed form,
+then rounds one number, set with **Example value** or **Value to store**, and the trained table
+through each format.
+
+## What it is
+
+**Quantization** stores each weight as a small integer code plus per-block metadata that turns
+codes back into numbers. The weight keeps its meaning and loses resolution. The weights here are
+the real 900-entry logit table from the tiny language-model labs, trained for 80 epochs to
+perplexity 6.600; every setting re-rounds them and re-measures.
+
+### Two ways to place the grid
+
+`Asymmetric · min/max` stretches the grid over the block's own range. The **Scale** is one step
+and the **Zero point** is the offset code 0 decodes to — here the block minimum, stored as a
+float, the way llama.cpp's Q4_1 and K-quants do it.
+
+```text
+scale = (max − min) / (2^b − 1)      code = round((w − min) / scale)      w′ = min + code × scale
+```
+
+`Symmetric · absmax` is **symmetric quantization**: the grid is centred on zero and only a scale
+is stored.
+
+```text
+scale = max|w| / (2^(b−1) − 1)       code = round(w / scale), clamped to ±(2^(b−1) − 1)       w′ = code × scale
+```
+
+### Where the blocks come from
+
+**Scaling granularity** chooses how many weights share one grid.
+
+- `Per tensor` is **per-tensor scaling**: one grid for all 900 weights.
+- `Per row` gives each of the 30 context rows its own grid — per-channel scaling.
+- `Per group` is **group scaling**: one grid per **Group size** consecutive weights.
+
+For a weight inside its grid, the error `w′ − w` is at most half a step. The **Rounding grid and
+per-weight error** card draws both: the grid over the weight histogram, and every weight's error
+underneath.
+
+### Beyond the toy table
+
+Two cards step off the toy. **The file you downloaded** weighs the model file this app installs,
+in the same bits per weight. **Float formats** lays out fp32, fp16, bf16, and the two fp8 formats
+as sign, exponent, and mantissa bits, and rounds one value and the trained table through each.
+
+## Why it’s here
+
+Decoding reads every weight for every token, so **bits per weight** sets what fits in memory and
+how fast a model answers. That is why the Deployment & serving lab prices its weights in bits,
+including for the file this app downloads.
+
+This is **post-training quantization**: the checkpoint is finished and nothing is retrained. It
+is cheap enough to apply to anyone's released model, which is also why it is only as good as
+plain rounding unless calibration data is used.
+
+## How to play with it
+
+Set **Scaling granularity** to `Per tensor` and drag **Bit width** from 8 to 2. The error strip
+turns into a sawtooth whose teeth are the grid. RMS error runs 0.008, 0.074, 0.147, 0.353, 0.967
+at 8, 5, 4, 3, 2 bits, and **Quality cost** runs +0.01%, +0.14%, +0.94%, +5.03%, +23.90%.
+
+At 4 bits, cycle the granularity. RMS error falls from 0.147 per tensor to 0.031 per row to
+0.027 for groups of 8, while **Bits per weight** rises from 4.04 to 5.07 to 8.02. The accuracy
+was bought with metadata: each asymmetric block stores two 16-bit numbers.
+
+Now switch **Range mapping** to `Symmetric · absmax` at 4 bits per tensor. The grid now spans
+−5.93 to +5.93, but the table only reaches −1.71, so **Levels used in this block** reads 10 of 15
+and the cost rises from +0.94% to +2.33%. At 2 bits symmetric per tensor, three levels
+(−5.93, 0, +5.93) leave perplexity at 22.55.
+
+Finally read **Published quantization formats**. `Q4_0`, `Q4_1`, and `Q4_K` all use 4-bit codes:
+4.5, 5.0, and 4.5 bits per weight, RMS error 0.127, 0.063, and 0.062, cost +0.20%, +0.16%, and
++0.19%.
+
+Open **The file you downloaded**. The app's local model is 1,280,835,840 bytes, 1.19 GiB, over
+1,881,825,088 parameters, so **Effective bits per weight** reads 5.445: not 4, and 0.945 above a
+`Q4_K` block's 4.5. Switch **Group tensors by** to `Role in the network`: the token embedding costs
+6.56 bits per weight, the feed-forward layers 4.84, the Gated DeltaNet layers 5.34, and the
+full-attention layers 4.60.
+
+In **Float formats**, set **Example value** to 100,000. Only fp32 and bf16 hold it: fp16 stops at
+65,504, E5M2 at 57,344, and E4M3 at 448. Set it to 0.02 and read **Error**: fp16 is off by 0.021%,
+bf16 by 0.098%, and both fp8 formats by 2.3%.
+
+## What to notice
+
+- The code width is never the storage cost. Groups of 8 at 4 bits cost 8.02 bits per weight,
+  and a group of 2 costs 20 — more than F16 — while storing every pair exactly.
+- One **outlier** sets its block's scale alone. The largest logit, 5.93 for “.” followed by a
+  space, stretches its row's 4-bit step to 0.41; that row uses 2 of its 16 levels.
+- On **Quality against bits per weight**, down and left is better. The `Q4_K` diamond sits left
+  of the per-row series at about the same cost, because its quantized scales cost 0.5 bits per weight
+  rather than 1.07.
+- Symmetric grids waste levels on lopsided data. `Q4_0` is symmetric and has double the RMS
+  error of `Q4_1` here.
+- Both sample panels share a seed, so any difference in the text is the rounded weights.
+- A file's bits per weight is a recipe's average. The downloaded `Q4_K_M` file is 5.445, not 4.5,
+  because 51% of its parameters sit in `Q5_K` or `Q6_K` tensors, led by the 248,320-token
+  embedding table at `Q6_K`. Its header adds only 0.047 bits per weight.
+- Exponent bits set the range; mantissa bits set the precision. On the trained table fp16's RMS
+  error is 0.0002 against bf16's 0.0017, yet bf16 holds 100,000 and fp16 does not.
+- Eight float bits with no scale are not eight integer bits with one: E4M3 costs +0.17% perplexity
+  here, E5M2 +0.36%, and `Q8_0` at 8.5 bits less than 0.01%.
+
+## Where it breaks
+
+**In this lab.** Rounding, errors, bits, and perplexities are computed on the trained table.
+What is missing is scale and structure: one 30 × 30 matrix, weights only, no activations or KV
+cache. Perplexity is measured on the training corpus, so it reports reconstruction, not held-out
+quality.
+
+The llama.cpp rows emulate each block layout in flattened order; real llama.cpp
+quantizes row by row, searches for better scales, and needs rows that are a multiple of 32 or
+256 weights. The teaching quantizer charges 16 bits per scale but keeps it at full precision.
+
+The file card is one file's header, read on 30 September 2026 and typed in: nothing is downloaded
+or re-measured, and it reports size, not quality. The float card rounds the stored table with no
+per-tensor scale, and its perplexity is again measured on the training corpus.
+
+**In real systems.** Weights are the easy half. Activations in large transformers carry outlier
+channels far larger than their neighbours, which is what LLM.int8() and SmoothQuant were built
+around. Weight-only methods also do better than rounding, by calibrating on sample text: see
+Calibration methods below for GPTQ, AWQ, and the importance matrix this app's own file used.
+
+Perplexity is a weak acceptance test. A format can hold perplexity on prose and lose ground on
+long contexts, code, or under-represented languages. And a format only helps if a fast kernel
+exists for it; an exotic layout can be smaller and slower at once.
+
+## Going deeper
+
+### Reading the names
+
+A block type such as `Q4_K` fixes the storage: 256-weight super-blocks, eight 32-weight
+sub-blocks, and each sub-block's scale and min quantized to 6 bits against fp16 super-scales —
+144 bytes per 256 weights, 4.5 bits per weight. That is a **K-quant**. `Q4_0` is the older
+32-weight block with one fp16 scale, also 4.5 bits.
+
+A file name such as `Q4_K_M` is a recipe across tensors. It is mostly `Q4_K`, with parts of the
+attention value and feed-forward down projections, and the output layer, kept in `Q6_K`.
+llama.cpp reports its Llama-3-8B file at 4.58 GiB, about 4.90 bits per weight. `_S` and `_L`
+keep fewer or more tensors wide.
+
+**GGUF** is the container: named tensors in their block types, metadata, and the tokenizer in
+one file with a header a loader checks before trusting the bytes. This app does that for its own
+optional engine before starting `llama-server` on a loopback port.
+
+### The file you downloaded
+
+The app's local model is Qwen3.5 2B as a `Q4_K_M` file from the `unsloth/Qwen3.5-2B-GGUF`
+repository, pinned to one revision with a known SHA-256. The counts above were read from that
+file's own GGUF header on 30 September 2026, and Hugging Face's API reports the same
+1,881,825,088 parameters. They cover the text model only: 24 layers, six of them full attention
+and 18 Gated DeltaNet (linear attention), per the model card.
+
+The recipe keeps the 248,320 × 2,048 token embedding, shared with the output, at `Q6_K`. In a
+small model that table is 27.0% of the parameters, so the recipe's average moves a lot. The
+Deployment & serving lab turns the same file into a memory budget.
+
+### The float ladder
+
+Each step down halves the bits and gives something up. **Floating-point formats** split their
+bits three ways: one sign bit, exponent bits for the range, and mantissa bits for the precision.
+bf16 keeps fp32's eight exponent bits and cuts the mantissa to seven; fp16 trades the other way,
+five exponent bits and ten mantissa bits.
+
+The two fp8 formats are from Micikevicius et al. (2022), who recommend E4M3 for weights and
+activations and E5M2 for gradients. E5M2 follows IEEE 754; E4M3 has no infinities and one NaN
+pattern, which stretches its largest value to 448. The paper describes scaling each tensor so its
+largest magnitude lands near the format's maximum, which this lab does not do.
+
+### Calibration methods
+
+Plain rounding looks only at the weights. **Calibration** also runs sample text through the model,
+because which weights matter depends on the activations that multiply them. These are the
+published claims, not measurements from this lab. Sources checked 30 September 2026: the arXiv
+abstracts and the llama.cpp b10991 documentation, which is the engine version this app pins.
+
+- **Importance matrix.** llama.cpp's `llama-imatrix` computes an importance matrix for a model
+  from a text dataset, and `llama-quantize --imatrix` uses it to improve quantization quality.
+  This app's file records one: dataset `unsloth_calibration_Qwen3.5-2B.txt`, 80 chunks, 186
+  entries.
+- **GPTQ** (Frantar et al., 2022) quantizes weights in one shot using approximate second-order
+  information, and reports 3 or 4 bits per weight with negligible accuracy loss on models of 175
+  billion parameters.
+- **AWQ** (Lin et al., 2023) finds that protecting about 1% of salient weight channels greatly
+  reduces error. It picks them from activation statistics rather than weights and protects them by
+  scaling, with no backpropagation.
+- **LLM.int8()** (Dettmers et al., 2022) sends the outlier feature dimensions through a 16-bit
+  multiply while more than 99.9% of values multiply in 8-bit. **SmoothQuant** (Xiao et al., 2022)
+  instead moves the difficulty of activation outliers into the weights, so both can be 8-bit.
+
+### Quantizing the cache
+
+The KV cache can be stored in fewer bits too. The llama.cpp server exposes `--cache-type-k` and
+`--cache-type-v`, with `q8_0`, `q4_0` and other types and `f16` as the default. KIVI (Liu et al.,
+2024) quantizes keys per channel and values per token down to 2 bits, and reports 2.6 times less
+peak memory including the weights. The Deployment & serving lab prices this lever.
+
+### What comes after rounding
+
+A well-trained model spreads its logits apart and stores information in the differences, which
+is why the lab pretrains for 80 epochs: on a fresh table, 2 bits would look free. Beyond
+post-training methods, quantization-aware training exposes the rounding during training; it
+costs a training run and is most useful at 4 bits and below.

@@ -1,0 +1,231 @@
+---
+objectives: ["Separate prefill from decode", "Explain the KV cache memory-speed trade-off", "Predict how draft length and draft quality set the tokens one verification pass yields in speculative decoding"]
+terms: ["Prefill", "Decode", "KV cache", "Grouped-query attention", "Time to first token", "Inter-token latency", "Memory bandwidth bound", "Compute bound", "Arithmetic intensity", "Roofline model", "Batching", "Continuous batching", "PagedAttention", "Speculative decoding", "Prefix caching", "Quantization"]
+---
+
+## The big picture
+
+This module is about inference: how a trained language model turns a prompt into text, and what
+each step costs. Every new token depends on all the earlier ones, so which work can be done once
+and kept, and which must be paid again for every token?
+
+**The transformer block** traced one token through attention and an MLP. A forward pass runs a
+stack of those blocks, and generation repeats it in two phases: **prefill**, one pass over the whole
+prompt, and **decode**, one pass per new token.
+
+The **KV cache** stores each position's attention keys and values so decode can skip recomputing
+the prefix: each step projects only the new position and reads the stored keys and values.
+**Speculative decoding** lets one pass of the large model, called the target, accept several
+tokens that a cheaper draft proposed.
+
+### Where it shows up
+
+- **Serving engines.** Batching runs many sequences through one decode step, and continuous
+  batching admits and retires them at every step. PagedAttention stores the cache in fixed-size
+  blocks, prefix caching shares a cached prompt prefix across requests, and chunked prefill splits
+  a long prompt into pieces between other users' decode steps. Each is built around decode's
+  bandwidth limit, the cache's size, or the split between phases; **Going deeper** returns to them.
+- **Model architecture.** Grouped-query attention shrinks the cache: in Llama 3 8B, 32 query heads
+  share 8 key/value heads. Latent-attention schemes store a compressed form of the keys and values,
+  and sliding-window layers keep only a fixed span of recent positions; both attack the same cost.
+- **Speculative decoding.** A small draft model, or extra prediction heads on the large model that
+  guess tokens further ahead, propose tokens for the large model to check in one pass.
+
+### Why it matters
+
+Without the cache, every decode step reruns the whole prefix, so per-token cost grows with the
+square of the length. With it, each step computes only the newest position's row against the stored
+keys, so per-token cost grows only linearly. The price is memory, 128 KiB per token for Llama 3 8B
+in bf16, and at serving scale cache memory is what caps the batch.
+
+The phases also hit different limits. Long prefills are **compute bound**: every prompt position
+shares one read of the weights. Decode is **memory bandwidth bound**: limited by reading weights and
+cache entries, not by arithmetic. And the cache does not shorten prefill: in the lab's roofline
+estimate for one H100, a 131,072-token prompt still needs about 6.5 s before its first token.
+
+### What you will be able to explain
+
+- Separate prefill from decode, and say why a long prefill is compute bound while decode is memory
+  bandwidth bound.
+- Explain the KV cache memory-speed trade-off: the recomputation it removes and the memory it costs.
+- Predict how draft length and draft quality set the tokens one verification pass yields in
+  speculative decoding.
+
+### What the lab shows
+
+Nothing is measured on hardware. **Causal attention work** counts the exact query-key products of a
+toy causal triangle, up to 24 positions in one head and one layer, without computing any scores.
+**KV cache controls** set **Prompt tokens**, **Generated tokens** (0 is the prefill pass) and
+**KV cache**, either `Use cache` or `Recompute`. Watch **Q·K this pass** and **Q·K whole run**.
+
+**Memory budget** is closed-form arithmetic from Llama 3 8B's published shape against a nominal
+80 GB of accelerator memory, and **Prefill versus decode** adds H100 SXM spec-sheet peaks. Both are
+driven by **Context length** and **Concurrent sequences**. Pass times come from a **roofline
+model**, the larger of arithmetic time and memory time at 100% of peak: lower bounds, not
+measurements.
+
+The key experiment: switch to `Recompute` and see the repeated products in the triangle, then
+compare the cache-on and recompute decode panels in **Prefill versus decode** at the default 8,192
+tokens.
+
+**Speculative decoding** checks drafts against a target, a character bigram the lab trains in place
+of the large model; the draft is that bigram with its rows flattened, and **Draft quality** 1.00 is
+the target itself. **Draft length**
+and **Draft quality** set **Closed form, tokens per pass** and **Simulated, tokens per pass**, a
+seeded run of 4,000 passes; **Seed** moves only the simulation. The card counts tokens, not time.
+
+## What it is
+
+Generation has two phases with different performance characteristics, and most serving decisions
+follow from that split.
+
+**Prefill** runs the whole prompt through the model in one forward pass. Every position is
+available at once, so each layer does one large matrix multiply over all of them. For prompts
+longer than a few hundred tokens it is **compute bound**. The same pass also produces the first
+output token.
+
+**Decode** produces one token per forward pass. Each step multiplies a single new position per
+sequence through every weight matrix, so the limit is how fast weights can be read from memory,
+not arithmetic. During decode, an accelerator's arithmetic units mostly wait.
+
+### What the cache stores and why it works
+
+Under the causal mask, the key and value at a position depend only on that position and earlier
+ones. A later token cannot change them, so they can be computed once and kept. That store is the
+**KV cache**: one key and one value vector per position, per layer, per key/value head.
+
+With the cache, decode step `g` projects only the newest position and attends over the `n` stored
+entries: one row of the causal triangle, `n` query-key products. Without it, the step reruns the
+whole prefix and computes all `n(n+1)/2` products again. Only keys and values are stored; the
+attention scores from earlier rows are used once and discarded.
+
+### The size of the trade
+
+The cache is not small. Its size per token is
+
+```text
+2 × layers × kv_heads × head_dim × bytes_per_value
+```
+
+The leading 2 counts keys and values. For Llama 3 8B in bf16 — 32 layers, 8 key/value heads,
+head dimension 128 — that is 131,072 bytes, 128 KiB per token: 4 GiB for one 32,768-token
+context. **Grouped-query attention** keeps it that small: 32 query heads share those 8 key/value
+heads, a fourfold saving.
+
+## Why it’s here
+
+This is where a model becomes a product with a cost and a latency budget, and the split between
+prefill and decode shapes both.
+
+It also explains pricing. Input tokens are cheaper than output tokens because prefill shares one
+read of the weights across the whole prompt, while every output token needs its own pass.
+
+## How to play with it
+
+### The triangle
+
+On **Causal attention work**, set **Generated tokens** to `0`: the prefill pass fills the whole
+lower triangle for the prompt at once. Raise it to `1`, `2`, `3`: with `Use cache`, each step
+lights one new row, **New Q, K, V** stays at 1, and the `K` and `V` rows gain one slot.
+
+Now switch **KV cache** to `Recompute`. At 7 prompt and 4 generated tokens, **Q·K this pass** goes
+from 11 to 66, and the dashed cells are exact repeats of the last pass. At 14 and 10, **Q·K whole
+run** is 2,145 against 300 with the cache.
+
+### Real scale
+
+**Memory budget** uses Llama 3 8B on an 80 GB accelerator. At the defaults, 16 sequences of 8,192
+tokens hold 17.2 GB of cache, more than the 16.1 GB of weights. **Prefill versus decode** then
+estimates each pass from spec-sheet peaks: prefill of 8,192 tokens is compute-bound at 142 ms, and
+a cached decode step for all 16 sequences is memory-bound at 9.6 ms.
+
+### Speculative decoding
+
+Under **Speculative decoding**, a draft proposes **Draft length** characters and the target checks
+them in one pass. At the defaults, 4 proposals at **Draft quality** 0.70, the acceptance rate
+**α** is 0.831 and the closed form gives 3.57 tokens per pass. The simulation, 4,000 seeded passes,
+reads 3.60 ± 0.02.
+
+Read the pass lines. Each says what the draft proposed, which characters the target kept, and which
+one it refused and replaced. Then set **Draft quality** to 1.00: every pass yields 5 tokens, the
+draft length plus one. At 0.30 the closed form falls to 2.21.
+
+## What to notice
+
+- With the cache, the whole run costs one triangle: each product is computed once. Without it,
+  every step pays for a triangle, so per-token cost grows with the square of length.
+- The `K` and `V` rows only grow. No slot is ever rewritten, which is the causal mask at work.
+- Attention work is not total work. Even cached, a step at one sequence reads about 15 GB of
+  weights to do 19 GFLOP of arithmetic, about 1.2 FLOP per byte, far below the H100's ridge of
+  roughly 295. That is why decode is memory-bound.
+- The trade is memory for time. Batching amortizes the weight read across sequences, but every
+  sequence reads its own cache, and cache memory caps how many can run at once.
+- A speculative pass yields at least one token and at most the draft length plus one. The extra
+  one is the target's own token after the last proposal it kept.
+- Longer drafts have diminishing returns. At the default quality the closed form reads 1.83, 3.57,
+  3.97 and 4.79 tokens for lengths 1, 4, 5 and 8, because a later proposal counts only if every
+  earlier one was kept. It can never pass 1 ÷ (1 − α) = 5.91.
+- The simulation scatters around the closed form by about one standard error. Change **Seed** and
+  it moves while the closed form does not.
+- The text written is distributed as the target's own, whatever the draft quality: a refused
+  proposal is replaced from the probability the target had left over. A poor draft costs tokens per
+  pass, not correctness.
+
+## Where it breaks
+
+**In this lab.** The triangle is a toy of at most 24 positions, one head in one layer; its counts
+are exact, but no scores are computed. The real-scale cards use Llama 3 8B's published shape and
+H100 SXM spec-sheet peaks (989 TFLOP/s dense bf16, 3.35 TB/s). Their times are a roofline model at
+100% of peak, ignoring activations, launch overhead and sampling: lower bounds, not measurements.
+
+**In real systems.** The cache competes with weights and activations for the same memory, and
+naive per-request allocation wastes much of it through fragmentation. Prefill attention is
+quadratic in prompt length, so a 131,072-token prompt takes several seconds before the first
+token appears — about 6.5 s in this model — and caching does not remove that cost.
+
+### Speculative decoding in the lab and outside it
+
+**In this lab.** The target is also a character bigram, so checking proposals "in one pass" is a
+table lookup, not a transformer forward pass, and the card counts tokens per pass without timing
+anything. The draft is the target with its rows flattened, a stand-in for a weaker model.
+
+The closed form assumes each proposal is kept independently with the same chance. Here the chance
+depends on the context, and the formula differs from the exact expectation by at most about 0.02
+tokens.
+
+**In real systems.** A draft is a small model or extra prediction heads, acceptance varies with the
+text, and each pass costs the target's step plus the draft's `γ` steps, so tokens per pass is only
+half of the speed-up.
+
+Two subtler points. Quantizing cache entries to 8 or 4 bits saves proportional memory and can
+measurably change output. And evicting old entries is riskier than it looks: some heads park large
+attention weight on the first positions as attention sinks, so dropping them degrades output.
+
+## Going deeper
+
+Because decode is bandwidth-bound, **batching** raises throughput cheaply until cache memory runs
+out. **Continuous batching** admits and retires sequences at every step instead of waiting for a
+whole batch to finish.
+
+**PagedAttention** manages the cache in fixed-size blocks with a per-sequence block table, which
+nearly eliminates fragmentation and lets requests with the same prefix share blocks. That sharing
+is **prefix caching**, and it is why a long system prompt reused across requests is prefilled once.
+
+Attention variants attack cache size directly: multi-query and grouped-query attention share
+key/value heads, latent-attention schemes store a compressed representation, and sliding-window
+layers bound the cache at a fixed span. **Modern attention at scale** covers these.
+
+**Speculative decoding** attacks the sequential dependency instead. A small draft model proposes
+several tokens and the large model checks them in one pass; with the standard acceptance rule the
+output distribution is exactly the large model's.
+
+The rule, the replacement sample and the tokens-per-pass formula are from Leviathan, Kalman and
+Matias (2023, arXiv 2211.17192), who report a 2X to 3X speed-up on T5-XXL. **Deployment & serving**
+states the same formula: 3.36 tokens per pass at `α` = 0.8 and `γ` = 4.
+
+Chunked prefill interleaves prompt processing with decode steps so one long prompt does not stall
+other users' streams.
+
+Two metrics summarize it all: **time to first token**, dominated by prefill, and **inter-token
+latency**, dominated by decode bandwidth. **Structured and constrained decoding** adds one more
+thing that happens at every decode step: masking which tokens may come next.

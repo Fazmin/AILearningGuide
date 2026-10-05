@@ -1,0 +1,303 @@
+---
+objectives: ["Name the supervised loop as encoding, split, hypothesis class, loss, and optimization, then a holdout reading, and say why a split is drawn at random and what train, validation, and test slices are for","Show that changing only encoding, algorithm, or loss can move the holdout number while the other stages stay put","Read a falling train loss against a rising holdout loss as extra capacity memorizing the train slice","Show that a holdout drawn from a different process can collapse the score of an unchanged fit, so a holdout only estimates performance on rows like the training rows"]
+terms: ["Hypothesis class","Loss","Optimization","Training set","Holdout","Random split","Validation and test sets","Encoding","Capacity","Generalization","Distribution shift","Log-loss","Decision boundary"]
+---
+
+## The big picture
+
+This module is about how a computer program learns a rule from examples that already come with the right answers. The lab gives you a small table of sixteen made-up apartments. For each one you know how many rooms it has, its color, whether it is near a park, and whether its price is high or low. The goal is a rule that can guess the price of an apartment it has never seen before.
+
+Learning from examples that carry their answers is called **supervised learning**, because the answers guide the learning the way an answer key guides a student checking homework. Getting from a table to a rule you can trust is not one single step, though. It is a loop of separate stages, and this lab lets you run them in order on one problem:
+
+1. Turn each row of the table into a short list of numbers that a rule can do arithmetic with. This stage is called encoding.
+2. Hide four of the rows, which the lab calls the holdout, so they can serve as a fair check at the end. This stage is called the split.
+3. Pick the kind of rule you are willing to search through, from a straight line to a chain of yes-or-no questions. This is the family of rules.
+4. Pick a way to measure how wrong a rule is, called the loss. It is a mistake score, so lower is better.
+5. Search for the rule with the lowest loss you can find on the rows you kept. Adjusting a rule until it matches those rows as well as it can is called fitting it, or the fit for short.
+6. Score the finished rule on the four hidden rows, without changing it in any way.
+
+### Where you have met it
+
+You have met this loop whenever an app makes a guess it learned from examples that came with answers. An email filter learns from messages people marked as spam, and a photo app learns to spot faces from pictures people labeled. The rule a program like that learns is often called a **model**.
+
+Behind each of those models, someone chose how to turn the data into numbers and which rows to hide. They also chose what kind of rule to allow, what counts as a mistake, and how to search. Later labs in this app keep exactly these stages, even when the rule grows into a stack of layers with far more numbers to adjust.
+
+### Why it matters
+
+A rule can get almost every practice example right and still fail on new ones. It is like a student who memorizes one practice sheet and then struggles on the real test. Without hidden rows, you would have no way to tell real learning apart from memorizing, because both look the same on the practice rows.
+
+Even a fair check has a limit, because hidden rows only tell you how the rule does on rows made the same way as the training rows. If the world that produces the rows changes, a rule that did well can start getting most answers wrong, while the rule itself has not changed at all.
+
+### What you will be able to explain
+
+By the end of this lesson, you should be able to explain each of these in your own words:
+
+- the stages of the loop in order, which are encoding, the split, the family of rules, the loss and the search, and then a reading on the hidden rows;
+- why the hidden rows should be picked by shuffling, and what the training, validation and test piles are each for;
+- how changing only one stage, such as the encoding, the algorithm or the loss, can move the reading on the hidden rows while every other stage stays the same;
+- why a mistake score that falls on the practice rows while it climbs on the hidden rows means a rule has so much freedom that it memorizes its practice rows;
+- why hidden rows from a different source can wreck how well an unchanged rule does, so a reading on hidden rows only speaks for rows like the training rows.
+
+### What the lab lets you do
+
+The lab has five cards that all work on the same table, and the **Supervised loop** card holds the three main switches, **Encoding**, **Algorithm** and **Loss**. It also has two sliders, **Fit step** and **Tree depth**, where tree depth is how many levels of questions a tree may ask. Above them sits a row of five small buttons, called stage chips, one for each stage, which show the live details of that stage.
+
+The **Decision view** card draws the current rule as a shaded map of rooms against park. The **Loss over the fit** card plots how wrong the rule is on the training rows and on the hidden rows as the fit runs. The **Train versus holdout** card lists all sixteen apartments and has a switch, **Holdout drawn from**, that swaps in four hidden rows from a different source. The **Worked example** card does the arithmetic for one apartment at a time, so you can follow a single number from start to finish.
+
+The sixteen apartments, and the choice of which four to hide, were written by hand for this lesson, so they are not real housing data. Every number the lab shows is worked out by real arithmetic each time you change a setting, so the lines and scores are results, not drawings.
+
+## What it is
+
+### One table, one question
+
+Each of the sixteen apartments has a name, such as Alder 12 or Rowan 9, and three facts about it. It has 1 to 4 rooms, a color that is red, blue or green, and a yes or no for whether it sits near a park. Each apartment also carries a price **label**, which is the right answer the rule is supposed to learn. A label of 1 means high priced and 0 means low priced, and the lab’s tables show it in the column marked y.
+
+The labels follow a pattern the lab’s authors chose, where an apartment is high priced if it has 3 or more rooms, or 2 rooms and a park. Half the table, 8 of the 16 apartments, ends up high priced, and the other half low. One apartment breaks the pattern on purpose: Rowan 9 has 3 rooms and a park but is labeled low. It is a planted exception, there to show you what happens when a rule tries to memorize a row instead of following the pattern.
+
+### Practice questions and a mock exam
+
+Here is a picture to carry through the whole lesson. Imagine the sixteen apartments as sixteen practice questions for a test, each with its answer printed on the back. Before you study, you put four of them aside face down as a mock exam, and you promise yourself not to peek.
+
+You study only the other twelve, starting with how to copy each question into your notes and what kind of rule of thumb you will allow yourself. Then you check your answers against the backs of the cards, adjusting your rule until you get as few wrong as you can. At the end you turn the four hidden questions over and mark them, without changing your rule. That mark is your fairest guess at how you will do on the real test.
+
+Each part of that picture is one stage of the loop, and the rest of this section walks through the stages in order. The picture stops matching in two places, though. A student understands what the questions are about. The fit only adjusts a handful of numbers, or picks a few yes-or-no questions, until a mistake score goes down, with no idea what an apartment is. A sensible student would also study the mock exam mistakes afterward. In this loop, though, the hidden rows are never allowed back into the fit, because the moment they are used for learning, they stop being a fair check.
+
+### Encode: turning a row into numbers
+
+A rule can only do arithmetic, so the first stage turns each table row into a short list of numbers. A list of numbers like this is called a **vector**, which the lab writes as x, and each number in it is called a **feature**. The choice of which features to include, and how to write each one as a number, is called the **encoding**.
+
+The **Encoding** switch has three settings, and Alder 12, which has 2 rooms, is red and is near a park, shows how each one works:
+
+- `rooms + park` keeps two numbers and drops color, so Alder 12 becomes (2, 1), where the 1 means “yes, near a park”.
+- `integer codes` puts color in the middle as a single number, with red as 1, blue as 2 and green as 3. Alder 12 becomes (2, 1, 1), meaning 2 rooms, color code 1 for red, then 1 for the park.
+- `one-hot` gives each color its own yes-or-no slot, placed between rooms and park in the order red, blue, green. Alder 12 becomes (2, 1, 0, 0, 1), meaning 2 rooms, a 1 in the red slot, 0 for blue, 0 for green, and the park’s 1 at the end.
+
+The red, blue, green order in `integer codes` was made up by the lab’s authors, not measured. That matters, because a rule does arithmetic with the code, so to the rule blue’s 2 sits halfway between red’s 1 and green’s 3. Colors have no such order, so the encoding has invented a pattern. The `one-hot` setting avoids that by giving each color a separate yes or no.
+
+Encoding decides what a rule is even able to see, so with `rooms + park`, color is invisible and no rule can use it, whether it would help or hurt.
+
+### Split: hiding four rows
+
+The second stage divides the rows into two piles: twelve apartments form the **training set**, which is the pile the rule is allowed to learn from. The other four form the **holdout**, the rows that are kept out of the fit completely and only scored at the end. In this lab the holdout is Laurel 2, Maple 10, Oak 14 and Pine 6.
+
+Both piles keep the table’s even mix, because the training set has 6 high-priced and 6 low-priced apartments while the holdout has 2 of each. On the **Decision view** card, training apartments are filled circles and holdout apartments are open circles. If you click the **Split** chip on the **Supervised loop** card, the readout **In the fit?** says yes or no for whichever apartment you have selected.
+
+The rule for the holdout is strict, because no step of the search and no question in a tree is ever allowed to look at a holdout row. Its score is a reading taken after the fit, not something the fit can aim at.
+
+### Hypothesis: choosing a family of rules
+
+Next you choose what kind of rule to search through. The whole family of rules you are willing to consider is called the **hypothesis class**, and the **Algorithm** switch picks one of three:
+
+- `linear` gives each feature a **weight**, a number that the feature gets multiplied by, and then adds up the results along with one extra number called the **bias**. The lab writes this score as `w·x+b`, where w is the list of weights and b is the bias. With the **Loss** switch on `MSE`, a setting explained a little further on, the rule calls an apartment high priced when that score reaches 0.5.
+- `logistic` works out the same kind of score and then squashes it with a curve called the **sigmoid**, written σ, which turns any score into a chance between 0 and 1. A score of 0 becomes exactly 0.5, while large positive scores come out close to 1 and large negative scores come out close to 0.
+- `tree` asks a short chain of yes or no questions, each about one feature, such as whether the number of rooms is below 1.5. The answers lead to a final group called a **leaf**, and the chance of high price there is the share of training apartments in that leaf that are high priced.
+
+The lab writes the logistic rule as `P(y=1|x) = σ(w·x+b)`, where `P(y=1|x)` stands for the chance that the label y is 1, or high priced, given the apartment’s vector x. Changing the hypothesis class gives you a different search over the same table, not a different table.
+
+The place where a rule switches from saying low to saying high is called the **decision boundary**. On the **Decision view** card, rooms run from left to right and park runs from bottom to top. Since park is only ever yes or no, the apartments sit on two flat rails, with “no park” along the bottom and “park” along the top.
+
+For `logistic`, the boundary is the solid line where the chance is exactly 50 percent, and the shading shows the chance everywhere else on the map. A tree draws dashed cuts instead, each running straight across or straight up and down, because each of its questions is about one feature at a time.
+
+Here is a boundary you can read, from the settings the lab opens on: `rooms + park`, `logistic` and `log-loss`, with the fit run to its last step. There, the solid line crosses the top rail, where apartments have a park, at about 1.8 rooms, and it crosses the bottom rail at about 2.5 rooms. In words, 2 rooms is enough to land on the high side when there is a park, but without one an apartment needs 3. That is the same pattern the labels were written with, and the fit reached it from twelve rows and a loss, with nobody drawing the line by hand.
+
+### Fit, part one: a score for mistakes
+
+To search for a good rule, you first need one number that says how wrong a rule is on the training rows. That number is called the **loss**, and the fit’s whole job is to drive it down, using one of the two kinds the **Loss** switch offers.
+
+The `MSE` setting, short for mean squared error, takes how far each prediction lands from the right answer, squares that miss, and averages the results over the rows. Squaring makes big misses cost far more than small ones:
+
+- a miss of 0.2 costs 0.2 × 0.2 = 0.04;
+- a miss of 0.8 costs 0.8 × 0.8 = 0.64, which is sixteen times as much.
+
+The `log-loss` setting looks only at the chance the rule gave to the right answer, and it charges a penalty that grows faster and faster as that chance shrinks. This penalty is called **log-loss**, and its name comes from logarithms, a kind of math you do not need here, because the lab works it out for you. What matters is the shape of the penalty, which you can see on real rows from the lab’s opening fit:
+
+- Juniper 6 is high priced and got a 91 percent chance of high, so its penalty is about 0.10.
+- Alder 12 got a 55 percent chance on its right answer, so its penalty is about 0.59.
+- A coin-flip guess, giving every row a 50 percent chance, costs about 0.69 per row.
+- Rowan 9’s right answer, low, got only about 22 percent, so its penalty is about 1.49.
+- A chance of almost 0 percent on the right answer would cost an endless amount, so the lab caps it at about 21 per row.
+
+That coin-flip value of 0.69 is worth remembering, because a log-loss above it means a rule does worse than answering 0.5 for every row. Answering 0.5 every time is the same as having no rule at all.
+
+### Fit, part two: searching for the lowest loss
+
+With a loss chosen, the search can begin. The process that hunts through the hypothesis class for a rule with as low a training loss as it can find is called **optimization**, and running it is the fit.
+
+For `linear` and `logistic`, the lab starts with every weight and the bias at 0. With `logistic`, a score of 0 gives every apartment the same 0.5 chance, so the training loss starts at the coin-flip value of 0.69. At each step, the lab looks at all twelve training rows at once and works out which way to nudge each weight so the loss falls fastest. The lab finds that direction from the **gradient**, which measures how fast the loss would change as each weight moves, so each nudge is called a gradient step.
+
+The **Fit step** slider runs from 0 to 48 and lets you scrub through those steps. At the opening settings, the training loss is 0.69 before the first step. Ten steps later it has dropped to about 0.57, and by the last step it reaches 0.45. It is still creeping down by a tiny amount each step there, but the lab stops after 48 steps.
+
+A tree searches in a different way, with no gradient steps at all, because it grows one level of questions at a time. At each level it picks the question that best separates high from low among the training rows, judged by a score of how mixed each group is. With **Algorithm** on `tree`, the **Fit step** slider is relabeled **Grown depth**. Dragging it down also lowers **Tree depth**, so use the **Tree depth** slider to go back up.
+
+### Worked example: one apartment, start to finish
+
+The **Worked example** card shows the whole calculation for the apartment you have selected, using the same arithmetic that the loss curve averages. At the opening settings with Alder 12 selected, the card shows three numbers the fit settled on:
+
+- **w_rooms**, the weight that the number of rooms gets multiplied by, is 1.031;
+- **w_park**, the weight that the park answer gets multiplied by, is 0.709;
+- **b**, the bias that gets added on at the end, is −2.561.
+
+Alder 12’s vector is (2, 1), so its score is `2 × 1.031 + 1 × 0.709 − 2.561`, which comes to 0.210. The sigmoid squashes that small positive score into a chance of 0.552. That is above 0.5, so the rule calls Alder 12 high priced, though it is only about 55 percent sure. Alder 12 really is high priced, so its log-loss, which the card labels ℓ, is 0.594.
+
+Now click Rowan 9 in the apartment table, and the card shows that its vector, (3, 1), gives a higher score and a 0.776 chance of being high priced. Because Rowan 9 is labeled low, the chance on its right answer is 1 − 0.776, or about 22 percent, so its penalty comes to 1.494. That is the largest penalty of all twelve training rows, which makes sense for the one row that breaks the pattern.
+
+Then click Laurel 2, a holdout row with 2 rooms and no park, which gets a 0.378 chance of high, so the rule correctly calls it low. Its penalty is 0.474, and the card adds a note that this row was scored after the fit and never entered it.
+
+Averaging ℓ over the twelve training rows gives **L train**, which is 0.45 here, while averaging it over the four holdout rows gives **L holdout**, which is 0.31.
+
+### Holdout: read the score, never fit it
+
+The last stage reads the finished rule’s score on the four holdout rows, because what you actually care about is how the rule does on rows it has never seen. Doing well on new rows from the same source as the training rows is called **generalization**. The holdout score is the only estimate of it this lab can compute, since a small training loss says nothing, on its own, about new rows.
+
+The **Loss over the fit** card gives you **L holdout**, the average log-loss on the four hidden rows, and **Holdout acc**, the share of them the rule gets right. At the opening settings, **Holdout acc** reads 100 percent, which is 4 of 4. **Train acc** reads 92 percent, because the rule gets 11 of the 12 training rows right and misses Rowan 9.
+
+You may notice that the holdout line on the chart ends lower than the training line, which can look backwards. The main reason is that the training rows include Rowan 9, the one planted exception, which costs 1.49 on its own, while all four holdout rows follow the usual pattern. A smaller reason is that two training rows, Alder 12 and Holly 3, sit close to the boundary and cost 0.59 each, while no holdout row sits that close. Together, these make the holdout the easier of the two piles in this table.
+
+### Why the split is random, and what each slice is for
+
+This lab cuts its table by hand, so the first twelve rows are for training and the last four are held out, but a real project does it differently. It shuffles the rows like a deck of cards and then cuts, so nobody picks which rows land in the holdout, and this is called a **random split**.
+
+The shuffle is driven by a starting number called a **seed**, and the same seed always gives the same shuffle. It works a bit like a game that rebuilds the same random level when you type in the same code, so anyone can repeat your split and check your work.
+
+Cutting by order is risky, because if the table were sorted by price, the holdout would be the four most expensive apartments and its score would describe only that corner. If it were sorted by date, the holdout would hold only the newest rows, so its score would describe only recent apartments. Shuffling mixes old and new, cheap and expensive, so no one kind of row fills the holdout.
+
+A shuffle is safer but not perfect, because there are 1,820 ways to pick four hidden rows out of sixteen, and a fair shuffle makes each one equally likely:
+
+- In 140 of them, about one shuffle in every thirteen, all four hidden rows have the same price label. That holdout could only test high-priced apartments, or only low-priced ones, so it says nothing about the other kind.
+- In 784 of them, which is 43.1 percent, the holdout is two high and two low, like this lab’s.
+- In the other 896, which is 49.2 percent, it is three of one kind and one of the other.
+
+Dealing the cards so that each pile keeps the same mix of high and low is called stratifying, and it removes those unlucky all-one-label draws. A tiny holdout has another weakness: with four rows, each one is worth a quarter of the score, so holdout accuracy can only move in jumps of 25 points.
+
+Real projects usually keep three piles, not two, because there are three different jobs to do. The training pile is what the rule learns from. The **validation set** is the pile you look at while you choose settings such as the encoding, the algorithm or the tree depth. The **test set** is the final exam, scored once at the very end, after every choice has been made.
+
+Picture a class that sits the same mock exam every Friday and changes how it studies after each result. By the end of term the class scores well on that mock exam, partly because every change was picked to suit those exact questions. So the mock score ends up rosier than the real exam is likely to be.
+
+This lab has only a training pile and a holdout, and you will choose settings by watching the holdout, which quietly turns it into a validation set. Its scores are therefore a little optimistic, and a real project would keep a separate test set that no choice has ever seen.
+
+### A holdout from a different process
+
+A holdout only tells you about rows made by the same process as the training rows, meaning the same kinds of apartments and the same rule linking them to price. The **Holdout drawn from** switch on the **Train versus holdout** card lets you break that on purpose.
+
+Set it to `a different process`, and the four holdout rows are replaced by Quay 3, Reed 5, Slate 7 and Tarn 11. These come from a market where small apartments are the expensive ones, so they are high priced when rooms ≤ 2, which is the opposite of the usual rule.
+
+The fit never saw any holdout rows, so it stays exactly as it was and **L train** stays at 0.45; only the four rows it is scored on are different. At the opening settings, **Holdout acc** falls from 100 percent to 25 percent, because the rule now gets only 1 of the 4 rows right. The **Holdout accuracy change** readout shows this as `-75 pts`.
+
+Meanwhile **L holdout** rises from 0.31 to 1.39, and the readout **Holdout loss, different ÷ same** shows that this is 4.5 times as high. That new loss is also worse than 0.69, the coin-flip value, so on these rows the rule does worse than having no rule at all. The only row it still gets right is Reed 5, which has 2 rooms and a park, so the old rule and the new one happen to agree on it.
+
+This is called **distribution shift**, which means the process that produces the rows you score has moved away from the one that produced the training rows. Here the rule linking rooms to price flipped, which is about as extreme as shift gets. The fit did not get worse; the world it is scored on changed underneath it, and a holdout drawn from the old process can never see that coming.
+
+Picture someone who spent years guessing apartment prices in a town where bigger always meant pricier, and who got very good at it. Then they move to a market where small apartments are the expensive ones. Their skill has not faded at all, yet most of their guesses are now wrong, and no amount of re-checking their old town’s prices could have warned them.
+
+## Why it’s here
+
+The earlier labs in this group each handed you one piece of the loop. You met the idea of choosing a kind of rule, the arithmetic of a weighted score like `w·x+b`, and a table row turned into numbers. You also met eight older ways for a rule to draw borders between groups. None of them ran one labeled problem all the way from a raw row to a final check, so “the model learned” had nothing solid to point at. This lab joins the pieces, and joining them exposes two problems that no single piece shows on its own.
+
+### A training score cannot tell learning from memorizing
+
+Every fit is built to push its training loss down, so a small training loss shows only that the search worked on those twelve rows, not anywhere else.
+
+How flexible a family of rules is, meaning how many different shapes it can bend into, is called its **capacity**. A tree with more levels of questions has more capacity, since each extra level lets it slice the training rows into smaller groups. With enough levels, even a strange row can end up in a group of its own.
+
+Picture a classmate who notices that question 9 on the practice sheet is a trick question whose answer is “no”, and who remembers it by its blue diagram. She now scores 100 percent on the practice sheet. Then the mock exam has a different question with a blue diagram whose answer is “yes”, and she writes “no” with complete confidence.
+
+A deep tree does the same thing with Rowan 9 when color is part of the encoding. At depth 5, meaning five levels of questions, one of its questions is about color. The answers put Rowan 9 in a small group of its own: blue apartments with 3 rooms. None of its questions asks about the park, so Maple 10, a blue 3-room holdout apartment, lands in that same group.
+
+The only training apartment in that group is Rowan 9, which is low, so the tree gives Maple 10 a 0 percent chance of being high priced. Maple 10 really is high priced. The training loss drops to zero while the holdout loss shoots up, and only the holdout can show you that.
+
+### When a number moves, which choice moved it?
+
+The loop has several separate knobs, which are **Encoding**, **Algorithm**, **Loss** and **Tree depth**. If you changed three of them at once and the holdout score improved, you could not say which change helped, or whether two of them cancelled each other out. Keeping the stages separate lets you change exactly one thing and watch which numbers move.
+
+That matters because some changes help on the training rows and hurt everywhere else. Picture a friend who notices that on this term’s practice sheets, almost every question printed in red ink had the answer “true”. She starts answering “true” to anything in red. Her practice scores go up, but the pattern was a coincidence of those sheets, so on the mock exam it costs her points.
+
+Color plays the same trick in this table. Four of the five red training apartments are high priced, including every red one with 2 or more rooms, while neither red holdout apartment is. A rule that can see color picks up a cue that only holds on the training rows. The way to catch it is to change the encoding alone and watch what the holdout score does.
+
+## How to play with it
+
+The lab’s seven steps walk through the loop in order, and each part below matches one of them. Each part starts by naming the settings it needs, so the numbers you see match the ones written here. Under the sliders on the **Supervised loop** card, a short note names the last setting you changed, other than **Fit step**, and what that change could move.
+
+### Encode one row
+
+Click **Alder 12** in the apartment table on the **Train versus holdout** card, because the worked example above may have left another apartment selected. Then click the **Encode** chip on the **Supervised loop** card, so the panel below the chips shows Alder 12’s vector. Set **Encoding** to `rooms + park`, then to `integer codes`, and watch Alder 12’s vector grow from two numbers to three as color joins it.
+
+### Read the split
+
+Click the **Split** chip, and then, in the table on the **Train versus holdout** card, click the name **Rowan 9** and after that **Laurel 2**. The **In the fit?** readout changes from yes to no, because only training rows ever enter the fit.
+
+### Choose a hypothesis
+
+Click the **Hypothesis** chip, set **Encoding** back to `rooms + park`, and leave **Loss** on `log-loss` and **Tree depth** at 2, where the lab opens. Then set **Algorithm** to `linear`, then `logistic`, then `tree`, while you watch the **Decision view**. The solid straight line gives way to dashed cuts that run only straight across or straight up and down.
+
+Each time, read **L holdout** and **Holdout acc** on the **Loss over the fit** card. Both `linear` and `logistic` read 0.31 and 100 percent, while `tree` reads 0.35 and 75 percent, because it gets one of the four hidden apartments wrong. Only the family of rules changed, yet the holdout reading moved.
+
+One thing to expect here: `linear` and `logistic` land on exactly the same fit. Log-loss needs a chance between 0 and 1, so with **Loss** on `log-loss`, the lab squashes the `linear` score with the same sigmoid that `logistic` uses. Switch **Loss** to `MSE` if you want to see `linear` as a family of its own.
+
+### Scrub the fit
+
+Set **Encoding** to `rooms + park`, **Algorithm** to `logistic` and **Loss** to `log-loss`. Then click the **Fit** chip, and drag **Fit step** down to 0 and then slowly back up to 48. Watch the **Loss over the fit** card as you go, where the solid line is the training loss and the dashed line is the holdout loss. Both start at 0.69, the coin-flip value, and both fall as the weights move, ending at 0.45 for training and 0.31 for the holdout. On the **Decision view**, the boundary line first shows up in the bottom-left corner after two steps, then sweeps to the right and settles into place as you go.
+
+### Swap one stage
+
+**Try this:** leave **Algorithm** on `logistic` and **Loss** on `log-loss`, and switch only **Encoding** from `rooms + park` to `one-hot`, then back again. **L train** drops from 0.45 to 0.26, which looks like progress, but **L holdout** climbs from 0.31 to 0.75. Adding color let the rule lean on color cues that hold only on the training rows. Red looks expensive there, so Laurel 2 gets called high priced. Blue looks cheap, since three of the four blue training apartments are low, Rowan 9 among them, so Maple 10 gets called low. **Holdout acc** drops from 100 percent to 50 percent. If you try `integer codes` as well, it lands between the other two settings on both loss numbers.
+
+Then set **Encoding** back to `rooms + park` and switch only **Loss** from `log-loss` to `MSE`. Both loss numbers change, but they cannot tell you which setting is better. The loss is both the target the fit aims at and the ruler the result is read with, so switching it changes the fit and the ruler together. Comparing the two numbers is like asking whether 8 points in one board game beats 120 points in another.
+
+To compare the two loss settings fairly, read **Holdout acc**, which counts right answers the same way under both. On `rooms + park` it stays at 100 percent either way. Now set **Encoding** to `one-hot` and switch **Loss** between `log-loss` and `MSE` again. **Holdout acc** drops from 50 percent to 25 percent, so changing only the loss made the rule miss one more hidden apartment.
+
+### Raise tree depth
+
+Set **Loss** back to `log-loss`, **Encoding** to `integer codes` and **Algorithm** to `tree`, then move **Tree depth** from 1 to 5. **L train** falls all the way to 0, while **L holdout** climbs from 0.48 to about 10.
+
+The holdout loss does not rise smoothly. It jumps at depth 2, when the tree starts asking about color. Every red training apartment with 2 or more rooms is high priced, so the tree calls Laurel 2 high with full confidence, and it is wrong. The loss jumps again at depth 5, when the tree fences off Rowan 9 and drags Maple 10 into the same group.
+
+Click the **Holdout** chip to see the **Gap** readout, which is the holdout loss minus the training loss. Notice how large it gets as extra depth lets the tree memorize quirks that only the training rows have.
+
+Now switch **Encoding** to `rooms + park` and try the same depths again, and this time the training loss stops falling while it is still above 0. Rowan 9 and Cedar 9 share the same vector, (3, 1), yet carry different labels, so no question about rooms or park can ever pull them apart. By depth 5 the holdout loss is lower than it was at depth 1, not higher.
+
+### Shift the holdout
+
+Go back to `rooms + park`, `logistic` and `log-loss`, and then on the **Train versus holdout** card, switch **Holdout drawn from** between `the same process` and `a different process`. The small table under the apartment list scores the same fit on both holdouts side by side, with columns for **L holdout**, **Holdout acc** and **Rows right**. Below it, **L train (same in both)** never moves, because the fit itself never changes.
+
+## What to notice
+
+- Filled circles on the **Decision view** were used in the fit, and open circles were not. When an open circle lands on the correct side of the line, the rule got that apartment right without ever seeing it during the fit. That is exactly the kind of check the holdout is for.
+- The shading and the line are the actual fitted rule, worked out on a 28 by 28 grid of points across the map, not a drawing. When color is part of the encoding, the map can only show one color at a time, so it shows the rule at the color of the apartment you selected.
+- Changing one stage at a time is the whole point, and the clearest case is switching only **Encoding** to `one-hot` with `logistic` and `log-loss`. That lowers training loss from 0.45 to 0.26, while holdout loss rises from 0.31 to 0.75.
+- Color tracks price only on the training rows, since 4 of the 5 red training apartments are high priced and neither red holdout apartment is.
+- Switching only **Loss** changes the fit and the ruler together, so a holdout MSE and a holdout log-loss sit on different scales and cannot be ranked against each other.
+- On `integer codes`, a depth-5 tree drives training loss to 0 while holdout log-loss climbs from 0.48 to about 10, which is extra capacity memorizing quirks of the training rows.
+- The jump to about 10 comes from two holdout rows the tree gets wrong with total confidence. From depth 2 on, Laurel 2 lands with the red apartments that have 2 or more rooms. Those are all high priced in training, so the tree marks it high when it is low.
+- Maple 10 is blue with 3 rooms, so it lands in the same leaf as Rowan 9 and gets marked low when it is high. Each of those two rows costs about 21, the lab’s cap, while the other two cost almost nothing, so the average over four rows comes out near 10.
+- On `rooms + park`, Rowan 9 and Cedar 9 share the vector (3, 1) but have different labels, so no depth can memorize the exception. Training loss stalls above 0, and capacity cannot memorize what the encoding cannot tell apart.
+- Switching **Holdout drawn from** to `a different process` leaves the fit and **L train** alone, yet it drops holdout accuracy from 100 percent to 25 percent. The fit did not get worse; the rows it is scored on stopped following its rule.
+- Every holdout reading counts four rows, so one row moves accuracy by 25 points, and even a holdout from the right process gives only a rough estimate.
+
+## Where it breaks
+
+### What this lab simplifies
+
+- The sixteen apartments were written by hand, and so was the split, which takes the last four rows with no shuffle at all.
+- There is no validation pile, no test pile and no neural network, so the lab shows the loop at its smallest.
+- Park is only yes or no, so the apartments sit on two flat rails on the map. Apartments that share a spot are nudged apart on the picture so you can click them, but the fit always uses their exact numbers.
+- The search is short and exact, with 48 steps that each use all twelve training rows at once, which is nothing like the training run behind a big model.
+- The color order in `integer codes` is invented, and when color is in the encoding, the map shows only one slice of the rule at a time.
+- The different-process rows are one extreme case, with four invented rows whose price rule is reversed. Real shift is usually partial and slow, and it can show up in the inputs, in the labels, or in the rule that links them.
+
+### Where the real loop breaks
+
+In a real project the same stages are all still there, and the holdout has to stay out of every choice, not only out of the search. Say you use the holdout’s prices to decide which colors count as expensive, or decide when to stop training by watching the holdout curve. Either way, holdout information has slipped into the fit. That is called leakage, and it is the subject of the next lab.
+
+A small holdout gives only a rough estimate of generalization, even when it is drawn fairly, because a different draw of four rows could give a very different reading. And no holdout can warn you about a change that happens after it was drawn, because it came from the old process. The only way to catch that kind of shift is to keep watching new data as it comes in.
+
+**A common mix-up:** it is tempting to treat a tiny training loss as proof that a model works. Training loss only reads the rows the rule was fitted to, while holdout loss is the first estimate this lab gives of how it does on new rows. The two can even move in opposite directions, as the deep tree showed. The second mix-up runs the other way: a good holdout score is not a promise about the future, since it only speaks for rows made like the training rows.
+
+## Going deeper
+
+- With `linear` and `MSE`, the **Loss over the fit** card adds a dotted line labeled least squares (train). That is the training loss of a formula that jumps straight to the best weights in one go, instead of taking steps. The gradient steps start at 0 and creep toward the dotted line, but after 48 small steps they are still slightly above it. So the weights on the **Worked example** card are the stepped ones, not the formula’s.
+- With `one-hot`, the three color slots always add up to 1, so that formula cannot decide how much of the score to give the colors and how much the bias. The lab adds a tiny amount, 0.0001 (written 10⁻⁴), inside the formula so that it can always be solved.
+- On the **Fit** stage, the note shows the step size η, the fraction of the gradient each step moves by, which is 0.85 at the opening settings. The ‖∇‖ readout beside it is the size of the gradient, meaning how steeply the training loss still slopes downhill, and it shrinks as the fit settles.
+- A tree picks each question by how much it reduces the mixing of high and low in the groups it makes. With **Loss** on `log-loss` it measures mixing with a score called entropy, and with `MSE` it uses one called Gini. Both scores read zero for a group that is all one label.
+- Distribution shift can come from new kinds of inputs, from new labels, or from a new rule linking the two. The different-process rows here are the last kind, which is often called concept shift.
+- The next lab, How we know a model works, takes the holdout reading apart with a confusion matrix, a table of which answers were right and which were wrong. It also shows how a leaked holdout lies, and it compares made-up learning curves with the holdout curve you have met here.
+- Further on, the lab called Loss & gradient descent keeps this same downhill update when the hypothesis class becomes a deeper stack of layers.

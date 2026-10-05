@@ -1,0 +1,392 @@
+{
+  "format": 1,
+  "generatedBy": "python models/build_asset_manifest.py",
+  "budgetBytes": 157286400,
+  "totalBytes": 20016018,
+  "withinBudget": true,
+  "assets": [
+    {
+      "id": "attention/tiny-transformer.metadata.json",
+      "module": "attention",
+      "path": "src/modules/attention/assets/tiny-transformer.metadata.json",
+      "bytes": 37312,
+      "sha256": "ad17ce4e7d441976231d63875e50731f0aef1976fc50c1267daeec93dc875dc9",
+      "kind": "json"
+    },
+    {
+      "id": "attention/tiny-transformer.onnx",
+      "module": "attention",
+      "path": "src/modules/attention/assets/tiny-transformer.onnx",
+      "bytes": 5508501,
+      "sha256": "58a0c1d029b8bd3cee297c35d9c198e6148651c209f4077b00806bd64e8fe770",
+      "kind": "onnx",
+      "runtime": {
+        "opset": 18,
+        "minimumOnnxRuntimeWeb": "1.20.0",
+        "inputs": [
+          {
+            "name": "input_ids",
+            "type": "tensor(int64)",
+            "shape": [
+              "batch",
+              "sequence"
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "logits",
+            "type": "tensor(float)",
+            "shape": [
+              "batch",
+              "sequence",
+              66
+            ]
+          },
+          {
+            "name": "q",
+            "type": "tensor(float)",
+            "shape": [
+              2,
+              "batch",
+              4,
+              "sequence",
+              64
+            ]
+          },
+          {
+            "name": "k",
+            "type": "tensor(float)",
+            "shape": [
+              2,
+              "batch",
+              4,
+              "sequence",
+              64
+            ]
+          },
+          {
+            "name": "v",
+            "type": "tensor(float)",
+            "shape": [
+              2,
+              "batch",
+              4,
+              "sequence",
+              64
+            ]
+          },
+          {
+            "name": "attention",
+            "type": "tensor(float)",
+            "shape": [
+              2,
+              "batch",
+              4,
+              "query",
+              "key"
+            ]
+          },
+          {
+            "name": "residual",
+            "type": "tensor(float)",
+            "shape": [
+              2,
+              "batch",
+              "sequence",
+              256
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "attention/transformer-vocab.json",
+      "module": "attention",
+      "path": "src/modules/attention/assets/transformer-vocab.json",
+      "bytes": 1553,
+      "sha256": "56492239eeda70ff9c3081f484dff205443203ec514b493d20ec18b6b690b2e3",
+      "kind": "json"
+    },
+    {
+      "id": "diffusion-vaes/mnist-diffusion-denoiser.onnx",
+      "module": "diffusion-vaes",
+      "path": "src/modules/diffusion-vaes/assets/mnist-diffusion-denoiser.onnx",
+      "bytes": 4759933,
+      "sha256": "29e9c0931c949d3c265bfb9499328e459ff5762fa704d2ce1f9ba775f403fc39",
+      "kind": "onnx",
+      "runtime": {
+        "opset": 18,
+        "minimumOnnxRuntimeWeb": "1.20.0",
+        "inputs": [
+          {
+            "name": "image",
+            "type": "tensor(float)",
+            "shape": [
+              "batch",
+              1,
+              28,
+              28
+            ]
+          },
+          {
+            "name": "timestep",
+            "type": "tensor(int64)",
+            "shape": [
+              "batch"
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "noise",
+            "type": "tensor(float)",
+            "shape": [
+              "batch",
+              1,
+              28,
+              28
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "diffusion-vaes/mnist-diffusion-schedule.json",
+      "module": "diffusion-vaes",
+      "path": "src/modules/diffusion-vaes/assets/mnist-diffusion-schedule.json",
+      "bytes": 2084,
+      "sha256": "80902151b23f760bc993be18ee5a2c3310a39b48831a223e97145ea24fe6d2bb",
+      "kind": "json"
+    },
+    {
+      "id": "diffusion-vaes/mnist-models.metadata.json",
+      "module": "diffusion-vaes",
+      "path": "src/modules/diffusion-vaes/assets/mnist-models.metadata.json",
+      "bytes": 21341,
+      "sha256": "92038ca7d2b9d224e2af8ea1227145124581793bac19a983addb71446d559e81",
+      "kind": "json"
+    },
+    {
+      "id": "diffusion-vaes/mnist-vae-decoder.onnx",
+      "module": "diffusion-vaes",
+      "path": "src/modules/diffusion-vaes/assets/mnist-vae-decoder.onnx",
+      "bytes": 908143,
+      "sha256": "5203b7aeacfe4bf8c66f9227141d557b4281c20bdae5c05f58f214c58608ae6f",
+      "kind": "onnx",
+      "runtime": {
+        "opset": 18,
+        "minimumOnnxRuntimeWeb": "1.20.0",
+        "inputs": [
+          {
+            "name": "latent",
+            "type": "tensor(float)",
+            "shape": [
+              "batch",
+              2
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "image",
+            "type": "tensor(float)",
+            "shape": [
+              "batch",
+              1,
+              28,
+              28
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "diffusion-vaes/mnist-vae-encoder.onnx",
+      "module": "diffusion-vaes",
+      "path": "src/modules/diffusion-vaes/assets/mnist-vae-encoder.onnx",
+      "bytes": 905711,
+      "sha256": "d42e75c78f519cc38d1ca27beee76a48f619ddf85f41e11a3f8a9d2507096d59",
+      "kind": "onnx",
+      "runtime": {
+        "opset": 18,
+        "minimumOnnxRuntimeWeb": "1.20.0",
+        "inputs": [
+          {
+            "name": "image",
+            "type": "tensor(float)",
+            "shape": [
+              "batch",
+              1,
+              28,
+              28
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "mean",
+            "type": "tensor(float)",
+            "shape": [
+              "batch",
+              2
+            ]
+          },
+          {
+            "name": "log_variance",
+            "type": "tensor(float)",
+            "shape": [
+              "batch",
+              2
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "interpretability-circuits/interpretability-cache.json",
+      "module": "interpretability-circuits",
+      "path": "src/modules/interpretability-circuits/assets/interpretability-cache.json",
+      "bytes": 371459,
+      "sha256": "2dde40262c12366585cef94526c8040c46bedc822b291c4cadece9babe525361",
+      "kind": "json"
+    },
+    {
+      "id": "interpretability-features/residual-sae.onnx",
+      "module": "interpretability-features",
+      "path": "src/modules/interpretability-features/assets/residual-sae.onnx",
+      "bytes": 2102241,
+      "sha256": "086aaac62ca4a3649d1496db759ded6e4f616f27a2aa309648b7188ca1bde21a",
+      "kind": "onnx",
+      "runtime": {
+        "opset": 18,
+        "minimumOnnxRuntimeWeb": "1.20.0",
+        "inputs": [
+          {
+            "name": "residual",
+            "type": "tensor(float)",
+            "shape": [
+              "tokens",
+              256
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "features",
+            "type": "tensor(float)",
+            "shape": [
+              "tokens",
+              1024
+            ]
+          },
+          {
+            "name": "reconstruction",
+            "type": "tensor(float)",
+            "shape": [
+              "tokens",
+              256
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "interpretability-features/sae-top-activations.json",
+      "module": "interpretability-features",
+      "path": "src/modules/interpretability-features/assets/sae-top-activations.json",
+      "bytes": 345610,
+      "sha256": "57524d562632ae4f160af4026de076da8c32416db4d6e27ee2e1d002a06128d8",
+      "kind": "json"
+    },
+    {
+      "id": "next-token-prediction/bigram.json",
+      "module": "next-token-prediction",
+      "path": "src/modules/next-token-prediction/assets/bigram.json",
+      "bytes": 94833,
+      "sha256": "b14e3352c36770ad0ecd13578bf33adc547c4649da18eb9269eedf7d1a900057",
+      "kind": "json"
+    },
+    {
+      "id": "next-token-prediction/character-rnn.onnx",
+      "module": "next-token-prediction",
+      "path": "src/modules/next-token-prediction/assets/character-rnn.onnx",
+      "bytes": 1883584,
+      "sha256": "78f771e1c974c7073aa5e00e28e011a2f2f782830f855ca0c7d4b694414dc8b4",
+      "kind": "onnx",
+      "runtime": {
+        "opset": 18,
+        "minimumOnnxRuntimeWeb": "1.20.0",
+        "inputs": [
+          {
+            "name": "input_ids",
+            "type": "tensor(int64)",
+            "shape": [
+              "batch",
+              "sequence"
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "logits",
+            "type": "tensor(float)",
+            "shape": [
+              "batch",
+              "sequence",
+              66
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "next-token-prediction/language-models.metadata.json",
+      "module": "next-token-prediction",
+      "path": "src/modules/next-token-prediction/assets/language-models.metadata.json",
+      "bytes": 37312,
+      "sha256": "ad17ce4e7d441976231d63875e50731f0aef1976fc50c1267daeec93dc875dc9",
+      "kind": "json"
+    },
+    {
+      "id": "next-token-prediction/transformer-vocab.json",
+      "module": "next-token-prediction",
+      "path": "src/modules/next-token-prediction/assets/transformer-vocab.json",
+      "bytes": 1553,
+      "sha256": "56492239eeda70ff9c3081f484dff205443203ec514b493d20ec18b6b690b2e3",
+      "kind": "json"
+    },
+    {
+      "id": "tokens-embeddings/bpe-tokenizer.json",
+      "module": "tokens-embeddings",
+      "path": "src/modules/tokens-embeddings/assets/bpe-tokenizer.json",
+      "bytes": 30121,
+      "sha256": "cb0cb8aa9e29e730359b20d2d070016f9f9c2af69956fae8e5a5ce5cf0d7b91a",
+      "kind": "json"
+    },
+    {
+      "id": "tokens-embeddings/embedding-10k.f32",
+      "module": "tokens-embeddings",
+      "path": "src/modules/tokens-embeddings/assets/embedding-10k.f32",
+      "bytes": 2000000,
+      "sha256": "611f6bf71ec7269152ff149f0c0e94aced029de434d07e628f52e1a91804e384",
+      "kind": "f32"
+    },
+    {
+      "id": "tokens-embeddings/embedding-10k.index.json",
+      "module": "tokens-embeddings",
+      "path": "src/modules/tokens-embeddings/assets/embedding-10k.index.json",
+      "bytes": 99429,
+      "sha256": "1f7c89c3efbbce8abc5755955158f41334888fccf2645b9375e7f0f98d46583b",
+      "kind": "json"
+    },
+    {
+      "id": "tokens-embeddings/embedding-10k.projections.json",
+      "module": "tokens-embeddings",
+      "path": "src/modules/tokens-embeddings/assets/embedding-10k.projections.json",
+      "bytes": 905298,
+      "sha256": "d0c02e58bace8e6018115a32035f6d5a97bef1372d1b49df64955d6dd27b60ac",
+      "kind": "json"
+    }
+  ]
+}

@@ -1,0 +1,239 @@
+---
+objectives: ["Explain why a GPU helps a neural net without claiming that the chip understands the task","Separate arithmetic throughput from memory bandwidth as two different limits","Predict from arithmetic intensity whether an operation is memory-bound or compute-bound"]
+terms: ["Matrix multiply","FLOP","Throughput","Memory bandwidth","Arithmetic intensity","Roofline","Ridge point","Memory-bound","Compute-bound","Batch","Parallelism","Kernel","Precision"]
+---
+
+## The big picture
+
+When you ask a chatbot a question, its reply comes out of a huge amount of arithmetic, mostly multiplying pairs of numbers and adding up the results. That arithmetic usually runs on a kind of computer chip called a **GPU**, short for graphics processing unit. This module asks why that chip suits neural networks so well, and what decides how fast it can go once the work is running on it.
+
+The answer has a twist, because a GPU has two separate speeds. One is how fast it can do arithmetic, and the other is how fast numbers can be delivered to it from its memory. A job can only go as fast as the slower of the two allows. That means a chip that calculates very quickly can still spend most of its time waiting for numbers to arrive.
+
+### Where you have met it
+
+- **Chatbots writing replies:** a chatbot writes its answer one small piece at a time, and each piece is a word or part of a word called a **token**. Writing one token at a time is usually held back by memory rather than by arithmetic. That is why grouping many people’s requests together, or storing the model’s numbers in smaller formats, lets the same chip turn out more tokens each second.
+- **Training a model:** the network is fed big groups of examples at once, which keeps the arithmetic units busy. So for training, counting the arithmetic steps gives a fair estimate of how long the job will take, an idea the **Scaling laws** module builds on.
+
+### Why it matters
+
+If you only count the arithmetic a job needs, you can badly misjudge how long it will take. When a job is stuck waiting on memory, a chip with twice the arithmetic power finishes no sooner. The only things that help are faster memory, storing each number in less space, or using each number more times once it has arrived. Knowing which limit you are up against tells you what is worth adding and what is worth saving.
+
+### What you will be able to explain
+
+By the end of this lesson, you should be able to explain these three things in your own words:
+
+- Why a GPU speeds up a neural network, based on the shape of the work, without claiming that the chip understands what the network is doing.
+- Why “how fast the chip can calculate” and “how fast numbers reach it from memory” are two different limits, each with its own clock.
+- How to predict whether a job is held back by memory or by arithmetic, by comparing how much arithmetic it does with how much data it has to move.
+
+### What the lab shows
+
+The lab follows one layer of a neural network on a made-up GPU whose speeds are round numbers of about the right size. Nothing runs on a real chip and nothing is measured. Instead, every number the lab shows, called a readout, is worked out with arithmetic from the size of the layer and the number of rows. So the lab always shows the best possible case, which a real chip can only come close to.
+
+The layer is fed rows of numbers. Each row is one input’s list of numbers, such as one token of a chatbot prompt, and you can send many rows through together.
+
+The lab is split into three cards, and each one shows a different part of the story:
+
+- **Workload knobs** lets you choose the job, the number format, how many rows go through at once, the size of the layer, and the memory speed.
+- **Roofline** places your job as a dot on a graph and tells you which of the two limits it is hitting.
+- **Where the time goes** compares the time the arithmetic needs with the time the memory needs, and shows what would change if you doubled either speed.
+
+The main experiment is to push more rows of data through the layer at once. You will watch the same job switch from waiting on memory to being limited by arithmetic, and then switch back when you slow the memory down.
+
+## What it is
+
+### A layer is a huge pile of multiply-and-add
+
+In **Stacking neurons** you met layers of neurons, where each neuron takes a list of input numbers, multiplies each one by its own weight, and adds up the results. Multiplying two lists pair by pair and adding up the answers is called a **dot product**. The lab sometimes shortens it to “dot”, which is not the same thing as the dot that marks your job on the graph.
+
+As a tiny example, with inputs 2, 3 and 1 and weights 4, 0.5 and 10, the dot product is `2×4 + 3×0.5 + 1×10 = 8 + 1.5 + 10 = 19.5`. The chip keeps a running total that starts at zero, so each pair costs one multiply and one add. That makes 6 operations for this tiny dot product.
+
+The layer in this lab is much bigger, with a starting **Layer width** of d = 4096. That means each input row holds 4096 numbers and the layer produces 4096 outputs, one for each neuron. In real use, a row can be one training example, or one token of a prompt, which is the text you type into a chatbot.
+
+Each neuron has a weight for every input, so you can stand each neuron’s weights up as a column and set all the columns side by side. That gives a square grid with 4096 weights along each side, about 16.8 million in all.
+
+A grid of numbers like this is called a **matrix**, and working out every output of the layer this way is called a **matrix multiply**. In the lab it is labelled *Matmul X·W*, with matmul short for matrix multiply. X stands for the rows of input numbers, and W stands for the grid of weights.
+
+### Counting the work
+
+Each single multiply or add is one operation, called a **FLOP**, short for floating-point operation. Floating point is the usual way a computer stores numbers that can have a decimal point, such as 0.5 or 19.5.
+
+The **Work versus traffic** row on the **Workload knobs** card shows the count as `ops = 2·B·d²`, where ops is short for operations and the raised dot · means times. Here d is the layer width, and B is the number of input rows that go through together using the same weights. A group of rows like this is called a **batch**, and the **Batch rows** slider sets its size.
+
+Each row needs d dot products, each dot product has d pairs, and each pair costs two operations, which gives 2 × d × d operations for every row. A batch of B rows needs B times as much, which is where the formula comes from. With one row at the starting width, that works out as `2 × 1 × 4096 × 4096 = 33,554,432`. That is about 33.6 million operations, which the lab shows as 33.6 MFLOP, with M standing for million.
+
+### Why a GPU suits this work
+
+None of the 4096 dot products for a row needs another one’s answer before it can start, so all of them could be worked on at the same moment. Doing many independent pieces of work at once is called **parallelism**, and a matrix multiply is full of it.
+
+Picture a teacher with a worksheet of 30 separate sums and a class of 30 students. Because no sum depends on another, she can hand one to each student, and the whole sheet gets done in about the time it takes to do one sum. That only works if every student already has their sum in hand, though. Getting the sums to the students is the other half of the story.
+
+A GPU is built for exactly that kind of job, with thousands of small arithmetic units, often called lanes, that can all multiply and add at the same time. A layer’s thousands of independent dot products give those lanes plenty to do at once.
+
+The chip does not understand any of this, though: it runs the same multiply-and-add whether the numbers came from a sentence or a photo. It never checks what the numbers stand for or which weights matter. The meaning lives in the data and in the goal the network was trained toward, while the GPU does the multiplying.
+
+### Two speeds, not one
+
+Before a lane can multiply a number, that number has to travel from the GPU’s main memory, where the weights are stored, to the lane. So the chip has two separate speeds, and each one is a limit of its own.
+
+- **Throughput** is how many operations the chip can finish each second at its very best, called its peak. In its starting number format, called fp16, the lab’s made-up chip peaks at 300 TFLOP/s, which means 300 trillion FLOP every second, since T stands for trillion.
+- **Memory bandwidth** is how many bytes per second can move from main memory to the lanes, where a **byte** is the basic unit of computer memory. In this lab, each number takes 1, 2 or 4 bytes depending on its format, with fp16 using 2. The lab starts at 2000 GB/s, where a GB, or gigabyte, is a billion bytes, so that is 2 trillion bytes every second.
+
+To picture this, imagine an enormous exam hall where thousands of markers sit at desks ready to mark tests, with one narrow door at the back. Every test and every page of the answer key has to be carried in through that door, and every marked test goes back out the same way.
+
+In this picture the markers are the GPU’s lanes, and how quickly things can pass through the door is the memory bandwidth. Each test is one row of input, and the answer key is the grid of weights, which runs to thousands of pages. Once a page of the key is inside the hall, though, it can be used to mark every test in the pile.
+
+Now suppose there is only one test, so every page of the key gets carried in to be used once. The markers then spend nearly all their time waiting at the door. With a thousand tests, each page carried in gets used a thousand times, so the marking becomes the slow part, and a wider door would no longer help.
+
+The picture stops matching a real GPU in two places. First, the hall has room to keep every page of the key once it is inside. The lab assumes the same, so each number crosses from main memory exactly once. A real GPU has only a small shelf of storage beside its lanes, called a cache. For big grids, some pages have to be carried in more than once, which makes a real chip slower than the lab, never faster.
+
+Second, real markers read and judge each answer, while a GPU lane only multiplies and adds numbers, with no idea what any of them mean.
+
+### Arithmetic intensity: work for each byte
+
+Which of the two speeds sets the time depends on how many operations a job does for each byte it moves. That ratio is called **arithmetic intensity**, and the **Intensity** readout shows it in FLOP/B, meaning FLOP per byte.
+
+To find it you also need the traffic, meaning the number of bytes that have to move. The **Work versus traffic** row counts them as `bytes = (d² + 2·B·d)·2` at fp16, where each number takes 2 bytes. The d² part, d squared, is the weights, which are read once, and the 2·B·d part is the input rows read in plus the output rows written back.
+
+The 2·B·d part counts B rows of d numbers coming in and B rows of d results going out. With one row, that is 2 × 1 × 4096 = 8,192 numbers, while the weights are 4096 × 4096 = 16,777,216 numbers. So the traffic is `(16,777,216 + 8,192) × 2`, or about 33.6 million bytes, which the lab writes as 33.6 MB, where MB means a million bytes. Notice that at one row the weights make up almost all of the traffic.
+
+The work and the traffic both come to about 33.6 million, so **Intensity** starts at 1.000 FLOP/B, which is about one operation for every byte moved. It is really a hair under one, because the rows add a few bytes of their own.
+
+### The ridge point: where the two limits meet
+
+The lab’s chip can do 300 trillion operations each second, but in that same second it can only receive 2 trillion bytes. Dividing one by the other shows that in the time it takes one byte to arrive, the chip could do 150 operations.
+
+That break-even value is called the **ridge point**, which is the chip’s peak divided by its memory bandwidth, and the **Ridge** readout shows it as 150 FLOP/B. So the ridge moves when you change the memory speed. It also moves when you change the number format, because the chip’s peak is different for each format, as you will see in the lab. It does not move when you change the number of rows.
+
+- If a job’s intensity is below the ridge, the lanes finish their work before the next bytes arrive and sit waiting, so the job is **memory-bound**.
+- If a job’s intensity is above the ridge, bytes arrive faster than the lanes can use them and arithmetic sets the pace, so the job is **compute-bound**.
+
+At one row, the job does about one operation per byte, which is far below the ridge, so the **Bound** readout says memory.
+
+### The roofline graph
+
+The **Roofline** card draws all of this as one graph, called a **roofline** because of the shape of its top line. The line along the bottom measures arithmetic intensity, and the line up the side measures the best speed the job can reach. Speed here means useful operations finished each second, not how soon one job ends. Both axes say “log scale”, which here means each grid line is ten times the one before it, so tiny and huge values fit in one picture.
+
+The bent line across the graph is the roof, the best speed possible at each intensity. Its slanted left part is the memory limit, where doubling the intensity doubles the speed. Its flat right part is the chip’s peak, which no job can go above. The two parts meet at the ridge, marked with a dashed line, and the area to its left is shaded as the memory-bound zone.
+
+The legend gives the roof as `min(peak, bandwidth × intensity)`, where “min” means the smaller of the two. At one row, bandwidth times intensity is 2 trillion bytes per second times about one FLOP per byte, which gives 2 TFLOP/s. That is far below the peak, so the smaller value wins and the **Attainable** readout shows 2.00 TFLOP/s.
+
+That is under 1% of what the chip could do, and the top of the **Where the time goes** card puts it at 0.67% of peak arithmetic in use.
+
+## Why it’s here
+
+A neural network needs an enormous amount of the same simple arithmetic. Pushing 1024 rows through this one layer takes about 34.4 billion operations, which the lab shows as 34.4 GFLOP, with G standing for billion. A real model stacks many layers like this one, so the total grows very quickly.
+
+Neural networks became practical at a large scale on GPUs because that arithmetic is regular and parallel. It is the same multiply-and-add, repeated across thousands of outputs that never wait on each other.
+
+Not every kind of work has that shape, so picture the worksheet again, but now each sum needs the answer to the one before it. The teacher can only hand out one sum at a time, so the rest of the class sits waiting, however many students there are.
+
+A recurrent network, a type of network that works through its input one step at a time, has this chain shape. It must finish each step before starting the next, which leaves a GPU’s thousands of lanes with less to do at once, as **The architecture zoo** will show.
+
+Lots of parallel work is needed for speed, but it is not enough on its own. At one row, the **Parallel outputs** readout still shows 4,096 dots of 4096, which means 4,096 separate dot products, each 4096 pairs long. That is plenty to share across thousands of lanes, yet only 0.67% of the arithmetic gets used, because each byte carried in from memory feeds only about one operation.
+
+So feeding the lanes matters as much as having them, and the roofline is built to show exactly that. The same question comes back in later labs: how many bytes have to move for each piece of useful arithmetic? You will ask it about the notes a chatbot keeps on earlier words, about smaller number formats, and about serving many users at once.
+
+## How to play with it
+
+The lab starts with **Operation** on *Matmul X·W*, **Batch rows** at 1 row, **Layer width** at d = 4096, **Precision** on fp16, and **Memory bandwidth** at 2000 GB/s. The four parts below follow the lab’s own four steps, in the same order, starting from those settings.
+
+### Grow the batch
+
+Before you move anything, read the **Where the time goes** card, whose two bars work like two clocks. **Arithmetic at peak** shows the arithmetic needs about 111.8 ns, while **Memory traffic** shows the memory needs 16.8 µs. A nanosecond (ns) is a billionth of a second and a microsecond (µs) is a millionth. So 16.8 µs is 16,800 ns, and the memory takes about 150 times longer than the arithmetic.
+
+The lab lets both happen at the same time, so the job ends when the slower clock finishes. That real running time is called the wall-clock, and here memory sets it.
+
+The table under the bars, headed **Change one thing**, re-runs the arithmetic after a single change. The *2× peak arithmetic* row reads no change, while the *2× memory bandwidth* row reads 2.00× faster, because only the slower clock matters.
+
+**Try this:** drag **Batch rows** up one step at a time, from 1 row to 1024 rows. Each step doubles the rows. Hollow circles mark the same matmul at 1, 4, 16, 64, 256, 1024 and 4096 rows. The dot lands on or between them as it climbs the slanted roof first and then runs along the flat one.
+
+Keep an eye on the wall-clock as you go. It barely moves, from 16.8 µs at 1 row to 17.8 µs at 128 rows. The chip does 128 times the work in almost the same time, because it waits for the same weights either way. That is why **Attainable** climbs, and why grouping rows lets a chip turn out more tokens each second.
+
+At 128 rows, **Bound** still reads memory, and at 256 rows it flips to compute. The **Rows to reach ridge** readout says about 162, the exact break-even, which the slider jumps past because it moves in doublings.
+
+Look at the **Change one thing** table on either side of the flip. At 128 rows, *2× memory bandwidth* reads only 1.25× faster. At 256 rows, the arithmetic takes 28.6 µs and the memory takes 18.9 µs. Doubling peak arithmetic cuts the arithmetic to 14.3 µs, but then memory is the slower clock at 18.9 µs, so the table shows only 1.52× faster. Near the ridge the two clocks are close, so speeding up one soon hands the job to the other.
+
+At 1024 rows, **Intensity** reads 683 FLOP/B, which is well past the ridge. The wall-clock is now set by the arithmetic, at 115 µs, and the table has flipped. Doubling peak arithmetic now makes the job 2.00× faster, while doubling memory bandwidth makes no change.
+
+Rows help so much because every row uses the same weights, so each weight fetched once from memory gets reused for every row.
+
+The note under the formula row turns this into a shortcut. When the batch is much smaller than the layer width, almost all the traffic is the weights, about d² numbers. The work is 2·B·d², so dividing work by numbers moved leaves about 2·B operations for each number fetched. Dividing that by the bytes in each number gives the intensity.
+
+The note writes this as `intensity ≈ 2·B / bytes when B ≪ d`. Here “bytes” means bytes per number, ≈ means “about equal to”, and ≪ means “much smaller than”. With 64 rows at 2 bytes per number, that gives `2 × 64 / 2 = 64`. The lab shows 62.1 FLOP/B, a little lower, because the rows’ own numbers add some traffic too.
+
+### Change precision
+
+Set **Batch rows** back to 1, then switch **Precision** from fp16 to fp32 and then to int8. Precision is the format each number is stored in, and the number in each name is how many bits it uses. The fp stands for floating point, and int stands for integer, which means a whole number. A bit is a single 0 or 1, and 8 bits make one byte.
+
+- **fp32** uses 4 bytes per number, so **Intensity** drops to 0.500 FLOP/B and **Memory traffic** grows to 33.6 µs.
+- **fp16** uses 2 bytes per number, giving 1.000 FLOP/B and 16.8 µs.
+- **int8** uses 1 byte per number and stores whole numbers only, so the lab counts OP instead of FLOP, giving 2.00 OP/B and 8.39 µs.
+
+Halving the bytes per number halves the memory time, because the same job now carries half as much through the door. The chip’s peak changes as well, and the note on the card lists it for each format. In fp32 the chip uses its ordinary lanes and peaks at only 20 TFLOP/s. In fp16 and int8 it uses special units built for matrix multiplies, which reach 300 TFLOP/s and 600 TOP/s.
+
+Because fp32’s peak is so low, its **Ridge** drops to only 10 FLOP/B. Smaller formats are not free, though, because they store each number less exactly and can make a model less accurate, a cost this lab does not show.
+
+### Starve the bandwidth
+
+Switch **Precision** back to fp16, set **Batch rows** to 1024, then drag **Memory bandwidth** down to 100 GB/s. The ridge is peak divided by bandwidth, so a slower memory pushes it to the right, from 150 to 3000 FLOP/B. The dot’s intensity stays at 683, so the ridge slides right past it, and **Bound** flips back to memory.
+
+Now **Memory traffic** takes 503 µs, which is more than four times as long as the arithmetic. The *2× memory bandwidth* row reads 2.00× faster again, while doubling peak arithmetic makes no change.
+
+In the exam-hall picture, this is like narrowing the door: the same pages still have to come in, but each one takes longer.
+
+**Rows to reach ridge** now reads never at this d, because every extra row brings its own numbers in and sends its results out. Each extra row adds 2 × 4096 × 4096 operations of work. It also brings in 4096 numbers and sends out 4096 results, which is 16,384 bytes at fp16. That works out to 2048 operations per byte for each new row. So however many rows you add, intensity creeps toward 2048 and never reaches the new ridge of 3000.
+
+### Try an elementwise op
+
+Switch **Operation** to *Elementwise add* and move **Batch rows** to 4096. An elementwise add takes two grids of the same size and adds them spot by spot: it reads two numbers, adds them once, and writes one result.
+
+That is one operation for three numbers moved, or six bytes at fp16, so **Intensity** reads 0.167 FLOP/B. Nothing gets reused, so extra rows bring extra bytes in step with the extra work. That keeps **Bound** on memory at every batch, and **Rows to reach ridge** reads never.
+
+On the graph, a diamond marks the matmul of the same shape for comparison, far to the right of the add. The note at the bottom of the **Where the time goes** card adds a trick real software uses. It often does an add like this while the matmul’s results are still beside the lanes. That saves writing them out to memory and reading them straight back in, a round trip through the door.
+
+You can also try **Layer width**, which sets d anywhere from 512 to 16384. A narrow layer needs more rows to reach the ridge, about 363 at d = 512, because each row’s own numbers make up a bigger share of the traffic.
+
+## What to notice
+
+- **Reuse moves the dot:** going from 1 row to 1024 rows multiplies the operations by 1024. The bytes moved grow only 1.5 times, because the weights are fetched once whatever the batch.
+- **The table tells you which limit you hit:** when **Bound** reads memory, *2× peak arithmetic* reads no change while *2× memory bandwidth* makes the job faster. Once **Bound** reads compute, the two rows trade places. Close to the ridge, on either side, the helpful row shows less than a full 2×, such as 1.25× at 128 rows and 1.52× at 256 rows. That is because doubling one speed soon makes the other clock the slower one.
+- **Parallel work is not enough:** at 1 row, **Parallel outputs** still shows 4,096 dots of 4096, yet only 0.67% of peak arithmetic is in use.
+- **A bigger percentage is not always faster:** at 1 row, fp32 shows 5.00% of peak in use, more than fp16 does, yet it takes twice as long. That is because the percentage is measured against fp32’s much lower peak.
+- **fp32 reaches its ridge early:** fp32 runs on ordinary lanes with a low peak, so its ridge sits at only 10 FLOP/B. That is why **Rows to reach ridge** reads about 21 in fp32.
+- **Slower memory moves the ridge:** at 100 GB/s the ridge jumps to 3000 FLOP/B, and the 1024-row matmul turns memory-bound again.
+- **The add never catches up:** it stays at 0.167 FLOP/B in fp16 at every batch, so it is always memory-bound.
+- **The two roofs behave differently:** on the slanted roof, doubling the intensity doubles the speed, while on the flat roof it changes nothing.
+
+## Where it breaks
+
+### What this lab fakes or simplifies
+
+- **Nothing runs on a GPU:** every readout is arithmetic worked out from the sizes of the grids, and nothing is measured. A GPU carries out each operation, such as a matmul or an add, by starting a small program called a **kernel**, and the lab never starts one.
+- **The chip is made up:** its peaks are round numbers close to those of a real GPU called the A100, but they are not that chip’s exact figures.
+- **Arithmetic and traffic overlap perfectly:** the lab assumes that carrying numbers and multiplying them happen at the same time without getting in each other’s way. So the time is always the slower of the two clocks, and every dot sits exactly on the roof.
+- **Each number moves exactly once:** the lab assumes the chip keeps every number it has fetched for as long as it needs it. Real chips get close to this by cutting big grids into smaller tiles that fit in the cache beside the lanes, but they often have to fetch some numbers again. There is also no start-up cost for each kernel, which takes a few microseconds on a real GPU. Both of these make a real chip slower than the lab, never faster.
+- **Any shape can reach the peak:** in the lab even a small grid can keep every lane busy, but a real small matrix cannot fill a whole GPU.
+- **int8 is simplified:** the lab treats int8 as 1 byte going in and 1 byte coming out. A real int8 matmul keeps its running totals in a bigger whole-number format called int32, which takes 4 bytes. It needs the bigger format because adding up thousands of products quickly gives totals far too big to fit in 1 byte. When the totals are done, the chip has to scale them back down to a smaller format, extra steps the lab does not count.
+- **Accuracy is not shown:** smaller formats cost some accuracy, and none of the readouts show it.
+
+### Where the real mechanism falls short
+
+- **Real programs land below the roof:** measured kernels run slower than the ideal line, often far slower for small matrices. Read **Attainable** as a ceiling, the best any program could do on this chip, rather than as a stopwatch.
+- **Real chips have more roofs:** the cache beside the lanes has its own speed limit, which adds another roof that this lab does not draw. A real layer also runs several other kinds of step besides the matmul, each with its own kernel and its own start-up cost.
+- **Training moves more than weights:** it also moves each layer’s in-between results, the corrections worked out for every weight, and the extra records the training method keeps. Large models are also split across many GPUs, which then have to send numbers to each other.
+- **Writing one token at a time sits at the far left of the graph:** each new token runs every weight grid with only one row per conversation. That is why serving a chatbot is usually memory-bound, and why grouping users together and storing weights in smaller formats both raise the tokens produced each second.
+
+**A common mix-up:** you might expect a GPU with more arithmetic power to run any model faster. Picture two friends comparing chips for running a chatbot, where one chip has twice the peak arithmetic and the other has twice the memory bandwidth. For writing one token at a time, the lab’s arithmetic says the second chip wins, because the job is waiting on memory and extra lanes would only wait too.
+
+A memory-bound job gets faster only with more bandwidth, fewer bytes per number, or more reuse of each byte.
+
+## Going deeper
+
+- **Inference & KV cache** looks closely at the one-row corner of this graph. Each new token has to re-read all the weights, plus a growing store of notes about earlier tokens called the KV cache.
+- **Quantization** stores each weight in fewer bytes, which moves memory-bound work up the slanted roof.
+- **Deployment & serving** groups many users together, so each weight carried in from memory feeds more rows.
+- **Scaling laws** measures the cost of training by counting FLOPs, which is fair only because large-batch training sits near the flat roof, where arithmetic sets the time.
+- **FlashAttention**, a method published in 2022, reorganized a step inside many chatbot models called attention. It sped attention up by moving fewer bytes to and from memory rather than by cutting the arithmetic, which makes it a roofline argument put to work.
+
+**The architecture zoo** comes next, showing other ways to wire a network that differ in how much of this parallel shape they keep. A recurrent network, for example, has to finish each step before it can start the next.

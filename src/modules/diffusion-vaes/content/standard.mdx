@@ -1,0 +1,226 @@
+---
+objectives: ["Contrast iterative denoising with latent reconstruction", "Interpret a continuous latent space"]
+terms: ["Latent", "Diffusion", "Noise schedule", "Denoiser", "Reverse process", "VAE", "Encoder", "Decoder", "Reparameterization", "KL divergence", "Latent interpolation", "Classifier-free guidance", "Latent diffusion", "Flow matching"]
+---
+
+## The big picture
+
+This module asks how a trained network can make a whole new image from a compact code or from noise.
+A **variational autoencoder (VAE)** compresses each image to a short code, its **latent**, and
+decodes a code to an image in one forward pass. A **diffusion** model trains a **denoiser** to
+predict the noise added to an image, then generates by removing noise from a fresh draw over many
+sequential steps.
+
+The encoder and decoder are stacked dense layers like those built in Stacking neurons, and the
+denoiser is a convolutional U-Net, made of hidden layers that share their weights across image
+positions. That module's contrast between memorizing and learning the pattern returns here: an exact
+denoiser that copies, beside a trained one that draws new digits.
+
+### Where it shows up
+
+- **Image, audio and video generation.** Diffusion is a widely used mechanism behind all three.
+- **Latent diffusion.** Many image generators, Stable Diffusion among them, run diffusion inside an
+  autoencoder's compressed latent and then decode the result once.
+- **Prompted generation.** The prompt enters the denoiser through cross-attention, and the scale of
+  **classifier-free guidance** sets how strongly the sample follows it.
+- **Newer formulations.** Flow matching, which trains the network to predict a velocity carrying
+  noise to data, underlies several recent image models. Distillation cuts a sampler's many steps to
+  a few.
+- **Text.** Diffusion language models update every position of a passage together rather than one
+  token at a time, but have trailed autoregressive models in quality.
+
+### Why it matters
+
+Both families generate from a random draw, a latent code or a noise image, rather than by looking an
+image up, and they pay different costs. A VAE decodes in one pass but blurs, because a pixel-wise
+loss scores a blend of plausible digits above any single guess. Diffusion makes one network call per
+step, each waiting for the last. Three pieces each prevent a specific failure:
+
+- **A schedule that ends in noise.** Generation starts from a fresh noise draw, so the forward
+  process has to end at almost pure noise. Otherwise the denoiser starts from inputs unlike its
+  training data, and the samples stay noisy.
+- **Reparameterization.** Backpropagation cannot pass through a random draw, so the reconstruction
+  loss would never reach the encoder. Drawing the noise as a separate input lets it through.
+- **A network short of the optimum.** Sampling with the minimum-error denoiser for a finite training
+  set can only return one of its images, so new samples need a network that does not reach that
+  optimum.
+
+### What you will be able to explain
+
+- Contrast iterative denoising (one denoiser call per step, each needing the previous output) with
+  latent reconstruction (one decoder pass from a compact code).
+- Interpret a continuous latent space: why nearby codes decode to similar digits, and why the
+  decoder blurs where digit regions meet.
+
+### What the lab shows
+
+The VAE's encoder and decoder and the diffusion denoiser were trained on MNIST handwritten digits,
+ship as ONNX model files and run in the app; each card's status chip says what is running. **Model**
+switches between `Diffusion` and `VAE`, and the diffusion half noises the VAE decoder's output at
+the current latent point.
+
+**Forward process** noises that digit in closed form, with no network; only its
+`Noise-prediction error by step` chart is measured, on this one digit and noise draw. In
+**Reverse diffusion**, `Denoiser` picks the `Trained network` or the `Ideal denoiser`, exact
+arithmetic over 64 VAE-drawn references rather than a model. `Start from` and `Noise seed` set the
+starting point and the randomness, and **Denoiser calls** scrubs the run from noise to sample.
+
+**Latent map** shows the real decoder on a 16 × 16 grid of latent points: drag the point, or use
+`Latent z₁` and `Latent z₂`. **Encode a drawing** sends a drawing or a hand-drawn preset through the
+real encoder and decoder. For that one image it prints the reconstruction's binary cross-entropy
+(BCE) and the KL divergence (KL) of the encoder's Gaussian from the prior.
+
+Dataset-wide figures in the lesson and card notes, such as classifier readings of generated samples,
+are fixed offline measurements. The key experiment keeps one `Noise seed` and switches `Denoiser`:
+the ideal denoiser lands exactly on one reference, and the trained network draws a digit that is
+none of them.
+
+## What it is
+
+Every other lab in this course predicts the next token. This one covers the other main family of
+generative models: those that produce a whole image at once, either from a compact code or from
+noise. Both halves of the lab run real models trained on MNIST digits.
+
+### The VAE: compress, then decode
+
+A **variational autoencoder** trains two networks together. The **encoder** maps an image to a
+distribution over a low-dimensional **latent** space: a mean μ and a log-variance for each dimension.
+The **decoder** maps a latent point back to an image in one forward pass.
+
+The shipped VAE has a two-dimensional latent, so every image becomes a point you can see on a map.
+Its training loss, per image, is:
+
+- a reconstruction term, binary cross-entropy summed over 784 pixels;
+- plus 0.35 × a **KL divergence** that pulls each encoder Gaussian toward the standard normal prior.
+
+Sampling is not differentiable, so training uses the **reparameterization** `z = μ + σ ⊙ ε` with ε
+drawn separately. The randomness becomes an input and gradients flow through μ and σ.
+
+### Diffusion: destroy, then learn to undo
+
+The forward process is fixed and needs no learning. With a **noise schedule** of variances `β_t`,
+the noised image at any step has a closed form:
+
+`q(x_t | x₀) = N(√ᾱ_t · x₀, (1 − ᾱ_t) I)`, where `ᾱ_t` is the running product of `1 − β_t`.
+
+The schedule has to end at almost pure noise, because generation starts from a fresh noise draw.
+This lab's cosine schedule leaves √ᾱ = 0.031 of the digit at the last step.
+
+The **denoiser** is trained for one job: given `x_t` and `t`, predict the noise ε that was added.
+Generation, the **reverse process**, starts from noise and applies the DDPM update once per step:
+
+`x_(t−1) = (x_t − β_t / √(1 − ᾱ_t) · ε̂) / √α_t + √β_t · z`
+
+Each step is one network call, and each call needs the previous one's output. The shipped denoiser
+is a small convolutional U-Net with 1,181,217 parameters, trained for 45 epochs on all 60,000
+MNIST training digits.
+
+## Why it’s here
+
+Diffusion and VAEs are a useful contrast: not every generative model works autoregressively. This
+lab's VAE also turns the latent space into something you can navigate rather than a hidden
+implementation detail.
+
+The two approaches are complementary, a point `Going deeper` returns to.
+
+## How to play with it
+
+### Diffusion
+
+1. In **Forward process**, read the strip from x₀ to `t = 99` and the `Noise schedule` chart. The
+   signal coefficient √ᾱ falls to 0.031, so the last tile is static.
+2. In **Reverse diffusion**, keep `Denoiser` on `Trained network` and `Start from` on `Pure noise`,
+   then drag **Denoiser calls** from 0 to 100. Watch x, the predicted x̂₀ and the predicted ε̂ change
+   call by call, and **Background pixels** climb.
+3. Keep the seed and switch `Denoiser` to `Ideal denoiser`. At 100 calls, compare the two samples and
+   the nearest reference printed below the slider. Then change `Noise seed` and watch both change.
+
+### VAE
+
+1. Switch **Model** to `VAE` and drag the point across the **Latent map**, or use `Latent z₁` and
+   `Latent z₂`. Watch the digit morph, then drag through the crowded middle and watch it blur.
+2. In **Encode a drawing**, load `7` and then `3`, or draw a digit. Compare `decoder(μ)` with your
+   input and read the BCE and KL rows.
+
+## What to notice
+
+- Adding noise is one line of arithmetic. Only the reverse direction needs a trained network.
+- With seed 7 from `Pure noise`, the trained network turns static into a digit: **Background pixels**
+  climb from 0.17 to 0.82. The ideal denoiser, given the same noise, lands exactly on reference #64.
+  The network's sample is nearest to reference #28, at a squared distance of 0.26, and is none of them.
+- The ideal denoiser holds its weight spread over many references at first. At seed 7 one reference
+  has half the weight after 15 calls and 99% after 32, and from then on x̂₀ is that reference.
+- The network's noise-prediction error is 0.60 at `t = 0`, its worst, and under 0.001 at `t = 99`.
+  Predicting ε is hardest when there is little of it.
+- On the latent map, nearby points decode to similar digits. Each digit owns a region, the regions
+  meet in a crowded middle, and the decoder blurs there.
+- The `7` preset encodes to μ = (1.55, 0.02), among the 3s, and decodes as a 3. Its BCE is 211.6
+  nats and its KL 6.26. The `3` preset comes back as a blurry 3 (BCE 121.1). The 7 shows a
+  different failure: a wrong digit, not only a blurry one.
+
+## Where it breaks
+
+### In this lab
+
+- **The denoiser is small and unconditional.** It has 1,181,217 parameters, saw only 28 × 28 MNIST
+  digits, and takes no label, so the seed picks the digit and you cannot ask for one. Offline, an
+  independent classifier read 256 of its pure-noise samples with a mean confidence of 0.95, over
+  0.9 for 86% of them, against 0.99 for real test digits. The rest are malformed or ambiguous.
+- **The samples are new, not copies.** Their average distance to the nearest training digit is 4.45,
+  against 4.11 for real test digits, and 2% of them sit within 1.5 of one, against 4% of real test
+  digits.
+- **The ideal denoiser is arithmetic, not a model.** It is the exact posterior mean over 64
+  reference digits drawn by the VAE decoder, and it can only ever return one of them. From pure
+  noise, seeds 1 to 24 end on 20 different references.
+- **The schedule is not exactly pure noise.** √ᾱ is 0.031 at the last step, so `Noised x₀` and
+  `Pure noise` give almost the same sample. The sampler is plain 100-step DDPM, with no guidance.
+- **The VAE is two-dimensional on purpose.** Its codes spread wider than the prior (standard
+  deviations 1.41 and 1.55), and 15% of test digits land beyond radius 3, where the prior puts
+  1.1%. A draw from the prior mostly hits the crowded middle: 48% of 10,000 prior draws are read
+  with confidence above 0.9, against 86% of the network's samples.
+- Presets and drawings are not MNIST digits; they skip MNIST's size normalization and centring.
+
+### In real systems
+
+VAE samples are characteristically blurry: a pixel-wise reconstruction loss rewards hedging, so
+averaging several plausible outputs scores better than committing to one. With a KL weight below 1,
+as here, the objective is a β-VAE loss rather than the exact negative ELBO.
+
+Diffusion sampling needs many sequential network calls. Guidance at high strength causes
+oversaturation. Diffusion models can reproduce individual training images, especially duplicated
+ones (Carlini et al., 2023).
+
+Likelihoods are awkward for both families. A VAE gives a lower bound (the ELBO), and a diffusion
+model gives a bound or an expensive estimate, unlike the exact per-token likelihood of an
+autoregressive model. Common image metrics compare feature distributions and miss failures a human
+notices at once.
+
+## Going deeper
+
+### Why a real network can generate new images
+
+The ideal denoiser shows that the exact optimum of the training objective, on a finite set,
+memorizes. Trained networks generalize because they do not reach it: their architecture and limited
+capacity smooth between training images. That gap between optimum and practice is where new samples
+come from, and the lab shows it: same noise, same seed, one copy and one new digit.
+
+### Combining the two ideas
+
+**Latent diffusion** trains an autoencoder that shrinks each image side by a factor of 8, runs
+diffusion in that spatial latent, and decodes once at the end. The cost reduction made
+high-resolution generation practical.
+
+Text prompts enter through cross-attention, so the denoiser predicts noise *given* a description.
+**Classifier-free guidance** extrapolates from the unconditional prediction toward the conditional
+one. Guidance scale is the most consequential setting: too low ignores the prompt, too high
+oversaturates.
+
+### Newer formulations
+
+**Flow matching** and rectified flow train a network to predict a velocity field that carries noise
+to data along nearly straight paths. Several recent image models, such as Stable Diffusion 3 and
+Flux, use it. Separately, distillation compresses a many-step sampler into 1 to 4 steps.
+
+Diffusion has also been applied to text, refining all positions in parallel instead of one token at
+a time as in the inference lab. Quality has trailed autoregressive models, and it remains active
+work.

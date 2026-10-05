@@ -1,0 +1,129 @@
+---
+objectives: ["Compute cosine similarity and dot product between a query vector and passage vectors, and explain when the two rank differently","Explain why dense retrieval can match a paraphrase that keyword search misses, and why the nearest passage is not proof of truth or of an answer","Read recall@k to say what an approximate index gives up in exchange for scoring fewer vectors"]
+terms: ["Embedding","Encoder","Mean pooling","Query vector","Dot product","Cosine similarity","Nearest neighbour","Dense retrieval","Keyword retrieval","Approximate nearest neighbour","IVF index","Recall@k"]
+---
+
+## The big picture
+
+This module is about embedding search, or **dense retrieval**. An **encoder**, the function that maps text to a fixed-length vector, embeds the query and every stored passage, and passages are ranked by how well their vectors line up with the query's. Retrieval answers a lookup question: which stored passages are nearest to this query? The module also asks what nearest does and does not guarantee.
+
+It builds on **Tokens & embeddings**, which showed vectors inside a language model. Here vectors do a different job: finding which stored text to hand to a model. The module compares **cosine similarity** (direction only) with the **dot product** (direction and length), sets dense retrieval against keyword matching, and ends with an index that scores only part of the store.
+
+### Where it shows up
+
+- **Retrieval-augmented generation**: ranked passages become prompt context. That lab reuses this encoder next to BM25, a standard keyword-scoring method.
+- **Production encoders**: trained transformers such as Sentence-BERT, with hundreds to thousands of unnamed dimensions in place of eight named ones.
+- **Large indexes**: approximate search over millions of vectors. IVF groups vectors into cells and opens only a few per query, HNSW walks a proximity graph toward the query, and product quantization compresses vectors. Settings such as the number of probed cells trade recall for speed.
+- **Hybrid search**: BM25 and dense results are merged and often reordered by a cross-encoder, a reranker that reads query and passage together. The keyword half is there partly because dense vectors can blur names, part numbers and codes.
+- **Failure modes, safety, and security**: this lab's Visitor notice, a passage carrying a planted instruction, comes back as an attack that retrieval delivers.
+
+### Why it matters
+
+- **Paraphrase.** Keyword search finds only passages that share a word with the query. Dense retrieval can also find one that says the same thing in other words, because the encoder gives related words similar vectors.
+- **Score choice.** The dot product rises with vector length as well as with how closely the directions match, so when stored vectors differ in length, cosine and dot product can order the same passages differently.
+- **Scale.** Exact search scores every stored vector. An **approximate nearest neighbour** index scores fewer and can miss true neighbours. **Recall@k**, the share of exact search's top k that the index still returns, measures that loss.
+- **Trust.** A top score measures only how well two vectors line up. It does not check that a passage is true or answers the question, so a stale timetable, a planted instruction or an off-topic passage can rank first.
+
+### What you will be able to explain
+
+- Compute cosine similarity and the dot product between a query vector and passage vectors, and say when the two rank passages differently.
+- Explain why dense retrieval can match a paraphrase that keyword search misses, and why the nearest passage is proof neither of truth nor of an answer.
+- Read recall@k to say what an approximate index gives up in exchange for scoring fewer vectors.
+
+### What the lab shows
+
+Nothing here was trained or measured. The lexicon and the twelve harbor passages are authored, the scores, angles and recall are closed-form arithmetic, and the IVF cells come from a deterministic k-means run. The encoder gives each known word a hand-set vector on eight named dimensions and averages them, which is **mean pooling**. Text typed into **Your passage** joins the index. Keyword rank is a shared-word count, a crude stand-in for BM25.
+
+**Query and vectors** marks which query words the lexicon knows and which it ignores, and shows the eight components of the query vector q. **Angle to the query** draws each passage vector d at its true angle to q, the only real geometry in that picture, and **Score** switches between *cosine* and *dot product*.
+
+**Ranked neighbours** lists the top six by exact search, highlights the top k set by the **Top-k** slider, and gives keyword ranks. **Worked similarity** prints q × d for each dimension and sums the products.
+
+In **Exact versus approximate**, **Cells** and **Cells probed** set how much of an IVF index is scored, and **Recall@k** (Recall@3 by default) compares the result with exact search.
+
+Across the cards, three experiments with **Preset query** show the main effects:
+
+- *dog on the boat*: **Pets on board** ranks first by cosine with no shared word, while its keyword rank is sixth.
+- *password*: **Lost property** and **Visitor notice** swap places when **Score** flips.
+- *password* at Cells 4: probing one cell instead of two drops Recall@3 to 0.67, with 2 of 12 vectors scored. The other three presets keep Recall@3 at 1.00 there.
+
+## What it is
+
+Embedding search turns text into vectors, then ranks stored vectors by how well they line up with the query vector. Nothing is generated. The output is an ordered list of passages.
+
+The pipeline has three parts:
+
+1. An **encoder** maps each passage to a fixed-length vector once, at indexing time.
+2. The same encoder maps the query to a **query vector** q at search time.
+3. A score — **cosine similarity** or the **dot product** — compares q with every stored vector d, and the top-k scores win.
+
+### The encoder on this page
+
+The encoder here is deliberately readable. It has eight named dimensions: time, place, travel, weather, animals, access, safety and money. Each known word has a small authored vector on them, so `dock` is `[0, 1, 0, 0, 0, 0, 0, 0]` and `ticket` loads 0.6 on travel and 0.6 on money. A passage vector is the mean of its known word vectors, which is **mean pooling**. Unknown words are ignored.
+
+### The two scores
+
+The dot product multiplies matching components and adds them: `q·d = Σ qᵢ dᵢ`. Geometrically, `q·d = |q| |d| cos θ`, where θ is the angle between the vectors.
+
+Cosine similarity divides out both lengths: `cos θ = q·d / (|q| |d|)`. It keeps only direction. When every vector has length 1, the two scores are the same number.
+
+## Why it’s here
+
+Retrieval is the first stage of retrieval-augmented generation, the next lab. Whatever this stage misses, the generator never sees. So the questions here — what counts as near, and what an index skips — decide what a later answer can be based on.
+
+## How to play with it
+
+### Read a query vector
+
+Leave **Preset query** on *pier shut*. The query is “When is the pier shut on Sunday?”. Four words are known — when, pier, shut, sunday — and three are ignored. The bars show q = `[0.68, 0.25, 0, 0, 0, 0, 0, 0]` with |q| = 0.720.
+
+### Measure an angle
+
+Click **Dock hours** in **Ranked neighbours**. On **Angle to the query** it sits 1.9° from the query arrow, and **Worked similarity** prints cos θ = 0.999. The only non-zero products are on time and place, because the query says nothing about the other six topics.
+
+### Compare a paraphrase with keywords
+
+Set Preset query to *dog on the boat*. **Pets on board** is #1 by cosine at 0.881, with zero shared words: the passage says “pets” and “travel”, the query says “dog” and “boat”. Its keyword rank is #6. Counting shared words would put **Mooring fees** first, on the single word “boat”.
+
+### Switch the score
+
+Set Preset query to *password* and flip **Score**. By cosine, **Lost property** (0.981) beats **Visitor notice** (0.955). By dot product the order reverses, 0.306 against 0.238, because Visitor notice's vector is longer: |d| = 0.565 against 0.427.
+
+### Search approximately
+
+Keep *password*. Set **Cells** to 4 and **Cells probed** to 1. Recall@3 falls to 0.67 with only 2 of 12 vectors scored. Raise Cells probed to 2 and recall returns to 1.00 with 7 scored.
+
+## What to notice
+
+- On **Angle to the query**, rank is position along the query axis. In cosine mode the x-coordinate is cos θ; in dot mode it is |d| cos θ.
+- The dot product rewards length. With mean pooling, a passage whose known words all point at the same topics ends up longer.
+- Dense search matches paraphrases because different words can load on the same dimensions. It does not need a shared token.
+- The top passage for *password* is a hostile notice or a lost-property rule. Nearest is a geometric fact, not a quality check.
+- With three cells and one probe, all four presets keep recall at 1.00. The miss only appears at four cells. Recall is a property of the index and the query together.
+
+## Where it breaks
+
+### In this lab
+
+- The eight dimensions and every word loading are authored. Nothing was trained.
+- Mean pooling throws away word order, so “dogs chase cats” and “cats chase dogs” get the same vector.
+- Words outside the lexicon contribute nothing. A query of only unknown words is the zero vector, and every score is 0.
+- The angle picture is honest only about each passage's angle to the query. Distances between dots on screen are not distances in eight dimensions.
+- Twelve passages make approximate search pointless for speed. The cells exist to make the recall trade visible.
+
+### In the real mechanism
+
+- **Near is not true.** The encoder measures similar use. A stale timetable or a planted instruction can be the nearest neighbour.
+- **Near is not an answer.** For *pier shut*, #2 is **South dock** at 0.989 — a passage about when a dock is open. Words with opposite meanings often share contexts, so their embeddings can sit close together.
+- **Encoders must match.** The query and the documents must go through the same model, including any query or passage prefix it was trained with. Mixing encoders makes the neighbours noise.
+- **Rare exact tokens.** Dense vectors can blur names, part numbers and codes that keyword search matches exactly. That is one reason production systems run hybrid search.
+- **Approximation is tuned, not guaranteed.** Recall is measured on sample queries and changes as the index grows.
+
+## Going deeper
+
+Production encoders are transformers trained contrastively: matching query–passage pairs are pulled together and other passages in the batch are pushed apart. Sentence-BERT and dense passage retrieval are well-known examples. Their vectors have a few hundred to a few thousand unnamed dimensions and are often normalized so that dot product and cosine agree.
+
+Large indexes use approximate search. IVF, as in this lab, partitions vectors with k-means. HNSW builds a layered proximity graph and walks it greedily. Product quantization compresses vectors so more of them fit in memory. Each exposes knobs that trade recall for speed.
+
+Retrieval stacks usually combine stages: keyword scoring such as BM25 and dense scoring, merged with a method like reciprocal rank fusion, then a cross-encoder reranker that reads query and passage together.
+
+Retrieval-augmented generation takes these ranked passages and puts them in a prompt. It also brings this encoder back as a dense retriever beside BM25, so you can see where each one fails. Failure modes, safety, and security returns to the Visitor notice as an attack that retrieval happily delivers.

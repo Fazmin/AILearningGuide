@@ -1,0 +1,267 @@
+---
+objectives: ["Read a learning-rate schedule as a function of training progress", "Explain why decay lets you use a larger peak learning rate", "Tell an overshooting run from a diverging one, and see what a gradient clip changes", "Judge whether a difference between two runs is larger than the spread that the shuffle seed alone produces", "Explain how a gradient can explode or vanish with depth, and what a norm clip can and cannot fix"]
+terms: ["Learning rate", "Schedule", "Warmup", "Cosine decay", "One cycle", "Gradient clipping", "Gradient norm", "Weight decay", "Overshooting", "Divergence", "Seed", "Seed band", "Exploding gradient"]
+---
+
+## The big picture
+
+A **hyperparameter** is a setting chosen before training rather than learned. This module covers
+the ones that size each update: the **learning rate**, the **schedule** that changes it over the
+run, and the gradient clip, weight decay and batch size around them. It asks how large each step
+should be at each point in training, and when a gap between two recipes is real.
+
+It builds on Anatomy of a training run, which named the stages of one training loop. Here that
+loop runs four times side by side, changing only the learning-rate rule, so each choice is judged
+from a measured loss curve.
+
+### Where it shows up
+
+Both GPT-3 and Llama 2 report a short linear **warmup** followed by **cosine decay** to 10
+percent of the peak, weight decay of 0.1, and a clip of 1.0 on the global gradient norm.
+Warmup-stable-decay schedules hold the rate constant for most of training and decay only at the
+end. Clipping exists because the gradient norms of deep networks can spike by orders of
+magnitude within one step.
+
+### Why it matters
+
+The peak rate can fail both ways. Too small leaves the loss high when the step budget runs out.
+Too large makes each step longer than the local slope justifies, so it passes the minimum and the
+loss rises: **overshooting**. Enough of it can end a run worse than a model that learned nothing.
+In a deep network a gradient spike can push the weights to non-finite values that no later step
+recovers: **divergence**.
+
+Judging the result can fail too. One run is one sample of the shuffle order, so a gap smaller
+than the seed-to-seed spread cannot be told from noise. Frontier settings come from sweeps on
+small proxy models, so a sweep fooled by seed noise passes the mistake on.
+
+### What you will be able to explain
+
+- How to read a learning-rate schedule as a function of training progress.
+- Why decay lets a run use a larger peak learning rate than a constant rate can.
+- How to tell an overshooting run from a diverging one, and what a gradient clip changes.
+- How to judge whether a difference between two runs is larger than the spread that the
+  shuffle seed alone produces.
+- How a gradient can explode or vanish with depth, and what a norm clip can and cannot fix.
+
+### What the lab shows
+
+The lab trains for real: four runs of a tiny 900-weight character model on one 499-character
+corpus, by plain minibatch gradient descent from the same zeroed weights and **seed**, differing
+only in schedule. **Loss for all four schedules** and **Stability readout** show measurements
+from those runs, and every dial on **Optimizer controls** retrains all four. The model's
+gradients are bounded, so a high rate makes it overshoot but never diverge;
+**Gradient through depth** is where an explosion appears.
+
+Four parts are not training results:
+
+- **Learning-rate schedule shapes** plots the closed-form rate for each **Schedule** option
+  (Constant, Cosine decay, Warmup + decay, One cycle), read at one point by **Inspect epoch**.
+- The dotted "knows nothing" line on **Loss for all four schedules** is the fixed baseline
+  ln 30 = 3.401.
+- The dotted "√2 bound" on **Stability readout**, and the note under it, give the closed-form
+  ceiling on every batch gradient norm the trace plots: √2 ≈ 1.41.
+- **Gradient through depth** is closed-form, with no weights or data: **Layers** and **Gain per
+  layer** set a gradient that compounds once per layer, and **Depth clip** caps its total length.
+
+**Optimizer controls** holds **Peak learning rate**, **Warmup fraction**, **Gradient clip**,
+**Weight decay** and **Batch size**. The key experiment: raise **Peak learning rate** from 0.6
+and **Best schedule here** flips from Constant to a decaying schedule, then Constant ends above
+the "knows nothing" line and **Worse than chance** counts it. **Five seeds** under **Seeds** shows
+whether each gap beats the shuffle spread.
+
+## What it is
+
+A **schedule** sets the **learning rate** from how far through the run you are, rather than
+holding it fixed. The top chart plots exactly that: **Peak learning rate** multiplied by a
+factor that depends only on progress from 0 to 1. The four shapes differ in where they put the
+step budget:
+
+- **Constant** holds the full peak rate from the first batch to the last.
+- **Cosine decay** starts at the peak and eases down to 3 percent of it.
+- **Warmup + decay** ramps from near zero to the peak across the **Warmup fraction**, then
+  falls linearly to 5 percent.
+- **One cycle** starts at a tenth of the peak, rises to it over the **Warmup fraction**, then
+  cosines down to 2 percent.
+
+Below that, four separate runs train on the same corpus, from the same zeroed weights, with the
+same **seed** — 25 epochs, 800 optimizer steps each. The only difference between them is that
+factor. The dotted "knows nothing" line sits at ln 30 = 3.401 nats per token, and
+**Worse than chance** counts how many of the four runs end above it.
+
+Two further controls answer what a single run cannot. **Seeds** repeats every run over five
+shuffle orders and shades the spread. **Gradient through depth** is a closed-form model, not a
+trained network, of a gradient passing back through many layers, so the explosion that this
+model cannot produce can be shown and clipped.
+
+## Why it’s here
+
+The learning rate decides whether a run converges at all. But the useful claim is sharper than
+"tune the learning rate": a schedule is what makes a *large* peak rate usable.
+
+A single fixed rate has to satisfy two conflicting requirements. Early on the weights are far
+from anything good, so long steps make progress fast. Late on the weights are near a minimum,
+so the same long steps overshoot it, and the loss stops falling or rises.
+Decay lets one run be aggressive at the start and settled at the end, which is why the winning
+schedule changes as you move **Peak learning rate**.
+
+## How to play with it
+
+Click through all four **Schedule** options and watch only the top chart first: the shaded bands
+mark the selected schedule's warmup and decay phases, and **Inspect epoch** moves a dot along
+the curve that reads the rate at that step. With **Warmup + decay** at the defaults the warmup
+lasts 120 of 800 steps, and epoch 12 reads a rate of 0.378.
+
+The first metric under the loss chart is named after whichever schedule is selected — **Cosine
+decay final loss** on load — while **Best schedule here** and **Best final loss** always report
+the winner of the four. Then compare at rising peak rates:
+
+- **Peak learning rate** 0.6, the default: constant 2.075, cosine 2.255, warmup + decay 2.251,
+  one cycle 2.254. **Best schedule here** reads Constant, and it wins by a wide margin.
+- At 6: constant 1.880, cosine 1.846. The order has flipped.
+- At 12: constant 2.093, cosine 1.816. Constant is going backwards; cosine keeps improving.
+- At 30: constant 3.020, cosine 1.802. Between 35 and 38 the constant run's final loss on
+  seed 1 crosses 3.401 (3.332 at 35, 3.537 at 38) and **Worse than chance** flips to 1 / 4 while the
+  decaying runs stay near 1.80.
+
+Now set **Peak learning rate** to 30 and **Batch size** to 2. The constant run lands at 12.325,
+far worse than knowing nothing. Bring **Gradient clip** up to `norm ≤ 0.50` and the same run
+returns 6.522. At **Batch size** 16 that clip moves 3.020 to 2.884.
+
+Now set **Peak learning rate** back to 0.6, **Batch size** to 16, and switch **Seeds** to **Five
+seeds**. Each schedule gains a shaded band and the table lists the final loss of every seed.
+**Constant** spans 2.075 to 2.077, so its lead of 0.175 over the best decaying schedule is about
+fifty times the band.
+
+Cosine decay, One cycle and Warmup + decay each move by about 0.004 between seeds and end within
+0.004 of each other, so their order is inside the band. The callout says which pairs fall where.
+
+Raise **Peak learning rate** to 6, then 30, and read **Constant**'s band. At 6 it runs from 1.880
+to 2.008 and Cosine decay's top is 1.847, so all five seeds agree that the order flipped. At 30
+it runs from 2.395 to 4.673: seed 1's 3.020 is one point inside it, and two of the five seeds
+already end worse than chance.
+
+Last, scroll to **Gradient through depth**. At 24 layers and a **Gain per layer** of 1.20, the
+input layer sees 66 times the length of the output layer and the whole gradient is about 120.
+Set **Depth clip** to 1.0: the whole gradient becomes exactly 1.0, every layer scaled by the
+same factor, 0.0083.
+
+Then set 40 layers and a gain of 0.80. The first layer now sees under a thousandth of the
+output gradient, and no setting of **Depth clip** raises it.
+
+## What to notice
+
+- **Warmup fraction** changes only two of the four curves. **Constant** and **Cosine decay**
+  ignore it entirely; only **Warmup + decay** and **One cycle** read it.
+- No schedule here reaches zero: cosine bottoms at 3 percent of the peak, warmup + decay at 5
+  percent, one cycle at 2 percent. How low to decay is a real design choice: many recipes stop
+  near 10 percent of the peak, and others decay linearly all the way to zero.
+- Constant's final loss is not monotone in the peak rate — 2.075 at 0.6, 1.880 at 6, then back
+  up through 2.093 at 12 and 3.020 at 30. There is a best fixed rate, and it is narrow.
+  Cosine's own best is about 1.80 near a peak of 30, and at the top of the slider it has crept
+  back up to 1.809: a schedule makes a large peak rate usable, not free.
+- **Peak gradient norm** falls as **Batch size** rises: about 1.41 at 2, about 1.00 at 16, and
+  0.181 at 64, all at a peak rate of 30. Averaging over more pairs shrinks the gradient; that is
+  the gradient-noise side of batch size. **Gradient clip** above about 1.4 never binds anywhere.
+- The trace on **Stability readout** shows where the peak comes from at 16: most steps sit near
+  0.2, and each epoch's last batch holds only 2 of the 498 pairs, so its norm jumps toward 0.8.
+- **Weight decay** makes the fit worse here, not better: with **Constant** at a peak of 0.6,
+  0.02 of decay takes the final loss from 2.075 to 2.664. It applies to the rows updated in
+  each step, so a row only decays on steps where its character appeared. With plain SGD, adding
+  the decay to the gradient is the same step as decoupled decay. It is a regularizer, and this
+  lab has no held-out score for it to improve.
+- A gap is only evidence when it is larger than the **seed band**. At the default peak, Constant
+  leads by 0.175 against a band of 0.004. The closest pair, One cycle and Cosine decay, differ by
+  0.0002 on average against a spread of 0.004, so a single run cannot say which is better.
+- The band is not the same width everywhere. Constant's is 0.002 wide at a peak of 0.6, 0.128 at
+  6, 0.490 at 12 and 2.278 at 30. The decaying schedules stay under 0.011 at every one of those.
+  A high peak makes Constant's result depend heavily on the shuffle, so a one-seed number there
+  is close to a coin flip.
+- The clip's rescue is larger than the band at **Batch size** 2: unclipped runs at a peak of 30
+  end between 9.854 and 12.325, clipped at 0.50 between 6.168 and 6.522. At **Batch size** 16 the
+  clipped range, 2.308 to 3.606, overlaps the unclipped one, so seed 1's 3.020 to 2.884 alone
+  does not show a rescue.
+- A clip rescales the whole gradient by one factor, so it keeps the direction across layers and
+  caps only the length. It can only shorten: raising **Depth clip** never lifts a vanished
+  gradient, and a clip set above the whole length does not bind at all.
+- At a gain of exactly 1.00 every layer has length 1 and the whole gradient is the square root of
+  the layer count. The explosion or collapse comes entirely from the gain differing from 1,
+  compounded once per layer.
+
+## Where it breaks
+
+**In this lab.** Four real runs, four real curves, one fixed **seed** by default so the
+comparison is about the schedule and nothing else. That fixed seed is also a limit: each number
+is one sample. **Five seeds** adds the missing error bar, but five is a small sample and the band
+is the range of those five, not a confidence interval. It measures the shuffle order and nothing
+else: not the corpus, the model size, or the learning-rate grid.
+
+The more important caveat is instability. **This model cannot produce a gradient explosion.**
+For softmax cross-entropy through a single linear layer, each row's gradient is a probability
+vector minus a one at the true character, so its length is bounded — the measured **Peak
+gradient norm** stays between about 0.17 and 1.41 at every setting the sliders allow.
+
+What high rates produce here is repeated **overshooting**: steps longer than the local slope
+justifies, travelling past the minimum. Strict **divergence** — non-finite weights that no later
+step can recover — never happens inside these ranges; the worst run you can build stays finite
+and merely terrible.
+
+**Gradient clipping** still helps because it caps how far a single step can travel, limiting
+the damage from a long step even when the gradient was never unusual. That is why it does most
+at **Batch size** 2, where each batch's gradient is the noisiest estimate of the true one.
+
+The **Gradient through depth** card is how this lab shows an **exploding gradient** at all, and
+it is a different kind of object. It has no weights, activations, or data: each layer multiplies
+the gradient by the same gain, and the output gradient is set to 1.
+
+A real network's factor varies with its weights, activation function, and input. The card shows
+the mechanism, a product that compounds once per layer, and what a clip does to it, not how a
+real network behaves.
+
+The rest are the usual limits of this model — one character of context, 900 weights, no hidden
+layers, no tokenizer, a 499-character corpus, plain gradient descent rather than Adam, and a
+**Peak learning rate** slider that stops at 60. The plotted loss is training loss, so nothing
+here shows a hyperparameter helping generalization.
+
+**In real systems.** Deep networks multiply many local derivatives together on the way back, so
+their gradient norms genuinely can spike by orders of magnitude within one step. Those spikes
+are what clipping was built for. Both GPT-3 and Llama 2 clip the global gradient norm at 1.0
+(Brown et al., arXiv 2005.14165, Appendix B; Touvron et al., arXiv 2307.09288).
+
+Do not read this lab as a demonstration of one. **Warmup** matters far more with Adam, whose
+running estimate of each coordinate's gradient magnitude is built from almost no data for the
+first few hundred steps, making early steps large and badly calibrated.
+
+## Going deeper
+
+**The shape people actually use.** A short linear **warmup**, then **cosine decay** to 10
+percent of the peak, which is what both GPT-3 and Llama 2 report. Its drawback is that the shape
+depends on the total step count, so you cannot extend the run afterwards without discarding it.
+Warmup-stable-decay schedules hold a constant rate for most of training and decay only in a
+short final phase, which leaves you free to stop anywhere and still get the settling.
+
+**Learning rate and batch size are one knob.** Doubling the batch halves the variance of the
+gradient estimate, which supports a larger step; the common rules scale the rate linearly or by
+the square root of the batch ratio. This lab shows the same relationship from the other side:
+on **Constant** at a peak of 30, **Batch size** 64 finishes at 1.883 and 2 finishes at 12.325.
+
+**Two practical notes.** AdamW's `weight_decay` is decoupled — it subtracts a fraction of the
+weight inside the update rather than adding an L2 penalty to the loss, because under Adam's
+per-coordinate scaling those are not equivalent. And a frontier run happens once, so its
+hyperparameters come from sweeps on much smaller proxy models plus a rule for transferring the
+result. A wrong schedule is not an experiment you rerun.
+
+### Toy versus real
+
+- **Peak rate.** The lab's SGD peak is 0.6, and its useful range runs from about 0.5 to 40. Runs
+  with Adam use far smaller rates, and the two kinds are not comparable. GPT-3 lists peak learning
+  rates from 6.0 × 10⁻⁴ for its 125 million parameter model to 0.6 × 10⁻⁴ for the 175 billion
+  one (Brown et al., arXiv 2005.14165, Table 2.1). Llama 2 lists 3.0 × 10⁻⁴ for its 7B and 13B
+  models and 1.5 × 10⁻⁴ for 34B and 70B (Touvron et al., arXiv 2307.09288, Table 1).
+- **Warmup.** The lab warms up for 15 percent of the run, 120 of 800 steps. Llama 2 warms up for
+  2,000 steps, and GPT-3 over its first 375 million of 300 billion tokens. Against about 500,000
+  updates for Llama 2 (2.0 trillion tokens at a batch of 4 million) that is roughly 0.4 percent of
+  the run, and GPT-3's is 0.125 percent. Both numbers are arithmetic on the papers' figures.
+- **The floor.** The lab's cosine bottoms at 3 percent of the peak. Both papers decay to 10
+  percent of it, and both use weight decay of 0.1 and a clip of 1.0 on the global gradient norm.
+- **Seeds.** The lab can afford five runs per setting. A frontier run happens once, which is why
+  its settings come from sweeps on smaller proxy models, as the section above notes.

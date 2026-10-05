@@ -1,0 +1,143 @@
+---
+objectives: ["Place machine learning, deep learning, and large language models inside AI rather than treating them as synonyms","Name the learning problem as a hypothesis class, a loss, a search over parameters, and a generalization gap","Separate symbolic methods, statistical fitting, and deep stacks, and say what those objects are not","Name where a model's training signal comes from (human labels, structure in raw data, labels made from the data itself, or reward) and tell classification from regression by the kind of output"]
+terms: ["Artificial intelligence","Machine learning","Deep learning","Generative model and large language model","Hypothesis class","Loss","Generalization","Model, training, and inference","Parameter and hyperparameter","Supervised learning","Unsupervised learning","Self-supervised learning","Reinforcement learning","Classification and regression"]
+---
+
+## The big picture
+
+The word AI is applied to a hand-written rule list, a fitted line, and a chat assistant alike. This module gives it structure. Artificial intelligence names a goal. In the vocabulary this course uses, machine learning, deep learning, neural generative models, and large language models (LLMs) are nested methods inside it, drawn as rings in the lab, each with its own mathematical object.
+
+The question it answers: when a system is called AI, what was fitted, from which training signal, and what does the label not claim? The module has no prerequisites. It fixes the vocabulary that later labs keep using, starting with parameters θ: the numbers a method fits from examples, as opposed to rules someone writes.
+
+### Where it shows up
+
+- A chat assistant sits in several rings at once, and its training blends three learning signals: self-supervised pretraining on raw text, supervised tuning on human-written answers, and reinforcement from rewards based on human preferences.
+- A deployed product can wrap a fitted model in retrieval and written rules, and those parts sit in different rings.
+- Rule-based expert systems of the 1980s, such as XCON, are AI with nothing fitted.
+- Language-model pretraining is self-supervised: the text supplies its own labels.
+- House-price prediction is regression; spam filtering is classification.
+
+### Why it matters
+
+Each distinction blocks a specific error. Without the rings, a rule-based checker gets called machine learning, though no θ was fitted. Without the learning problem, a small training loss gets reported as if it measured error on new inputs. Without a line between what the math does and what the word suggests, fluent output gets read as understanding, reasoning, or AGI (artificial general intelligence), none of which the fitted function or its loss requires.
+
+Without the learning signal, nobody asks who defined correct, so a biased label set quietly becomes a biased rule. Without the unsupervised case, a found cluster gets trusted as if it had been scored, though with no target there is nothing to score accuracy against. Without the output-type axis, self-supervised gets confused with classification.
+
+### What you will be able to explain
+
+- How machine learning, deep learning, and large language models nest inside AI, and why the terms are not synonyms.
+- The learning problem as a hypothesis class (the set of functions searched), a loss, a search over parameters, and a generalization gap, the difference between training loss and error on new inputs from the same process.
+- How symbolic methods, statistical fitting, and deep stacks differ, and what none of those objects is: consciousness, folk understanding, or AGI.
+- Where a model's training signal comes from (human labels, structure in raw data, labels made from the data itself, or reward), and how classification and regression differ by the kind of output.
+
+### What the lab shows
+
+Six cards, and only one holds live mathematics. Learning problem searches the class of lines ŷ = wx + b to fit three fixed points under mean squared error. Weight w and Bias b set θ; Take a downhill step subtracts 0.12 times the analytic gradient. Learning object pages authored notes on five pieces, from data to generalization, and does not change the arithmetic.
+
+L MSE, ∂L/∂w, and ∂L/∂b are exact closed-form readouts of your settings; Minimum L is the fixed least-squares bottom. The points are authored, not measured, and generalization is named, not scored.
+
+The other five cards are authored content. Nested methods draws five rings plus a marker for an n-gram, a model that samples from counted word sequences and so is generative without being deep. Inspected method selects one ring and rewrites its caption. What the word hides cuts the word five ways with Distinction.
+
+Era timeline’s Era slider steps through eleven stops from 1956 to 2022. Sort leftover terms (pick from the Leftover terms list, then Place in ring and Place) and What is the learning signal (pick from the Learning scenarios list, then Learning signal and Place) check each guess by table lookup; the latter adds an Output type readout.
+
+The key experiment: set Weight w and Bias b to 0, where L MSE reads about 5.54, then press Take a downhill step several times. L falls as the dot walks down the contour map toward the least-squares bottom. Then, on What is the learning signal, place Raw sentences under supervised and read the correction.
+
+## What it is
+
+Artificial intelligence names a goal: perform a task that used to need judgment. Machine learning is the subset that fits parameters from examples. Deep learning stacks differentiable layers. A generative model draws new samples. A large language model predicts the next token; assistant behavior is added later.
+
+The course treats the common modern stack as nested. That is a vocabulary, not a law. A GAN is generative without being an LLM. A linear regressor is machine learning without being deep. An n-gram can be generative without being deep.
+
+Nested rings cannot draw a property that crosses a boundary, and generative crosses the deep-learning one. So the Gen ring means neural generative models only, and the diagram marks an n-gram inside ML and outside DL instead of inside Gen.
+
+### Function approximation
+
+Most methods you will meet search for parameters θ so that f_θ(x) is close to a target y, or so that p_θ assigns high probability to observed data. The objects are a hypothesis class, a loss, and an optimizer. They are not a model of a mind.
+
+A model is one fixed function f_θ: with θ set, each x maps to one ŷ (or one distribution p_θ(y|x)). Here f_θ is the line wx + b and θ is the pair (w, b). Training searches for θ by lowering the loss on examples. Inference runs the finished f_θ on a new x with θ held still. A setting you choose before the search, like the 0.12 step size, is a hyperparameter.
+
+### The learning problem
+
+On this page the class is every line ŷ = wx + b. Loss is mean squared error on three authored points. A downhill step subtracts 0.12 times ∂L/∂w and ∂L/∂b. Generalization — error on a new x from the same process — is named and not measured.
+
+L is exactly quadratic in (w, b), so its level sets are ellipses. The parameter-space map draws them. Its bottom is the least-squares line w = 0.90, b ≈ 0.88, with L ≈ 0.0089.
+
+### Three families
+
+Symbolic AI uses written rules or search and may have no θ. Statistical machine learning chooses features, then fits θ. Deep learning fits a stack of maps, so features and predictor move together.
+
+### What the word is not
+
+Nothing in f_θ or L requires consciousness or folk understanding. Prediction returns ŷ or p_θ(y|x). Reasoning, when it appears later, is search that may call a predictor. Fluency is not a proof.
+
+AGI, artificial general intelligence, names a hoped-for or feared system that could do any cognitive task a person can. People define it in different ways and there is no agreed test, so it is a goal, not a measured property. Nothing in these labs claims it, and fluency on text is not evidence of it.
+
+### The early-AI thread
+
+The timeline starts before neural nets. The 1955 proposal for the Dartmouth workshop, by McCarthy, Minsky, Rochester, and Shannon and reprinted in AI Magazine in 2006, proposed a two-month summer study of artificial intelligence on the conjecture that any feature of intelligence can be described precisely enough for a machine to simulate it. It listed seven open problems and expected a significant advance in one summer.
+
+Sir James Lighthill's 1973 report said that in no part of the field had discoveries produced the major impact promised, and funding fell: the first AI winter, roughly 1974 to 1980. Expert systems such as XCON, first used at Digital Equipment Corporation in 1980, held knowledge as written rules, so they are AI with no parameters fitted. Their upkeep cost, and the 1987 collapse of the Lisp-machine market, mark a second winter.
+
+The early stops follow the Dartmouth proposal and the Wikipedia articles on the Lighthill report, on AI winters, and on XCON. Winter dates are approximate.
+
+### Supervised: labels from people
+
+The learning signal is where a model's training target comes from, and four signals cover most of this course. A supervised model is fitted on pairs (x, y) where someone supplied y. The labels define what counts as correct, so a biased label set becomes a biased rule. The Learning problem card is supervised: its three y values are the labels. Semi-supervised learning is the same setup when only some rows carry labels and the rest do not.
+
+### Unsupervised: structure without labels
+
+There is no y to match. The model looks for structure in x itself, such as records that cluster together or readings far from the usual pattern. The k-means method in Classical machine learning places centers without reading a label. With no target there is nothing to score accuracy against, so a person still has to judge whether the structure means anything.
+
+### Self-supervised: labels made from the data
+
+Hide part of the data and ask the model to restore it. For text, the label at each position is the next word, which is already in the sentence. For a photo, it is the pixels of a blanked patch. The labels cost nothing, so the training set can be as large as the raw collection. That is why language models can train on far more text than anyone could annotate.
+
+### Reinforcement: a reward after acting
+
+No example gives the right action. The learner acts, receives a reward or penalty afterward, and must work out which earlier choices earned it. The signal is late and sparse, so this is harder to train than labeled pairs. Reinforcement learning foundations runs it later, and Post-training uses human-preference rewards to tune assistants.
+
+### Classification and regression: the kind of output
+
+The output type is a separate question from where the target comes from. Classification returns one category from a fixed set; regression returns a number. A house price is regression, and spam or not spam is classification. A language model's next-word step is classification over a vocabulary, and repairing a blanked photo is regression. So self-supervised and classification answer different questions.
+
+## Why it’s here
+
+Neighboring labs need those words as mechanisms. If they stay interchangeable, later claims about what was learned, generated, or merely wrapped become untestable.
+
+The line-fit sits beside the rings so “learns from examples” is a visible search over two numbers, not a slogan. The timeline sits beside both so each era is a limit: a goal with no method, results that did not scale, rule bases too costly to maintain, XOR, missing compute and data, one-step-at-a-time recurrence, quadratic attention.
+
+The learning-signal sort is here because classical methods, next-token prediction, and post-training each lean on a different signal.
+
+## How to play with it
+
+Inspected method, or a click on a circle or key row, selects a ring and rewrites the caption.
+
+On Learning problem, Weight w and Bias b choose θ. Take a downhill step applies the analytic gradient of this MSE; the dot on the parameter map moves by that step, and the dotted path keeps the steps. Learning object pages the five named pieces: data, hypothesis class, loss, optimization, generalization.
+
+Distinction cuts the same word five ways: family, scope, job, memory, not.
+
+Leftover terms is a listbox. Place in ring plus Place writes a guess. A guess that is an outer ring still fails. Era is a slider over eleven stops, from the 1956 Dartmouth workshop to 2022.
+
+What is the learning signal is a second listbox of eight scenarios. Select one, choose Learning signal, and press Place. The note gives the reason whether the guess is right or wrong, and Output type names whether the answer is a category, a number, or a move.
+
+## What to notice
+
+- One product occupies several rings at once. The tightest ring names the method.
+- Hand-written chess rules belong in AI and nowhere smaller, because no parameters were fitted.
+- Residuals and L are the same three squares the formula reprints. The gradient metrics are derivatives of that L, not decoration.
+- Distinction `not` refuses extra claims. The 2022 stop is still next-token prediction plus post-training.
+- The n-gram dot sits in ML and outside DL: generative without being deep, so it cannot be inside the Gen ring.
+- The Expert systems stop is AI with nothing fitted. Both AI winters follow results that did not scale or cost too much to keep up, not a lack of ideas.
+- Raw sentences and Blanked-out photos both sort under self-supervised, yet their Output types differ: classification over a vocabulary, and regression on pixel values.
+- Customer records and Sensor readings have no answer column, so Output type reads no target.
+- Placing Raw sentences under supervised draws a correction. The next word is already in the text, so no person labeled it.
+
+## Where it breaks
+
+In this lab the rings, the n-gram marker, the eleven eras, leftovers, distinction tiles, and learning-signal scenarios are authored strings. The timeline shows two threads, symbolic AI and neural nets, and its dates are landmarks. The three points are authored. The optimizer is one fixed step-size with clipped sliders. No classifier runs. The leftover and signal corrections are table lookups, and each of the eight scenarios has one best signal chosen by the card.
+
+In the real mechanism, deployments mix methods. A search index plus an LLM plus a rule filter is still three rings. Supervised labels still decide what counts as correct. A small training loss still does not measure generalization. Signals blend too: a chat assistant is pretrained self-supervised, tuned on human-written answers, then trained on human-preference rewards, so one product is not one box.
+
+## Going deeper
+
+The math you need is the shared arithmetic of vectors, slopes, and likelihoods. Classical machine learning runs k-means with no labels, Next-token prediction trains on labels the text supplies itself, and Reinforcement learning foundations trains from reward. Tokens & embeddings is the representation an LLM reads. Why GPUs is how the compute stall ended in 2012, and Architecture zoo is why attention replaced recurrence.

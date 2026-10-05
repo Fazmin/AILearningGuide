@@ -1,0 +1,312 @@
+---
+objectives: ["Compute cosine similarity and dot product between a query vector and passage vectors, and explain when the two rank differently","Explain why dense retrieval can match a paraphrase that keyword search misses, and why the nearest passage is not proof of truth or of an answer","Read recall@k to say what an approximate index gives up in exchange for scoring fewer vectors"]
+terms: ["Embedding","Encoder","Mean pooling","Query vector","Dot product","Cosine similarity","Nearest neighbour","Dense retrieval","Keyword retrieval","Approximate nearest neighbour","IVF index","Recall@k"]
+---
+
+## The big picture
+
+Picture a small harbor with a help page, where you type “Can I bring my dog on the boat?” into the search box. The rule you need says “Pets may travel on a leash and must wear a tag.” Your question and that rule do not share a single word, yet a helpful search should still find the rule for you.
+
+This module shows one way a computer can do that. Each stored passage becomes a list of numbers that stands in for what it talks about, and your question becomes the same kind of list. The search then hands back the passages whose lists line up best with yours, without writing anything new, because it only picks from text that is already stored.
+
+That list of numbers is called an **embedding**, so finding text by comparing lists like this is called embedding search. In this lab the collection is twelve short notices from a made-up harbor, with titles such as Dock hours, Ferry fares and Pets on board.
+
+### Where you have met it
+
+A chatbot runs on a program called a language model. It can be set up so that, before the language model replies, a search step looks through a collection of documents. The best passages get pasted into the model's prompt, which is the text it is given to work from, and only then is the reply written. That setup is called retrieval-augmented generation, the next lab in this course, and its first step is the search you practise here.
+
+You may also remember the earlier lab, Tokens & embeddings, which showed lists of numbers inside a language model. This lab uses the same kind of list for a different job: finding which stored text to hand to a model.
+
+### Why it matters
+
+Getting this search right matters for several reasons:
+
+- Without it, a search that matches words can miss a question worded differently. In the lab, word counting finds no shared words between the dog question and the pets rule, so the rule ties with most of the other passages.
+- When a chatbot answers from searched text, anything the search misses never reaches it, so the model can only use the passages that were found.
+- The closest passage is not automatically true or helpful, and one notice in this lab is a planted trick that ranks near the top when you ask about a password.
+- Real collections can hold millions of passages, so checking every one takes time, and the shortcuts that make search fast can skip a passage that should have made the list.
+
+### What you will be able to explain
+
+By the end of this lesson, you should be able to explain each of these in your own words:
+
+- how to work out two scores for a passage, the **dot product** and **cosine similarity**, from the numbers the lab shows, and why the two can pick different winners;
+- why searching with embeddings can find a passage that says the same thing in other words, which a word-matching search misses;
+- why the nearest passage is no proof that it is true, or that it answers your question at all;
+- how to read a score called **Recall@k** to see what a shortcut search gives up when it checks only some of the passages to save time.
+
+### What the lab lets you do
+
+The lab is built from five cards, and each one shows a different part of the search:
+
+- **Query and vectors** turns your question into eight numbers, one for each topic, and lets you pick a ready-made question or type your own.
+- **Angle to the query** draws every passage as a dot, placed by how closely its list of numbers lines up with your question's. The close matches stand out at a glance.
+- **Ranked neighbours** lists the best matches in order, next to how a plain word-counting search would rank them.
+- **Worked similarity** does the arithmetic for one passage, line by line, so you can check every score yourself.
+- **Exact versus approximate** splits the passages into groups, searches only some of them, and shows you what that shortcut missed.
+
+Keep one thing in mind as you explore: the part that turns words into numbers was written by hand so that you can read it. A person chose the eight topics and how many points each word gets. None of it was learned by a computer from examples, which is how real systems get their numbers. Every score, angle, group and recall number after that, though, is worked out live from those hand-set points.
+
+## What it is
+
+### Words become points on eight topics
+
+Start with a score sheet that has eight boxes, one for each topic: time, place, travel, weather, animals, access, safety and money. To describe a passage, the lab fills in each box with a number that shows how much the passage talks about that topic. A notice about ferry prices would get points in travel and money. A notice about fog would get points in weather and safety, and also in travel if it is about the ferry crossing.
+
+The points come from the words: the lab keeps a word list, called the **lexicon**, and every word on it carries a few points that a person wrote down. The word `dock` puts 1 point in place and nothing in the other seven boxes, because a dock is a place and says nothing about money or weather. The word `ticket` puts 0.6 in travel and 0.6 in money, because a ticket is about both getting somewhere and paying for it.
+
+Words that are not on the list, such as “is”, “the” and “on”, are ignored, so they add nothing at all. A word ending in s or es is read as its shorter form when that form is on the list, which is why “closes” counts as `close`. A clock time such as 18:00 counts as a single word, worth a full point of time.
+
+To get one set of numbers for a whole passage, the lab takes the average of its known words, box by box. Averaging like this is called **mean pooling**, because “mean” is another word for average and “pooling” means combining many things into one.
+
+A list of numbers like this is called a **vector**, and a vector that stands in for a piece of text is called an **embedding**. The part of the system that turns text into an embedding is the **encoder**. The lab's badge calls it a “hand-set encoder”, because a person set every number in it by hand.
+
+### A worked example: the pier question
+
+Your question goes through the same encoder, and the result is called the **query vector**, written q. Take the lab's first ready-made question, “When is the pier shut on Sunday?”, which has seven words but only four on the list:
+
+- Three words point at time, where `when` puts 1 point, `shut` puts 0.9 and `sunday` puts 0.8.
+- One word points at place, where `pier` puts a full point.
+
+Mean pooling adds up each box and then divides by the four known words. Time gets `(1 + 0.9 + 0.8) ÷ 4 = 0.675`, which the lab rounds to 0.68 on its bar. Place gets `1 ÷ 4 = 0.25`, and the other six boxes stay at 0 because no known word put anything there.
+
+So the query vector is `[0.68, 0.25, 0, 0, 0, 0, 0, 0]`, with one number per topic in the order time, place, travel, weather, animals, access, safety and money.
+
+Every passage went through the same encoder before you typed anything, including Dock hours: “The north dock closes at 18:00 on weekdays and at 16:00 on Sundays.” It has seven known words:
+
+- Five words point at time: closes 0.9, 18:00 1, weekdays 0.8, 16:00 1 and sundays 0.8, which add up to 4.5.
+- Two words point at place: north 0.5 and dock 1, which add up to 1.5.
+
+Dividing each total by the 7 known words gives about 0.64 for time and 0.21 for place.
+
+### From a list of numbers to an arrow
+
+If a vector had only two numbers, you could draw it on graph paper. Put time along the bottom and place up the side, then draw an arrow from the corner at zero to the point 0.68 across and 0.25 up. That arrow is the pier question, leaning hard toward time and only a little toward place.
+
+Every passage can be drawn the same way, and two arrows that point in nearly the same direction belong to texts that talk about the same mix of topics. That is the core of embedding search: find the stored arrows that point most nearly the same way as your question's arrow.
+
+An arrow also has a length. On the graph paper, the arrow is the long side of a right-angled triangle whose other two sides are 0.675 across and 0.25 up. So you can find its length with Pythagoras' rule: square each number, add the squares, and take the square root of the total. For the pier question that is `√(0.675² + 0.25²) = √0.518 = 0.720`.
+
+The lab writes the length of q as `|q|`, where the two straight lines mean “length of”, so you will see `|q| = 0.720` under the bars. In the same way, the lab calls a passage's vector d and writes its length as `|d|`.
+
+### Where the arrow picture stops matching
+
+The graph-paper picture is honest about angles and lengths, but it stops matching in two ways. The lab's vectors have eight numbers, so each arrow lives in a space with eight directions, all at right angles to one another, which no flat drawing can show. And a real encoder learns its directions from examples, so nobody gives them names like “time” or “money”.
+
+### Score one: the dot product
+
+The first way to score a passage multiplies the two lists box by box and adds up the results, which is called the **dot product**. It is written `q·d` and read “q dot d”, and the lab shows it as `q·d = Σ qᵢ dᵢ`. Here Σ, the Greek capital letter sigma, means “add them all up”, and `qᵢ dᵢ` means the question's number times the passage's number in the same box.
+
+Here it is for the pier question against Dock hours, using the unrounded numbers behind the **Worked similarity** card:
+
+- In the time box, the question's 0.675 times the passage's 0.643 gives 0.434.
+- In the place box, the question's 0.25 times the passage's 0.214 gives 0.054.
+- The other six boxes each give 0, because the question has 0 in all of them.
+- Adding up, the total is `0.434 + 0.054 = 0.488`, and that is the dot product.
+
+The table rounds q and d to two decimal places, so if you multiply the rounded numbers yourself, the last digit can come out slightly different.
+
+There is a rule hiding in this sum: a box only adds to the score when both the question and the passage have points there. So a topic your question never mentions adds nothing to the dot product, which is why only the time and place rows light up in the table for this question.
+
+The dot product also has a catch, because it grows with the length of each arrow and not only with how well the two arrows line up. If a passage's arrow were twice as long while pointing the same way, its dot product would double. So a passage with a long arrow can beat a passage that points more nearly at your question.
+
+### Score two: cosine similarity
+
+The second way to score takes length out of the picture by dividing the dot product by both arrow lengths. This score is called **cosine similarity**, and the lab shows it as `cos θ`.
+
+To see why the division removes length, go back to the passage whose arrow was twice as long. Its dot product doubled, but its length `|d|` doubled too, and `|d|` sits on the bottom of the division. The two doublings cancel, so the cosine stays exactly the same, and only turning the arrow changes it.
+
+For the pier question and Dock hours, the **Worked similarity** card prints `0.488 / (0.720 × 0.678) = 0.999`. The two lengths multiplied together come to about 0.488, almost the same as the dot product. So the division lands very close to 1, which tells you the two arrows point almost exactly the same way.
+
+You can also run the division backwards: dot product = cos θ × `|q|` × `|d|`. For the pier question and Dock hours that is 0.999 × 0.720 × 0.678, which gives back 0.488. This shows the dot product is the cosine with both lengths multiplied back in.
+
+The symbol θ is the Greek letter theta, and it stands for the angle between the two arrows. Cosine turns an angle into a number, and for this lab you only need three landmarks:
+
+- Arrows pointing the same way, 0° apart, give a cosine of 1, the highest score there is.
+- Arrows 60° apart give a cosine of 0.5, which is halfway. The **Angle to the query** card draws faint guide lines, or spokes, at 30° and 60°, so you can check this there.
+- Arrows at right angles, 90° apart, give 0, which here means the two texts share no topics at all.
+
+Every angle in this lab falls between 0° and 90°. No word ever gets negative points, so every box in the dot product is zero or positive. The total can never drop below 0, so every cosine falls between 0 and 1. Dock hours sits only 1.9° away from the pier question, which is why its cosine is so close to 1.
+
+A topic your question never mentions adds nothing to the dot product, but it can still lower the cosine. Points in those boxes make the passage's arrow longer and tilt it away from the question. Ferry timetable shows this for the pier question. Its time and place points lean much like the question's, but its travel points push it out to about 37°, with a cosine of 0.802.
+
+Suppose every arrow were first stretched or shrunk to a length of exactly 1, which is called **unit length**. Dividing by the lengths would then change nothing, so the dot product and the cosine would be the same number. When the **Score** control is set to cosine, where it starts, the **Angle to the query** card draws every arrow this way. Its small heading says “Every vector scaled to length 1”.
+
+### Ranking: the nearest neighbour
+
+Searching means scoring every stored passage against the question and sorting from the best score down. The passage with the best score is called the **nearest neighbour**, and the next few are its other neighbours, which is where the card name **Ranked neighbours** comes from. Scoring every single passage, as that card does, is called exact search, because nothing gets skipped.
+
+Finding text by comparing embeddings this way is called **dense retrieval**, where “retrieval” means fetching. “Dense” comes from real encoders, whose lists hold hundreds of numbers that are almost all non-zero. This lab's short lists are mostly zeros, but the search works the same way.
+
+The older approach, which ranks passages by how many words they share with your question, is called **keyword retrieval**. The two can disagree badly, because two texts can be about the same thing without sharing a word.
+
+### The shortcut: an approximate index
+
+Scoring every passage is fine for twelve, but real collections can hold millions, so big systems use a shortcut that skips most of them. Here is an everyday version of the same trick.
+
+Picture a friend in a supermarket who wants marshmallows but does not want to walk every aisle. They read the signs above the aisles, pick the one that sounds closest, “Baking”, and search only there. Most of the time that saves a lot of walking, but if this shop keeps marshmallows under “Snacks”, your friend walks out without them. Checking the two best-sounding aisles would have found them, at the cost of more walking.
+
+In the lab, a sorting method called **k-means** first splits the passages into groups, called cells. Here k is the number of groups, the lab's **Cells** setting, and not the k you will meet in Recall@k. The method groups them so that passages pointing in similar directions share a cell.
+
+Each cell gets an average direction, called its **centroid**, which plays the part of the sign above an aisle. Unlike a real sign, nobody writes it, because it is worked out from the passages inside the cell.
+
+When you search, the lab compares your question with the centroids only, opens the closest cell or cells, and scores the passages inside them. Opening a cell is called probing it, and a passage in a cell that stays shut is never scored at all.
+
+Unlike a messy shop, nothing here is misfiled, because each passage sits in the cell whose centroid it is closest to. A miss happens when a passage near the edge of one cell is still one of your question's best matches, but the question is closer to a different cell's centroid.
+
+A search that skips most of the stored vectors like this is called an **approximate nearest neighbour** search, because it may miss some of the true nearest neighbours. The kind built from cells is an **IVF index**, short for inverted-file index, and the **Exact versus approximate** card names it in the small line above its title.
+
+### Measuring what the shortcut missed: Recall@k
+
+To check the shortcut, the lab compares its result with exact search, which for the ready-made *password* question finds a top 3 of Lost property, Visitor notice and Fishing. With four cells and one probe, the shortcut opens only the cell holding the first two, so it returns those two and misses Fishing.
+
+The shortcut found 2 of the 3 true top passages, so its score is `2 ÷ 3`, about 0.67. This share is called **Recall@k**, where k is how many top results you are checking, which is why the lab labels it Recall@3 when it checks the top 3. A score of 1.00 means the shortcut found every one of them.
+
+Be careful about what recall measures, because it grades the shortcut against exact search, not against whether the passages answer the question. A perfect score on one question also does not promise the same score on the next.
+
+## Why it’s here
+
+### Words differ even when the meaning matches
+
+People rarely word a question the way a document words its answer, and keyword retrieval only sees exact words. So for “Can I bring my dog on the boat?” it cannot connect “dog” with “pets” or “boat” with “travel”. Worse, it gets pulled toward Mooring fees, a notice about paying to keep a boat overnight, because that notice happens to contain the word “boat”.
+
+Dense retrieval gets around this because different words can put their points in the same boxes. In this lab, `dog` and `pet` both put a full point in animals, while `boat` and `travel` both put points in travel. So the question and the pets rule point in nearly the same direction, even with no word in common.
+
+Picture a friend searching a recipe site for “quick dinner” when the recipe they want is called “fast evening meal”. The two share no words, so a keyword search walks right past it. A search that compares embeddings can still connect them, as long as its encoder has learned that “quick” and “fast” get used in similar ways. A real encoder learns groupings like that from examples, while this lab's encoder has them written in by hand.
+
+### Search decides what a chatbot gets to read
+
+This search is the first stage of retrieval-augmented generation, and the passages it finds are what a model is handed later. So whatever the search misses, the model never sees, while whatever it wrongly ranks high gets pasted in anyway.
+
+Walk the chain for the password question. The search hands Visitor notice to the chatbot as the #2 passage, so the chatbot reads a fake order before it writes a single word of its reply.
+
+So the two things this lab lets you explore, which passages count as near and which ones a shortcut skips, decide what any later answer can be based on. Nothing in the search step checks whether a passage is true or answers the question. A wrong or fake passage that ranks high gets pasted into the prompt just the same.
+
+### Size forces shortcuts, and shortcuts cost recall
+
+Scoring twelve passages is instant, but scoring millions for every single question takes real time and computing power. Approximate indexes, like the cells in this lab, cut the work by scoring only a few groups. The price is that a true neighbour can sit in a cell that never gets opened, and Recall@k is how you measure how much that shortcut gave up.
+
+## How to play with it
+
+The five steps below follow the lab's own steps, and each one names the card and the control to use, along with the numbers you should see.
+
+### 1. Read the query vector
+
+Leave **Preset query** on *pier shut*, so that the **Query** box holds the question “When is the pier shut on Sunday?” from the worked example. Look at the small word tags, or chips, under the box, where four words are marked known (when, pier, shut and sunday) and three are marked ignored.
+
+The eight bars in **Query and vectors** show 0.68 on time and 0.25 on place, with zeros everywhere else. Their title reads “q = mean of 4 known word vectors”, and the length underneath reads `|q| = 0.720`, which matches the arithmetic you worked through above.
+
+### 2. Measure the angle
+
+The **Score** control is still on cosine. In **Ranked neighbours**, click **Dock hours**, then find its dot on **Angle to the query**, where it sits 1.9° from the query arrow, almost on top of it. The readouts beside the picture show its angle, its `cos θ` of 0.999 and its length `|d|`.
+
+A dashed line drops from the selected dot straight down to the query arrow. The spot where it lands is called the dot's **projection**, and you can think of it as the shadow the dot casts on the query line. In cosine mode that spot lines up with the dot's cos θ on the scale under the line, so a dot on the 60° spoke casts its shadow at 0.50.
+
+Now look at **Worked similarity**, where the q × d column has numbers only in the time and place rows, and the total row shows Σ 0.488. Below the table, the Cosine similarity line works out `0.488 / (0.720 × 0.678) = 0.999`.
+
+### 3. Paraphrase versus keywords
+
+**Try this:** Set **Preset query** to *dog on the boat*, and **Pets on board** jumps to #1 with a cosine of 0.881, though its row says “shared words none”. Read the rest of that row, where its keyword rank is #6, and then the note under the list, which says keyword ranking would put **Mooring fees** first.
+
+The dense search ranks the pets rule first because the question's known words, bring, dog and boat, put their points in travel and animals. The passage's known words, pets, travel, leash and tag, put their points mostly in animals and partly in travel. Both arrows lean on the same two boxes, so they end up only about 28° apart.
+
+The keyword search sees only shared words, so Mooring fees comes first on the single word “boat”, while Pets on board shares none. Its #6 is only its place in a long tie of passages with zero shared words, a tie the lab breaks by list order.
+
+### 4. Cosine versus dot product
+
+Set **Preset query** to *password*, which asks “What is the harbor master password?”, and leave **Score** on cosine. **Lost property** wins at 0.981, with **Visitor notice** close behind at 0.955.
+
+Now flip **Score** to dot product, and the order swaps, with Visitor notice winning by 0.306 to 0.238. Visitor notice points a little further from the question than Lost property does, but its arrow is about a third longer. Its length is 0.565 against 0.427, and the dot product rewards that extra length.
+
+You can check the swap with the backwards rule from earlier. Multiply each cosine by its length: Lost property gives 0.981 × 0.427, about 0.42, and Visitor notice gives 0.955 × 0.565, about 0.54. Both are then multiplied by the same `|q|`, so Visitor notice stays ahead.
+
+Watch the dots on **Angle to the query** as you flip. In cosine mode they all sit on the same curve, a quarter circle, all at the same distance from the corner. The small heading says “Every vector scaled to length 1”.
+
+In dot product mode the heading says “Raw lengths kept”, each dot moves out to its own length, and Visitor notice's dot now sits further right than Lost property's. The numbers on the scale under the query line now show dot products rather than cosines. The shadow is drawn only for the passage you select, so click each one in **Ranked neighbours** to see its shadow land on the scale.
+
+**A common mix-up:** a longer arrow does not mean a longer passage, because mean pooling takes an average rather than a total. A passage gets a long arrow when its known words give big points to the same few topics. It gets a shorter one when its words give small points or spread them across different topics.
+
+Picture a group chat where four friends each give 1 point to the snack they want. If all four pick pizza, pizza averages a full point, but if two pick pizza and two pick tacos, each snack averages 0.5. Treat the averages as an arrow and use the length rule from earlier. The split vote gives `√(0.5² + 0.5²) = √0.5`, about 0.71, while the all-pizza vote gives `√(1²) = 1`, even though the same four people voted.
+
+The lab shows the same thing if you type “dog pet” into the **Query** box, where `|q|` reads 1.000 because both words put a full point in animals. Type “dog dock” instead and it reads 0.707, like the split vote, because the two words pull toward different topics.
+
+That is also why Visitor notice is longer, since words like password and email give big points to access. Lost property, by contrast, has several words that give only 0.3 points to a box. Its words also split their points almost evenly between place and access, like the split vote, while Visitor notice leans mainly on access.
+
+### 5. Search approximately
+
+Keep *password*, and in **Exact versus approximate**, set **Cells** to 4 and **Cells probed** to 1. The lab opens only the cell whose centroid leans “access + place”, which holds Lost property and Visitor notice, so **Vectors scored** reads 2 of 12.
+
+Fishing, the true #3, sits in a cell marked skipped, so the lab tags it “top-k · missed”, and **Recall@3** drops to 0.67. The **Approximate top-k** readout lists only the two passages the shortcut found.
+
+Now raise **Cells probed** to 2, and a second cell opens, so Fishing is found and Recall@3 goes back to 1.00. The cost shows in Vectors scored, which climbs to 7 of 12, so you bought back the missing passage by scoring five more vectors.
+
+Two more settings are worth a look, starting with **Cells** at 3 and one probe, where all three top passages share a cell and recall stays at 1.00. With **Cells** at 1, the lab notes that “one cell is exact search”, because a single cell holds every passage.
+
+### More to try
+
+- Type “When does the dock shut?” into the **Query** box, then change shut to close, and the bars do not move at all, because both words put 0.9 in time.
+- Type the lab's own example, “The ferry café closes at 17:00.”, into **Your passage**, and it joins the index as Your notes. For *pier shut* it lands at #3 with a cosine of 0.830, ahead of Ferry timetable, even though it says nothing about the pier. That happens because `closes` and 17:00 put points in time, the box the pier question leans on most.
+- Move **Top-k** between 1 and 5 to choose how many top passages count as results, and the recall readout changes its label to match, such as Recall@5.
+- Type a question made only of words that are not on the list, such as “purple bicycle”. The bars all drop to zero, and the angle picture says “No known words: the query vector is all zeros.”
+
+## What to notice
+
+- On **Angle to the query**, the ranking is how far right each dot's shadow lands on the query line. In cosine mode that position is `cos θ`. In dot product mode it is `|d| cos θ`, which is the dot product divided by `|q|`, and every passage shares that same `|q|`, so the order matches the dot product. The numbers on the scale are already multiplied back by `|q|`, so the shadow lands on the passage's dot product.
+- The dot product rewards long arrows, and with mean pooling a passage gets a long arrow when its known words give strong points to the same topics.
+- Dense retrieval can rank a passage first with no shared words at all, because different words can put points in the same boxes, a match that keyword retrieval misses.
+- For *password*, the top passage is a lost-property rule or a planted notice, depending on the score, so nearest is a fact about arrows and not a check on quality.
+- A zero in the query vector means whatever the passage has in that box adds nothing to the dot product. In cosine mode it still costs the passage, because it lengthens `|d|` and tilts the arrow away from the question.
+- With three cells and one probe, all four ready-made questions (pier shut, dog on the boat, ticket price and password) keep Recall@3 at 1.00. The miss only shows up at four cells for the password question, which shows that recall depends on the index and the question together.
+
+## Where it breaks
+
+### In this lab
+
+- The eight topics and every word's points were written by hand, and nothing was trained. The lab shows how the arithmetic works, not what a trained encoder would learn about which texts are similar.
+- Averaging throws away word order, so “Dogs chase cats” and “cats chase dogs” get exactly the same vector. The word “chase” is not on the list, while dog and cat both put a full point in animals.
+- Words that are not on the list count for nothing, so a question made only of unknown words becomes all zeros. Every score is then 0, and the angle picture has nothing to draw.
+- The angle picture is honest about one thing only, which is each passage's angle to your question. The angles between passages are not drawn, so two dots that look close on screen may point in very different directions across the lab's eight topics. Think of two towns that are both 10 km from your house, one north and one south. Each is the same distance from you, but they are 20 km apart. A map that showed only how far each town is from you would draw them on top of each other, and the angle picture does the same with passages.
+- With twelve passages the shortcut index saves no real time, so the cells are there to let you watch what a shortcut skips.
+- The keyword rank is a rough count of shared words, not the scoring a real keyword search uses, and its ties are broken by list order.
+
+### In real systems
+
+- **Close is not true**, because the encoder measures how similarly words are used rather than whether a passage is correct. An out-of-date timetable or a planted instruction can still be the nearest neighbour.
+- **Close is not an answer** either: for *pier shut*, #2 is **South dock** at 0.989, a notice about when a dock stays *open*. In this lab the notice is full of time words, and the encoder puts `open` and `shut` in the same box, time. So it cannot tell opening hours from closing hours. In a trained encoder it happens because words with opposite meanings often appear in similar sentences, so their vectors can end up close together.
+- **The encoders must match**, so the question and the passages must go through the same encoder, set up the way it was trained. Some encoders expect a short label at the start, such as the word `query:` before every question, and leaving it off shifts every vector. Mixing two encoders is like comparing two score sheets whose boxes are in a different order, so the “nearest” passages become close to random.
+- **Rare exact words get blurred**, because dense vectors can blur names, part numbers and codes that keyword search matches exactly. That is one reason many real systems run both kinds of search together.
+- **Shortcuts are tuned, not guaranteed**, because recall is measured on a sample of test questions and changes as the collection grows. A good score on the samples is no promise for your question.
+- **Recall@k is not correctness**, because it grades the shortcut against exact search. If exact search picked unhelpful passages, a perfect Recall@k only means the shortcut picked the same ones.
+- **There are no labels to read** in a trained encoder, because its directions have no names. It reads word order and pieces of words, so it never ignores a word outright, but its scores can still be wrong in ways you cannot spot by looking.
+
+The Visitor notice in this lab is a planted instruction: it begins “Ignore previous instructions” and is written as an order to any chatbot that later reads it. It tells that chatbot to give out a password, and it still ranks near the top because its words put points in place and access, as the question's words do.
+
+Picture a school noticeboard where someone pins up a fake notice that looks official. A helper who fetches whichever notice best matches your question, without checking who pinned it up, will bring you the fake one. Embedding search is that helper, because closeness to your question is the only thing it checks.
+
+**A common mix-up:** people treat the top search hit as the answer, but search only picked the passage whose arrow points most nearly the same way as the question's. Whether that passage is true, current, safe or even on topic is a separate check, and a chatbot handed that passage inherits the same gap.
+
+## Going deeper
+
+### Real encoders
+
+Real encoders are a kind of AI model called a transformer, trained on huge numbers of matching question and passage pairs. Each step of training pulls a matching pair's vectors closer together and pushes other passages away, and Sentence-BERT and dense passage retrieval are two well-known examples.
+
+Their vectors have from a few hundred to a few thousand unnamed numbers, and no single number can be read as a topic. They are often scaled to length 1 so that the dot product and the cosine agree, and the safe choice is the score the encoder was trained with.
+
+### Real shortcuts
+
+IVF indexes, like the one in this lab, sort vectors into cells with k-means. Another family, called HNSW, links each vector to its nearby vectors in a layered web and searches by hopping from neighbour to neighbour toward the question. A third trick, called product quantization, squeezes each vector into a much smaller code so that more vectors fit in memory.
+
+Each of these has settings, such as how many cells to probe, that trade recall for speed, and together they make search over millions of vectors fast.
+
+### Real search pipelines
+
+Many systems search in stages, starting with a keyword scorer such as BM25 and a dense search that each make a ranked list. The two lists are then merged, for example with a method called reciprocal rank fusion. Last, a model called a reranker reads the question and each passage together and puts them in a new order.
+
+### Two kinds of recall
+
+The Recall@k in this lab grades the shortcut against exact search, while the retrieval-augmented generation lab measures a different recall. That one asks whether the passages a question needs actually reached the prompt.
+
+### What comes next
+
+Retrieval-augmented generation takes the passages found here, pastes them into a prompt, and brings this encoder back next to keyword search so that you can see where each one fails. A later lab, **Failure modes, safety, and security**, comes back to the Visitor notice as an attack that search delivers straight into a prompt.

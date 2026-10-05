@@ -1,0 +1,400 @@
+---
+objectives: ["Explain why models process tokens rather than words", "Trace how byte-pair merges turn bytes into token IDs", "Interpret distance in an embedding space", "Explain why an embedding is one vector per token and where word order has to come from"]
+terms: ["Token", "Token ID", "Vocabulary", "Subword", "Byte-pair encoding", "Merge rule", "Pre-tokenization", "Special token", "Embedding", "Embedding matrix", "Embedding dimension", "Cosine similarity", "Analogy arithmetic", "Projection", "Positional encoding"]
+---
+
+## The big picture
+
+Before a chatbot can do anything with your message, it has to turn your words into numbers, because the program inside it, a **language model**, works only with numbers. It never sees letters the way you do. This module is about the two steps that turn text into numbers, which run before any of the model's other work begins.
+
+In the first step, the text is cut into small pieces called **tokens**, and each piece gets a number. A token is often a whole word, but not always, because a common word can be one token while a rarer word is built from two or three smaller pieces. In this lab, "king" is a single token, while "queen" is made of three.
+
+In the second step, each token's number is swapped for a long list of numbers, called an **embedding**, and that list is what the model works with from then on. The lists are learned during **training**, a long practice run in which the model reads huge amounts of text and keeps guessing the next token. Words that are used in similar ways end up with similar lists, which is how plain numbers come to reflect the way words are used.
+
+If you have done the **Data, features, and representation** lab, you looked words up in a fixed list of eight slots. You also saw a map whose points were placed by hand, not learned. Here both of those jobs are learned instead: the list of pieces is worked out from real text, and so are the numbers for each piece.
+
+### Where you have met it
+
+Every message you have typed to a chatbot, and every reply it wrote back, went through these steps, because a chatbot reads and writes tokens rather than letters. That one fact explains some odd behaviour you may have run into:
+
+- A chatbot can miscount the letters in a word, because the whole word may arrive as one token with no letters inside it.
+- Sums with long numbers can go wrong, partly because long numbers get split into tokens in odd places.
+- The same paragraph can take more tokens in one language than in another, which matters because a model can only take in a fixed number of tokens at once.
+
+### Why it matters
+
+Without the first step, a model would have no fixed set of pieces to work with. A list of every possible word could never be finished, because people keep inventing new names, slang and typos. Reading text one letter at a time would avoid that problem, but it would make every sentence much longer. Tokens sit in between those two choices, and the lab lets you watch how they get chosen.
+
+Without the second step, a model would be left holding only the token numbers, which are labels rather than amounts. So 344, the number for "king", is not "more" than 82, the number for "the". The lists of numbers give the model something it can compare, combine and adjust while it learns, and every later lab in this course works on lists like these.
+
+This module also covers one more catch, which is that each token gets the same list wherever it appears in a sentence. Nothing in that list says whether the token came first or last, so the order of the words has to be added in a separate step.
+
+### What you will be able to explain
+
+By the end of this lesson, you should be able to explain each of these in your own words:
+
+- Why a model reads text as tokens from a fixed list, rather than as whole words or single letters.
+- How a tokenizer, the program that cuts text into tokens, builds its tokens by gluing pairs of smaller pieces together, one step at a time.
+- How each token ends up with its number.
+- What it means when two words get similar lists of numbers, so that they sit close together in the lab's word space, and what that closeness does not mean.
+- Why each token gets one fixed list of numbers wherever it appears, and where the order of the words has to come from instead.
+
+### What the lab lets you do
+
+The lab has five cards, and none of them runs a language model. The top two, **Tokenizer workbench** and **Merge trace**, run a real tokenizer, which is the program that cuts text into tokens. It is a very small tokenizer that learned from a collection of Shakespeare's plays, but you can type any text you like into it. A slider shrinks its list of pieces, and the second card replays how any word was put together, one step at a time.
+
+The lower three cards, **Nearest neighbours**, **Vector arithmetic** and **Embedding projection**, use real embeddings for 10,000 common English words, each one a list of 50 numbers. These lists come from a published set called GloVe, which was learned from Wikipedia and news articles. You can find the closest words to any word, add and subtract words as if they were numbers, and see all 10,000 words squeezed onto a flat map.
+
+The cards work everything out live, except the flat maps, which were made once, when the lab was built. One honest warning before you start: the word lists in the lower cards come from a separate table, not from the tokenizer above. No model in this lab was trained on the tokenizer's pieces, and the lesson points out each place where that matters.
+
+## What it is
+
+### Cutting text into tokens
+
+Imagine a set of building bricks that comes with a numbered parts list. The smallest bricks each carry one byte, a small unit of stored text, which for plain English is a single letter, a punctuation mark or a space. Bigger bricks carry chunks that were glued together ahead of time, such as `ing` or a whole common word. You can build a sentence only from the bricks in the set, so a word with no big brick of its own has to be put together from smaller ones.
+
+A **tokenizer** works the same way: it cuts text into pieces taken from a fixed list, called the **vocabulary**, and each piece is a **token**. A token might be a whole word, part of a word, a punctuation mark or a special marker. A token that is smaller than a word is called a **subword**, and subwords are what let a fixed list still spell out rare words, names and typos.
+
+Here is the lab's default sentence, "The king and the queen read the attention paper", cut into tokens:
+
+```
+The | ␣king | ␣and | ␣the | ␣qu | e | en | ␣re | ad | ␣the | ␣at | t | ent | ion | ␣p | a | p | er
+```
+
+The symbol `␣` stands for a space. In this sentence, the space in front of each word ends up inside that word's first token, so `␣king` is one token that includes its space. Some words, like "king", "and" and "the", became single tokens, while "queen", "read", "attention" and "paper" were built from smaller pieces. The **Tokens** readout on the **Tokenizer workbench** counts these 18 pieces, for a sentence that is 47 characters long.
+
+### Giving each token a number
+
+Every entry in the vocabulary has a number, called its **token ID**, which works like the number next to each brick in the parts list. In this lab, `␣king` is token 344 and `␣the` is token 82. The workbench shows each token as a small box, called a chip, with its ID as a small number above its text.
+
+An ID is only an address, so token 344 is not worth more than token 82, and a model never does arithmetic with IDs. It uses an ID for one thing only, which is finding that token's row in a big table that you will meet further down.
+
+### Bytes, the smallest bricks
+
+The tokenizer's smallest bricks are **bytes**, which are the small units a computer uses to store text, and each byte is one of 256 possible code numbers. For example, a capital A is stored as the code number 65 and a space as 32. A plain English letter, digit, space or punctuation mark takes one byte, while an accented letter such as `é` takes two.
+
+This lab's tokenizer started with only the 65 byte symbols that appear in its Shakespeare text. Those are the capital and small letters, the space, the line break, a handful of punctuation marks and, oddly, the digit 3. Any byte outside those 65 becomes `<unk>`, short for "unknown", which has ID 0. That is why the sample `2024 was 33 years` turns each digit of the year into a red `<unk>` chip, while each 3 keeps its own ID, which is 11.
+
+### How the tokenizer learned its bricks
+
+Picture a friend who has to spell out the same long story again and again using single-letter bricks. To save time, they find the two letters that sit side by side most often in the story and glue them together wherever they appear. Each glued pair becomes a new brick in the set, and then they count again, treating each glued piece as one brick, and glue the next most common pair.
+
+After many rounds the set has bricks for chunks like "ing" and even whole common words, while rare words still have to be spelled out from small bricks.
+
+The lab's tokenizer was built by this same recipe, which is called **byte-pair encoding**, or BPE for short. It started from its 65 byte symbols and a collection of Shakespeare's plays called Tiny Shakespeare. It counted every pair of neighbouring pieces in the text, glued the most common pair into a new token, and added that token to the vocabulary. Then it counted again, because each new piece changes which pairs are most common, and it repeated the whole process 443 times.
+
+Each glue step is a **merge rule**, such as "`i` + `n` becomes `in`", and its place in the order of learning is its **rank**. Counting starts at 0, so the very first rule learned has rank 0 and the last of the 443 has rank 442. Some of the earliest rules joined a space with `t` to make `␣t` (rank 2), and `h` with `e` to make `he` (rank 3). At rank 13 the tokenizer glued `␣t` and `he` into `␣the`.
+
+Adding it all up, the vocabulary holds 4 special tokens, 65 byte symbols and 443 merged tokens, which makes 512 entries in all. That total appears in the badge "512 entries" at the top of the workbench.
+
+Now the IDs make sense, because they follow a simple pattern. IDs also count from 0. The 4 special tokens, which are markers explained further down, take IDs 0 to 3, and the 65 starting symbols follow at IDs 4 to 68. Every glued token comes after those 69 entries, so its ID is 69 plus its rank.
+
+For example, `␣the` was glued at rank 13, so its ID is 69 + 13 = 82, and `␣king` was glued at rank 275, so its ID is 69 + 275 = 344. The last rule, rank 442, gets ID 511, which is the 512th entry because counting began at 0.
+
+### Replaying the merges on new text
+
+When you type text, the tokenizer learns nothing new, and instead it replays the merge rules it already has, in three stages:
+
+1. **Pre-tokenization:** The text is first split into word-sized chunks, each keeping the space in front of it, and the lab calls each chunk a pre-token. A space goes at the front of the chunk for the word after it, and merges never reach across from one chunk into the next. So a space can only ever be glued to the word after it, never to the word before it, and only if a merge rule allows it. The workbench draws a coloured bracket under the chips that came from each chunk.
+2. **Bytes:** Each chunk is broken into its bytes, so the chunk `␣king` starts out as five pieces, `␣`, `k`, `i`, `n` and `g`.
+3. **Merges:** The tokenizer looks at every pair of neighbouring pieces in the chunk and picks the pair whose merge rule has the lowest rank, meaning the rule learned earliest. It glues that pair everywhere it appears. Then it looks again, and it stops when no neighbouring pair has a rule. Going in learning order means each word gets built up in the same order the rules were first learned.
+
+Here is `␣king` going through the merges, the way the **Merge trace** card shows it, with the pieces left after each step on the right. The number after `#` is the rule's rank.
+
+```
+bytes                      ␣  k  i  n  g
+#8     i + n    →  in      ␣  k  in  g
+#44    in + g   →  ing     ␣  k  ing
+#91    ␣ + k    →  ␣k      ␣k  ing
+#275   ␣k + ing →  ␣king   ␣king
+```
+
+At the start, the lowest-ranked pair is `i` + `n`, at rank 8, so it joins first. Next, `in` + `g` at rank 44 beats `␣` + `k` at rank 91, and once both of those are done, the rule at rank 275 joins `␣k` and `ing`.
+
+The ranks only ever go up as you read down a trace, for two reasons. Any pair that was waiting from the start has a higher rank than the one just picked, or it would have been picked first. Any new pair that uses a freshly glued piece, such as `ing`, must have been learned after that piece was made, so its rank is higher too.
+
+The word `␣queen` goes differently, as its own trace shows:
+
+```
+bytes                      ␣  q  u  e  e  n
+#25    e + n    →  en      ␣  q  u  e  en
+#190   q + u    →  qu      ␣  qu  e  en
+#298   ␣ + qu   →  ␣qu     ␣qu  e  en
+```
+
+No rule in the table joins `␣qu`, `e` and `en`, so even with all 512 entries the word stops at three tokens. It never becomes a single token at any vocabulary size. At smaller sizes it breaks into even more pieces. Length and meaning have nothing to do with it, since `␣speak` has five letters, just like queen, and is a single token. What matters is which pairs were most common in the Shakespeare text the tokenizer learned from.
+
+This also explains how the **Vocabulary size** slider works, since a smaller vocabulary is the same list of merge rules cut short, as if training had stopped earlier. With fewer rules to replay, words fall back to the smaller pieces they were built from.
+
+### Special tokens
+
+Four IDs are kept aside for **special tokens**, which are markers with a job to do rather than pieces of text. In ID order, they are `<unk>`, which stands in for any byte the vocabulary lacks, then `<pad>`, then `<bos>` and `<eos>`, which mark the start and end of a text. The `<pad>` token is filler, used to make a short text as long as the others when several texts are handled together. On the workbench, special tokens such as `<eos>` (ID 3) get a double border, while `<unk>` chips (ID 0) are red and dashed.
+
+If you type the characters `<eos>` yourself, this tokenizer turns them into the real end-of-text token, as the sample `the end<eos>` shows. That choice matters more than it looks, and "Going deeper" explains why.
+
+### From a number to a list of numbers
+
+The second lookup is where the numbers a model really uses come from. Think of a huge table with one row for every token in the vocabulary, where each row is a long list of decimal numbers. A token's ID says which row to read, and nothing else about the token is used.
+
+A list of numbers like this is called a **vector**, and the row for a token is that token's **embedding**. The whole table is the **embedding matrix**, where "matrix" is the name for a grid of numbers arranged in rows and columns. How many numbers each row holds is the **embedding dimension**, often written as d, and it is 50 for the word lists in this lab.
+
+When you select `␣king` on the workbench, the line under the readouts ends with "The model would read row 344 of a 512-row embedding matrix." That sentence describes what a real model built on this tokenizer would do. No such model exists in this lab, though, so the lower cards use a separate table of whole words instead.
+
+After the lookup, the model holds only that list of numbers for the token. The letters are gone and so is the ID, and every later step in the model works on lists like this one.
+
+### Where the numbers come from
+
+Nobody types the numbers into the table by hand, because in a language model every row starts out as random numbers. Training then shows the model real text again and again and asks it to guess the next token, a bit like your phone's keyboard suggesting the next word. After each guess, every number that played a part, including these rows, is nudged a tiny bit so that the next guess is better.
+
+Picture a friend who texts you about something called florp, a word you have never seen. First they spilled florp on their shirt, then they said it was too warm to drink, and later they asked you to grab one from the fridge. Nobody told you what florp means, yet you would place it near juice or soda because of the words around it.
+
+Training reaches a similar result, though nothing in it guesses or reasons the way you did. Words that fill the same gaps in sentences get their numbers nudged up and down in the same ways while the model learns, so their lists drift close together.
+
+The GloVe word lists in the lower cards were learned separately, from Wikipedia and news text, with their own training method, but they show the same pattern. In the **Nearest neighbours** card, the closest words to `queen` are `princess`, `lady` and `elizabeth`.
+
+### Reading a list of numbers as a point
+
+A pair of numbers, such as (3, 2), marks a point on a graph: three steps across and two steps up. A list of 50 numbers marks a point in the same way, but in a space with 50 directions instead of two. Nobody can picture 50 directions, but distances and angles work there the same way they do on a flat graph.
+
+So every word becomes a point, and the space they all sit in is called the **embedding space**. Interpreting distance in that space means asking which points sit close together, and what that closeness tells you.
+
+To measure closeness, picture an arrow from the centre of the graph, the point (0, 0), out to each word's point. **Cosine similarity** measures how closely two arrows point in the same direction, while ignoring how long they are. A score of 1 means they point exactly the same way, 0 means they sit at a right angle, and −1 means they point in opposite directions.
+
+Three small examples on an ordinary graph show how this works:
+
+```
+arrows to (2, 0) and (5, 0)     same direction    cosine similarity  1
+arrows to (1, 0) and (0, 1)     right angle       cosine similarity  0
+arrows to (1, 0) and (−1, 0)    opposite          cosine similarity −1
+```
+
+The first pair scores 1 even though one arrow is longer than the other, because cosine similarity looks only at direction.
+
+So in this lab, two words count as close when their arrows point the same way, not when their points are a short ruler distance apart. Two points can sit far apart on the graph and still count as close, as long as they lie along the same line out from the centre.
+
+In the lab, the closest word to `queen` is `princess`, with a cosine similarity of 0.852. The bars in **Nearest neighbours** run from 0 to 1, so a long bar means two arrows point in nearly the same direction across all 50 numbers. Close arrows mean the words are used in similar sentences, which is not the same as meaning the same thing, as "Where it breaks" shows with the word `hot`.
+
+### Adding and subtracting words
+
+Because each word is a list of numbers, you can add and subtract words, which is called **analogy arithmetic**. The famous test is `king − man + woman`: start from king, take away man, add woman, and see which word lands closest to the result.
+
+Here is a made-up example with only two numbers per word, so you can follow it in your head:
+
+```
+king     (3, 1)
+man      (1, 1)
+woman    (1, 2)
+queen    (3, 2)
+
+king − man + woman  =  (3 − 1 + 1,  1 − 1 + 2)  =  (3, 2)  =  queen
+```
+
+Going from man to woman means one step up, and adding that same step to king lands exactly on queen. Real lists of 50 numbers never line up this neatly, so the lab looks for the word whose arrow points closest to the result.
+
+Before adding, the lab stretches or shrinks every word's arrow to a length of 1, so that a word with a long arrow cannot drown out the others. That is what "unit-length vectors" means in the heading of the **Vector arithmetic** card, and "3CosAdd" in the same heading is the name of this add-then-compare method.
+
+With the real GloVe lists, `king − man + woman` does come out as `queen`, with a cosine of 0.852, but only after the three input words are ruled out. It is a coincidence that this matches the 0.852 between queen and princess in **Nearest neighbours**. If the three input words are allowed to win, `king` itself comes out on top at 0.885, because the result still points mostly in king's direction.
+
+### Squeezing 50 numbers onto a flat map
+
+To draw 10,000 words on a flat screen, the lab has to squeeze 50 numbers down to 2, which is called a **projection**. If you hold your hand between a lamp and a wall, its shadow is flat, so it loses one direction. Two fingers that are far apart from front to back can land right on top of each other in the shadow.
+
+A flat map of 50-number lists loses far more than a shadow does, because it drops 48 directions instead of one. The lab offers two methods for making the map, and the one called PCA works most like a shadow. It finds the two directions in which the words spread out the most, and it drops all the rest. The other method, UMAP, builds a new flat layout that tries to keep each word near its closest neighbours, at the cost of bending the larger distances.
+
+The **Embedding projection** card shows how much each method keeps, using a badge that checks the ten closest words to `queen`. It counts how many of those ten true neighbours are also among queen's ten nearest dots on the flat map. UMAP keeps 5 of them, while PCA keeps none.
+
+### One list per token, wherever it sits
+
+In the default sentence, `␣the` appears twice, once after "and" and once after "read", and both chips show ID 82. Since the ID decides which row is read, both copies get exactly the same list of numbers. Nothing in that list says whether its token is the 4th piece of the sentence or the 10th.
+
+Picture a friend who writes each step of a recipe on its own card: "crack the eggs", "stir in the flour", "bake". If the cards get shuffled, each card still says exactly the same thing, and nothing on any of them tells you which step comes first. To keep the order, you would have to write a step number on every card.
+
+Language models face a similar problem, even though the tokens do arrive in order and nothing really gets shuffled. A later step called **attention** lets each token look at the other tokens around it and borrow information from the most useful ones. Attention compares tokens by their numbers, so unless position has been mixed into those numbers, it can tell very little about which slot each token sits in.
+
+So the order has to be added on purpose. A **positional encoding** is a second list of numbers that depends on a token's slot in the text. It is either added to the token's embedding right after the lookup, before attention or any other step has run, or mixed in later, inside attention itself. Unlike a step number in the corner of a card, it is blended into the token's numbers rather than kept separate.
+
+Here is a made-up example with two numbers per list. If `␣the` has the embedding (0.4, 1.2) and slot 4 has the position list (0.1, −0.3), the model works with (0.5, 0.9). Slot 10 has a different position list, so the two copies of `␣the` no longer look identical.
+
+**The transformer block** lab shows a part of a model that cannot tell two word orders apart until position is added, while **Attention** compares ways of adding it.
+
+The same rule has a second effect, which is that a token gets one list for all of its meanings. So `bank` starts out with the same numbers in "river bank" and in "bank account", and working out which meaning is meant happens later, in attention.
+
+## Why it’s here
+
+### A model needs numbers it can work with
+
+A language model is a huge pile of arithmetic: multiplying, adding and comparing numbers over and over. Token IDs cannot take part in that, because they are only addresses. If a model added `␣king` (344) and `␣the` (82), the answer would mean nothing, any more than adding two phone numbers gives you a useful phone number.
+
+An embedding solves this by giving each token a list of numbers that training can shape. Because the lists are learned, tokens used in similar ways can end up with similar numbers, which lets the model's arithmetic treat them in similar ways. A bare label becomes something the model can measure, compare and change.
+
+### A fixed list has to cover every possible text
+
+The vocabulary is fixed before training starts, and adding an entry later means adding a new row to the table and training it. So the list has to cope with any text a person might type, and the two obvious choices both fail.
+
+A list of whole words could never be complete, because people keep writing new names, slang and typos, and any word missing from the list would turn into an unknown. A list of single bytes could spell anything, but it would make every text much longer, so the default sentence would take 47 tokens instead of 18. A model can only take in a fixed number of tokens at once, so a text that long would use up that space more than twice as fast.
+
+Subword tokens are the middle ground, because common words become one token each while rare words are spelled from a few smaller pieces. That keeps common text short without leaving anything unknown. Most tokenizers used in real systems include all 256 possible bytes, so any text at all can be spelled out, even if rare text takes many tokens.
+
+### Everything later is built on these lists
+
+Every later part of a language model works on the lists this step produces. A language model is built from a stack of repeated units called transformer blocks. Inside each block, attention compares the lists for different tokens, and another part reshapes each token's list on its own. At the very end, the model scores its final list against every row of the vocabulary to rank which token should come next.
+
+### It explains behaviour you can see
+
+How text gets cut into tokens explains several things language models get wrong:
+
+- **Counting letters:** If a word arrives as one token, the model receives one list of numbers for it, and the letters themselves are not part of what it receives. In this lab, `␣king` is a single token, so k, i, n and g never reach a model as separate pieces.
+- **Different languages:** A vocabulary is fitted to the text it was trained on, so the same sentence can cost different numbers of tokens in different languages. This lab's tokenizer is an extreme case, since it learned from English alone and turns accented letters like the `ï` in `naïve` into `<unk>`.
+- **Markers:** Markers such as end-of-text are whole tokens, so a model ends its reply by producing that one token, not by spelling out the letters of `<eos>` one by one.
+
+## How to play with it
+
+Work through the cards from top to bottom, since each step below matches one step in the lab's own guide.
+
+### 1. Split text
+
+**Try this:** Leave the sentence alone and drag **Vocabulary size** from `512` down to `69`. The **Tokens** readout climbs from 18 to 47, while **Characters** stays at 47 the whole time. The text never changed, only the number of merge rules the tokenizer may use, which the slider's label also shows, starting at `512 · 443 merges`.
+
+At 69 there are no merges left, so every character becomes its own token and **Characters per token** reads 1.00. Drag back up slowly and watch the chips join into bigger pieces as the merge rules come back.
+
+You can also type your own text into **Text to tokenize**, up to 200 characters, and the chips, the readouts and the merge trace all update as you type. The sample buttons next to the word "Try" swap in texts chosen to show one behaviour each.
+
+### 2. Replay the merges
+
+When the lab opens, the `␣king` chip is already selected, so the **Merge trace** card shows its four merges, from the `bytes` row down to `#275`. Read it from top to bottom and match each row to the walk-through in "What it is".
+
+Then set **Vocabulary size** to 344, though anything from 161 to 344 gives the same result. IDs start at 0, so keeping ID 344 needs 345 entries, and at 344 the last one is cut. The last row fades with the note `needs vocabulary ≥ 345`, and the `␣king` chip on the workbench splits into `␣k` and `ing`. The badge at the top of the trace drops from "4 of 4 merges in budget" to "3 of 4 merges in budget". Go lower still and the earlier rows fade too.
+
+Click any of the four chips that make up "attention" (`␣at`, `t`, `ent` or `ion`) as well, and the trace follows the whole word. You can watch "attention" being built by six merges into the four pieces `␣at`, `t`, `ent` and `ion`.
+
+### 3. Inspect token IDs
+
+Start by comparing the small numbers on the chips, where `The` with a capital is 167 and `␣the` is 82. Both `␣the` chips in the default sentence share that ID, because they are the same token. Click any chip and the line under the readouts explains where its ID comes from, such as "created by merge rank 275, so its ID is 69 + 275". A single-letter chip is described instead as part of the starting alphabet, which holds IDs 4 to 68.
+
+Next, pick the sample `the The ␣the`, which shows three spellings of one word. The first `the`, which has no space in front of it, splits into `t` and `he`, while the capital `The` is 167 and `␣the` is 82. You will also see two lone `␣` chips. The one before `The` stayed alone because no rule joins a space to `The`. The extra space in the double space was split off as its own chunk before any merge ran, so no rule could reach it.
+
+Then pick `2024 was 33 years`, find the red, dashed `<unk>` chips with ID 0, and check the **Unknown bytes** readout. The sample `naïve café` shows two `<unk>` chips for each accented letter, because each of those letters takes two bytes.
+
+### 4. Map meaning
+
+The lower cards need the word lists to load first, so wait until the small label on **Nearest neighbours** says `Loaded`. Type a word into **Query word**, and the card lists its ten closest words, each with its cosine similarity.
+
+Click any bar to make that word the new query, which lets you walk from word to word. Try `queen`, `hot`, `apple` and `bank` in turn, and notice how different their neighbourhoods look.
+
+Under the bars you will also see the first 6 of the word's 50 numbers. For `queen` they start with ordinary decimals such as 0.38 and 1.82, and none of them has a label saying what it means. Two readouts sit below those numbers: **Frequency rank** shows how common the word is in GloVe's list, where `the` is number 1 and `queen` is number 1,939. **Vector length ‖v‖** shows how long the word's arrow is, which is the one thing cosine similarity ignores.
+
+Then scroll to **Embedding projection** and switch **Projection** between `UMAP` and `PCA` while `queen` is the query. Dashed lines, called spokes, join queen to its ten true neighbours, so a long spoke means the map pulled a real neighbour far away. Watch the badge change between "keeps 5 of 10 neighbours" and "keeps 0 of 10 neighbours".
+
+Under PCA, queen's real neighbours spread out across the map, and the badge reads 0. That is the shadow effect at work. Many unrelated words, such as `miami` and `grabbed`, land almost on top of queen, closer than even `princess`, so they fill all ten of its nearest dots.
+
+The **Frame** control switches between `Fit highlights`, which zooms in on the marked words, and `All words`, which shows all 10,000 dots.
+
+### 5. Try vector arithmetic
+
+In **Vector arithmetic**, start with the preset `king − man + woman` and switch **Input words** between `Excluded` and `Allowed to win`. With `Excluded`, queen tops the list at 0.852, but with `Allowed to win`, `king` itself moves to the top at 0.885. In that mode, king is greyed out and tagged "input word", so you can tell it was one of the three words you started from.
+
+Then pick `bigger − big + small` and read the honest top answer, which is `larger`, not `smaller`. Try `paris − france + italy` and `tokyo − japan + germany` as well, or type your own words into the A, B and C boxes.
+
+Finally, pick the `king − man + woman` preset again in **Vector arithmetic**, then scroll to **Embedding projection** and set **Highlight** to `Analogy words`. The boxes stand for A − B + C, so here A is king, B is man and C is woman. A solid arrow runs from man to king, and another runs from woman to queen, the top answer once the inputs are ruled out.
+
+A dashed arrow copies the man-to-king arrow and starts it at woman. If the flat map had kept the analogy, that dashed arrow would end right on queen. Try the other presets too, and you will see that the dashed arrow rarely ends on the answer.
+
+## What to notice
+
+- **The text stays the same, but the count changes:** The default sentence takes 18 tokens at full size and 47 with no merges at all. A shorter list of merge rules leaves words in smaller pieces.
+- **IDs are addresses, not amounts:** `␣king` gets ID 344 only because it was made by the merge ranked 275. A model never treats a bigger ID as "more" of anything.
+- **Spaces and capitals change the tokens:** One word gets three encodings in the sample `the The ␣the`. `The` is 167 and `␣the` is 82, while a `the` at the very start splits into `t` and `he`.
+- **Frequency, not length, decides what becomes one token:** `␣king` and `␣speak` are one token each, while `␣queen` needs three and `␣attention` needs four.
+- **Shrinking the vocabulary never changes a surviving token's ID:** It only removes the latest merges, so words fall back to shorter pieces.
+- **Repeated tokens share one row:** Both `␣the` chips in the default sentence show 82, so a model would read exactly the same list for each of them.
+- **Close means "used in similar sentences":** The nearest words to `queen` are princess, lady and elizabeth, a mix of royalty, women and particular queens.
+- **One list covers every meaning of a word:** In news text `apple` is mostly the company, so its neighbours are `chips`, `microsoft` and `pc`. The neighbours of `bank` are all about money, with nothing about rivers.
+- **The famous analogy needs help:** `king − man + woman` lands on queen at 0.852 only when the inputs are excluded, and otherwise `king` wins. Most published tests of analogy arithmetic rule the inputs out in the same way.
+- **The flat map keeps only some neighbours:** UMAP keeps 5 of queen's 10 nearest words close on the map, and PCA keeps none. Under UMAP, `elizabeth` and `victoria` land far from queen even though their cosine scores are 0.787 and 0.729.
+
+## Where it breaks
+
+### Where the brick picture stops matching
+
+The brick picture works for cutting and gluing, but it stops at meaning. A brick has nothing inside it, while a token's embedding is a list of many numbers, and none of those numbers comes with a label saying what it stands for. The pattern that looks like meaning lives in how the learned lists relate to each other, not in the token itself.
+
+The picture also suggests a builder who chooses which bricks to use. A tokenizer has no choice at all, because it replays the same merge rules in the same order every time, so the same text always gives the same tokens.
+
+### Limits of this lab
+
+- **The tokenizer is tiny:** It has 512 entries and learned from Shakespeare alone, so modern words break into many pieces. Most digits, accented letters and emoji become `<unk>` because it cannot fall back on raw bytes, so its coverage is nothing like a real tokenizer's.
+- **The two halves use different tables:** The word lists are GloVe, looked up by whole lowercase word, not rows for the tokenizer's IDs. No model here was trained on the tokenizer's pieces, so the workbench's line about "row 344 of a 512-row embedding matrix" describes a model that is not present.
+- **The word table is small:** It holds only 10,000 words with 50 numbers each, so rare words are missing, and the neighbourhoods are rougher than in bigger tables.
+- **The maps were made in advance:** Both were worked out once, when the lab was built, so they show only the 10,000 words. They can never show the point where `A − B + C` lands, because the lab saved only the 10,000 finished positions, not a way to place new points on the map. On a UMAP map, the exact positions, the sizes of clusters and the gaps between them carry no meaning.
+- **Every flat map loses most of the distances:** Squeezing 50 numbers into 2 always throws information away. Use a map to find a region worth looking at, and then check it against the real cosine scores.
+
+**A common mix-up:** Being close does not mean "means the same thing"; it means "shows up in similar sentences". The two nearest words to `hot` in this lab are `cool` and `cold`, even though cold means the opposite. All three fit into the same sentences, such as "the water is too hot" and "the water is too cold", so training pulled their lists together.
+
+### Limits of the real mechanism
+
+- **One list per token, whatever the context:** A token gets the same embedding in every sentence and position, so `bank` starts out identical in "river bank" and "bank account". Sorting out the meaning happens later, in attention, and word order has to come from the positional encoding.
+- **Word arithmetic is fragile:** `bigger − big + small` lands on `larger` before `smaller`, and `tokyo − japan + germany` lands on `frankfurt` before `berlin`. Results depend on details like ruling out the inputs, and many relationships fail completely.
+- **A working analogy proves less than it seems:** When `king − man + woman` does land on queen, it shows that some directions in the space are consistent. It does not show that the lists store facts as neat, reliable steps.
+- **Closeness is not agreement:** Cosine similarity also scores opposites and loosely related words as close. A high score is a hint worth checking, not proof that two words mean the same thing.
+- **Some mistakes start at the cut:** Counting letters, sums with long numbers and languages the tokenizer rarely saw all get harder because of where token edges fall.
+
+## Going deeper
+
+### Real tokenizers
+
+Most modern tokenizers work the same way at a much larger scale, with vocabularies of roughly 32,000 to 256,000 entries built from tens of thousands of merge rules. Most include all 256 possible bytes from the start, so no text is ever unknown, and rare text takes more tokens instead.
+
+Before any merges, this lab's tokenizer tidies the text into a standard form, so a character that can be stored in several ways is always stored the same way. It then splits the text into chunks using a common pattern known as the GPT-2 pattern. In the tokenizer's own file, the space byte is written as `Ġ`, which the lab shows as `␣`.
+
+Not every tokenizer uses merges, since some, such as SentencePiece's unigram models, score each possible way of cutting a word and keep the highest-scoring one.
+
+### Special tokens and safety
+
+Tokenizers disagree about what to do when a user types a special token's text. A library here means a ready-made package of code that programmers reuse. This lab, like the default in Hugging Face's library, turns a typed `<eos>` into the real end-of-text token, while the tiktoken library refuses such text by default. Chat systems have to choose carefully, because if typed text can become a real marker, a user could fake the structure of a conversation, such as where one message ends.
+
+### Why a lookup counts as arithmetic
+
+Reading a row from the table can also be written as a multiplication. Make a list of 512 numbers that are all 0 except for a single 1 in the spot for token 344, which is called a one-hot vector. Multiply each row of the table by the matching number in that list, which means multiplying every number in the row by it, then add all the rows together.
+
+Here is the same idea with a tiny table of three rows: (2, 5), (7, 1) and (4, 4). The one-hot list (0, 1, 0) picks the second row:
+
+```
+0 × (2, 5)  =  (0, 0)
+1 × (7, 1)  =  (7, 1)
+0 × (4, 4)  =  (0, 0)
+added up    =  (7, 1)   which is exactly the second row
+```
+
+The real table works the same way, with 512 rows instead of three. Every row gets multiplied by 0 except row 344, so the result is exactly that row. Real code skips the multiplying and reads the row directly. Writing it as a multiplication still matters, because it shows the lookup is ordinary arithmetic, so the table can be trained like every other part of the model.
+
+### Cosine similarity with real numbers
+
+The info panel on **Nearest neighbours** gives the formula as `cos(u, v) = u·v / (‖u‖‖v‖)`. Here ‖u‖ is the length of arrow u, the same thing the **Vector length ‖v‖** readout shows, and u·v means "multiply the matching numbers and add the results".
+
+Try it with two arrows, one to (3, 4) and one to (4, 3):
+
+```
+lengths:   ‖u‖ = √(3² + 4²) = √25 = 5      ‖v‖ = 5
+u·v:       3 × 4 + 4 × 3 = 24
+cosine:    24 / (5 × 5) = 24 / 25 = 0.96
+```
+
+The two arrows point in nearly the same direction, so the score comes out close to 1. The lab does the same sum with 50 numbers instead of 2, and to save time it divides every word's list by its length once, in advance.
+
+### The same table, at the other end
+
+At the very end of a model, the process runs in reverse. The model's final list is scored against every row of the vocabulary to rank which token comes next, and many models reuse the same table for both jobs.
+
+A tokenizer is built once, before the model is trained, and then kept. Swapping it afterwards would make every learned row meaningless, because each row belongs to one particular token.
+
+### Bigger tables in real models
+
+Real models use far longer lists than the 50 numbers here, since their embedding dimension runs from several hundred to over 16,000. More numbers give the lists more directions to spread out in, but they also make every later step cost more. With a vocabulary of tens of thousands of tokens on top of that, the embedding matrix is one of the largest single tables of numbers in a model.
+
+### Tokens per word across languages
+
+The average number of tokens a tokenizer needs for each word is called its fertility, and it varies from language to language. Since a model can take in only a fixed number of tokens at once, the same content can use up very different amounts of that space depending on its language.
+
+### Next up
+
+The next lab, **A single neuron**, shows the first thing a model does with numbers like these: multiply, add, and squash. It uses two plain numbers as its inputs instead of a full list, so you can follow every step by hand.

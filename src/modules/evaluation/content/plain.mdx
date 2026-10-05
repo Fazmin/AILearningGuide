@@ -1,0 +1,321 @@
+---
+objectives: ["Score a model with an explicit rule instead of an impression, and see how the choice of rule changes the ranking", "Read a benchmark score together with its uncertainty", "Recognize contamination from the gap between benchmark and control", "Choose what to measure for an application: golden sets for regressions, task metrics for retrieval, agents, and safety, and a checked judge"]
+terms: ["Held-out set", "Perplexity", "Likelihood scoring", "Margin", "Confidence interval", "Contamination", "Control", "Scoring rule", "Pass@k", "Golden set", "Regression suite", "LLM-as-judge", "Human evaluation", "Attack success rate"]
+---
+
+## The big picture
+
+Picture two friends arguing about which of them is better at trivia. The fair way to settle it is a quiz, but a quiz only settles anything if the questions are new to both of them. There also have to be enough questions to rule out a lucky guess, and everyone has to agree, before anyone starts, how the answers will be marked.
+
+An AI model learns by reading huge amounts of example text, which is called **training**. AI models get compared much like the two friends, with fixed tests called **benchmarks**, and a fair test uses questions the model never read during training. This module is about how those tests turn a model's answers into a score, and how that score can mislead you even when nobody is cheating.
+
+### Where you have met it
+
+Whenever you read that one AI model beats another, or that a new model scored higher than an older one on some test, you are reading a benchmark score. Behind each claim sits a list of questions the model was never supposed to see, a rule for marking its answers, and a score worked out from both.
+
+The same habits carry over to whole apps built around a model. One example is an assistant that searches through documents before it answers, and another is an assistant that carries out a task step by step, called an **agent**. Those apps need careful tests too, and the last part of this lesson shows what to measure for them.
+
+### Why it matters
+
+A test score looks like a plain fact, but the number on its own never tells you how it was made. Without careful tests, nobody could tell whether a new model is really better, whether it got lucky on a short test, or whether it saw the test in training.
+
+Each of those problems can make a weaker model look stronger, and each one is invisible in the score itself. The lab lets you cause each of them on purpose and watch the numbers change, so you know what to check the next time someone shows you a ranking.
+
+### What you will be able to explain
+
+By the end of this lesson, you should be able to explain each of these in your own words:
+
+- How a model gets a score from a clearly stated marking rule instead of someone's impression, and why switching the rule can change which model comes first.
+- How to read a score together with the range it could really fall in, and why six questions, like the lab's, cannot tell two close models apart.
+- How to spot a test that leaked into a model's training, by comparing how far the test score jumps with how far a score on unrelated text moves.
+- What to measure when you test a whole app. That means a fixed set of known cases rerun after every change, task scores for search, agents and safety, and an AI grader checked against people.
+
+### What the lab lets you do
+
+The lab tests a tiny model that really trains on a few sentences about a harbor. Every score, chart and range you see is worked out from that model's real output. Two parts are kept simple on purpose. The six test questions start out fixed, though you can rewrite them, and the leak is a word-for-word copy, which is easier to spot than real leaks. The lab has four cards:
+
+- **Leaderboard** ranks four versions of the model, draws a range beside every score, and lets you change the marking rule with **Scoring rule**.
+- **Item-level results** shows how the most-trained version did on each question, and by how much it passed or failed.
+- **Benchmark editor** holds the six test questions, which you can read and rewrite, along with a slider that sets how long the four versions train.
+- **Contamination control** has a switch that leaks the test's source sentences into the training text, so you can see what a leak does to every score.
+
+## What it is
+
+### The model on test
+
+The lab trains a very small language model, which is a program that learns to guess the next character of a piece of text. Here a character means one letter, space or full stop, so “the fog” is seven characters. The model learns from a handful of sentences about harbor weather, such as “the morning fog settles over the harbor and the air feels cool.”
+
+This model looks back only one character when it guesses, so when it guesses what follows a space, the only clue it can use is that space. Nothing inside it stands for what a harbor is or what a sentence means, which matters later when you see which questions it gets wrong.
+
+The lab saves four versions of the model, each trained for a different amount of time. Training time is counted in **epochs**, where one epoch is one full pass through the training text, and the four budgets are 3, 10, 30 and 80 epochs. Each saved version is called a **checkpoint**, which is what the Leaderboard calls its rows.
+
+The **Training budget multiplier** slider in Benchmark editor stretches or shrinks all four budgets together. It runs from a quarter of the default length up to three times it, and it starts at 1.00×, which leaves the four budgets as they are.
+
+### A test made of two-ending questions
+
+In this lab, a benchmark is a short list of fill-in-the-blank questions, which the lab calls **items**. Each item is one line in **Benchmark editor**, written in the form `context | correct | plausible distractor`. That means the start of a sentence, then the right way to finish it, then a wrong ending picked to sound believable, which is called a **distractor**.
+
+Here is one of the six default items: `the fog returns in the | morning | evening`. “Evening” is wrong only because the harbor notes say the fog comes back in the morning. It is an ordinary word that shares many letter patterns with “morning”, so a model that has not learned this text has no easy way to tell the two apart.
+
+For this lab's model, though, learning the text means learning which letters tend to follow which. It cannot connect the fog with the morning, so even when it passes this item, the pass comes from letter patterns, as Item-level results will show.
+
+### Likelihood scoring: rating the endings instead of writing one
+
+The model never writes an answer on this test. Instead, the lab asks how likely the model would be to produce each ending after the context, and the more likely ending wins. This way of marking is called **likelihood scoring**, and because nothing gets written, the random settings that make a chatbot's replies vary cannot change the result.
+
+Rating an ending works one character at a time, with the model giving each character a chance between 0 and 1 of coming next. The chance of the whole ending is all of those chances multiplied together. Every chance is below 1, so the product shrinks with each character you add, and it soon becomes a very tiny number.
+
+To keep those numbers manageable, scorers first turn each chance into a **log-probability**. You do not need to know how the conversion works, only three facts about it. A chance of 1 becomes 0, while smaller chances become negative numbers that sit further below zero: 0.5 becomes about −0.7, and 0.1 becomes about −2.3. Adding log-probabilities together does the same job as multiplying the chances.
+
+Every ending is scored with the space in front of it, so “ morning” counts as eight characters, which is the space plus seven letters. Its total log-probability is the sum of eight negative numbers, one per character, and a total closer to zero means a more likely ending.
+
+### Why length gets in the way
+
+Here is the catch: a longer ending adds up more negative numbers, so its total sinks lower even when every one of its characters was a good guess. Picture a made-up model that gives every character in two endings the same log-probability of −2. The ending “ sails” has six characters once you count its space, so its total is −12.
+
+The ending “ trails” has seven characters, so its total is −14. Comparing totals hands the win to “sails”, even though this made-up model rated every character in both endings equally well. The shorter ending won for no reason except that it was shorter.
+
+The fix is to divide each total by its number of characters, which gives the average log-probability per character. In the example both averages come out at −2, so length gives neither ending a head start, and the winner has to earn it character by character. Dividing by length like this is called **length normalization**, and it is the lab's default rule.
+
+### The margin: how close was the call?
+
+A pass or a fail hides how close the call was, so the lab also shows each item's **margin**: the right ending's score minus the wrong one's. A positive margin means the item passed and a negative one means it failed.
+
+Because the scores are negative numbers, take care with the subtraction. For example, if the right ending averages −2.0 per character and the wrong one −2.5, the margin is −2.0 − (−2.5) = +0.5, so the item passes. The further the margin sits from zero, the less close the call was. A pass by 0.01 and a pass by 1.2 count the same in a pass count, but as margins they look very different.
+
+### The scoring rule is a choice
+
+Turning a model's output into a number takes a rule, and the rule someone picks is called a **scoring rule**. It is a decision a person makes, not a fact about the model, and the **Scoring rule** control on the Leaderboard offers three of them:
+
+- **Length-normalised**, the default, compares each ending's average log-probability per character, so a long ending is not punished for its length.
+- **Raw log-probability** compares the totals instead, which hands the shorter ending a head start whatever the model has learned.
+- **Sample and check** makes each checkpoint actually pick an ending at random, weighted by how likely it rates each one, and checks whether the pick was right.
+
+Switching the rule marks the same four checkpoints a second time, without training them again. Nothing inside the models changes, so any change you see in the ranking comes from the rule alone.
+
+### Sample and check, and pass@k
+
+Under Sample and check, a checkpoint picks between the two endings the way a weighted coin lands. If it rates the whole right ending three times as likely as the wrong one, it picks the right ending about 3 times in 4. The weights come from the whole ending's chance, the same total that Raw log-probability compares, so a shorter right ending gets the same head start here. The lab records 20 picks for every item and reuses the same random numbers each time, so the results come out the same whenever you look.
+
+The **Attempts allowed (k)** slider appears once you choose Sample and check. It runs from 1 to 10 and sets how many tries each checkpoint gets at every item. An item then scores **pass@k**, the chance that at least one of k tries picks the right ending. So pass@1 is the chance of being right on the first go.
+
+To see the idea with small numbers, suppose a checkpoint picks the right ending half the time and gets two tries. It misses both with a chance of 0.5 × 0.5 = 0.25, so its pass@2 is 1 − 0.25 = 0.75, or 75%. The lab works out pass@k from the 20 picks it recorded rather than from a shortcut like this one, but it is estimating the same chance.
+
+### The held-out set and the control
+
+A test only measures something if the model has not seen it. The six items were written from the last three sentences of the harbor notes, and the lab removes those sentences before training, so no checkpoint has seen them. Text kept out of training so it can be used for testing is called a **held-out set**, and you can read these three sentences in **Contamination control**.
+
+The lab also keeps a second piece of text away from training: ten proverbs, such as “the early bird gets the worm”, which have nothing to do with harbors. That text is the **control**, a yardstick that shares nothing with the test, so a leak of the test copies none of it into training. A real improvement shows up on the control too, roughly in proportion. If the test score jumps far more than the control moves, suspect that the test leaked, even when the control improves a little.
+
+Benchmark editor counts the characters in all three texts, under **Training characters**, **Benchmark source** and **Control**. They are three different pieces of text, and only the training text is trained on. When you switch on the leak, the Training characters count grows, because the three source sentences join it.
+
+### Perplexity: how well does the model fit a passage?
+
+Pass counts only look at six items, so the Leaderboard also measures how well each checkpoint fits whole passages of text. It uses **perplexity**, which you can read as the number of equally likely characters the model is choosing between at each step. Lower is better, because a lower number means the model has narrowed down its guesses.
+
+The lab's model can write 30 different characters: the 26 letters, a space, a full stop and two special markers. A model that learned nothing gives all of them the same chance, so it scores a perplexity of 30, like a blind guess every time. A perplexity of 9 means the model is about as unsure as if it were choosing from 9 equally likely characters instead.
+
+The table shows two of these numbers for each checkpoint: **Benchmark perplexity**, measured on the three held-out sentences, and **Control perplexity**, measured on the proverbs.
+
+### How sure is a score?
+
+Picture a coin that you flip six times and that lands heads three times. That does not prove the coin is fair, because a coin weighted to land heads only 30% of the time could also give three heads in six flips. So could a coin weighted toward 70% heads, which means six flips cannot tell any of these coins apart.
+
+Six test items work like six flips, so a score of 3 out of 6 tells you much less than it seems to. The lab measures that wobble with the **standard error**, using a formula that appears inside the callout at the bottom of the Leaderboard: `√(p(1 − p)/n)`. In it, p is the pass rate and n is the number of items.
+
+For 3 passes out of 6, p is 0.5, so p(1 − p) is 0.5 × 0.5 = 0.25. Dividing by 6 gives about 0.042, and its square root is about 0.20. That is 20 percentage points, which is roughly what **Leader's standard error** reads at the start, so the leader's score is 50%, give or take about 20 points.
+
+The lab turns that wobble into a range. First, a checkpoint's **true pass rate** is the share of items it would pass on a huge number of similar items, which no six-item test can show you directly. Picture giving the same checkpoint 100 different six-item tests and drawing a range from each one. About 95 of those 100 ranges would contain the true pass rate, and a range built this way is called a 95% **confidence interval**.
+
+A rough version of that range stretches two standard errors either side of the score, which for 3 out of 6 runs from about 10% to 90%. With so few items that rule is only a rough guide. So the chart draws a more careful version called the Wilson interval, which also stays sensible near 0% and 100%. For 3 out of 6, the Wilson interval runs from 19% to 81%, and that is the range to read. Either way, a checkpoint passing 3 of 6 could be weak or could be strong.
+
+### Comparing two checkpoints item by item
+
+Here the coin picture stops matching, because coin flips are all alike while test items are not: some are much harder than others. That difference between items is what makes an item-by-item comparison useful, because both checkpoints answer the same six items.
+
+Picture two friends who take the same quiz. Scored separately, each friend's total wobbles with luck, such as whether this quiz happened to be full of easy or hard questions, and that wobble widens each friend's own range. Compare them question by question instead, and a question both of them miss adds nothing to the difference between them. Only the questions where they disagree count, so the range for that difference is usually much narrower than the two separate ranges would suggest.
+
+The lab goes one step further than right or wrong, because it compares margins instead. That means every item adds a small difference, not just the ones where the two disagree. Still, an item that is hard for both checkpoints pulls both margins down by about the same amount, so most of its difficulty cancels out in the subtraction.
+
+The callout at the bottom of the Leaderboard does exactly this, subtracting the runner-up's margin from the leader's on every item. Under Sample and check it subtracts each item's pass@k instead, because that rule scores items by pass@k rather than by margin. It then averages the six differences and gives that average its own 95% range. When that range runs from below zero to above zero, the items cannot say which of the two is better.
+
+## Why it’s here
+
+Every claim about what a model can do comes down to a score on a test, and that score means something only if three things are true. The test text has to be truly absent from training, and there have to be enough items to separate the models. The scoring rule also has to be stated, so others can use the same one. None of these three conditions shows up in the score.
+
+Picture a reading test built on a story that nobody in the class has read, so it checks how well students understand writing that is new to them. If one student happens to have read that exact story at home, their score jumps, even though their reading has not improved at all. The test has quietly stopped measuring what it was built to measure.
+
+A second test on a different unread story would reveal the problem, because that student's score there would stay about where it was. That second test plays the same part as the lab's control. In AI this problem is called **contamination**, which means test text, or the text a test was written from, ending up in a model's training data.
+
+The picture stops matching in one way, though. Reading one story does not make a student better at other stories, but a model trained on leaked text usually gets a little better at unrelated text too. So the lab's control moves slightly, and the warning sign is the size of the gap between the two scores, not a control that stays perfectly still.
+
+The other two conditions fail as quietly. With only a few questions, luck decides close contests, the way a two-question quiz could rank a lucky guesser above someone who studied. A marking rule that favours short answers can reorder a ranking without anyone getting better or worse.
+
+## How to play with it
+
+The lab's five steps take you through it in order, and each part below matches one of those steps.
+
+### 1. Write the items
+
+Before writing an item of your own, open **Benchmark editor** and read the six default items in the Benchmark items box:
+
+```
+in winter the same harbor | freezes | flowers
+the boats stay in | port | town
+in summer the harbor fills with | sails | trails
+the water stays | warm | wide
+the fog returns in the | morning | evening
+and the pattern | repeats | retreats
+```
+
+Every wrong ending is wrong but ordinary, such as “evening” against “morning” or “trails” against “sails”. Each one is a real word that could fit the sentence. So to pick the right ending reliably, a checkpoint has to have learned something from the harbor text, even if it is only the letter patterns.
+
+To see why that matters, change `morning | evening` to `morning | xyzzy` in the box. The fog item now passes by a wide margin. This model only knows which letter tends to follow which, and pairs like “xy” and “zz” never appear in the training text. An item with a nonsense distractor stops testing anything, so change it back before you go on.
+
+When you write an item of your own, take it from the three held-out sentences. An item written from the other harbor sentences is contaminated from the start, because every checkpoint trained on those sentences.
+
+### 2. Read the leaderboard
+
+Now look at **Leaderboard** at its starting settings, where the chart has one row per checkpoint: a dot for its pass rate and a line showing its 95% range. The leader's range is shaded down the whole chart, so you can see at a glance which other rows fall inside it. The table below the chart gives the same results as numbers, along with each checkpoint's two perplexities.
+
+The 80-epoch and 30-epoch checkpoints both pass 3 of 6 items, and both of their ranges run from 19% to 81%. The 80-epoch checkpoint sits on top only because its average margin, in the **Mean margin** column, is a tiny bit larger: 0.012 against 0.011.
+
+The callout under the table says that the leader's margin minus the runner-up's, paired over the same six items, averages +0.002. Its 95% interval runs from −0.220 to +0.224, which crosses zero. So these six items cannot say which checkpoint is better, and the order of the top two is not settled by this test.
+
+### 3. Change the scoring rule
+
+**Try this:** switch **Scoring rule** from Length-normalised to Raw log-probability. Every checkpoint gains two passes, and the 80-epoch checkpoint jumps from 3 of 6 to 5 of 6. The 30-epoch checkpoint, also at 5 of 6, now edges ahead of it on mean margin, even though neither one was trained again.
+
+Next choose Sample and check, with **Attempts allowed (k)** at 1. The 10-epoch checkpoint moves into first place, the 80-epoch one drops to third, and the 3-epoch one comes last. Now drag **Attempts allowed (k)** to 5, and the 3-epoch checkpoint, which trained least of all, takes the lead at 94%. Meanwhile the 80-epoch one falls to last place at 83%.
+
+Notice what happened there: the checkpoints and the six items never changed, yet each of the four checkpoints has now had a turn in first place. The only thing that moved was the rule you picked.
+
+### 4. Inspect the items
+
+Open **Item-level results**, which always shows the most-trained checkpoint, 80 epochs unless you move the multiplier. Each row shows both endings' scores, the margin, and a bar that grows right of centre for a pass and left of centre for a fail.
+
+This card follows whichever rule is chosen, so set **Scoring rule** back to Length-normalised first. Then find “the boats stay in | port | town”, which fails by −0.840. Both endings start with a space, and in the harbor notes a space is most often followed by “t”, as in “the”. So “ town” collects a high score on its first letter, and this model has no way to link “port” with boats, because it only ever looks one character back.
+
+Now find “the water stays | warm | wide”, which passes by +1.213, the biggest margin of the six. That win comes from the letters inside “warm” and “wide”, not from any link between water and warmth, so a big margin is not the same thing as understanding.
+
+### 5. Contaminate it
+
+Finally, look at **Contamination control** and read its two readouts, **Margin shift** and **Control shift**, before you press anything. The lab always trains every checkpoint twice, once with the leak and once without, so these readouts compare the two versions whichever way the switch is set.
+
+Now press **Add the benchmark source sentences to the corpus**. Its chip changes from “held out” to “leaking”, and the Leaderboard's badge changes from “clean” to “contaminated”. The scores now come from checkpoints trained with the three source sentences added. The questions themselves never enter training, only the sentences they were written from. Real models train on huge amounts of text collected from websites, so a web page that copies a test's source text can leak a public test in the same way.
+
+Then compare how far each score moved, measured against where it started. Margin shift reads +0.519, so the 80-epoch row's **Mean margin** climbs from 0.012 to about 0.53, more than forty times what it was. Control shift reads −2.8%, a change of under 3 in every 100.
+
+To compare like with like, look at the 80-epoch row's two perplexities in the table. Benchmark perplexity falls from 9.33 to 5.83, a drop of more than a third, while Control perplexity drops by that same 2.8%. The test moved far more than the control did, and that lopsided gap is the sign of a leak.
+
+## What to notice
+
+- **Six items cannot rank these checkpoints.** Even the paired range for the top two crosses zero, and all three other ranges overlap the leader's, which is what **Intervals overlapping the leader's** counts. To pin a score down to within 5 points either way at 50%, you would need 385 items, which is what **Items for ±5 pts** reads.
+- **The rule is a choice, not a discovery.** The two extra passes under Raw log-probability come from the two items whose right ending is shorter: “sails” against “trails”, and “repeats” against “retreats”. No checkpoint learned anything between the two views, because the rule handed the shorter endings a head start.
+- **Pass@k rewards a checkpoint that spreads its chances.** The 3-epoch checkpoint has trained so little that it gives both endings a fair share of chance, so a few tries nearly always include the right one. The 80-epoch checkpoint is confidently wrong on “port”, giving nearly all its chance to “town”.
+- **Extra tries cannot fix a confident mistake.** None of the 80-epoch checkpoint's 20 picks lands on “port”, so its pass@k on that item stays at zero however many tries you allow.
+- **No rule settles the ranking**, because under all three rules every other range still overlaps the leader's. Changing the rule reshuffles the ranking, and six items are too few to say which order is right.
+- **Pairing helps, but not enough here.** Because both checkpoints answer the same items, a hard item counts against both and cancels out, yet the paired range for the top two still crosses zero.
+- **A leak moves the test a lot**: at 80 epochs it raises the margin by +0.519 per item, and that checkpoint passes 6 of 6. The Item-level results callout gives that rise a 95% range of +0.220 to +0.817, well clear of zero, so the jump is very unlikely to be luck.
+- **A less-trained checkpoint gains too**: at 30 epochs, 3 of 6 becomes 5 of 6. Its benchmark perplexity drops from 10.08 to 6.65, so on the test text it went from choosing among about ten characters to fewer than seven.
+- **The control moves a little as well.** Control perplexity falls by 2.8% at 80 epochs, because the leaked sentences are ordinary English and help a little with any English text. So the sign of a leak is not a frozen control but the huge difference in size between the two shifts.
+- **A perfect score is not a certain score**: with the leak on, the leader passes 6 of 6 and **Leader's standard error** reads ± 0.0 pts. That is because p(1 − p) is 1 × 0 = 0, so the simple formula claims total certainty, while the drawn range still runs from 61% to 100%.
+
+**A common mix-up:** a higher place on the leaderboard means a better model. Here the top two are separated by +0.002, with a range that crosses zero, and a different scoring rule puts them in a different order. A range that crosses zero does not mean the two are equally good either; it means these items cannot tell. A rank printed without its range and its rule can be noise.
+
+## Where it breaks
+
+### What this lab simplifies
+
+The training, the scoring, the perplexities and the ranges are all really computed from the checkpoints' output, so nothing on the Leaderboard is made up. The simplifications are in what gets tested and how:
+
+- The model looks back only one character, so words like “water” and “harbor” do not exist for it as words. When it passes an item, it is following patterns of letter pairs, which is not understanding.
+- Each checkpoint comes from one training run with fixed random choices, so its ranges cover which items happened to be picked but not the luck of training. A second run with different random choices could shift every score.
+- The leak is a word-for-word copy of three known sentences, which is the simplest kind of leak to catch.
+- Sample and check picks between the two endings instead of writing free text, because this model almost never writes a whole target word by chance. So its pass@k measures how often a few tries cover the right one of only two choices.
+- The 20 picks per item under Sample and check add their own luck, and the drawn ranges do not include it.
+- Benchmark editor scores only the first 60 lines and cuts each line at 160 characters, so a pasted test cannot freeze the page.
+
+### Where real benchmarks fail
+
+Real leaks rarely arrive as exact copies, and instead come as rewordings, translations, forum posts that discuss the test, and copies of the test posted on other websites. Checks that hunt for exact copies or matching runs of words miss most of them.
+
+A benchmark can also be fooled with no leak at all. If a team keeps choosing its training data, settings and checkpoints by whichever gives the best score on one test, the model slowly fits that test's quirks. The score then climbs faster than the ability it was meant to measure, which is called overfitting the benchmark.
+
+You saw one rule reorder a leaderboard, and real tests come in more variations than that. Questions with lettered options, written answers checked for an exact match, and grading by another model can each order the same models differently again. So a score means something only when its rule, the testing program that ran it, and that program's version sit beside it.
+
+## Going deeper
+
+### Evaluating applications, not only models
+
+A benchmark scores a model on fixed questions, but a real product is a model plus other parts. Those can include a search step that finds documents, tools the model can use, and safety rules. The text the model is handed for each request is called the **prompt**. Any one of these parts, the search step, the tools, the safety rules or the prompt, can fail on its own.
+
+The habits from the lab carry over: fixed cases, a named rule, and a range on every rate. Nothing in this section runs in the lab, because it describes what you would build around a model.
+
+### Golden sets and regression suites
+
+A **golden set** is a fixed list of cases with known good results, taken from real use and from past failures. Because it never changes, scores from different versions of a system can be compared fairly.
+
+When something that used to work stops working after a change, that step backward is called a **regression**. A **regression suite** reruns the golden set after every change to the model, prompt, search step or tools, so a fix in one place cannot quietly break another. Picture a homework-help assistant: a change that makes it better at maths questions should not quietly break its spelling answers, and the suite would catch it if it did.
+
+Size still limits what a golden set can show: suppose an assistant passes 27 of its 30 golden cases, a score of 90%. The 95% range for that score runs from 74% to 97%, so a small drop between two versions may be luck rather than a real step backward. That is why you compare runs on the same cases, as the lab's paired callout does.
+
+### Search-based assistants
+
+Some assistants search a set of documents first and then write an answer from what they found, and those stages should be graded separately:
+
+- *Context recall* asks how many of the facts needed for the answer made it into the prompt, alongside the question.
+- *Faithfulness* asks whether every claim in the answer is backed by the text the search found.
+- *Answer correctness* asks whether the final answer matches the known right answer.
+
+Picture a school-handbook assistant asked “When does the library close?” Context recall checks whether the search found the page that says the library closes at 4 pm. Faithfulness checks that the reply only says things that page supports, and answer correctness checks that the final reply really says 4 pm.
+
+The search step is often called the **retriever**, and the writing step is called the **generator**. If recall is full but the answer is wrong, the facts arrived and the generator failed to use them. If recall is low, the retriever is to blame, because the generator never saw the facts. The Retrieval-augmented generation lab in this app computes recall, correctness and a rough support check that stands in for faithfulness, on five questions.
+
+### Agents
+
+An agent is a system in which a model works through a task in steps, such as searching or using a tool, until the job is done. Grade an agent on three things, starting with the *task success rate*: whether the job got done, checked by looking at the end result.
+
+The other two are how many *steps* it took and what it *cost*, counted in text processed, tool uses or time. Success without cost hides an agent that loops round and round before it finishes, and cost without success rewards an agent that gives up early. Runs vary from one try to the next, so repeat each task and report the rate with a range.
+
+### Safety
+
+Run a fixed set of prompts written to push the model into something it should refuse. Then report the **attack success rate**, the share of those prompts that succeed in getting the forbidden behaviour. Pair it with the *false-refusal rate*, which is the share of ordinary, harmless requests the model wrongly refuses.
+
+A model that refuses everything scores 0% attack success and is useless, which only the second number reveals. Neither number says anything about attacks that are not in the set, so a kind of attack the set never tried can still work.
+
+### Judges
+
+When answers are free writing, a second model can grade them against a written checklist of what a good answer needs, called a rubric. This is called **LLM-as-judge**, where LLM stands for large language model, the kind of model behind chat assistants. It is cheap and quick, but it tends to favour the answer shown first, longer answers, and answers in its own style.
+
+Picture a friend who marks your essays and always gives the higher grade to the longer one. You would want to check that friend against a teacher before trusting the grades, and an AI judge needs the same check. Have people label a sample of answers, then compare how often the judge agrees with them against how often two people agree with each other.
+
+Then swap the order of the two answers and see whether the judge's verdict flips. Trust the judge only where it agrees with people about as well as people agree with each other.
+
+### People and arenas
+
+In **human evaluation**, people read two anonymous answers and pick the better one. Websites that run these head-to-head votes are often called arenas. The votes become Elo ratings, a points system in which each vote moves points from the loser to the winner. The winner gains `K × (1 − E)` points. Here K is the most points a single vote can move, and E is the chance of winning that the ratings predicted beforehand.
+
+To see the formula with real values, start with two equal ratings, where each side was predicted to win half the time, so E is 0.5. With K = 32, the winner gains 32 × 0.5 = 16 points. A favourite rated 400 points higher was predicted to win about 91% of the time, so E is about 0.91 and 1 − E is about 0.09. A win earns it about 32 × 0.09, which is under 3 points.
+
+An expected win barely moves the ratings, while an upset moves them a lot. People catch problems that fixed rules miss, but they also tend to prefer answers that are longer, more confident and neatly formatted.
+
+### Scoring written answers
+
+When a model writes answers that are then checked by an automatic test, success depends on how many tries you allow. **Pass@k** is again the chance that at least one of k tries passes.
+
+Suppose a model wrote 10 answers and 3 of them passed. Rather than run 5 fresh tries, you can estimate pass@5 from the 10 answers you already have. It is the chance that 5 answers picked at random from the 10 include at least one pass. The only way to miss is to pick all 5 from the 7 failures. There are 21 ways to choose 5 answers from those 7, and 252 ways to choose 5 from all 10. You could check these counts by listing every choice, but the next step is what matters.
+
+So the chance of missing is 21 in 252, and pass@5 is 1 − 21/252, which is about 0.917, or about 92%. The Reasoning models lab shows how this climbs as you allow more tries.
+
+### The two kinds of range on the chart
+
+The titles above the chart's two columns name the kind of range each one draws. Pass rates get a Wilson interval, because it stays sensible at 0 of 6 and 6 of 6, where the simple formula shrinks to a range of zero width. Averages, such as the mean margin or the mean pass@k, get a t interval, which is built for averages of measurements rather than counts of passes.
+
+### Keeping tests honest
+
+- Private test sets never publish their answers, which closes the leak path, but it also means outsiders cannot rerun the test to check the results.
+- Marker strings, which are unusual lines of text planted inside a test set, let you check later whether a model was trained on that test.
+- The name and version of the testing program belong next to any score, because different versions of a rule do not give comparable numbers.
+- Every score should come with a range, and a gap smaller than about two standard errors is not evidence that one model is better.
+- Once the best models all score near the top, the items they still miss are mostly unclear or wrongly labelled. The ranking then measures labelling mistakes more than skill, and that is when a benchmark gets retired.

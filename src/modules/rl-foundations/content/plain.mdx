@@ -1,0 +1,356 @@
+---
+objectives: ["Identify state, action, reward, policy, and discounted return in a small episode","Use the Bellman backup to explain credit assignment as value flowing backward from a delayed reward","Explain why learning from samples needs exploration, and why a misspecified reward is maximized anyway","Explain how a policy-gradient update turns sampled rewards into a better policy, and what a baseline and the learning rate change"]
+terms: ["State","Action","Reward","Policy","Episode","Return","Discount factor","Value function","Bellman equation","Value iteration","Credit assignment","Exploration","Policy gradient and baseline","Reward hacking"]
+---
+
+## The big picture
+
+Many models in this course learn from examples with the right answer attached, such as a photo labelled "cat" or a sentence whose next word is already known. This module is about a different way to learn, called **reinforcement learning**, where the learner acts first and gets a score afterward. Nobody tells it which move was right, so it has to work that out from the score alone.
+
+Picture a video game level that gives you no points along the way. You only see your score at the very end, and the game never says which of your turns helped. Figuring out which early choices earned that late score is the main puzzle of this module, and the lab lets you watch a computer solve it.
+
+### Where it shows up
+
+Chat assistants are trained in several stages, and in a later stage another program can score each answer the model writes. The model is then nudged toward answers that score well. The next lab, **Post-training**, runs that loop on a language model, and a later lab, **Reasoning models**, looks at models trained further to write out extra steps before they answer.
+
+When those scores come from people's choices about which answers are better, the method is called reinforcement learning from human feedback, or RLHF. Every word you learn on this page, from state to reward, comes back in those labs with the same meaning.
+
+### Why it matters
+
+A score tells you how things turned out but not which move was right, and that leaves three problems for the lab to show you:
+
+- **The score arrives late,** so the learner must trace it back to the moves that earned it, or it cannot tell a good first move from a bad one.
+- **You only learn about what you try,** so a learner that keeps repeating whatever worked first may never discover that a better option was there all along.
+- **The score is a number someone wrote,** and a learner chases whatever that number pays for, so a carelessly written reward produces behaviour nobody wanted.
+
+That last problem has really happened, and a 2016 write-up from OpenAI described a computer player in a boat-racing game that ran into it. The player learned to circle a lagoon hitting targets instead of finishing the race, because the score paid for hitting targets rather than for crossing the finish line.
+
+This module also builds on **How we know a model works**, which showed how one tidy score can hide a failure. Here the stakes are higher, because the score is also the thing the learner is trained to push up.
+
+### What you will be able to explain
+
+By the end of this module, you will be able to explain:
+
+- which part of a short run on the board is the **state**, the **action**, the **reward** and the **policy**;
+- how the rewards add up into a **return**, where rewards that come later count for a little less;
+- how a one-step lookahead rule, the **Bellman backup**, passes a late reward backward one square at a time, so the early moves get their share of the credit;
+- why a learner that learns only from its own tries has to explore, and why it will chase a badly written reward anyway;
+- how a **policy gradient** update turns the rewards from those tries into better choices, and what a **baseline** and the learning rate change.
+
+### What the lab shows
+
+The lab has five cards, and it moves from planning, where the computer knows every rule, to learning, where it has to find things out by trying:
+
+- **Gridworld** is a 5 by 4 board with a start S, a goal G worth +1 and a trap T worth −1. You choose how many rounds of calculation run, how much the future counts, how often moves slip sideways, and whether a bonus tile H is switched on.
+- **Bellman backup** opens up one square and writes out the arithmetic for each of its four possible moves.
+- **Return along the episode** replays one run and adds up its rewards step by step.
+- **Explore versus exploit** has a learner choosing among four machines whose payout chances it does not know.
+- **Policy gradient on the bandit** has a second learner that adjusts its chance of picking each machine after every try.
+
+Nothing here comes from a trained network or a real system, because the board, its rewards and its rules were all written for this lesson. The lab works out every value on the board exactly.
+
+The slips on the board and the payouts from the machines are random, but the lab's random choices all start from a fixed number called a **seed**. The same seed always gives the same random choices, so every number you see, including averages over many repeated runs, comes out the same each time you visit.
+
+## What it is
+
+### A tiny game with a late score
+
+The **Gridworld** card is a board 5 squares wide and 4 squares tall, so it has 20 squares, which the lab calls cells. S, the start, is in the bottom-left corner and G, the goal, is in the bottom-right corner, while a trap T sits in the middle of the bottom row.
+
+The player that moves around the board is called the **agent**, and every move earns it a number called a reward. Stepping into G pays +1 and ends the run, while stepping into T scores −1 and ends it too.
+
+Every other move costs 0.04 of a point, like a small fee for each step, which pushes the agent to finish rather than wander. Bumping into the edge of the board leaves the agent where it was and still charges the fee.
+
+These are the words reinforcement learning uses for the parts of this game:
+
+- The **state** is the information the agent gets to see before it moves, and here that is only which cell it is on. If something the agent needs is missing from the state, no amount of training can make up for it. For example, picture a board with a locked door and a key, where the state shows only which cell the agent is on. However long it trained, the agent could never tell whether it was carrying the key.
+- An **action** is one move the agent can make, and on this board there are four: up, right, down and left.
+- A **reward** is the number paid for a move, chosen by whoever built the game, so it is a design decision rather than a fact about what is good.
+- An **episode** is one complete run from S until it ends at G or T. The lab also stops any run after 24 steps, so a run that goes in circles cannot last forever.
+
+In the run you see when the lab opens, the agent moves up once, right four times, then down into G. That makes six moves and six rewards: five fees of −0.04, then +1 at the end. It goes over the top of T because T blocks the bottom row, and the badge on the card reads "reaches G in 6 steps".
+
+### The policy is the arrows
+
+A **policy** is the agent's rule for choosing an action in each state, and you can see it on the board as the arrow in each cell. In this lab, the rule is to pick whichever move looks best according to the numbers in the cells, worked out in a way the Bellman backup section below explains.
+
+Always taking the best-looking option like this is called being **greedy**, a word you will also see in the lab's notes and charts.
+
+When two moves look equally good, the cell shows more than one arrow, and the agent breaks the tie in a fixed order: up, then right, then down, then left. The next few sections explain where the numbers in the cells come from, because they are what the arrows follow.
+
+### Adding up the score: return and discount
+
+The total score of an episode is called its **return**, and you could find it by adding the six rewards straight up. However, reinforcement learning usually counts a reward that arrives later as worth a little less than one that arrives now. The number that sets how much less is the **discount factor**, written γ, the Greek letter gamma, and the **Discount γ** slider starts at 0.95.
+
+The rule works like this: the first reward counts in full, the second is multiplied by γ once, the third by γ twice, and so on down the line. At γ 0.95 the second reward keeps 95% of its size, and by the sixth reward only about 77% is left.
+
+Written as a formula, the return is `G₀ = r₁ + γ·r₂ + γ²·r₃ + …`, where r₁ is the first reward, r₂ the second, and so on. You can read it aloud as "the first reward, plus γ times the second, plus γ squared times the third, and so on".
+
+Apply it to the opening run: each fee is 0.04, shrunk a little more at every step, so the five fees add up to about −0.181. The +1 arrives on the sixth move, so it is multiplied by 0.95 five times and counts as 0.774. The two parts add up to a return of 0.593, which is the number on the **Full return G₀** readout.
+
+Here the letter G stands for the return, not the goal cell, and the small 0 means it is counted from step 0, the start.
+
+Shrinking later rewards does two jobs, and the first is setting how far ahead the agent looks, because a smaller γ makes the far future count for less. At γ 0.50 each step halves a reward, so the +1 at the end of six moves keeps only 0.031 of its face value, about 3%.
+
+The second job is to stop an endless stream of rewards from adding up to an endless total. Each later reward keeps the same fraction, γ, of the one before it, so the shrinking pieces add up to a fixed amount.
+
+At γ 0.50, a +1 reward every step adds up to 1 + 0.5 + 0.25 + 0.125 and so on, and however long it runs, that total never passes 2. That second job matters later in the lab, when the bonus tile offers the agent a reward it can collect again and again.
+
+### Value: how good is it to stand here?
+
+Now ask one question about every cell at once: if the agent started here and played as well as it could, what return would it get? That number is the cell's **value**, and the rule that gives every cell its value is called the **value function**, written V. Each cell shows its value in its top-right corner, and the **V(S)** readout shows the value of the start cell, S.
+
+Values are easiest to follow close to G, and with the starting settings, where γ is 0.95 and nothing slips, they work out like this:
+
+- The cell right above G is one move away, and stepping down pays +1 and ends the episode, so its value is 1.00.
+- The cell above that one is two moves away, so its first move costs 0.04 and lands on a cell worth 1.00. That 1.00 counts 95% because it comes one step later, so the value here is −0.04 + 0.95 × 1.00 = 0.91.
+- One more step back gives −0.04 + 0.95 × 0.91, about 0.82, and the values keep shrinking like this all the way back to S, which is worth 0.593.
+
+V(S) is the same 0.593 as the return you added up for the opening run, and that is no accident. With nothing random and the values settled, the run can only go one way, and it reaches G. So the value of S and the return of that one run agree.
+
+When moves can slip, the value becomes the average return over all the ways a run could turn out, which is why the glossary calls it the expected return.
+
+### The Bellman equation: one step of lookahead
+
+You do not have to play a whole game from a cell to find its value, because looking one move ahead is enough. For each of the four moves, take the reward for that move, add γ times the value of the cell it lands in, and keep the biggest total. That rule is the **Bellman equation**, and working it out once for one cell is called a **Bellman backup**.
+
+The **Bellman backup** card does this for one cell at a time, and you can click any cell on the board to choose it. Each row of the card's table is one action, and the **Q** column gives that action's total, which is the value of taking that move from this cell. The best row is marked max, its Q becomes the cell's new value, and its move becomes the cell's arrow.
+
+The card starts on cell r2c2, which means row 2, column 2, with rows counted down from the top and columns counted from the left, both starting at 0. That puts it right above T, and with the starting settings its four rows work out like this:
+
+- **right** steps onto a cell worth 0.91, so it scores −0.04 + 0.95 × 0.91 = 0.824, the biggest of the four, and its row is marked max;
+- **down** steps into T, which scores −1 and ends the episode, so it is worth −1.000;
+- **up** and **left** each step onto a cell worth 0.743, so each scores 0.666.
+
+So r2c2 is worth 0.824 and its arrow points right. G and T are called **terminal** cells, because the episode ends there. Their +1 or −1 is paid on the move that enters them, and since nothing comes after, the cell itself counts as 0.00. That is why the down row works out to −1 + 0.95 × 0.00 = −1.000.
+
+When **Slip chance** is above zero, a move can land in three different places, and the card writes out all three landings. At 20%, a move goes where the agent meant 80% of the time and slides off to each side 10% of the time. So each row becomes a weighted average, where the score for the intended landing counts 80% and each sideways landing counts 10%.
+
+Take the right row from r2c2 at 20%. Most of the time the agent reaches the cell on its right. But 1 time in 10 it slides up, and 1 time in 10 it slides down into T and loses a whole point. Mixing those three scores 80, 10 and 10 gives the right row a **Q** of about 0.58, well below the 0.824 it had with no slips.
+
+This also means an arrow does not always point at the biggest neighbouring number. It follows the biggest **Q**, which counts the fee, the discount and any slips as well as the number where the move lands.
+
+### Value iteration: passing the good news backward
+
+At the start the lab knows no values at all, so it sets every cell to 0. Then it runs a **sweep**, in which every cell does one Bellman backup at the same moment, using its neighbours' numbers from before the sweep. Repeating sweeps until the numbers stop changing is called **value iteration**, and the **Value-iteration sweeps** slider sets how many sweeps have run.
+
+Because each backup looks only one move ahead, the good news from G can travel only one cell per sweep:
+
+- After sweep 1, only the two cells touching G, the one above it and the one to its left, have learned about it, so they show 1.00. Every other cell has seen nothing but a fee so far, so each of them shows −0.04.
+- After sweep 2, the cells two moves away from G show 0.91, because they can now see a neighbour worth 1.00.
+- After sweep 3, the cells three moves away show 0.82, and the ring of good news keeps growing by one cell with every sweep.
+
+S is six moves from G, because T blocks the short way, so **V(S)** stays negative through sweep 5 while the fees pile up. It sinks to −0.181 by then, and on sweep 6, when the news from G finally arrives, it jumps to 0.593.
+
+That delay is **credit assignment** at work, which means deciding which earlier moves earned a later reward. In value iteration, the credit for the +1 flows backward from G, one cell per sweep, until it reaches the very first move.
+
+Picture labelling a maze backward from its exit, starting in the first round with the squares that touch the exit. In the second round you mark the squares that touch those, and the marks keep spreading one ring per round. A far corner stays blank until the ring reaches it, and value iteration spreads its numbers across the board in the same way.
+
+The picture breaks down in two places: a cell's number is an expected score that includes fees, the discount and slips, rather than a count of steps. Also, the computer fills in the whole map from the rules, without ever walking through it to find out.
+
+The **Residual** readout tells you when the work is done, because it shows the biggest change any cell made in the last sweep. It stays large while news is still spreading, and with no slip and the bonus off, it drops to zero once every cell has heard from G.
+
+At that point the values have **converged**, which means they have settled and will not change again. The chart on the Bellman backup card plots the residual for every sweep up to 60.
+
+### Learning from tries: the bandit and exploration
+
+Value iteration only works because the lab hands it the full rulebook, which says where each move from each cell can land and what it pays. That rulebook is called the **transition table**, and working out the best moves from it is planning. A learner without the rulebook has to find things out by trying actions and seeing what happens, and that brings a new problem.
+
+The **Explore versus exploit** card shows that problem with a simpler game called a **bandit**, which you can picture as four arcade machines that each have a lever.
+
+The name comes from an old nickname for slot machines, "one-armed bandits", because each has one lever and tends to take your money. The lab calls each lever an **arm**, and each pull either pays 1 point or pays nothing, which is what the word Bernoulli on the card means. Arm 4 is the best, paying 70% of the time, while the other three pay between 30% and 55% of the time.
+
+The agent does not know those chances, so for each arm it keeps the average of what that arm has paid so far, called its estimate. The greedy choice is then to pull whichever arm has the highest estimate. Using what you already know to pick the best-looking option is called **exploiting**, and trying something else to learn more is called **exploring**.
+
+Pure greed has a trap, because every estimate starts at 0, so the first arm that happens to pay jumps ahead of all the others. A greedy agent then keeps pulling that arm for the rest of the run, since the other arms never get another chance to prove themselves.
+
+Even if that arm misses many times afterward, its average stays above 0 because it paid once. Every untried arm is still sitting at 0, so the paying arm always looks best. With **Exploration ε** at 0 and **Bandit seed** at 3, the run spends all 400 pulls on Arm 3, which pays only 45% of the time.
+
+The fix is **exploration**: with a chance of ε, the Greek letter epsilon, the agent ignores its estimates and pulls a random arm instead.
+
+One run of 400 pulls can be lucky or unlucky, so to check that a result is not luck, the lab replays the whole 400-pull game 300 times. Each replay is called a **run**, and each one gets different random payouts. The readouts that say "300 runs" average over all of them, and the bars show a single run, chosen by **Bandit seed**.
+
+Averaged over 300 runs, the best arm gets 33% of the pulls at ε = 0 and 72% at ε = 0.10. Exploring too much wastes pulls on arms the agent already knows are worse, so at ε = 0.50 the share falls back to 56%.
+
+Picture a friend who tries a sandwich on the first day at a new school, finds it fine, and orders it every single day for the rest of the year. They never learn that the soup beside it was much better, because they never tried it once. Ordering something different now and then costs a few so-so lunches, but it is the only way to find out.
+
+### Policy gradient: nudging the probabilities
+
+The **Policy gradient on the bandit** card plays the same four arms in a different way. Instead of keeping an average for each arm, this agent keeps a chance of picking each one, which the card calls a probability. That list of four probabilities is the agent's policy, and all four start at 25%, so at first it picks completely at random.
+
+Every pull then follows the same four-step loop, repeated 400 times:
+
+1. Pick an arm at random, using the current probabilities, so a likelier arm gets picked more often.
+2. See whether it paid 1 or 0, which is the reward, written r.
+3. Compare the reward with a **baseline**, written b, which here is the average reward of all the earlier pulls.
+4. If the reward beat the baseline, make that arm a little more likely next time, and if it fell short, make it a little less likely.
+
+Over 400 pulls, those small nudges shift the probabilities toward the arms that tend to pay more. The word gradient comes from slopes: picture standing on a hill in fog and feeling with your foot which way is uphill. Unlike your foot, one pull gives only a rough guess of the slope, so a single nudge can point the wrong way even though the nudges point uphill on average.
+
+A **policy gradient** update is the step that, on average, moves the probabilities uphill toward more reward. The **Learning rate α** slider, where α is the Greek letter alpha, sets how big each nudge is.
+
+To see why the comparison helps, picture scoring 70 on a test and deciding whether that is good news. If you usually score 50, it is great news, but if you usually score 90, it is a warning sign. A score only means something next to what you normally get, and the baseline is the agent's version of "what you normally get".
+
+With **Baseline** off, b is 0, so every payout counts as good news and every miss counts as no news. A reward of 1 always raises whichever arm was pulled, even a weak one, while a reward of 0 changes nothing at all.
+
+That makes learning without a baseline jumpy. A weak arm that pays early can grab most of the probability before the best arm has been pulled often enough to show that it pays more.
+
+With the baseline on, a single nudge can point a different way than it would without it. Averaged over every pull the agent might make, though, the nudge still leans the same way with or without the baseline, toward the arms that pay more.
+
+What the baseline changes is how much the nudges jump around. Hits push the arm up by less, and misses push it down instead of doing nothing. So the nudges stay closer to their average, and lucky early pulls do less damage.
+
+That steadiness still changes where runs end up. Each nudge changes which arms get pulled next, so a few noisy nudges early on can send a whole run somewhere else. That is why the results over 300 runs differ.
+
+With α at 0.20 and the baseline on, the 300 runs end with an average probability of 92.1% on the best arm. Only 2 of the 300 end up stuck, meaning they finish with less than half their probability on the best arm.
+
+With the baseline off, the average falls to 84.9%, and the number of stuck runs jumps from 2 to 29. At the starting **Policy seed** of 3, switching the baseline off leaves the run with 92% of its probability on Arm 2, which pays only 55% of the time.
+
+The learning rate trades speed against safety, because a tiny step barely moves anything while a big one moves fast but can lock in early luck. At α 0.02, the policy has only 37% on the best arm after 400 pulls, not far from the 25% it started with.
+
+At α 1.00, learning is fast: after only 50 pulls, the average run already has 65.1% on the best arm, compared with 40.1% at α 0.20. The cost shows up later. 33 runs in 300 end up stuck, and the final average on the best arm drops to 88.3%.
+
+## Why it’s here
+
+Many learning signals hand the learner a right answer for every example, so it can be corrected one example at a time. A reward does not work like that, which is why **What AI actually is** sorted it apart from labels and raw text. A reward scores how things turned out after a whole string of choices, and it never says which choice was the right one.
+
+This is the late-score puzzle from the big picture, the credit assignment problem, and on the grid value iteration answers it by passing value backward, one cell per sweep.
+
+Language models face the same problem on a much bigger scale, and in the **Post-training** lab every word from this page takes on a new job:
+
+- the **state** is the prompt plus the text the model has written so far;
+- an **action** is the next **token**, a small piece of text such as a word or part of a word;
+- the **policy** is the language model itself, which gives a probability to every possible next token;
+- the **reward** is a score for the finished answer, from another model trained to judge answers, called a reward model, or from a program that checks the answer.
+
+One score for a whole answer is the late reward from the grid, spread across many tokens. A language model also cannot plan the way the grid does, because there are far too many possible texts to write out a table of every state and move. So it must learn from its own tries, and that is where exploration and policy gradients come in.
+
+That is why this page uses a board small enough to solve exactly, where you can watch each word do its job. After you watch an agent chase the bonus tile here, the reward model in the next lab reads as what it really is. It is one number that someone designed, and training will follow that number wherever it leads.
+
+## How to play with it
+
+Work through these six steps in order, because each one builds on the one before.
+
+### 1. Read one episode
+
+On **Return along the episode**, drag **Episode step** from 0 to the end and watch the readouts. **Reward this step** shows −0.04 for each of the first five moves and +1 for the last one. **Return so far** sinks a little further below zero with each fee, reaching −0.181, then jumps to 0.593 when the agent enters G.
+
+That final 0.593 matches both **Full return G₀** and **V(S)**, because nothing in this run is random. In the bar chart, each outer bar is one raw reward, and the inner bar is the same reward after the discount has shrunk it. Look at the last pair of bars to see the +1 losing almost a quarter of its size.
+
+### 2. Sweep the backup
+
+**Try this:** Set **Value-iteration sweeps** to 0, then raise it one sweep at a time. Watch the green shading and the numbers spread backward from G, one ring per sweep, while **V(S)** stays negative until sweep 6, because S is six moves from G. Keep going, and **Residual** drops to zero by sweep 8, once even the far top-left corner has heard the news.
+
+Then set **Value-iteration sweeps** back to 30 before going on, because the steps below assume the values have settled.
+
+### 3. Change the discount, then let moves slip
+
+Move **Discount γ** from 0.95 down to 0.50 and watch **V(S)** fall to −0.046, below zero, even though the path still ends at G. At 0.50, the +1 is worth only 0.031 by the time it arrives, which is less than the 0.078 that the fees cost on the way. G is still the best choice, though, because never finishing would cost even more, and T costs a whole point.
+
+Set γ back to 0.95 and move **Slip chance** to 20%, and **V(S)** drops to 0.314 because some runs now slide into T. Now look at the cell between S and T, whose arrow used to point up but now points left, away from T. Going up from there now risks a 10% slide sideways into the trap, so the policy steps back onto S instead.
+
+Then click r2c2, right above T, and compare **Slip chance** at 0% and at 30%. At 30%, moving right carries a 15% chance of slipping down into T, so on the Bellman backup card the up row wins and is marked max.
+
+With **Slip chance** at 20%, change **Episode seed** to draw a different set of slips. The **Full return G₀** changes from seed to seed while **V(S)** stays at 0.314, because V(S) is the average over all possible runs and G₀ is one run. Seed 10, for example, slips once and falls into T, so its return is about −0.97.
+
+### 4. Explore or exploit
+
+On **Explore versus exploit**, set **Exploration ε** to 0, then 0.10, then 0.50, and each time compare **Best-arm share, 300 runs** with **Same, ε = 0**. The second readout always shows the pure greedy result, so it works as a fixed point of comparison.
+
+With ε back at 0, step through a few **Bandit seed** values and watch the bars. Each run piles almost all its pulls onto whichever arm paid first, and that is often not Arm 4.
+
+### 5. Turn on the bonus
+
+Set **Bonus tile H** to on with **Discount γ** at 0.95, which puts a bonus in the top-right corner. H pays +0.3 every time the agent steps into it, and stepping into it never ends the episode. The path now climbs to the top row, walks across to H, and then steps out and back in, over and over.
+
+The badge reads "circles H · 9 visits in 24 steps", and the agent never reaches G. Then lower **Discount γ** to 0.85 and watch the agent walk to G again.
+
+### 6. Follow the policy gradient
+
+On **Policy gradient on the bandit**, leave **Baseline** on with **Learning rate α** at 0.20 and read **Best-arm probability, 300 runs**, which shows 92.1%. Switch **Baseline** off and compare that with 84.9%, then compare **Runs below 50% on best arm**, which goes from 2 of 300 to 29 of 300.
+
+Finally, turn **Baseline** back on and try α at 0.02 and then at 1.00. Watch the solid line on the first chart, which shows the average probability on the best arm before each pull, and see how fast it climbs.
+
+## What to notice
+
+- **Good news moves one cell per sweep,** so a far cell cannot know about G until the ring of value reaches it.
+- **A value is an average, but a return is one try.** With **Slip chance** at 0 every try is identical, so once the values settle, **V(S)** and **Full return G₀** match exactly. With slips, they stop matching, because each run has its own luck.
+- **The discount can shrink the prize below the costs:** at γ 0.50, the +1 at the end of six moves keeps only 0.031 of its size.
+- **Slips make the agent careful:** at 20%, the arrow beside T turns away from it, and V(S) drops because some runs end in the trap.
+- **A discount near 1 settles slowly:** each sweep shrinks the biggest gap on the board, between any cell's number and its final value, to γ times what it was, or less. So at γ 0.99, a sweep may close only 1% of the gap. With no slip and no bonus you never notice, because the news reaches every cell within 8 sweeps. With the bonus on, the loop around H keeps adding value, so the residual is still well above zero after 60 sweeps.
+- **No exploration means no discovery:** averaged over 300 runs, the best arm gets about 33% of the pulls at ε = 0, against 72% at ε = 0.10.
+- **The baseline makes learning steadier,** because without it every payout lifts the arm that was pulled, so an arm that pays early can take over. The numbers show it: 84.9% on the best arm against 92.1%, and 29 stuck runs in 300 against 2.
+- **The learning rate trades speed for safety:** a tiny rate learns almost nothing in 400 pulls, while a large one commits fast but locks in early luck. At α 1.00, 33 runs in 300 end up stuck, against 2 at α 0.20.
+- **The bonus becomes a loophole:** with **Bonus tile H** on, circling H is the best policy at γ 0.89 and above, and walking to G wins at 0.88 and below.
+
+A stuck run, as before, is one that ends with less than half its probability on the best arm, which is what **Runs below 50% on best arm** counts. At α 0.02 with the baseline on, that readout counts all 300 runs, but only because those runs have barely moved away from 25%, so they are slow rather than stuck.
+
+The loop wins because each round trip, out of H and back in, costs a 0.04 fee and earns 0.3. That nets about +0.26 every two moves, with no end in sight, while finishing at G pays +1 only once.
+
+At γ 0.95 the later loops still count for a lot, so at the default 30 sweeps the number on H is already past 2, well above the +1 at G. It keeps climbing toward about 2.5 as you add sweeps, so more sweeps never send the agent back to G. At γ 0.88 or below, later loops shrink so fast that finishing is worth more.
+
+The agent is doing exactly what the numbers reward, and that is called **reward hacking**.
+
+## Where it breaks
+
+### What this lab simplifies
+
+- The grid has only 20 cells and the lab knows its full transition table, so value iteration can sweep every cell and get exact answers.
+- The rewards, the +0.3 bonus and the 24-step limit were all written for this lesson.
+- The episode on the grid always follows the greedy arrows, so slips are its only randomness, and there is no exploring on the grid at all.
+- A run that loops is cut off at 24 steps, so its **Full return G₀** undercounts what the loop is worth. With the bonus on at γ 0.95 and the default 30 sweeps, the looping run's G₀ is 0.979, while **V(S)** shows 1.341. V(S) is also not settled yet, so it keeps rising as you add sweeps, to about 1.67 at 60 sweeps and about 1.76 once fully settled.
+- The lab stops at 60 sweeps, which is not enough for the values to settle at γ 0.95 or higher with the bonus on.
+- The bandit has one situation, four arms whose payout chances never change, and one way of exploring, called ε-greedy: greedy, except for a random pull with chance ε. Smarter strategies, such as ones that deliberately favour arms the agent is still unsure about, usually do better.
+- The policy-gradient card is the simplest version that works, with one situation, four arms, a plain running average as its baseline and a fixed 400 pulls.
+
+Real training methods, with names like PPO and GRPO, add pieces that this card leaves out. They swap the plain average for a smarter baseline, such as a learned value estimate or a group average, and they limit how far one update can move the policy. They can also add a penalty for drifting too far from the model they started with.
+
+### Where the real thing struggles
+
+- A language model cannot use value iteration, because there are far too many possible texts to list. No table of every state and every move could ever be written out and swept. Instead, it has to learn from samples, one response at a time.
+- Those samples are noisy, because one answer might score well partly by luck, so the nudges jump around much as they did on the baseline card. That noise, and the unsteady training it causes, is the main practical difficulty when real models learn this way.
+- A behaviour the model never produces can never be rewarded, so exploration matters for language models too.
+- A reward that can be pushed up in a way nobody intended will be pushed up that way, and more training makes that worse, not better.
+
+**A common mix-up:** people read the reward as a measure of what is good, when it is really a number the designer chose. The agent circling H is not broken, because the +0.3 bonus made circling worth more than finishing, and the agent followed the numbers exactly.
+
+Picture a teacher who gives one point for every page of homework handed in. Before long, someone starts writing in giant letters, and the points go up while the homework gets no better. Nobody broke the rule, because the rule paid for pages rather than for good work, and that is reward hacking in a classroom.
+
+The story stops matching in one way: unlike the student, the agent is not trying to cheat. It has no idea what the designer meant and follows whichever path the numbers make biggest.
+
+## Going deeper
+
+### The official name for the board
+
+A setup with states, actions, a rulebook for where moves lead, rewards and a discount is called a Markov decision process, or MDP. You will see the short name MDP in the info panel of the **Gridworld** card. The −0.04 charge per move, often called a living cost, comes from a small 4 by 3 grid in a well-known AI textbook by Stuart Russell and Peter Norvig.
+
+### Learning without the rulebook
+
+One family of methods, called Q-learning, learns the value of each move, the Q from the Bellman backup card, from the agent's own tries instead of from the table.
+
+Basic policy-gradient methods need no value table, because they nudge the policy toward actions whose return beat a baseline. Bigger methods often learn a value estimate to use as that baseline. REINFORCE, described by Williams in 1992, is the basic form, and the **Policy gradient on the bandit** card runs it.
+
+PPO, from Schulman and others in 2017, limits how far each update can move the policy, so the policy changes in small steps rather than lurching.
+
+### How the probabilities are stored
+
+The policy-gradient agent keeps a hidden score for each arm, called a preference, and a recipe called **softmax** turns the four scores into four probabilities that add up to 100%. That is the softmax in the card's heading, "A softmax policy that learns from sampled rewards". Equal scores give equal probabilities, which is why every arm starts at 25%, and raising one arm's score raises its probability while the others fall.
+
+### The nudge, worked out
+
+The note under the card gives the exact rule: each arm's preference moves by `α·(r − b)·(1[arm] − π)`. In that rule, `1[arm]` is 1 for the arm that was pulled and 0 for the others, and `π` is each arm's current probability. The key part is `r − b`, the reward minus the baseline, which is positive when the pull did better than usual and negative when it did worse.
+
+To see it with round numbers, say every arm is at 25%, α is 0.20 and the baseline is 0.5, because half the earlier pulls paid. The agent pulls Arm 4, which pays 1, so r − b is 0.5. Arm 4's score then rises by 0.20 × 0.5 × 0.75 = 0.075, where 0.75 is 1 minus Arm 4's probability of 0.25. Each other arm's score falls by 0.20 × 0.5 × 0.25 = 0.025.
+
+If Arm 4 had paid 0 instead, every sign would flip, so its score would fall by 0.075 and the others would rise. With the baseline off, b is 0, so a payout of 0 moves nothing and a payout of 1 always lifts the pulled arm, here by 0.15.
+
+### The bandit is closer to chatbot training than the grid
+
+The InstructGPT paper, from Ouyang and others in 2022, describes the environment for its reinforcement learning stage as a bandit. It shows a random prompt, gets one response, and gives it one score. That is why the arcade machines' exploration problem carries over to language models.
+
+### The bonus tile has a real ancestor
+
+In the boat-racing game from the big picture, the targets kept coming back after being hit, so circling the lagoon earned more points than finishing the race. It is the same story as circling H instead of walking to G.
+
+### Where to go next
+
+**Post-training** runs this loop on a language model, with a learned reward and a leash that keeps the model from drifting too far from where it started. **Preference optimization in practice** trains a tiny model with a method called DPO, which learns from comparisons between answers. **Reasoning models** looks at models trained further to write out extra steps before they answer.

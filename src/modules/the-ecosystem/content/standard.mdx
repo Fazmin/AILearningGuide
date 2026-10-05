@@ -1,0 +1,129 @@
+---
+objectives: ["Distinguish a base model, a fine-tune, an API, open weights, and open-source AI","Check a proposed use against a license's clauses and separate permission from data provenance","Read a model card's numbers critically, including evaluation error and estimated training energy"]
+terms: ["Base model","Fine-tune","Open weights","Open source AI","API","License","Permissive license","Acceptable-use policy","Model card","Data provenance","Evaluation harness","Standard error"]
+---
+
+## The big picture
+
+This module takes a model release apart. It answers three questions a download button hides: what you actually received, what you may do with it, and how far its reported numbers can be trusted. The word "open" settles none of them on its own.
+
+It builds on *Post-training*, which separated a base model from the models adapted from it; *Scaling laws*, which related parameters, tokens and compute; and *How we know a model works*, which showed that one headline score can hide what matters.
+
+### Where it shows up
+
+- A model's release page or download, which lists or leaves out each part: weights, code, data information, license, evaluation results and cost figures.
+- The **model card**, the structured document describing a release, and leaderboard scores from an **evaluation harness**, a scripted set of test items and scoring rules.
+- At release, GPT-4 (2023) was API-only, Llama 2 (2023) shipped open weights under a custom license, Mistral 7B (2023) shipped weights under Apache-2.0 without its training data, and Pythia (2023) and OLMo (2024) released weights, training code and training data.
+- The Open Source Initiative's Open Source AI Definition 1.0 (OSAID 1.0, October 2024), the definition of open source AI this module uses.
+
+### Why it matters
+
+Reading one part of a release as the whole, or a reported score as exact, leads to concrete mistakes:
+
+- shipping a hosted product on weights licensed for research only;
+- training another model on outputs that a license or an API's terms of service forbid;
+- taking a permissive license as clearance for training data whose origin and consent are unknown;
+- ranking two models on a 3-point gap from a 40-item harness, where a score of 70% has a **standard error** of about 7 points (the spread a score has from sampling its items alone).
+
+### What you will be able to explain
+
+- How a base model, a fine-tune, an API, open weights and open-source AI differ, and why permissively licensed weights alone fall short of open-source AI.
+- How to check a proposed use against a license clause by clause, why the strictest clause decides, and why that permission says nothing about data provenance.
+- How to read a model card's numbers critically: the standard error on a harness score, and what an estimated training-energy figure counts and leaves out.
+
+### What the lab shows
+
+Nothing is trained or run. harbor-lm-7b, its harness and its three licenses are fictional, with clause types drawn from real licenses. Every verdict is a lookup of those clauses, not legal advice. Two card fields are closed-form: the standard error for 40 items at 70%, and the training energy from 6 × parameters × tokens at a fixed A100 peak of 312 TFLOP/s, 40% utilization and 400 W per GPU.
+
+- **Sample model card**: **License** sets the terms, and **Training code** and **Data information** set what ships beside the weights. A badge names the release tier, and a note lists what is still missing for OSAID 1.0.
+- **Release spectrum**: no controls. Four columns run from API only to Open source AI, and the card's column is highlighted.
+- **Is this use allowed**: **Intended use** picks one of four uses, and the card lists each clause that use needs as allowed, allowed with conditions, or not allowed. **License match** reports the strictest, beside **Clauses checked** and **Still unknown**.
+
+The key experiment sets **License** to `Apache-2.0` and **Intended use** to `Hosted product`. **License match** says yes, but **Still unknown** keeps listing what the license cannot answer, because that readout depends only on **Data information**.
+
+## What it is
+
+A model release is a bundle of separable parts: weights, inference code, training code, data or
+information about the data, a **license**, evaluation results, and cost figures. Each part can be
+shipped, withheld, or restricted on its own.
+
+A **base model** is next-token pretrained and is not yet an assistant. A **fine-tune** is a further,
+narrower run on top of one. An **API** sells access to behavior without the weights. **Open weights**
+means you can download the parameters, and nothing more is implied.
+
+### Open weights are not open source
+
+The Open Source Initiative published version 1.0 of its Open Source AI Definition in October 2024. It
+asks for the parameters, the complete code used to train and run the system, and data information
+detailed enough that a skilled person could build a substantially equivalent system. All of it must
+come under terms that allow use for any purpose.
+
+So **open source AI** differs from open weights on code, data information, and terms. A **permissive
+license** such as Apache-2.0 on the weights alone still leaves a release short. The definition does
+not require publishing all training data in every case.
+
+### Permission is per use
+
+A use needs specific permissions: commercial use, modification, redistribution, or using outputs to
+train another model. The strictest clause it touches decides. An **acceptable-use policy** makes a
+grant conditional, which is one reason custom model licenses do not meet the Open Source Definition.
+
+A license only settles what its authors could grant. **Data provenance**, where the training data came
+from and on what terms, is a separate question.
+
+## Why it’s here
+
+A deployment decision needs the legal answer, the data answer, and honest error bars on the
+evaluation, and those live in different parts of the release.
+
+Ethics and impact builds on these distinctions: it asks who pays the costs a card only hints at.
+
+## How to play with it
+
+1. Read **Sample model card** top to bottom before changing anything.
+2. Set **License** to `Apache-2.0`, then **Training code** to `released` and **Data information** to
+   `published`. Watch the highlighted column move in **Release spectrum**.
+3. Set **Intended use** to `Hosted product`, then `Train on its outputs`, under `Research only` and
+   `Custom community`, and read which clause blocks each.
+4. Set **License** to `Apache-2.0` and **Intended use** to `Hosted product`. **License match** says
+   yes; read **Still unknown**.
+
+## What to notice
+
+- `Research only` with training code and data information released is still restricted open weights.
+  Terms matter as much as files.
+- Under `Apache-2.0`, the hosted product is allowed and the data's sources and consent are still
+  unknown.
+- The card's 40-item harness has a standard error of about 7 points at 70%, so its 95% interval runs
+  from about 56% to 84%. A leaderboard gap of 3 points on it means little.
+- The energy row is computed: 6 × 7B × 2T ≈ 8.4×10²² FLOP, about 187,000 A100-hours at 40%
+  utilization, about 75 MWh of GPU power. Meta reported 184,320 GPU-hours for Llama 2 7B, trained on
+  the same 2T tokens.
+
+## Where it breaks
+
+**In this lab.** harbor-lm-7b, its harness, and all three licenses are fictional; the clause types are
+drawn from real ones. The verdicts are a lookup of those clauses, not legal advice. The energy
+estimate counts GPU board power for one successful run, with no cooling, CPUs, networking, failed runs,
+or experiments.
+
+**In real systems.** Licenses vary by version and jurisdiction, and custom model licenses change
+between releases. API terms of service govern outputs even when you never see the weights. A fine-tune
+usually inherits the base model's license and any problems in its data.
+
+A card can also be wrong or silent. A missing field is information, and a harness score can be
+inflated by test items leaking into training data.
+
+## Going deeper
+
+Examples at release, which later versions may change:
+
+- GPT-4 (2023) was offered only through OpenAI's API and apps; its weights were not released.
+- Llama 2 (2023) shipped open weights under a custom license with an acceptable-use policy and a
+  separate-license requirement above 700 million monthly active users. OSI said it is not open source.
+- Mistral 7B (2023) shipped weights under Apache-2.0, without its training data.
+- EleutherAI's Pythia (2023) and AI2's OLMo (2024) released weights, training code, and training data.
+
+**Ethics and impact** compares training energy with serving energy and asks who is represented in a
+benchmark. **Evaluation** shows how a harness gets contaminated, and **Deployment & serving** is the
+hosted-product path.

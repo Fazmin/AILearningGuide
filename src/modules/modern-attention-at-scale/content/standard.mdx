@@ -1,0 +1,161 @@
+---
+objectives: ["Separate the attention scoring rule from the memory layout used to compute it","Explain what grouped-query and sliding-window attention trade away","Explain why FlashAttention gives the exact same output, and which costs it leaves in place","Read rotary position embedding as a rotation whose query-key score depends only on the distance between positions"]
+terms: ["Multi-head attention","Grouped-query attention","Multi-query attention","KV cache","Sliding-window attention","Receptive field","Flash attention","Online softmax","HBM and SRAM","Rotary position embedding","RoPE base","Context length","Context extension"]
+---
+
+## The big picture
+
+This module is about running attention at long context lengths. The scoring rule stays the one
+from the **Attention** lab; each technique here changes what is cached, which keys a query can see,
+how the work is scheduled, or how position enters the scores. As a context grows to 128K tokens,
+which costs grow, and what does each way of cutting them give up?
+
+It builds on **The transformer block**, whose layer is costed here, and on **Inference & KV
+cache**, which covered the **KV cache**: earlier tokens' keys and values, stored for reuse during
+decoding.
+
+Grouped-query attention (GQA) shrinks that cache by sharing key-value heads among query heads.
+Sliding-window attention caps the cache and each query's work, so attention's arithmetic grows
+linearly with the sequence length `n` rather than with `n²`. FlashAttention cuts memory traffic
+without changing the output. Rotary position embedding (RoPE) encodes position as a rotation of
+queries and keys, so a score depends on the distance between positions.
+
+### Where it shows up
+
+- Many recent models use 4 to 8 KV heads rather than the single shared head of multi-query
+  attention (MQA), since the quality cost grows as more query heads share each KV head.
+- Several long-context models, such as Gemma 2 and 3, interleave sliding-window and full-attention
+  layers.
+- FlashAttention (Dao et al., 2022) is a GPU kernel that computes attention in tiles in fast
+  on-chip SRAM instead of writing the score matrix to the GPU's large, slower high-bandwidth memory
+  (HBM).
+- Llama 3 uses RoPE with a base of 500,000. Position interpolation, NTK-aware scaling and YaRN
+  extend context by changing RoPE's frequencies.
+
+### Why it matters
+
+The figures here are for one sequence and a model with Llama 3 8B's shape: 32 layers, 32 query
+heads of width 128, and 16-bit values. At 128K tokens, a cache with 8 KV heads needs 16 GiB, more
+than the model's own 16-bit weights, and multi-head attention (MHA), with all 32 KV heads, would
+need four times that.
+
+At that length, a stored score matrix would take 1.00 TiB per layer. With 8 KV heads, attention's
+arithmetic in one layer's prefill (one pass over the whole prompt) passes the weight matmuls at
+53,247 tokens.
+
+Each technique has a limit. Shared heads usually cost a little quality, a window of `W` recent keys
+gives up direct access to older tokens, FlashAttention leaves the `n²` arithmetic and the cache in
+place, and RoPE alone does not extend a model past its training length.
+
+### What you will be able to explain
+
+- Separate the attention scoring rule from the memory layout used to compute it.
+- Explain what grouped-query and sliding-window attention trade away for their savings.
+- Explain why FlashAttention gives the exact same output, and which costs it leaves in place.
+- Read rotary position embedding as a rotation whose query-key score depends only on the distance
+  between positions.
+
+### What the lab shows
+
+Nothing is trained or timed. Cache sizes and FLOP counts are closed-form arithmetic for that same
+sequence and model shape. **KV cache budget** sets **KV heads** (`32 · MHA` to `1 · MQA`),
+**Attention span** (`Full` or `Sliding window 4,096`) and **Sequence length** (1K to
+128K tokens). These also drive **Quadratic cost**, one layer's prefill FLOPs.
+
+**FlashAttention tiles** runs online softmax, a one-pass softmax that rescales earlier partial
+results when a larger score arrives, over one query row of 16 fixed scores. Set **Tile size**, step
+**Tiles processed** and compare **Online vs full**. **RoPE rotation** rotates fixed vectors in an
+8-dimensional toy head; **Shift both +16** moves query and key together while you watch **Score**.
+
+The key experiment: at 128K tokens, switch **Attention span** to `Sliding window 4,096` and watch
+**Cache** and **Attention share** fall.
+
+## What it is
+
+The scoring rule is unchanged from the Attention lab: `softmax(QKᵀ/√d + M) V`. What changes at
+scale is how keys and values are stored, which keys each query may see, how the computation is
+scheduled on the hardware, and how position enters the scores.
+
+- **GQA and MQA** cache fewer key-value heads than query heads.
+- **Sliding-window attention** limits each query to the last `W` keys.
+- **FlashAttention** computes exact attention in tiles with an online softmax.
+- **RoPE** rotates query and key pairs by position so scores depend on relative distance.
+
+Every count in the lab uses Llama 3 8B's shape: 32 layers, 32 query heads, head dimension 128,
+model width 4,096, a SwiGLU MLP of width 14,336, and a 16-bit cache.
+
+## Why it’s here
+
+Two costs grow with the context. The KV cache grows linearly, `2 × layers × kv_heads × d_head ×
+bytes` per token, and full attention's arithmetic grows with `n²`. Decoding speed is mostly set by
+how many bytes must be read per token, so cache size is often the binding constraint.
+
+**Inference & KV cache** already separated prefill from decode (one token at a time, reading the
+stored keys and values) and sized this cache for Llama 3 8B.
+
+## How to play with it
+
+Set **KV heads** to 32, 8 and 1. Per token the cache is 512 KiB, 128 KiB and 16 KiB; at 8,192
+tokens that is 4.00 GiB, 1.00 GiB and 128 MiB. At 128K tokens, 8 KV heads need 16 GiB, more
+than the model's own 16-bit weights.
+
+Drag **Sequence length** to 128K and read **Quadratic cost**. Attention is 13.3 percent of one
+layer's prefill FLOPs at 8K tokens and 71.1 percent at 128K; it equals the weight matmuls at
+53,247 tokens. Switch **Attention span** to `Sliding window 4,096`: the cache stops at 512 MiB
+and attention's share at 128K falls to 13.2 percent.
+
+In **FlashAttention tiles**, step **Tiles processed** through the row. In **RoPE rotation**,
+press **Shift both +16** and compare the Score before and after.
+
+## What to notice
+
+- The cache scales with KV heads, not query heads. GQA with 8 KV heads is exactly a quarter of
+  MHA at every length, while the attention FLOPs barely move, because every query head still
+  scores every key.
+- Online softmax keeps a running max `m`, sum `ℓ` and output `o`. A tile with a larger score
+  rescales the old `ℓ` and `o` by `exp(m_old − m_new)`, 0.4966 for tile 2 with 4-key tiles. The
+  final output matches full softmax to 8.3e-17.
+- A stored score matrix would be 4.00 GiB per layer at 8K tokens and 1.00 TiB at 128K.
+  FlashAttention keeps one log-sum-exp per row: 1 MiB and 16 MiB.
+- RoPE's score depends only on `m − n`: 2.0865 at positions (20, 7) and at (36, 23).
+
+## Where it breaks
+
+**In this lab.** Byte and FLOP counts are closed-form for one sequence and one layer; nothing is
+timed. The FlashAttention card processes a single query row of 16 fixed scores, and the RoPE card
+uses an 8-dimensional toy head with fixed vectors. Real kernels also tile queries, skip fully
+masked tiles, and recompute scores in the backward pass.
+
+**In the real mechanisms.** GQA forces each group of query heads to read the same stored keys and
+values, and MQA forces all of them to. Both usually cost a little quality, which is why many
+recent models use 4 to 8 KV heads rather than 1.
+
+A sliding window removes direct access beyond `W` tokens. Information from further back must be
+relayed through intermediate positions across layers, up to `L × W` tokens, and it degrades on
+the way. Several long-context models, such as Gemma 2 and 3, interleave windowed and
+full-attention layers for that reason.
+
+FlashAttention is exact but still quadratic in arithmetic. It removes the `n²` memory and most of
+the memory traffic, not the `n²` work, and it does nothing for the KV cache.
+
+RoPE encodes relative position but does not by itself extend a model past its training length.
+Plain RoPE degrades on unseen distances unless its frequencies are rescaled and the model is
+trained further.
+
+## Going deeper
+
+**FlashAttention** (Dao et al., 2022) is IO-aware: a GPU's HBM is large but slow relative to on-chip
+SRAM, so the kernel loads blocks of `Q`, `K` and `V` into SRAM, computes their scores there, and
+writes only the output and per-row statistics back. Later versions improve parallelism and
+low-precision support; the result stays exact.
+
+**RoPE** (Su et al., 2021) sets `θᵢ = base^(−2i/d)`. For a 128-dimensional head the fastest pair
+turns once every 6.3 tokens and the slowest once every 54,000 at base 10,000. Llama 3's base of
+500,000 stretches the slowest wavelength to about 2.6 million tokens. Context-extension methods
+change these frequencies: position interpolation scales positions down, NTK-aware scaling raises
+the base, and YaRN treats fast and slow pairs differently and adjusts the softmax temperature.
+
+**Inference & KV cache** covered this cache during serving, including batching and paging. **Why
+GPUs** explains why bytes moved, not FLOPs, often set decoding speed. **The architecture zoo**
+covers state-space models, which replace the growing cache with a fixed-size state and give up
+exact retrieval of arbitrary old tokens.
