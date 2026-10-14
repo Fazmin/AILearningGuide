@@ -659,8 +659,21 @@ fn stop_speaking(state: State<'_, AppState>) -> Result<(), String> {
     Ok(())
 }
 
+// WebKitGTK's DMABUF renderer crashes on some Wayland setups with
+// "Error 71 (Protocol error) dispatching to Wayland display". This must run
+// before any threads start, and a value the user already set is respected.
+#[cfg(target_os = "linux")]
+fn disable_webkit_dmabuf_renderer() {
+    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(target_os = "linux")]
+    disable_webkit_dmabuf_renderer();
+
     tauri::Builder::default()
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
