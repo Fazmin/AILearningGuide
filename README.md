@@ -4,7 +4,9 @@ A desktop app that teaches you how modern AI works by letting you play with it.
 
 There are 51 small hands-on labs. In each one you move a slider, click a word, or train a tiny model, and you watch what changes. Next to every lab there is a short lesson that explains what you just saw. You can read it in plain everyday words or in the more technical version.
 
-![The learning map on the home screen](docs/screenshots/home.jpg)
+![A short tour of Discover AI: dragging sliders in the single neuron lab, stepping gradient descent, searching with Cmd+K, clicking words in the attention lab, training a tiny language model, switching to Standard mode, and the connections map in dark theme](docs/screenshots/demo.gif)
+
+[Watch the tour as a video](docs/screenshots/demo.mp4) for a sharper version.
 
 ## About
 
@@ -24,6 +26,10 @@ The 51 labs are split into six groups. You can go in order or jump to whatever y
 | **Train and adapt a model** (36 to 51) | A full training run from start to finish: datasets, synthetic data, hyperparameters, training from scratch, fine-tuning, LoRA, model merging, instruction tuning, preference tuning, reasoning models, evaluation, quantization, distillation, serving, and a final "ship it" capstone |
 
 ## Screenshots
+
+**Learning map.** The home screen shows all six groups of labs and how far you've got.
+
+![The learning map on the home screen](docs/screenshots/home.jpg)
 
 **Attention lab.** Click a word and see which other words it looks at. This one runs a real small transformer right in the app.
 
