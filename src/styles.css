@@ -259,39 +259,6 @@ select {
   justify-content: flex-end;
 }
 
-.mac-controls {
-  display: flex;
-  margin: 0 0.55rem 0 0.2rem;
-  gap: 0.42rem;
-}
-
-.mac-controls button {
-  display: grid;
-  place-items: center;
-  width: 0.72rem;
-  height: 0.72rem;
-  padding: 0;
-  border-radius: 50%;
-  background: transparent;
-}
-
-.mac-controls i {
-  display: block;
-  width: 100%;
-  height: 100%;
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 50%;
-  background: #ff5f57;
-}
-
-.mac-controls button:nth-child(2) i {
-  background: #febc2e;
-}
-
-.mac-controls button:nth-child(3) i {
-  background: #28c840;
-}
-
 .wordmark {
   display: flex;
   align-items: center;

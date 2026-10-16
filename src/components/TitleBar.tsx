@@ -51,13 +51,6 @@ export function TitleBar() {
       }}
     >
       <div className="titlebar__left" data-tauri-drag-region>
-        {isMac && !useNativeMacChrome && (
-          <div className="mac-controls">
-            <button type="button" aria-label="Close window" onClick={() => void withWindow((appWindow) => appWindow.close())}><i /></button>
-            <button type="button" aria-label="Minimize window" onClick={() => void withWindow((appWindow) => appWindow.minimize())}><i /></button>
-            <button type="button" aria-label="Maximize window" onClick={() => void withWindow((appWindow) => appWindow.toggleMaximize())}><i /></button>
-          </div>
-        )}
         <IconButton
           label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
           onClick={toggleSidebar}
@@ -127,7 +120,7 @@ export function TitleBar() {
         >
           <Accessibility />
         </IconButton>
-        {!isMac && (
+        {isTauri && !isMac && (
           <div className="window-controls">
             <IconButton label="Minimize window" onClick={() => void withWindow((appWindow) => appWindow.minimize())}>
               <Minus />
