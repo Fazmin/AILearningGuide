@@ -9,9 +9,269 @@
     />
     <meta name="theme-color" content="#191d35" />
     <title>Discover AI: A Learning Guide</title>
+    <script>
+      // Runs before the app bundle arrives: match the saved theme, and swap the
+      // loading screen for an error if the bundle fails to load or start.
+      (function () {
+        var root = document.documentElement;
+        try {
+          var saved = JSON.parse(localStorage.getItem("the-ai-guide") || "null");
+          var theme = saved && saved.state && saved.state.theme;
+          if (theme === "light" || theme === "dark") root.dataset.theme = theme;
+        } catch (error) {
+          // Storage can be blocked in private windows. The system theme is a fine fallback.
+        }
+        if (window.__TAURI_INTERNALS__) root.dataset.desktop = "";
+
+        window.addEventListener(
+          "error",
+          function (event) {
+            var target = event.target;
+            var fileFailed = target && (target.tagName === "SCRIPT" || target.tagName === "LINK");
+            var appCrashed =
+              event instanceof ErrorEvent &&
+              typeof event.filename === "string" &&
+              event.filename.indexOf(location.origin) === 0;
+            var boot = document.getElementById("boot");
+            if (!boot || (!fileFailed && !appCrashed)) return;
+            boot.dataset.state = "failed";
+            boot.querySelector("button").onclick = function () {
+              location.reload();
+            };
+          },
+          true,
+        );
+      })();
+    </script>
+    <style>
+      /* The loading screen shows until the app replaces #root, before the app's own
+         stylesheet and fonts can be relied on. Colours match --canvas, --ink and --muted. */
+      :root {
+        --boot-canvas: #e9ecf3;
+        --boot-panel: #ffffff;
+        --boot-ink: #171a2f;
+        --boot-muted: #69708d;
+        --boot-line: rgba(39, 44, 78, 0.23);
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) {
+          --boot-canvas: #181c31;
+          --boot-panel: #252a44;
+          --boot-ink: #f2f3fb;
+          --boot-muted: #999fbb;
+          --boot-line: rgba(218, 222, 247, 0.22);
+        }
+      }
+
+      :root[data-theme="dark"] {
+        --boot-canvas: #181c31;
+        --boot-panel: #252a44;
+        --boot-ink: #f2f3fb;
+        --boot-muted: #999fbb;
+        --boot-line: rgba(218, 222, 247, 0.22);
+      }
+
+      html:has(#boot) {
+        background: var(--boot-canvas);
+      }
+
+      .boot {
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-content: center;
+        justify-items: center;
+        gap: 1.25rem;
+        padding: 1.5rem;
+        color: var(--boot-ink);
+        font: 400 1rem/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        text-align: center;
+        /* Fast loads, like the desktop app or a repeat visit, never show it. */
+        animation: boot-in 0.3s ease-out 0.3s both;
+      }
+
+      .boot p {
+        margin: 0;
+      }
+
+      .boot__mark {
+        position: relative;
+        width: 3rem;
+        height: 3rem;
+        border: 1px solid var(--boot-line);
+        border-radius: 0.75rem;
+        background: var(--boot-panel);
+      }
+
+      .boot__mark::before,
+      .boot__mark::after {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 1.35rem;
+        height: 1px;
+        margin-left: -0.675rem;
+        content: "";
+        background: var(--boot-line);
+        rotate: 32deg;
+      }
+
+      .boot__mark::after {
+        rotate: -32deg;
+      }
+
+      .boot__mark i {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 0.58rem;
+        height: 0.58rem;
+        margin: -0.29rem 0 0 -0.29rem;
+        border-radius: 50%;
+        background: #4c65d4;
+        translate: -0.68rem 0.5rem;
+        animation: boot-pulse 1.2s ease-in-out infinite;
+      }
+
+      .boot__mark i:nth-child(2) {
+        background: #bd4e85;
+        translate: 0.66rem 0.46rem;
+        animation-delay: 0.2s;
+      }
+
+      .boot__mark i:nth-child(3) {
+        background: #168b7c;
+        translate: 0 -0.7rem;
+        animation-delay: 0.4s;
+      }
+
+      .boot__loading,
+      .boot__failed {
+        display: grid;
+        justify-items: center;
+        gap: 0.4rem;
+        max-width: 23rem;
+      }
+
+      .boot__title {
+        font-weight: 600;
+      }
+
+      .boot__hint {
+        color: var(--boot-muted);
+        font-size: 0.875rem;
+      }
+
+      .boot__hints {
+        display: grid;
+      }
+
+      .boot__hints .boot__hint {
+        grid-area: 1 / 1;
+      }
+
+      .boot__hint--first {
+        animation:
+          boot-in 0.4s ease-out 1.5s both,
+          boot-out 0.4s ease-in 8s forwards;
+      }
+
+      .boot__hint--slow {
+        animation: boot-in 0.4s ease-out 8.4s both;
+      }
+
+      :root[data-desktop] .boot__hints {
+        display: none;
+      }
+
+      .boot__failed {
+        display: none;
+      }
+
+      .boot__failed button {
+        margin-top: 0.6rem;
+        padding: 0.5rem 1.1rem;
+        border: 1px solid var(--boot-line);
+        border-radius: 0.6rem;
+        color: inherit;
+        background: var(--boot-panel);
+        font: inherit;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      .boot[data-state="failed"] .boot__loading {
+        display: none;
+      }
+
+      .boot[data-state="failed"] .boot__failed {
+        display: grid;
+      }
+
+      .boot[data-state="failed"] .boot__mark i {
+        opacity: 0.35;
+        animation: none;
+      }
+
+      @keyframes boot-in {
+        from {
+          opacity: 0;
+          visibility: hidden;
+        }
+      }
+
+      @keyframes boot-out {
+        to {
+          opacity: 0;
+          visibility: hidden;
+        }
+      }
+
+      @keyframes boot-pulse {
+        0%,
+        100% {
+          opacity: 0.35;
+          scale: 0.7;
+        }
+        50% {
+          opacity: 1;
+          scale: 1;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .boot__mark i {
+          opacity: 1;
+          animation: none;
+        }
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div id="boot" class="boot" role="status">
+        <span class="boot__mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <div class="boot__loading">
+          <p class="boot__title">Loading Discover AI…</p>
+          <div class="boot__hints">
+            <p class="boot__hint boot__hint--first">
+              The first visit downloads about 4 MB, so this can take a moment. After that it
+              opens much faster.
+            </p>
+            <p class="boot__hint boot__hint--slow">
+              Still loading. Thanks for your patience. On a slow connection this can take up
+              to a minute.
+            </p>
+          </div>
+        </div>
+        <div class="boot__failed">
+          <p class="boot__title">Discover AI didn't finish loading.</p>
+          <p class="boot__hint">Check your connection, then try again.</p>
+          <button type="button">Try again</button>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
