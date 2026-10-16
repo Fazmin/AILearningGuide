@@ -5,8 +5,11 @@ import mdx from "@mdx-js/rollup";
 import remarkFrontmatter from "remark-frontmatter";
 
 const host = process.env.TAURI_DEV_HOST;
+// GitHub Pages serves the site from /<repo>/, so the Pages workflow sets BASE_PATH.
+const base = process.env.BASE_PATH || "/";
 
 export default defineConfig({
+  base,
   plugins: [
     mdx({
       remarkPlugins: [remarkFrontmatter],

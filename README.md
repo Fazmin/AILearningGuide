@@ -4,6 +4,8 @@ A desktop app that teaches you how modern AI works by letting you play with it.
 
 There are 51 small hands-on labs. In each one you move a slider, click a word, or train a tiny model, and you watch what changes. Next to every lab there is a short lesson that explains what you just saw. You can read it in plain everyday words or in the more technical version.
 
+**[Try it in your browser](https://fazmin.github.io/AILearningGuide/)**. There's nothing to install.
+
 ![A tour of Discover AI: the welcome tour, dragging sliders in the single neuron lab, answering checkpoint questions, marking a lab complete, stepping gradient descent and backpropagation, the glossary, searching with Cmd+K, clicking words in the attention lab, training a tiny language model, Plain and Standard modes, text size and accessibility options, AI guide settings, the connections map, and dark theme](docs/screenshots/demo.gif)
 
 [Watch the tour as a video](docs/screenshots/demo.mp4) for a sharper version.
@@ -65,7 +67,9 @@ The 51 labs are split into six groups. You can go in order or jump to whatever y
 
 ## Getting started
 
-You can run Discover AI in two ways. The web version is the quickest way to try it. The desktop app gives you everything, including the local AI guide.
+The quickest way to try Discover AI is to open [fazmin.github.io/AILearningGuide](https://fazmin.github.io/AILearningGuide/) in your browser. All the labs and lessons work there.
+
+To run it on your own computer, you can use the web version or the desktop app. The desktop app gives you everything, including the local AI guide.
 
 ### What you need
 
@@ -73,7 +77,7 @@ You can run Discover AI in two ways. The web version is the quickest way to try 
 - [Git](https://git-scm.com/)
 - For the desktop app only: Rust and the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for your system
 
-### Option 1: Try it in your browser
+### Option 1: Run the web version
 
 ```sh
 git clone https://github.com/Fazmin/AILearningGuide.git
