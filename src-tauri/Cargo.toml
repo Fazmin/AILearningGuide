@@ -1,6 +1,6 @@
 [package]
 name = "the-ai-guide"
-version = "0.1.71"
+version = "0.1.72"
 description = "An interactive field guide to modern AI"
 authors = ["Discover AI contributors"]
 edition = "2021"
