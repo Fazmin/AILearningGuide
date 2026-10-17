@@ -225,6 +225,9 @@ export function SettingsScreen() {
             <>
               <SectionHeading title="Explanation mode" description="Change the writing without resetting your experiments." />
               <div className="explanation-choices">
+                <button type="button" aria-pressed={store.mode === "simple"} onClick={() => store.setMode("simple")}>
+                  <span>Simple</span><h3>Short sentences</h3><p>Written so an 8th grader can follow: sentences under 20 words, everyday comparisons for every big idea, and terms explained the moment they appear.</p><i>{store.mode === "simple" && <Check />}</i>
+                </button>
                 <button type="button" aria-pressed={store.mode === "plain"} onClick={() => store.setMode("plain")}>
                   <span>Plain</span><h3>Everyday words</h3><p>Written at a grade 8 to 10 reading level: the big picture first, then examples and short stories, a concrete nudge to try, and misconceptions corrected in place.</p><i>{store.mode === "plain" && <Check />}</i>
                 </button>
@@ -232,7 +235,7 @@ export function SettingsScreen() {
                   <span>Standard</span><h3>Use the technical vocabulary</h3><p>Compact definitions, mechanisms, limitations, and links between ideas.</p><i>{store.mode === "standard" && <Check />}</i>
                 </button>
               </div>
-              <p className="privacy-note"><ShieldCheck /> Both modes cover the same learning objectives. You can switch at any time.</p>
+              <p className="privacy-note"><ShieldCheck /> All three modes cover the same learning objectives. You can switch at any time.</p>
             </>
           )}
 

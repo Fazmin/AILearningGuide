@@ -14,7 +14,7 @@ import type { KeyboardEvent, ReactNode } from "react";
 import { localAiAvailable } from "@app/lib/local-ai";
 import { ONBOARDING_SAMPLE } from "@app/lib/onboarding-sample";
 import { fontScaleForStep, useAppStore } from "@app/store/app-store";
-import type { ExplanationMode } from "@app/module-sdk";
+import { explanationModes, type ExplanationMode } from "@app/module-sdk";
 import { shouldShowOnboarding } from "@app/store/onboarding";
 import { palettes, Switch } from "./AccessibilityPopover";
 
@@ -34,6 +34,10 @@ const destinationLabel: Record<GuideDestination, string> = {
 };
 
 const modeCopy: Record<ExplanationMode, { label: string; lead: string }> = {
+  simple: {
+    label: "Simple",
+    lead: "Written so an 8th grader can follow. Short sentences under 20 words, everyday comparisons for every big idea, and terms explained the moment they appear.",
+  },
   plain: {
     label: "Plain",
     lead: "Written at a grade 8 to 10 reading level. Starts with the big picture, then everyday words, examples and short stories, a concrete nudge to try, and misconceptions corrected in place.",
@@ -259,14 +263,14 @@ function ModesStep({ mode, onChoose }: { mode: ExplanationMode; onChoose: (mode:
   return (
     <>
       <p className="onboarding__lead">
-        Every lab explains each idea two ways. Below is one idea written both ways. Pick the one you would rather
-        read. You can switch at any time, and your experiments stay as they are.
+        Every lab explains each idea three ways. Below is one idea written all three ways. Pick the one you would
+        rather read. You can switch at any time, and your experiments stay as they are.
       </p>
       <p className="onboarding__source">
-        Both samples are from the lab {ONBOARDING_SAMPLE.moduleTitle}, section “{ONBOARDING_SAMPLE.section}”.
+        All three samples are from the lab {ONBOARDING_SAMPLE.moduleTitle}, section “{ONBOARDING_SAMPLE.section}”.
       </p>
       <div className="onboarding-modes" role="group" aria-label="Choose an explanation mode">
-        {(["plain", "standard"] as const).map((value) => {
+        {explanationModes.map((value) => {
           const selected = mode === value;
           return (
             <div key={value} className={`onboarding-mode${selected ? " is-selected" : ""}`}>
@@ -284,7 +288,7 @@ function ModesStep({ mode, onChoose }: { mode: ExplanationMode; onChoose: (mode:
         })}
       </div>
       <p className="privacy-note">
-        <ShieldCheck /> Both modes cover the same learning objectives.
+        <ShieldCheck /> All three modes cover the same learning objectives.
       </p>
     </>
   );

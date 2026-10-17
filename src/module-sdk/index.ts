@@ -117,3 +117,4 @@ export type {
   ModuleGroupId,
   ModuleState,
 } from "./types";
+export { explanationModeLabel, explanationModes } from "./explanation-modes";

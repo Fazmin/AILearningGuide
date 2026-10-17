@@ -9,6 +9,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
 } from "lucide-react";
+import { explanationModeLabel, explanationModes } from "@app/module-sdk";
 import { IconButton } from "./IconButton";
 import { useAppStore } from "@app/store/app-store";
 
@@ -68,20 +69,16 @@ export function TitleBar() {
       </div>
 
       <div className="mode-toggle" aria-label="Explanation mode">
-        <button
-          type="button"
-          aria-pressed={mode === "plain"}
-          onClick={() => setMode("plain")}
-        >
-          Plain
-        </button>
-        <button
-          type="button"
-          aria-pressed={mode === "standard"}
-          onClick={() => setMode("standard")}
-        >
-          Standard
-        </button>
+        {explanationModes.map((value) => (
+          <button
+            key={value}
+            type="button"
+            aria-pressed={mode === value}
+            onClick={() => setMode(value)}
+          >
+            {explanationModeLabel[value]}
+          </button>
+        ))}
       </div>
 
       <div className="titlebar__right">

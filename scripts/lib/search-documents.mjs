@@ -1,9 +1,13 @@
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 
 export const SEARCH_INDEX_VERSION = 1;
 export const SEARCH_INDEX_SCHEMA = "search-index-schema:1";
+
+/** Explanation modes with a lesson file each, labelled as the interface names them. */
+const MODE_LABELS = { simple: "Simple", plain: "Plain", standard: "Standard" };
 
 const REQUIRED_LEARN_SECTIONS = [
   "The big picture",
@@ -230,12 +234,12 @@ export async function collectSearchSources(root) {
     files.push(
       path.join(modulesRoot, folder, "module.ts"),
       path.join(modulesRoot, folder, "card-info.ts"),
-      path.join(modulesRoot, folder, "content", "plain.mdx"),
-      path.join(modulesRoot, folder, "content", "standard.mdx"),
+      ...Object.keys(MODE_LABELS).map((mode) => path.join(modulesRoot, folder, "content", `${mode}.mdx`)),
     );
   }
 
-  return files;
+  // TODO(simple-mode): drop this filter once every module has simple.mdx.
+  return files.filter((file) => path.basename(file) !== "simple.mdx" || existsSync(file));
 }
 
 export async function fingerprintSources(files, root) {
@@ -388,8 +392,15 @@ export async function extractSearchDocuments(root) {
       );
     });
 
-    for (const mode of ["plain", "standard"]) {
-      const mdx = await readFile(path.join(directory, "content", `${mode}.mdx`), "utf8");
+    for (const [mode, label] of Object.entries(MODE_LABELS)) {
+      let mdx;
+      try {
+        mdx = await readFile(path.join(directory, "content", `${mode}.mdx`), "utf8");
+      } catch (error) {
+        // TODO(simple-mode): drop this once every module has simple.mdx; the module checker requires the others.
+        if (mode === "simple" && error.code === "ENOENT") continue;
+        throw error;
+      }
       const sections = splitLearnSections(mdx);
       const known = new Set(sections.map((section) => section.title));
       for (const required of REQUIRED_LEARN_SECTIONS) {
@@ -403,7 +414,7 @@ export async function extractSearchDocuments(root) {
             id: `learn:${slug}:${mode}:${slugify(section.title)}`,
             kind: "learn",
             title: section.title,
-            subtitle: `${mode === "plain" ? "Plain" : "Standard"} · ${title}`,
+            subtitle: `${label} · ${title}`,
             body: section.body,
             ...moduleMeta,
             mode,

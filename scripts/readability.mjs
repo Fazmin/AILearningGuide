@@ -1,10 +1,11 @@
-// Reading-level report for the Plain lessons (src/modules/<slug>/content/plain.mdx).
+// Reading-level report for the Simple and Plain lessons (src/modules/<slug>/content/{simple,plain}.mdx).
 //
-//   node scripts/readability.mjs                 one line per module, hardest first
+//   node scripts/readability.mjs                 one line per lesson, hardest first, for each mode
 //   node scripts/readability.mjs <slug> [...]    detail for those modules: grade, longest
 //                                                sentences, and the long words used most
-//   node scripts/readability.mjs --check         exit 1 if a Plain lesson is outside GRADE_MIN to
-//                                                GRADE_MAX or has a sentence over SENTENCE_MAX words
+//   node scripts/readability.mjs --mode simple   limit either report to one mode (simple or plain)
+//   node scripts/readability.mjs --check         exit 1 if a lesson is outside its mode's grade band
+//                                                or has a sentence over its mode's sentenceMax words
 //
 // The grade is Flesch-Kincaid: 0.39 × words per sentence + 11.8 × syllables per word − 15.59.
 // Syllables are counted with a spelling heuristic, so treat a grade as ±0.5. Headings,
@@ -14,13 +15,20 @@ import { readFile, readdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
-/** Plain lessons are written at a grade 8 to 10 reading level (CONTENT_STYLE_GUIDE.md). */
-export const GRADE_MIN = 8;
-export const GRADE_MAX = 10;
-/** Sentences longer than this are listed in the detail report. */
-export const SENTENCE_LIMIT = 30;
-/** A sentence longer than this fails --check. */
-export const SENTENCE_MAX = 35;
+/**
+ * Each measured mode's band (CONTENT_STYLE_GUIDE.md). Plain is written at a grade 8 to 10 reading
+ * level; Simple is written so an 8th grader can follow, in sentences under 20 words. A sentence
+ * longer than `sentenceLimit` is listed in the detail report; one longer than `sentenceMax` fails
+ * --check. Standard is not measured.
+ */
+export const BANDS = {
+  simple: { gradeMin: 0, gradeMax: 7, sentenceLimit: 16, sentenceMax: 20 },
+  plain: { gradeMin: 8, gradeMax: 10, sentenceLimit: 30, sentenceMax: 35 },
+};
+
+function target({ gradeMin, gradeMax }) {
+  return gradeMin > 0 ? `${gradeMin}–${gradeMax}` : `≤ ${gradeMax}`;
+}
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const modulesRoot = path.join(root, "src", "modules");
@@ -62,7 +70,7 @@ export function wordsOf(sentence) {
   return sentence.split(/\s+/).map((w) => w.replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, "")).filter(Boolean);
 }
 
-export function measure(source) {
+export function measure(source, sentenceLimit = BANDS.plain.sentenceLimit) {
   const sentences = sentencesOf(source);
   let words = 0;
   let syl = 0;
@@ -90,7 +98,7 @@ export function measure(source) {
     complexShare: complex / Math.max(1, words),
     longSentences: sentences
       .map((text) => ({ text, words: wordsOf(text).length }))
-      .filter((s) => s.words > SENTENCE_LIMIT)
+      .filter((s) => s.words > sentenceLimit)
       .sort((a, b) => b.words - a.words),
     longWords: [...long.entries()].sort((a, b) => b[1] - a[1]),
   };
@@ -99,52 +107,62 @@ export function measure(source) {
 async function main() {
   const args = process.argv.slice(2);
   const check = args.includes("--check");
-  const picked = args.filter((a) => !a.startsWith("--"));
+  const modeIndex = args.indexOf("--mode");
+  const onlyMode = modeIndex >= 0 ? args[modeIndex + 1] : null;
+  if (onlyMode !== null && !(onlyMode in BANDS)) {
+    console.error(`--mode must be one of: ${Object.keys(BANDS).join(", ")}`);
+    process.exit(2);
+  }
+  const picked = args.filter((a, index) => !a.startsWith("--") && index !== modeIndex + 1);
   const folders = picked.length
     ? picked
     : (await readdir(modulesRoot, { withFileTypes: true })).filter((e) => e.isDirectory()).map((e) => e.name);
 
-  const rows = [];
-  for (const folder of folders) {
-    let source;
-    try {
-      source = await readFile(path.join(modulesRoot, folder, "content", "plain.mdx"), "utf8");
-    } catch {
-      continue;
-    }
-    rows.push({ folder, ...measure(source) });
-  }
-  rows.sort((a, b) => b.grade - a.grade);
-
-  if (picked.length) {
-    for (const r of rows) {
-      console.log(`\n${r.folder}: grade ${r.grade.toFixed(1)} (target ${GRADE_MIN}–${GRADE_MAX}), ${r.words} words, ${r.sentences} sentences, ${r.wordsPerSentence.toFixed(1)} words/sentence, ${(r.complexShare * 100).toFixed(1)}% words of 3+ syllables`);
-      console.log(`  sentences over ${SENTENCE_LIMIT} words: ${r.longSentences.length}`);
-      for (const s of r.longSentences.slice(0, 15)) console.log(`   [${s.words}] ${s.text}`);
-      console.log(`  most-used 3+ syllable words: ${r.longWords.slice(0, 40).map(([w, n]) => `${w}×${n}`).join(", ")}`);
-    }
-  } else {
-    for (const r of rows) {
-      console.log(`${r.grade.toFixed(1).padStart(5)}  ${r.wordsPerSentence.toFixed(1).padStart(5)} w/s  ${String(r.longSentences.length).padStart(3)} long  ${String(r.words).padStart(5)} words  ${r.folder}`);
-    }
-    const mean = rows.reduce((a, r) => a + r.grade, 0) / Math.max(1, rows.length);
-    console.log(`mean grade ${mean.toFixed(2)} across ${rows.length} Plain lessons`);
-  }
-
-  if (check) {
-    let failed = false;
-    for (const r of rows) {
-      if (r.grade < GRADE_MIN || r.grade > GRADE_MAX) {
-        failed = true;
-        console.error(`${r.folder}/plain.mdx: reading grade ${r.grade.toFixed(1)} is outside ${GRADE_MIN}–${GRADE_MAX}`);
+  let failed = false;
+  for (const [mode, band] of Object.entries(BANDS)) {
+    if (onlyMode && mode !== onlyMode) continue;
+    const rows = [];
+    for (const folder of folders) {
+      let source;
+      try {
+        source = await readFile(path.join(modulesRoot, folder, "content", `${mode}.mdx`), "utf8");
+      } catch {
+        continue;
       }
-      for (const s of r.longSentences.filter((s) => s.words > SENTENCE_MAX)) {
-        failed = true;
-        console.error(`${r.folder}/plain.mdx: ${s.words}-word sentence: ${s.text}`);
+      rows.push({ folder, ...measure(source, band.sentenceLimit) });
+    }
+    rows.sort((a, b) => b.grade - a.grade);
+
+    if (picked.length) {
+      for (const r of rows) {
+        console.log(`\n${r.folder}/${mode}.mdx: grade ${r.grade.toFixed(1)} (target ${target(band)}), ${r.words} words, ${r.sentences} sentences, ${r.wordsPerSentence.toFixed(1)} words/sentence, ${(r.complexShare * 100).toFixed(1)}% words of 3+ syllables`);
+        console.log(`  sentences over ${band.sentenceLimit} words: ${r.longSentences.length}`);
+        for (const s of r.longSentences.slice(0, 15)) console.log(`   [${s.words}] ${s.text}`);
+        console.log(`  most-used 3+ syllable words: ${r.longWords.slice(0, 40).map(([w, n]) => `${w}×${n}`).join(", ")}`);
+      }
+    } else if (rows.length) {
+      console.log(`${mode} (target grade ${target(band)}, no sentence over ${band.sentenceMax} words)`);
+      for (const r of rows) {
+        console.log(`${r.grade.toFixed(1).padStart(5)}  ${r.wordsPerSentence.toFixed(1).padStart(5)} w/s  ${String(r.longSentences.length).padStart(3)} long  ${String(r.words).padStart(5)} words  ${r.folder}`);
+      }
+      const mean = rows.reduce((a, r) => a + r.grade, 0) / rows.length;
+      console.log(`mean grade ${mean.toFixed(2)} across ${rows.length} ${mode} lessons\n`);
+    }
+
+    if (check) {
+      for (const r of rows) {
+        if (r.grade < band.gradeMin || r.grade > band.gradeMax) {
+          failed = true;
+          console.error(`${r.folder}/${mode}.mdx: reading grade ${r.grade.toFixed(1)} is outside ${target(band)}`);
+        }
+        for (const s of r.longSentences.filter((s) => s.words > band.sentenceMax)) {
+          failed = true;
+          console.error(`${r.folder}/${mode}.mdx: ${s.words}-word sentence: ${s.text}`);
+        }
       }
     }
-    if (failed) process.exit(1);
   }
+  if (failed) process.exit(1);
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main();

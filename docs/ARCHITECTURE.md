@@ -44,7 +44,7 @@ opens the explanation on hover, on keyboard focus, and on click. The panel is po
 to `document.body` with viewport-aware placement so it is never clipped by the scrolling
 explore column.
 
-`src/modules/registry.ts` eagerly discovers `module.ts` definitions, the two MDX files, and `card-info.ts` in every module folder. The sidebar, learning map, route lookup, content mode, progress UI, and packaged search index all derive from this registry.
+`src/modules/registry.ts` eagerly discovers `module.ts` definitions, the three MDX files (`simple`, `plain`, `standard`), and `card-info.ts` in every module folder. The sidebar, learning map, route lookup, content mode, progress UI, and packaged search index all derive from this registry.
 
 ## Module lifecycle
 
@@ -89,7 +89,7 @@ The server binds only to `127.0.0.1`, is stopped with the application window, an
 
 ## First-run onboarding
 
-`src/components/Onboarding.tsx` is a three-step overlay mounted by `App.tsx`: the two explanation modes (a Plain and a Standard paragraph copied from the Next-token prediction lab, kept honest by `src/lib/onboarding-sample.test.ts`), the optional topic guide (local model or cloud provider, set up later or opened in Settings after the tour), and live accessibility controls. It holds no settings of its own: every control calls the same store action as Settings and the accessibility menu.
+`src/components/Onboarding.tsx` is a three-step overlay mounted by `App.tsx`: the three explanation modes (a Simple, a Plain and a Standard paragraph copied from the Next-token prediction lab, kept honest by `src/lib/onboarding-sample.test.ts`), the optional topic guide (local model or cloud provider, set up later or opened in Settings after the tour), and live accessibility controls. It holds no settings of its own: every control calls the same store action as Settings and the accessibility menu.
 
 The rules are pure and live in `src/store/onboarding.ts`. The tour shows when the persisted `onboarded` flag is false **and** the learner has no progress, snapshots, or saved lab state. `onboardingReplay` is a second, non-persisted switch that Settings > About sets to reopen it. The persist version is 3; `migrate` composes the checkpoint migration with `migrateOnboardedFlag`, so state written by any earlier build marks that learner onboarded and a version 1 store passes through both steps. A brand-new device has no stored state, so migration never runs for it. `resetLearningData` also sets `onboarded`, because a reset empties the history that exempts a learner and must not push them back through first-run onboarding. The flag describes the device: exports do not write it and imports do not read it. App renders the tour only after the first route is applied, so a shared link never flashes it.
 

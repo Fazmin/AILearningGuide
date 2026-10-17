@@ -1,6 +1,6 @@
 import type { ComponentType } from "react";
 
-export type ExplanationMode = "standard" | "plain";
+export type ExplanationMode = "simple" | "plain" | "standard";
 export type ModuleGroupId =
   | "groundwork"
   | "foundations"

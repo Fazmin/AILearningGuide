@@ -14,9 +14,10 @@ describe("search query helpers", () => {
 });
 
 describe("packaged search index", () => {
-  it("indexes every shipped module and both explanation modes", () => {
+  it("indexes every shipped module and every explanation mode", () => {
     const modules = documents.filter((document) => document.kind === "module");
     expect(modules.length).toBeGreaterThanOrEqual(28);
+    expect(documents.some((document) => document.kind === "learn" && document.mode === "simple")).toBe(true);
     expect(documents.some((document) => document.kind === "learn" && document.mode === "plain")).toBe(true);
     expect(documents.some((document) => document.kind === "learn" && document.mode === "standard")).toBe(true);
     expect(documents.some((document) => document.kind === "glossary")).toBe(true);

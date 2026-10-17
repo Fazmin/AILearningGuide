@@ -125,7 +125,8 @@ for (const folder of folders) {
     failures.push(`${folder}: glossary needs at least 6 terms, found ${glossaryTerms.length}`);
   }
 
-  for (const mode of ["standard", "plain"]) {
+  // TODO(simple-mode): add content/simple.mdx to `required` above once every module has one.
+  for (const mode of ["standard", "plain", "simple"]) {
     let content = "";
     try {
       content = await readFile(path.join(directory, "content", `${mode}.mdx`), "utf8");
@@ -136,15 +137,15 @@ for (const folder of folders) {
     for (const section of requiredSections) {
       if (!content.includes(`## ${section}`)) failures.push(`${folder}/${mode}.mdx: missing "${section}" section`);
     }
-    // Both modes open with an overview before the six shared sections (CONTENT_STYLE_GUIDE.md).
+    // Every mode opens with an overview before the six shared sections (CONTENT_STYLE_GUIDE.md).
     const headings = [...content.matchAll(/^## (.+)$/gm)].map((match) => match[1].trim());
     const expected = ["The big picture", ...requiredSections];
     if (headings.join("\n") !== expected.join("\n")) {
       failures.push(`${folder}/${mode}.mdx: sections must be exactly, in order: ${expected.join(" / ")}`);
     }
-    if (mode === "plain") {
-      if (!content.includes("**Try this:**")) failures.push(`${folder}/plain.mdx: needs a "Try this" nudge`);
-      if (!content.includes("**A common mix-up:**")) failures.push(`${folder}/plain.mdx: needs a corrected misconception`);
+    if (mode !== "standard") {
+      if (!content.includes("**Try this:**")) failures.push(`${folder}/${mode}.mdx: needs a "Try this" nudge`);
+      if (!content.includes("**A common mix-up:**")) failures.push(`${folder}/${mode}.mdx: needs a corrected misconception`);
     }
 
     const termsSource = content.match(/^terms:\s*(\[.*\])\s*$/m)?.[1];

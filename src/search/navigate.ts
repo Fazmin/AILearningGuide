@@ -1,5 +1,5 @@
 import type { SettingsTab } from "@app/store/app-store";
-import type { SearchHit } from "./types";
+import type { ExplanationMode, SearchHit } from "./types";
 import { focusFromDocument } from "./types";
 
 const settingsTabs: SettingsTab[] = [
@@ -21,7 +21,7 @@ interface SearchNavigation {
   setSearchFocus: (focus: ReturnType<typeof focusFromDocument>) => void;
   setView: (view: "home" | "module" | "settings") => void;
   openModule: (moduleId: string) => void;
-  setMode: (mode: "plain" | "standard") => void;
+  setMode: (mode: ExplanationMode) => void;
   setLearnOpen: (open: boolean) => void;
   setCurrentStep: (moduleId: string, step: number) => void;
   setSettingsTab: (tab: SettingsTab) => void;

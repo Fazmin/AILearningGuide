@@ -15,7 +15,7 @@ Every explanation helps a learner predict the interactive, test that prediction,
 
 ## The seven sections
 
-**The big picture** opens every lesson, in both modes, before `## What it is`. It gives a complete
+**The big picture** opens every lesson, in every mode, before `## What it is`. It gives a complete
 overview: what the module is about, where the mechanism shows up, why it matters, what the reader
 will be able to explain by the end (every objective), and what the lab runs and lets them try,
 including which parts are measured, closed-form, fixed, or synthetic. It does not teach the
@@ -112,8 +112,8 @@ matrices, calculus, statistics, programming, computer hardware, or any AI vocabu
   group chat. Frame them as made up (“Picture a friend who…”). Never invent real people,
   events, quotes, or statistics; real-world facts come from the Standard lesson, where they are
   sourced.
-- **Simplify without saying anything false.** Drop a minor detail rather than bend it. Plain and
-  Standard never contradict each other, and figures pinned by a module's `quoted.test.ts` stay.
+- **Simplify without saying anything false.** Drop a minor detail rather than bend it. No two
+  modes contradict each other, and figures pinned by a module's `quoted.test.ts` stay.
 - **Talk to the reader, not down to them.** Use “you”. Skip “simply”, “just”, “obviously” and
   “easy”.
 - **Take the room the reader needs.** A Plain lesson may run longer than Standard. Never cut a
@@ -124,6 +124,35 @@ sentences, and its most-used long words. `npm run check:readability` fails outsi
 10 or on any sentence over 35 words. The grade counts syllables and sentence length, not
 unexplained ideas, so a lesson inside the band can still lose its reader: read it as the student
 would.
+
+## Simple mode
+
+Simple mode rewrites the Plain lesson so an 8th grader, about 13 to 14 years old, can follow it
+with ease. It keeps Plain's seven sections, objectives, facts and figures, its analogy, and its
+**Try this:** and **A common mix-up:** markers, and it assumes the same knowledge as the grade 8 to
+10 reader below Plain mode. What changes is the writing:
+
+- **Keep sentences short and direct, under 20 words.** Give each sentence one idea. This
+  deliberately reverses Plain's advice to connect ideas: in Simple, split a long sentence rather
+  than link its parts with *because* or *which*.
+- **Replace jargon with everyday words.** When a term has to stay, because the interface or the
+  glossary shows it, define it in the same sentence: “The model's odds for each choice are called
+  **probabilities**.”
+- **Use active voice.** “The model picks a token”, not “a token is picked by the model”.
+- **Explain abstract ideas with real-world comparisons**: a recipe, a sports team, a group chat, a
+  video game, a playlist. Say where the comparison stops matching.
+- **Stay clear and engaging without talking down.** Use “you”. Skip “simply”, “just”,
+  “obviously” and “easy”. Short sentences are not baby talk; keep the ideas whole.
+- **Keep Plain's facts.** Drop a minor detail rather than bend it, keep every number exactly as
+  Plain states it, and never invent people, events, quotes or statistics.
+
+Good: “The model gives every possible next piece a score. A higher score means better odds.”
+
+Avoid: “Logits are converted into a probability distribution over the vocabulary by softmax.”
+
+`node scripts/readability.mjs --mode simple <slug>` reports a Simple lesson's grade and lists its
+sentences over 16 words. `npm run check:readability` fails a Simple lesson above grade 7 or with
+any sentence over 20 words.
 
 ## Checkpoints
 
@@ -144,7 +173,7 @@ One checkpoint is the minimum. A module may add step-level checks, but scores sh
 
 Before merging content, verify:
 
-- both modes state the same facts;
+- all three modes state the same facts;
 - the plain analogy does not introduce a false mechanism;
 - every “it” has an obvious referent;
 - failure modes are specific;
