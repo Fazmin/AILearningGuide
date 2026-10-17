@@ -223,6 +223,58 @@ pub struct CloudChatRequest {
     pub state_json: String,
     pub message: String,
     pub history: Option<Vec<CloudChatTurn>>,
+    pub max_reply_tokens: Option<u32>,
+    pub system_prompt: Option<String>,
+}
+
+/// Reply length used when the learner has not chosen one. Matches the value that shipped before the
+/// setting existed, so existing installs keep their behaviour.
+pub const DEFAULT_MAX_REPLY_TOKENS: u32 = 800;
+pub const MIN_MAX_REPLY_TOKENS: u32 = 64;
+pub const MAX_MAX_REPLY_TOKENS: u32 = 4_000;
+/// Longest custom system prompt sent to a provider, in characters. Longer prompts are cut here.
+pub const MAX_SYSTEM_PROMPT_CHARS: usize = 4_000;
+
+pub fn reply_token_limit(requested: Option<u32>) -> u32 {
+    requested
+        .unwrap_or(DEFAULT_MAX_REPLY_TOKENS)
+        .clamp(MIN_MAX_REPLY_TOKENS, MAX_MAX_REPLY_TOKENS)
+}
+
+/// The guide's system prompt as a template. The placeholders are filled per module when a question
+/// is sent. The settings screen shows this text, so the learner can edit it.
+pub const DEFAULT_SYSTEM_PROMPT: &str = "You are the topic guide for the learning module \"{module_title}\".\n\
+Stay within this module. If the learner asks about another subject, briefly redirect them.\n\
+{explanation_style} Be concise, accurate, and distinguish the toy visualization from real models.\n\
+Learning objectives:\n{objectives}\n\
+Current step: {current_step}\n\
+Current live interactive state: {state_json}\n\
+Refer to the live state when it helps. Do not reveal hidden chain-of-thought; provide only the useful answer.";
+
+/// Replaces each `{name}` placeholder in one pass, so a value that contains braces is never
+/// filled in a second time. Unknown placeholders are left as written.
+pub fn render_template(template: &str, values: &[(&str, &str)]) -> String {
+    let mut out = String::new();
+    let mut rest = template;
+    while let Some(start) = rest.find('{') {
+        out.push_str(&rest[..start]);
+        let after = &rest[start..];
+        match values
+            .iter()
+            .find(|(name, _)| after.starts_with(&format!("{{{name}}}")))
+        {
+            Some((name, value)) => {
+                out.push_str(value);
+                rest = &after[name.len() + 2..];
+            }
+            None => {
+                out.push('{');
+                rest = &after[1..];
+            }
+        }
+    }
+    out.push_str(rest);
+    out
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -264,27 +316,34 @@ pub fn explanation_style(mode: &str) -> &'static str {
     }
 }
 
+/// Fills the system prompt template for one question. An empty or missing template falls back to
+/// the built-in one. Text past `MAX_SYSTEM_PROMPT_CHARS` is cut.
 pub fn topic_guide_system_prompt(
     module_title: &str,
     mode: &str,
     objectives: &[String],
     current_step: &str,
     state_json: &str,
+    template: Option<&str>,
 ) -> String {
     let objectives = objectives
         .iter()
         .map(|objective| format!("- {objective}"))
         .collect::<Vec<_>>()
         .join("\n");
-    let style = explanation_style(mode);
-    format!(
-        "You are the topic guide for the learning module \"{module_title}\".\n\
-         Stay within this module. If the learner asks about another subject, briefly redirect them.\n\
-         {style} Be concise, accurate, and distinguish the toy visualization from real models.\n\
-         Learning objectives:\n{objectives}\n\
-         Current step: {current_step}\n\
-         Current live interactive state: {state_json}\n\
-         Refer to the live state when it helps. Do not reveal hidden chain-of-thought; provide only the useful answer."
+    let template = template
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| value.chars().take(MAX_SYSTEM_PROMPT_CHARS).collect::<String>())
+        .unwrap_or_else(|| DEFAULT_SYSTEM_PROMPT.to_string());
+    render_template(
+        &template,
+        &[
+            ("module_title", module_title),
+            ("explanation_style", explanation_style(mode)),
+            ("objectives", &objectives),
+            ("current_step", current_step),
+            ("state_json", state_json),
+        ],
     )
 }
 
@@ -418,12 +477,13 @@ async fn complete_openai_compatible(
     system: &str,
     history: &[CloudChatTurn],
     message: &str,
+    max_tokens: u32,
 ) -> Result<String, String> {
     let payload = serde_json::json!({
         "model": model,
         "messages": openai_messages(system, history, message),
         "stream": true,
-        "max_completion_tokens": 800
+        "max_completion_tokens": max_tokens
     });
     let response = client
         .post(url)
@@ -437,7 +497,7 @@ async fn complete_openai_compatible(
         let body = redact_secret(&response.text().await.unwrap_or_default(), secret);
         if url.contains("api.openai.com") && (status == 400 || status == 404) {
             return complete_openai_responses(
-                app, request_id, client, secret, model, system, history, message,
+                app, request_id, client, secret, model, system, history, message, max_tokens,
             )
             .await
             .map_err(|error| {
@@ -453,7 +513,7 @@ async fn complete_openai_compatible(
     let answer = read_sse_text(app, request_id, response, secret).await?;
     if answer.trim().is_empty() && url.contains("api.openai.com") {
         return complete_openai_responses(
-            app, request_id, client, secret, model, system, history, message,
+            app, request_id, client, secret, model, system, history, message, max_tokens,
         )
         .await;
     }
@@ -469,6 +529,7 @@ async fn complete_openai_responses(
     system: &str,
     history: &[CloudChatTurn],
     message: &str,
+    max_tokens: u32,
 ) -> Result<String, String> {
     let mut input = Vec::new();
     for turn in history {
@@ -489,6 +550,7 @@ async fn complete_openai_responses(
             "model": model,
             "instructions": system,
             "input": input,
+            "max_output_tokens": max_tokens,
             "stream": true
         }))
         .send()
@@ -509,6 +571,7 @@ async fn complete_anthropic(
     system: &str,
     history: &[CloudChatTurn],
     message: &str,
+    max_tokens: u32,
 ) -> Result<String, String> {
     let mut messages = Vec::new();
     for turn in history {
@@ -528,7 +591,7 @@ async fn complete_anthropic(
         .header("anthropic-version", "2023-06-01")
         .json(&serde_json::json!({
             "model": model,
-            "max_tokens": 800,
+            "max_tokens": max_tokens,
             "system": system,
             "messages": messages,
             "stream": true
@@ -551,6 +614,7 @@ async fn complete_google(
     system: &str,
     history: &[CloudChatTurn],
     message: &str,
+    max_tokens: u32,
 ) -> Result<String, String> {
     let mut contents = Vec::new();
     for turn in history {
@@ -575,7 +639,7 @@ async fn complete_google(
         .json(&serde_json::json!({
             "systemInstruction": { "parts": [{ "text": system }] },
             "contents": contents,
-            "generationConfig": { "maxOutputTokens": 800 }
+            "generationConfig": { "maxOutputTokens": max_tokens }
         }))
         .send()
         .await
@@ -623,7 +687,9 @@ pub async fn chat(app: AppHandle, request: CloudChatRequest, secret: String) -> 
         &request.objectives,
         &request.current_step,
         &request.state_json,
+        request.system_prompt.as_deref(),
     );
+    let max_tokens = reply_token_limit(request.max_reply_tokens);
     let history = request.history.unwrap_or_default();
     let client = Client::builder()
         .connect_timeout(Duration::from_secs(10))
@@ -642,6 +708,7 @@ pub async fn chat(app: AppHandle, request: CloudChatRequest, secret: String) -> 
                 &system,
                 &history,
                 &request.message,
+                max_tokens,
             )
             .await
         }
@@ -656,6 +723,7 @@ pub async fn chat(app: AppHandle, request: CloudChatRequest, secret: String) -> 
                 &system,
                 &history,
                 &request.message,
+                max_tokens,
             )
             .await
         }
@@ -669,6 +737,7 @@ pub async fn chat(app: AppHandle, request: CloudChatRequest, secret: String) -> 
                 &system,
                 &history,
                 &request.message,
+                max_tokens,
             )
             .await
         }
@@ -682,6 +751,7 @@ pub async fn chat(app: AppHandle, request: CloudChatRequest, secret: String) -> 
                 &system,
                 &history,
                 &request.message,
+                max_tokens,
             )
             .await
         }
@@ -745,6 +815,7 @@ mod tests {
             &["Relate depth to capacity".into()],
             "Add depth",
             "{\"layers\":3}",
+            None,
         );
         assert!(prompt.contains("Stacking neurons"));
         assert!(prompt.contains("Add depth"));
@@ -762,7 +833,7 @@ mod tests {
 
     #[test]
     fn standard_prompt_keeps_the_technical_register() {
-        let prompt = topic_guide_system_prompt("Attention", "standard", &[], "Score", "{}");
+        let prompt = topic_guide_system_prompt("Attention", "standard", &[], "Score", "{}", None);
         assert!(prompt.contains("technical vocabulary"));
         assert!(!prompt.contains("grade 8 to 10"));
     }
@@ -777,5 +848,47 @@ mod tests {
         assert_eq!(extract_stream_text(&anthropic).as_deref(), Some(" there"));
         assert_eq!(extract_stream_text(&responses).as_deref(), Some("Hi"));
         assert_eq!(extract_complete_text(&complete).as_deref(), Some("Done"));
+    }
+
+    #[test]
+    fn reply_limit_defaults_and_clamps() {
+        assert_eq!(reply_token_limit(None), DEFAULT_MAX_REPLY_TOKENS);
+        assert_eq!(reply_token_limit(Some(1)), MIN_MAX_REPLY_TOKENS);
+        assert_eq!(reply_token_limit(Some(999_999)), MAX_MAX_REPLY_TOKENS);
+        assert_eq!(reply_token_limit(Some(1_200)), 1_200);
+    }
+
+    #[test]
+    fn empty_template_falls_back_to_the_built_in_prompt() {
+        let built_in = topic_guide_system_prompt("Attention", "plain", &[], "Score", "{}", None);
+        assert_eq!(
+            topic_guide_system_prompt("Attention", "plain", &[], "Score", "{}", Some("  ")),
+            built_in
+        );
+        assert!(built_in.starts_with("You are the topic guide for the learning module \"Attention\"."));
+    }
+
+    #[test]
+    fn appended_text_lands_at_the_end_of_the_system_prompt() {
+        let template = format!("{DEFAULT_SYSTEM_PROMPT}\nTest Prompt");
+        let prompt = topic_guide_system_prompt("Attention", "plain", &[], "Score", "{}", Some(&template));
+        assert!(prompt.ends_with("\nTest Prompt"), "prompt tail was: {:?}", &prompt[prompt.len().saturating_sub(40)..]);
+        assert!(prompt.contains("Stay within this module."));
+    }
+
+    #[test]
+    fn template_text_is_cut_to_the_character_limit() {
+        let long = "a".repeat(MAX_SYSTEM_PROMPT_CHARS + 50);
+        let prompt = topic_guide_system_prompt("Attention", "plain", &[], "Score", "{}", Some(&long));
+        assert_eq!(prompt.chars().count(), MAX_SYSTEM_PROMPT_CHARS);
+    }
+
+    #[test]
+    fn placeholders_are_filled_once_even_when_values_contain_braces() {
+        let rendered = render_template(
+            "A {module_title} B {state_json} {unknown}",
+            &[("module_title", "{state_json}"), ("state_json", "{x}")],
+        );
+        assert_eq!(rendered, "A {state_json} B {x} {unknown}");
     }
 }
