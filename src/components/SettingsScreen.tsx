@@ -22,6 +22,7 @@ import { CloudProviderSettings } from "./CloudProviderSettings";
 import { LicencesPanel } from "./LicencesPanel";
 import { LocalModelSettings } from "./LocalModelSettings";
 import { SettingsSelect } from "./SettingsSelect";
+import { version } from "../../package.json";
 
 const tabs = [
   ["appearance", "Appearance", Palette],
@@ -295,7 +296,7 @@ export function SettingsScreen() {
           {tab === "about" && (
             <>
               <SectionHeading title="About" description="An interactive field guide to modern AI." />
-              <div className="about-mark"><i><span /><span /><span /></i><div><h3>Discover AI: A Learning Guide</h3><p>Version 0.1.0 · desktop preview</p></div></div>
+              <div className="about-mark"><i><span /><span /><span /></i><div><h3>Discover AI: A Learning Guide</h3><p>Version {version} · desktop preview</p></div></div>
               <div className="about-copy">
                 <p>Built to make technical ideas inspectable rather than magical. Every lesson pairs a manipulable system with precise limits on what the picture can claim.</p>
                 <p>The application shell is React, TypeScript, and Tauri. Desktop data is stored in bundled SQLite; provider secrets belong in the operating system keychain.</p>

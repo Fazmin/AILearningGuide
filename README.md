@@ -69,6 +69,8 @@ The 51 labs are split into six groups. You can go in order or jump to whatever y
 
 The quickest way to try Discover AI is to open [fazmin.github.io/AILearningGuide](https://fazmin.github.io/AILearningGuide/) in your browser. All the labs and lessons work there.
 
+To install the desktop app, download it from the [latest release](https://github.com/Fazmin/AILearningGuide/releases/latest). Get the `.dmg` for macOS, the `-setup.exe` or `.msi` for Windows, or the `.AppImage`, `.deb`, or `.rpm` for Linux. The app isn't signed yet, so your computer will warn you the first time you open it. On a Mac, go to **System Settings > Privacy & Security** and click **Open Anyway**. On Windows, click **More info**, then **Run anyway**.
+
 To run it on your own computer, you can use the web version or the desktop app. The desktop app gives you everything, including the local AI guide.
 
 ### What you need

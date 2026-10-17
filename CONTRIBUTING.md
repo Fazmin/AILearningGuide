@@ -112,6 +112,18 @@ npm run check:modules
 
 You don't need this to work on the app, because the trained models are already included. If you want to change or retrain them, follow [models/README.md](models/README.md). Checkpoints, exports, and datasets are ignored by git, so only commit the final files a lab actually uses, and run `npm run models:manifest` so `npm run check:assets` passes. In your pull request, explain how you produced the new files.
 
+## Releasing a new version
+
+This part is for maintainers. To publish new installers, run this on an up-to-date `main` with nothing uncommitted:
+
+```sh
+npm run release
+```
+
+It adds one to the version (0.1.70 becomes 0.1.71), commits that as "Release v0.1.71", tags the commit, and pushes. The tag starts the [release workflow](.github/workflows/release.yml), which builds the macOS, Windows, and Linux installers and publishes them on the [Releases page](https://github.com/Fazmin/AILearningGuide/releases). Use `npm run release -- minor` to go to 0.2.0, or `-- major` for 1.0.0.
+
+The version is written in five files, so don't change it by hand. `node scripts/version.mjs --set <version>` changes all of them, and `npm run check:version` makes sure they agree.
+
 ## Ground rules
 
 - **Keep it private and offline.** Discover AI has no accounts and no tracking, and the lessons work without the internet. Please don't add analytics, telemetry, or new network calls. If your idea needs one, open an issue to talk about it first.

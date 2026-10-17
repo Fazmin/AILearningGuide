@@ -1,7 +1,7 @@
 {
   "name": "the-ai-guide",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.70",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -20,10 +20,12 @@
     "check:licenses": "node scripts/gen-licenses.mjs --check",
     "check:assets": "python3 models/build_asset_manifest.py --check",
     "new:module": "node scripts/new-module.mjs",
+    "release": "node scripts/release.mjs",
+    "check:version": "node scripts/version.mjs --check",
     "models:manifest": "models/.venv/bin/python models/build_asset_manifest.py",
     "models:verify": "models/.venv/bin/python models/verify_exports.py",
     "prebuild": "node scripts/index-search.mjs",
-    "check": "npm run check:modules && npm run check:readability && npm run check:search && npm run check:licenses && npm run check:assets && npm run typecheck && npm run test"
+    "check": "npm run check:version && npm run check:modules && npm run check:readability && npm run check:search && npm run check:licenses && npm run check:assets && npm run typecheck && npm run test"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.2.8",

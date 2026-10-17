@@ -3742,7 +3742,7 @@ dependencies = [
 
 [[package]]
 name = "the-ai-guide"
-version = "0.1.0"
+version = "0.1.70"
 dependencies = [
  "flate2",
  "fs2",
