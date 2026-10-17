@@ -270,6 +270,8 @@ function GuidePanel({
   const provider = useAppStore((state) => state.provider);
   const providerModel = useAppStore((state) => state.providerModel);
   const providerBaseUrl = useAppStore((state) => state.providerBaseUrl);
+  const maxReplyTokens = useAppStore((state) => state.maxReplyTokens);
+  const systemPrompt = useAppStore((state) => state.systemPrompt);
   const localModelReady = useAppStore((state) => state.localModelReady);
   const desktop = Boolean(window.__TAURI_INTERNALS__);
   const mode = useAppStore((state) => state.mode);
@@ -383,6 +385,8 @@ function GuidePanel({
           stateJson: JSON.stringify(currentState),
           message,
           history,
+          maxReplyTokens,
+          systemPrompt: systemPrompt || null,
         },
       })
         .then((reply) => finishReply(id, message, reply, provider))
