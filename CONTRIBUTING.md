@@ -74,7 +74,7 @@ Each lab's lessons live in `src/modules/<lab>/content/`, with one file for each 
 
 - **All three modes state the same facts.** Simple and Plain can leave out a detail, but they should never say something Standard contradicts.
 - **Plain is written for a curious 13 to 16 year old.** Explain a word before you use it, use everyday words, and give a concrete example for every idea. `npm run check:readability` fails if a Plain lesson falls outside a grade 8 to 10 reading level or has a sentence over 35 words.
-- **Simple is a rewrite of Plain for an 8th grader.** Short, direct sentences in active voice, everyday words, and a real-world comparison for every abstract idea, with the same facts and numbers as Plain. `npm run check:readability` fails if a Simple lesson reads above grade 7 or has a sentence over 20 words.
+- **Simple is a rewrite of Plain for an 8th grader.** Short, direct sentences in active voice, everyday words, and a real-world comparison for every abstract idea, with the same facts and numbers as Plain. `npm run check:readability` fails if a Simple lesson reads above grade 7, averages outside 11 to 17 words per sentence, or has a sentence of 20 words or more.
 - **Every lesson has the same seven sections, in the same order.** The checks will tell you if one is missing.
 - **Be honest about what's real.** Most labs are demonstrations, not real models. "Where it breaks" must say which numbers are made up or calculated by a formula, and separately say where the real technique fails.
 - **Check references against the source.** Never add a reference from memory. Run `npm run check:references -- <lab-slug>` to make sure every link opens. It needs internet access, so it isn't part of `npm run check`.

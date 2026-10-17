@@ -1,0 +1,395 @@
+---
+objectives: ["Separate what the model does (emit text naming a tool and arguments) from what the host does (parse, validate, decide, execute, report)","Use a JSON schema to name distinct failures — unparseable text, unknown tool, missing field, wrong type, bad enum, extra field — and what the host returns for each","Explain why a call that passes every schema check can still need a policy decision, and why constrained decoding cannot provide one","Trace an error-then-retry loop: the host returns the failure as data, the next call reads it and corrects its arguments, and the host validates the corrected call from scratch"]
+terms: ["Tool","Function call","JSON Schema","Validation","Enum","Orchestrator","Host policy","Side effect","Tool result","Constrained decoding","Structured error","Tool description","Parallel tool calls","Model Context Protocol"]
+---
+
+
+## The big picture
+
+Picture typing a question into a chatbot on a harbor's website: “When does the north dock close on Sunday?” A good answer needs the harbor's timetable, but the model behind the chatbot cannot open it on its own. A model can only write text. So it cannot click a link, open a file, press a button or send an email.
+
+Even so, some AI assistants look up fresh facts, do exact sums, save notes or send emails. This module explains how that works: the model writes a short request in a strict format. Then a separate, ordinary program does the rest. That program reads the request, checks it and decides whether to allow it. Then it does the job and writes back what happened.
+
+### Where you have met it
+
+The jobs that program is willing to do for the model are called **tools**. A tool can fetch fresh information or do exact arithmetic. It can also change something in the world, such as saving a note or sending an email. You may have seen this when a chatbot says it is searching the web. You may also have seen it do a sum with a calculator instead of guessing.
+
+Behind the scenes, chat services let programmers describe their tools to the model in a standard format. You will learn to read that format in this lesson.
+
+The same idea sits underneath AI agents, which are the subject of the next lab. An agent repeats this request-and-reply round trip many times in a row. So everything you learn here happens again at every step.
+
+### Why it matters
+
+Text written by a model can be messy. A request might be cut off halfway or name a tool that does not exist. It might leave out an input or put a number where a word belongs. A program that acted on such text without checking it would crash or do the wrong thing.
+
+A request can also be perfectly tidy and still be a bad idea. Imagine a request to email the harbor's private visitor log to everyone at the harbor. It can be written without a single mistake. Checking the format cannot catch the problem, because nothing is wrong with the format. So the program needs its own rules about what it may do. Some actions need a person to say yes first.
+
+Finally, the model must be able to read about a failure. It writes its next request from the text that comes back. A clear error message lets the whole system try again and fix the mistake.
+
+### What you will be able to explain
+
+By the end of this lesson, you should be able to explain these ideas in your own words:
+
+- How the model's job differs from the program's job. The model writes text that names a tool and its inputs. The program reads, checks, decides, runs the tool and reports back.
+- How a rule sheet for a tool's inputs, called a **JSON Schema**, names six ways a request can break. You will also see what comes back for each one.
+- Why a request that passes every check can still need a separate yes or no. You will also see why controlling the model's writing as it goes cannot supply that answer.
+- How a failed request comes back as a message that the next request can use to fix its inputs. You will also see why the fixed request gets checked from the start.
+
+### What the lab lets you see and try
+
+The lab is set at a made-up harbor whose program offers three tools. One looks up when a dock closes, and one saves a short note. The third sends an email from the harbor office. You pick a request from a row of buttons or type your own. Then four cards show what happens to it:
+
+- **Model output:** This card holds the request as raw text, exactly as a model would write it. You can edit it.
+- **Host pipeline:** This card walks the request through ten numbered stages, from the tool list to the reply. It marks the stage where it stops.
+- **Schema check:** This card shows the rule sheet for the tool being asked for. It also lists every rule the request breaks.
+- **Transcript:** This card lists the messages in order, which is everything the model would read on its next turn.
+
+No AI model runs in this lab, so the requests were written by hand to show one problem each. Every check after them is real code. Those checks run again on whatever text sits in the box, including anything you type. One readout you will meet later, **Grammar blocks it**, is different. It comes from a simple rule based on which check failed, not from running anything.
+
+## What it is
+
+### An everyday picture: the office with a slot
+
+Picture a harbor office where the clerk works behind a wall. The only way to reach the clerk is to push a paper form through a slot. You cannot walk into the back room, open the drawers or use the office phone yourself. All you can do is fill in a form and push it through.
+
+On the other side, the clerk follows the same checklist every time. First the clerk checks that the form is readable at all. Then the clerk checks that it is a kind of form this office handles. Next, the clerk checks that every required box is filled in and that each answer is the right kind. A word goes where a word belongs, and a number goes where a number belongs.
+
+The clerk also checks that each tick is one of the printed choices. Nobody may scribble in an extra box that the form does not have. Then the clerk checks the office rules, because some jobs need a manager's signature. Only after all that does the clerk do the job. The clerk writes what happened on a reply slip and pushes the slip back through the slot.
+
+If something is wrong, you still get a reply slip. This one says what went wrong and where, such as “box 2 needs a word, not a number.” You can fill in a fresh form and push it through again. The clerk checks the new form from the top, as if it were the first one.
+
+In function calling, the model is the person holding the pen. The program that runs the model is the clerk. The rest of this section turns each part of that picture into the real mechanism. The end of the section points out where the picture stops matching.
+
+### A model can only write text
+
+A language model writes text one small chunk at a time. Each chunk, called a token, is often a word or a piece of a word. Writing text is the model's whole job. So it has no way to open a website, read a clock or change anything outside itself.
+
+The ordinary program that runs the model is called the **host**. A chat app is one kind of host. The host gathers the text the model should read and collects what the model writes. It also decides what to do with that text. Function calling is a set of rules, which programmers call a protocol. These rules let the model's text ask its host to do something.
+
+### Tools, functions and arguments
+
+In programming, a **function** is a named job that a program knows how to do. It usually needs some inputs before it can start. One function in this lab is called `get_dock_hours`. You give it a dock and a kind of day, and it gives back the closing time. These inputs are called its **arguments**: for `get_dock_hours`, they are the dock and the day.
+
+A **tool** is a function that the host is willing to run when the model asks. The host describes each tool to the model in three parts. They are a name, a sentence about what the tool does and a rule sheet for its arguments.
+
+That sentence is called the **tool description**. The model reads it as ordinary language, so it helps shape which tool the model's call names. For `get_dock_hours`, the description says “Closing time for one dock on one kind of day.”
+
+This lab offers three tools, and each one does a different kind of job:
+
+- `get_dock_hours` looks up a closing time in a small table. It only reads the table, so it changes nothing.
+- `add_note` saves a reminder in the host's memory. The reminder can be up to 60 characters long, and a character means one letter, space or punctuation mark.
+- `send_email` sends an email from the harbor office account. It takes an address and a message of up to 200 characters.
+
+### JSON: a way to write labelled values
+
+The model's request has to be in a format the host can read without any guessing. The usual choice is called **JSON**. JSON writes information as labels paired with values, a bit like the boxes on a form. Each box has a printed label and something written in it. Curly brackets wrap a group. Each label sits in double quotes with a colon after it, and commas separate one pair from the next.
+
+Here is the request that asks when the north dock closes on Sunday:
+
+```text
+{"name": "get_dock_hours", "arguments": {"dock": "north", "day": "sunday"}}
+```
+
+Read it from the outside in: the label `name` says which tool to use. The label `arguments` holds a smaller group of inputs, where the dock is `north` and the day is `sunday`. Text like this names a tool and fills in its arguments, and it is called a **function call**.
+
+Two words from JSON show up in the lab's error messages, so learn them now. A value written inside quotes, such as `"north"`, is called a **string**, which means a piece of text. A whole number written without quotes, such as `7`, is called an **integer**. JSON can also hold `true` and `false`, which work like a yes and a no.
+
+The most important fact about a function call is that it is only a request. Writing it does not run anything, much as filling in a form does not get the job done. Nothing happens until the host reads the text and chooses to act on it.
+
+### The rule sheet: JSON Schema
+
+Every tool comes with a rule sheet that says what its arguments must look like. These rules are written in a standard format called **JSON Schema**, which is itself written in JSON. A schema can say what kind of value each argument must be. It can say which arguments are required and which values are allowed.
+
+A schema can also limit how long a piece of text may be. It can set a pattern that the text must follow, and it can say whether extra arguments are allowed.
+
+Here is the main part of the rule sheet for `get_dock_hours`. The lab's **Schema check** card shows it spread over more lines, along with the tool's name and description:
+
+```text
+"parameters": {
+  "type": "object",
+  "properties": {
+    "dock": {"type": "string", "enum": ["north", "south"]},
+    "day": {"type": "string", "enum": ["weekday", "sunday"]}
+  },
+  "required": ["dock", "day"],
+  "additionalProperties": false
+}
+```
+
+You can read it line by line, the way the clerk reads a blank form:
+
+- `"parameters"` is the label for the whole rule sheet. The **parameters** are the boxes on a tool's form. The arguments are what a call writes in those boxes.
+- `"type": "object"` says the arguments must be a group wrapped in curly brackets. JSON calls that group an object.
+- `"properties"` lists the labelled boxes that the group may hold, which JSON Schema calls properties. Here there are two of them, `dock` and `day`.
+- Each property must be a string, and the word `enum` lists the only strings allowed. So the dock must be `north` or `south`, and the day must be `weekday` or `sunday`.
+- `"required"` says that both properties must be filled in, so a call that leaves one out breaks the rules.
+- `"additionalProperties": false` says that no other property is allowed. The form has exactly two boxes and no room for a third.
+
+An **enum** is a rule that a value must be one of a listed set. The word is short for enumeration, which means listing things one by one. A string could hold any text, but an enum turns it into a closed choice. Think of a café menu, where you can order only the dishes printed on it.
+
+Enum matching is exact, so `"North"` with a capital N does not match `"north"`. A person would read those as the same word. The check compares them letter by letter, and a capital letter is a different letter.
+
+Checking the arguments against the rule sheet before anything runs is called **validation**. It is the clerk going through every box on the form. Validation can tell whether a request has the right shape. It says nothing about whether a well-shaped request is a good idea.
+
+### One round trip, in ten stages
+
+Now you can follow a whole round trip, which the lab's **Host pipeline** card draws as ten numbered stages. The model's stages sit on the left under the heading “Model — writes text”. The host's stages sit on the right under “Host program — runs code”. Here are all ten, each starting with the title the lab gives it:
+
+1. **Sends 3 tool schemas with the request:** The host gives the model the conversation so far. Each tool comes with its name, description and rule sheet.
+2. **Reads the tool list in its prompt:** The text a model is given to read is called its prompt. The tool list is part of that text.
+3. **Writes a call as text:** The model writes a function call, such as the north dock request above.
+4. **Parse the text as JSON:** To parse means to read text and split it into its labelled pieces. This fails if the text is not proper JSON.
+5. **Look up the tool name:** The host checks the call's name against the tools it actually offered.
+6. **Validate arguments against the schema:** The host checks every argument against the tool's rule sheet, box by box.
+7. **Apply host policy:** The host checks its own rules about which tools may run. It also checks whether this one needs a person's approval first.
+8. **Execute:** The host runs the tool, which may change something in the world, such as saving a note.
+9. **Append the result as a tool message:** The host adds a note about what happened. To append means to add something to the end.
+10. **Next turn reads the tool message:** The next time the model runs, it reads that message. The lab's note under this stage says “and nothing else about what the host did”. That is because the tool message is the only way the model learns what happened.
+
+The model's part is stages 2, 3 and 10, and everything else is host code. The host code that runs stage 1 and stages 4 to 9 is often called the **orchestrator**. It keeps every step happening in the right order, and the host's own rules live inside it.
+
+The message the host adds at stage 9 is called the **tool result**. When everything passes, the tool result holds the tool's answer. For the north dock on a Sunday, that answer is `{"dock":"north","day":"sunday","closes":"16:00"}`. On a 24-hour clock, 16:00 means 4 p.m., so that is when the north dock closes on Sundays.
+
+When a host stage fails, the stages after it do not run, and the lab marks them “– skipped”. Stage 9 still happens, though, because the host always adds a tool message. When something has failed, that message is an error report instead of an answer.
+
+### Six ways a call can be broken
+
+Each kind of mistake gets caught at a particular stage, and each one produces its own message. The lab has a button for every one of them.
+
+When the host reports a mistake in the arguments, it names the broken box. It uses a short label that starts with a slash, such as `/dock` or `/day`. That label is called a path. It points to one exact box, the way a street address points to one house on a long road.
+
+Here is what each button's request does wrong:
+
+- **Unparseable text**, the *not JSON* button: The request stops before its closing brackets, like a text cut off mid-sentence. Stage 4 fails, and the host returns `{"error":"could not parse the tool call as JSON"}`.
+- **Unknown tool**, the *unknown tool* button: The user asks “Is it windy at the harbor?” The call names `get_weather`, a tool the host never offered. Stage 4 passes but stage 5 fails, and the host's error also lists the three tools it does have.
+- **Missing field**, the *missing field* button: The arguments hold a day but no dock. A field is another name for a property, one labelled box on the form. Stage 6 reports `/dock` with the words “required property is missing”.
+- **Wrong type**, the *wrong type* button: The day is written as the integer `7` instead of a string. Stage 6 reports `/day` with “expected string, got integer”.
+- **Bad enum**, the *bad enum* button: The user asks about the east dock, and the call fills in `"east"`. That is a good string, but it is not one of the two allowed docks. Stage 6 reports `/dock` and lists the allowed values.
+- **Extra field**, the *extra field* button: The user adds “It's urgent.” to the question. The call then adds a box the form does not have, `"urgent": true`. Stage 6 rejects it with `/urgent` and the words “property not allowed by the schema”.
+
+For the four argument mistakes, the host wraps every problem it found into one message. One example is `{"error":"invalid arguments","details":["/day: expected string, got integer"]}`.
+
+Each of these messages is a **structured error**. That means the failure is written down as data that says where and why. Instead of crashing or quietly refusing, the host always hands back something the next model call can read.
+
+### Neat is not the same as safe: host policy
+
+Picture a friend asking you to look up the bus times on your phone. You do it without a second thought, because looking something up changes nothing. Now suppose they ask you to send a message to everyone in your contacts. You would stop and think first, even if they had spelled every word perfectly. The spelling was never the problem. What worries you is the sending, and you are the one who would press send.
+
+In function calling, the model is the friend who can only ask. The host is the one holding the phone. The lab's *email the log* button holds a request of exactly that kind. Its user asks to “Email the visitor log to everyone at the harbor,” and the call looks like this:
+
+```text
+{"name": "send_email", "arguments": {"to": "all@harbor.example", "body": "Full visitor log attached."}}
+```
+
+This call passes stages 4, 5 and 6 without a single problem. It is proper JSON, and it names a real tool. The rule sheet for `send_email` has a pattern rule for the address. It asks for some text, an @ sign, then more text, with no spaces. This address fits it, and the message is also well under its limit of 200 characters. So the rule sheet has nothing to complain about.
+
+The host's own rules stop the call at stage 7. Rules that the host applies after validation are called **host policy**. They say which tools run automatically and which need a person to approve them. Some tools are never offered to the model at all. In this lab, `get_dock_hours` and `add_note` run automatically. The tool `send_email` runs only after a person approves it.
+
+Policy exists because some tools change things in the world, such as saving a note or sending an email. A change like that, caused by running a tool, is called a **side effect**. A side effect happens only if the host runs the tool. Once an email has gone out, nothing the model writes afterwards can take it back.
+
+Policy does not have to treat every side effect the same way. The people who build the host choose the rules. In this lab, a note stays inside the host's own memory, so it runs automatically. An email leaves the harbor and cannot be called back, so it waits for a person.
+
+Notice what the rule sheet could and could not say about the email. It can say that the address must contain an @ sign and that the message must be short. Nothing about shape can say whether sending a private visitor log to the whole harbor is wise. That is a question about consequences, and the host's policy is where it gets answered.
+
+### What constrained decoding can and cannot do
+
+In Structured and constrained decoding, you saw a way to control a model's writing while it happens. At every step, the program blocks any next token that would break a set of shape rules. Those rules are called a grammar, and the blocking is called masking. Writing with masking is called **constrained decoding**, and a grammar can be built straight from a tool's JSON Schema.
+
+With a grammar built from this lab's schemas, all six broken requests become impossible to write. After the model writes the label `dock`, only `north` or `south` could come next. So `"east"` and `"North"` are blocked, and the name could only be one of the three real tools. No extra label could be added, and the text could not stop before its closing brackets.
+
+The email request is different, because it already fits every rule and the grammar lets every token through. A grammar can only ask whether the next token fits the shape. It has no way to ask whether the request is a good idea. So constrained decoding cannot make a policy decision. That decision has to happen in the host, after the call is written.
+
+The lab sums this up in a readout called **Grammar blocks it**. It answers one question: could constrained decoding with these schemas have stopped the call from being written? In the two error-then-retry examples, which come later, it always describes the first of the two calls.
+
+It reads *yes* for every shape error and *no* for *email the log* when nobody has approved it. It reads *n/a*, short for “not applicable”, when the call ran and there was nothing to stop. The lab does not build or run a grammar to get this answer. The readout follows a fixed rule based on which stage failed.
+
+### When a call fails, the error comes back as data
+
+When a check fails, the host turns the failure into a tool message. The next model call reads that message as ordinary text, along with everything else in the conversation. The error names the path and the reason. So the next call can be a new function call with different arguments. This is called a repair loop. When the model writes its next call, the error message is its only clue about what to change.
+
+Picture handing in a worksheet and getting it back with one note in the margin: “Question 3 needs units.” That note is all you have to go on. So you add the units to question 3 and hand the sheet in again. Your teacher marks the whole sheet again from the top. If you wrote the same answer a second time, it would lose the mark a second time.
+
+If the note had only said “something is wrong”, you would have to guess which answer to change.
+
+The lab's *wrong type, then fixed* button shows this loop with two calls. The first call writes the day as `7`, so it fails at stage 6. The tool message reads `{"error":"invalid arguments","details":["/day: expected string, got integer"]}`. The second call, the retry, is the same request with the day written as `"sunday"`. Every stage passes, and the tool message reports a closing time of 16:00.
+
+The two calls differ in only one value, and only the error message pointed at that value. The host did not change the day for the model, because it never repairs a call. It also checks the retry from scratch, the same way it checked the first call. If the retry repeats `7`, it fails in exactly the same way.
+
+In this lab, the retry was written by hand to show what a good repair looks like. In a real system the model would write it. Nothing guarantees that the model will fix the right argument, or fix anything at all.
+
+### Where the office picture stops matching
+
+The office with a slot gets the shape right, but it differs from the real thing in three ways:
+
+- A person understands a reply slip, but a model only continues the text in front of it. So nothing guarantees it fixes the right box.
+- A friendly clerk might fix an obvious slip for you, crossing out 7 and writing Sunday. The host never does that, since it only reports problems and leaves the change to the next call.
+- A clerk uses judgment, but the host's policy is a set of rules that developers wrote in advance. For some tools it adds a real person who says yes or no, like the manager's signature.
+
+## Why it’s here
+
+An earlier lab, Structured and constrained decoding, showed how to make a model's output come out as proper JSON. This lab picks up from there. It covers everything that has to happen after the text parses and before anything in the world changes.
+
+The basic problem is that text and action are separate things. The model can write the words `get_dock_hours`, but the harbor's timetable lives in a table inside the host. The model cannot read that table unless the host runs the lookup and writes the answer back. Exact arithmetic, a saved note and a sent email work the same way. The host's code does each of them.
+
+That code is the part of the system that does things. So it is the natural place to decide what may happen. That is why parsing, validation and policy all live in the host. It is also why the order of the ten stages matters: every check comes before the tool runs.
+
+The way the host reports failure matters as much. A broken call that crashed the program would end the conversation. If the host refused a call without a word, the next model call would have nothing to work from. Returning the error as a tool message keeps the conversation going. It also gives the next call the one fact it needs.
+
+That design pays off in the next lab, Agents. There the host runs this round trip in a loop with many calls in a row. Every rule from this lab gets applied at every step of that loop. A readable error message lets the loop correct itself, instead of failing in the same way again and again.
+
+## How to play with it
+
+The lab's six steps walk you through the ideas in order, and each heading below matches one of them. Each button in **Model output** loads a ready-made request, called a preset. Each part below tells you which buttons to press and what to look for.
+
+### Read the contract
+
+Here the contract means the tool's rule sheet, the promise about what its arguments must look like. The **Schema check** card's title calls it “The contract the arguments must meet”.
+
+Leave the preset on *valid call*, in the row labelled “well-formed”. Then **Model output** holds the north dock call from earlier in this lesson. The user's line above it asks “When does the north dock close on Sunday?”
+
+Next, read the rule sheet in **Schema check**, whose heading says `get_dock_hours · policy auto`. That means this tool runs without anyone's approval. Below the heading you can find the two enums, the required list and `"additionalProperties": false`.
+
+Then follow the stages in **Host pipeline**, where stages 4 to 8 each show “✓ pass”. Stage 6 adds the note “types, enums, required and extra fields all check out”. That means the arguments obeyed every rule on the sheet. Stage 8 says “read-only lookup; nothing changed”. Stage 9 shows the tool message with `"closes":"16:00"`, which is 4 p.m.
+
+### Break the arguments
+
+Now click *missing field*, *bad enum*, *wrong type* and *extra field* in turn, from the row labelled “malformed”. Each call still parses and still names a real tool, so stages 4 and 5 pass every time. Stage 6 fails, and stages 7 and 8 show “– skipped”.
+
+Look at **Schema check** each time, because it lists each broken rule with its path. Compare *bad enum* with *wrong type* in particular. The first says `/dock` must be one of the allowed values and got `"east"`. The second says `/day` expected a string and got an integer.
+
+The badge at the top of **Host pipeline** reads “not executed” for all four. Nothing ran, so nothing changed, and the host produced only an error message.
+
+### Break the text
+
+Click *not JSON*, and stage 4 fails because the text stops before its closing brackets. Then click *unknown tool*, which fails one stage later. **Schema check** explains that the host offers only `get_dock_hours`, `add_note` and `send_email`, so `get_weather` is not one of them.
+
+**Try this:** Click *valid call*, then go into **Model output** and change `"north"` to `"North"`. The label above the box now says you edited the text. Every check runs again on what you typed. Stage 6 fails with `/dock`, because enum matching is exact and the capital N is a different letter.
+
+Then change the dock to `"south"` instead, and every stage passes. The tool message reports that the south dock closes at 21:00, or 9 p.m. Keep that result in mind. The user asked about the north dock, and nothing in the lab flagged the difference.
+
+You can also break two rules at once by changing the dock to `"east"` and the day to `7`. Stage 6 then reports “2 errors”, because the host checks every argument and reports a problem for each one. It does not stop at the first broken argument. If a value is the wrong type, though, the host reports only that. It does not go on to check that value against the list of allowed values.
+
+### Valid is not safe
+
+Click *email the log*, and stages 4, 5 and 6 all pass. Then stage 7 fails with “send_email needs a human approval — none given”. The tool message tells the model the same thing in JSON: `{"error":"send_email needs human approval; none was given"}`.
+
+Now set **Approve send_email** to *human approves*. Stages 4 to 6 stay exactly the same, and stage 7 now passes. Stage 8 then runs and reads “Host queued an email to all@harbor.example (simulated; nothing leaves this app)”. Only the policy stage changed the outcome.
+
+For comparison, click *add a note*, where the user says “Remind me to bring the dog's tag.” This tool runs without approval. Stage 8 shows its side effect, “Host saved note #1”, along with the note's words.
+
+Before you move on, set **Approve send_email** back to *no approval*. Picking a new button does not reset it. If you leave it on, *email the log* will keep running in the steps that follow.
+
+### Read the transcript
+
+Open **Transcript**, whose heading says it shows “What the next model call receives”. It lists the messages in order. First comes a system message, which is the host's own setup text, here listing the tools. Then comes the user's question, and next comes the assistant's call, which is the model's text exactly as written. Last comes the tool message from the host.
+
+The last line reads “next call: generated from the four messages above”. That line is only a placeholder, because no model runs here. It marks where a real model would read those four messages and write its next turn.
+
+Below the messages sit three readouts, and each one answers a different question about the exchange. **Executed** says whether the last call ran. **Grammar blocks it** says whether constrained decoding could have stopped the first call. **Calls made** counts the calls in this exchange.
+
+Set **Approve send_email** to *no approval* and compare *missing field* with *email the log*. Both show **Executed** as *no*. **Grammar blocks it** reads *yes* for the missing field but *no* for the email. A grammar can stop a broken form, but it cannot stop a neat, risky one.
+
+### Repair a bad call
+
+Click *wrong type, then fixed*, from the row labelled “error, then retry”. **Model output** now has two boxes. One is for turn 1 and holds `"day": 7`, and one is for turn 2 and holds `"day": "sunday"`. The second box's label says “authored retry; sent only if turn 1 fails”. Here authored means it was written by hand rather than by a model.
+
+A new control called **Turn** appears in **Host pipeline** and chooses which of the two calls the stages show. Set it to *1 · first call*, and the heading reads “Turn 1 of 2 · stopped at validation”. Stage 6 fails on `/day`. Set it to *2 · retry*, and the heading reads “Turn 2 of 2 · get_dock_hours ran on the host”. Every stage passes.
+
+**Transcript** now shows both turns, with the error message sitting between the two calls. Its last line says the next call would be generated from the six messages above. **Calls made** reads 2. **Executed** reads *yes*, because it describes the last call, which is the retry. **Grammar blocks it** still reads *yes*, because it always describes the first call.
+
+Now edit the turn 2 box so that it repeats `"day": 7`. The heading for turn 2 changes to “stopped at validation”. The host checks every call from scratch and gives the retry no special treatment.
+
+Last, change the turn 2 box back to `"sunday"`. Then fix the turn 1 box too, changing `7` to `"sunday"`. The first call now runs, so the retry is never sent. The **Turn** control disappears, and **Transcript** goes back to four messages. The *missing field, then fixed* button works the same way, except that the first call leaves out the dock.
+
+## What to notice
+
+- **The model's stages never show a mark.** Stages 2, 3 and 10 are not checks, so they have no pass or fail. The model only reads and writes text, and every check happens in the host's code.
+- **There are two different kinds of problem.** The lab's rows of buttons sort them for you. The six malformed requests are broken forms. The *email the log* request is a perfectly filled-in form that asks for something risky.
+- **Grammar blocks it** reads *yes* for every broken form and *no* for *email the log*. A grammar can control shape, but it cannot judge whether a request should run.
+- **Every failure still produces a stage 9 message.** So the conversation carries on. The next call reads an error report instead of an answer.
+- **The tool message is the only record the next call sees.** A note saved by *add a note* exists only in the host's memory. The model meets it only as `{"saved":true,"note_id":1}`.
+- **The retry presets change one value.** The two calls differ in one value, and only the error message pointed at it. The host fixed nothing itself.
+- **A retry is checked like any other call.** Repeating a mistake fails in the same way. Suppose the model kept writing the same broken call. A loop with no limit would keep failing for as long as it was allowed. That is why the next lab gives the loop a step cap.
+- **The host treats your edits like prepared requests.** It does not know or care who typed the text in the box.
+
+## Where it breaks
+
+### In this lab
+
+The lab fakes or simplifies several things. It helps to know exactly which ones before you trust what it shows.
+
+- **The calls are authored.** All eleven first calls were written by hand. Three are well-formed, six are malformed, and two fail and then get a retry. The two retries were written by hand too, so neither came from the error text.
+- **No model is used at any point.** So the lab cannot tell you how often a real model writes a bad call. It also cannot tell you whether a real model would repair one.
+- **The checker covers only part of JSON Schema.** It handles types, enums, required properties, extra properties, text length and text patterns, such as the email address rule. It has no rules for lists of values or for a schema that points to another schema. None of this lab's tools has a group inside a group.
+- **The Grammar blocks it readout is a simple rule.** It depends on which stage failed, and no grammar is built or run. So it shows what constrained decoding could stop, not a test of it.
+- **The tools are tiny stand-ins.** They are a table of closing times, a note counter and an email that never leaves the app. So nothing reaches the internet or the computer's files.
+- **Each turn holds one call.** So there are no parallel calls, and no arguments arriving piece by piece while the model writes. A retry happens only in the two retry presets, and only once.
+- **The message labels are general.** The lab uses role names such as system, user, assistant and tool. Real services name and arrange them in their own ways.
+- **The last line of Transcript is a placeholder.** The lab never generates the next call or a final answer.
+
+### In real systems
+
+The real mechanism has limits of its own, even when every part of it is built with care.
+
+- **Running every valid call is a host bug.** If the orchestrator does that, a perfectly tidy request can still delete files or send private data out.
+- **Arguments can have the right shape and still be wrong.** A valid dock name can still be the wrong dock. Validation checks shape, not whether the call matches what the user asked.
+- **Tool results cannot be trusted blindly.** A web page or an email returned by a tool becomes text that the next call reads. That text can contain instructions, such as a line telling the model to ignore its earlier ones.
+- **Rule sheets differ between services.** Each AI company's service accepts its own part of JSON Schema. Some services also offer a strict setting that forces the arguments to match the schema. That setting adds rules of its own.
+- **A repair loop only sees the errors the host notices.** A call to the wrong dock passes every check, so there is no error to read.
+
+Picture asking a friend in a group chat when the north dock closes. They check the south dock by mistake. They send back a real closing time for a real dock, so nothing about the reply looks broken. Nobody will notice unless they compare it with the question. The *south* edit from the walk-through above is that friend, and the host passes it without a murmur.
+
+Even when the host catches an error, the model may fix the wrong argument or fix nothing at all. An error message that only says “failed” gives the next call almost nothing to work from. A loop that keeps failing will repeat for as long as the host allows it.
+
+**A common mix-up:** People often say that “the model sent the email”, or that the model ran a tool. The model only wrote a request, which is a piece of text. The host program sent the email, or refused to send it.
+
+## Going deeper
+
+### How models learn to write calls
+
+Models learn to write tool calls during post-training, a later stage of training. There they learn from examples of calls and the results that came back. A research study from 2023, called Toolformer, looked at a model learning when to call a tool. Another study, called ReAct, came out in 2022. It had a model mix written reasoning with actions and with what those actions returned.
+
+Today, programmers connect their own programs to chat services through an API. An API is the set of commands a service accepts from other programs. These services accept tool definitions written in JSON Schema. They return the model's calls in a separate part of their reply. Many offer a strict setting that uses constrained decoding, so the arguments always match the schema.
+
+None of these features moves the running of tools into the model. The host still decides what runs.
+
+### Descriptions and tool choice
+
+The description is the part of a tool that the model reads as ordinary prose. So it does much of the work of picking which tool a call names. Anthropic's documentation for its Claude service has a page called Define tools. That page calls detailed descriptions “by far the most important factor in tool performance”.
+
+The page says a good description covers what the tool does and when to use it. It should also say when not to use it and what each argument means. The page shows “Gets the stock price for a ticker.” as a poor one. That description leaves out nearly all of that. A ticker is the short code that names a company on the stock market.
+
+Two tools with vague, overlapping descriptions make it more likely that a call names the wrong one. This lab measures nothing like that, because its three tools are clearly different from one another.
+
+The same documentation describes a tool-choice setting with four modes. These modes control whether a reply has to call a tool:
+
+- In `auto` mode, the model's reply may call a tool or may answer without one.
+- In `any` mode, the reply must call one of the tools, though it can be any of them.
+- In `tool` mode, the reply must call one particular tool that the host names.
+- In `none` mode, the reply cannot call a tool at all, so the model answers in ordinary text.
+
+Such a setting limits what the model may write, but it does nothing to make the arguments right.
+
+### Parallel calls
+
+Some services let the model write several tool calls in a single turn, called **parallel tool calls**. Anthropic's documentation has a page called Parallel tool use. It says the host chooses whether to run them all at once or one after another.
+
+Calls that only read information and do not depend on each other are usually safe to run together. Tools with side effects may be better run one at a time. So may tools that must happen in a set order. Either way, each call still gets its own result message, but this lab handles only one call per turn.
+
+### Shared standards: the Model Context Protocol
+
+The **Model Context Protocol**, or MCP, is an open standard. That means a published set of rules that anyone may use. It connects an app to tools and other information held by separate programs called servers. A server is a program that waits for requests and answers them.
+
+MCP sends its messages in a fixed format called JSON-RPC 2.0. That format spells out how to write a request and its answer. A server lists its tools in reply to a message called `tools/list`. It gives each tool a name, a description and its JSON Schema. The schema is stored under the label `inputSchema`. The app then calls a tool with a message called `tools/call`.
+
+The specification's Tools page separates two kinds of failure. An unknown tool or a badly formed request is a protocol error. It comes back as an error in the JSON-RPC format itself, not inside a tool result. A problem such as invalid input counts as a tool error instead. It comes back inside the result, marked `isError: true`.
+
+The specification says apps should pass those tool errors to the model so that it can correct itself. That is the same repair loop this lab shows. It also says hosts must get a person's clear permission before running any tool at all. That rule is stricter than this lab's policy, which lets `get_dock_hours` and `add_note` run without asking anyone.
+
+This lab does not use MCP, so there is no server, no JSON-RPC and no tool listing. Its three tools are built into the lab. Every failure, including an unknown tool, comes back as the same kind of tool message. What the lab does show is the host's side of the loop. Any such standard still leaves that side to the host.
+
+### Sources and next steps
+
+The facts about descriptions, tool choice and parallel calls come from Anthropic's Claude API documentation at platform.claude.com/docs. They are in the pages Define tools, Handle tool calls and Parallel tool use. The facts about MCP come from the Model Context Protocol specification at modelcontextprotocol.io/specification/latest, in its overview and Tools pages.
+
+The next lab, Agents, runs this round trip in a loop. It gives the loop a step cap, the largest number of model calls the host will make. Later, Failure modes, safety, and security looks at how text from a tool can carry instructions. Those instructions can try to take over the next step.

@@ -10,9 +10,9 @@ export const ONBOARDING_SAMPLE = {
   moduleTitle: "Next-token prediction",
   section: "What it is",
   simple:
-    "Picture a video game that makes up its weather one hour at a time. Each hour, it looks at the weather so far. It sets odds for the next hour, such as 70% sun and 30% rain. Then it picks one at random, using those odds. A language model writes text the same way. It sets odds for every possible next piece of text. It picks one piece, adds it to the end and starts again.",
+    "A step called **softmax** turns the logits into odds that are all positive and add up to 100%. It follows one rule. Take two characters whose scores are one point apart. The higher one gets about 2.7 times the odds of the lower one. Softmax shares out the full 100% so that this rule holds for every pair of characters.",
   plain:
-    "Picture a video game that makes up its weather one hour at a time. Each hour it looks at the weather so far and sets odds for the next hour, such as 70% sun and 30% rain. Then it picks one at random, using those odds. A language model writes text the same way: it sets odds for every possible next piece of text, picks one, adds it to the end, and starts again.",
+    "A step called **softmax** turns the logits into odds that are all positive and add up to 100%. It follows one rule: every extra point of score makes a character about 2.7 times as likely as a character with one point less. Softmax then shares out the full 100% so that this rule holds for every pair of characters.",
   standard:
     "The forward pass ends with a vector of **logits**, one unnormalized score per vocabulary entry. **Softmax** turns them into probabilities: `p_i = exp(z_i / T) / Σ exp(z_j / T)`. One token is drawn, appended to the context, and the calculation runs again on the longer sequence. That loop is what **autoregressive** means.",
 } as const;

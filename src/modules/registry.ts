@@ -32,8 +32,7 @@ export const modules: RegisteredModule[] = Object.values(moduleFiles)
   .map(({ default: definition }) => {
     const standard = contentFiles[`./${definition.slug}/content/standard.mdx`]?.default;
     const plain = contentFiles[`./${definition.slug}/content/plain.mdx`]?.default;
-    // TODO(simple-mode): require simple.mdx once every module has one; until then Plain stands in.
-    const simple = contentFiles[`./${definition.slug}/content/simple.mdx`]?.default ?? plain;
+    const simple = contentFiles[`./${definition.slug}/content/simple.mdx`]?.default;
 
     if (!standard || !plain || !simple) {
       throw new Error(`Module "${definition.slug}" is missing simple.mdx, plain.mdx or standard.mdx.`);

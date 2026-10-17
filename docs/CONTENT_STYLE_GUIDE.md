@@ -132,9 +132,10 @@ with ease. It keeps Plain's seven sections, objectives, facts and figures, its a
 **Try this:** and **A common mix-up:** markers, and it assumes the same knowledge as the grade 8 to
 10 reader below Plain mode. What changes is the writing:
 
-- **Keep sentences short and direct, under 20 words.** Give each sentence one idea. This
-  deliberately reverses Plain's advice to connect ideas: in Simple, split a long sentence rather
-  than link its parts with *because* or *which*.
+- **Keep sentences short and direct, under 20 words, and mostly 12 to 16.** Give each sentence
+  one idea, but not a fragment: a run of 6-word sentences reads as chopped up. Link two small
+  ideas that belong together with *and*, *so* or *but*. Split a sentence that needs *which*,
+  *while* or a second clause to hold together.
 - **Replace jargon with everyday words.** When a term has to stay, because the interface or the
   glossary shows it, define it in the same sentence: “The model's odds for each choice are called
   **probabilities**.”
@@ -146,13 +147,13 @@ with ease. It keeps Plain's seven sections, objectives, facts and figures, its a
 - **Keep Plain's facts.** Drop a minor detail rather than bend it, keep every number exactly as
   Plain states it, and never invent people, events, quotes or statistics.
 
-Good: “The model gives every possible next piece a score. A higher score means better odds.”
+Good: “The model gives every possible next piece a score, and a higher score means better odds.”
 
 Avoid: “Logits are converted into a probability distribution over the vocabulary by softmax.”
 
 `node scripts/readability.mjs --mode simple <slug>` reports a Simple lesson's grade and lists its
-sentences over 16 words. `npm run check:readability` fails a Simple lesson above grade 7 or with
-any sentence over 20 words.
+sentences over 17 words. `npm run check:readability` fails a Simple lesson above grade 7, with
+sentences averaging outside 11 to 17 words, or with any sentence of 20 words or more.
 
 ## Checkpoints
 

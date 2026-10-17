@@ -166,8 +166,11 @@ describe("step 1: the three explanation modes", () => {
     mount();
     const text = dialog()!.textContent ?? "";
     // The sample paragraph is plain text up to its first mark, so its opening sentence renders verbatim.
-    expect(text).toContain(ONBOARDING_SAMPLE.simple.split(". ")[1]);
-    expect(text).toContain(ONBOARDING_SAMPLE.plain.split(". ")[0]);
+    // Marks are stripped when rendered, so compare each sample's opening sentence without them.
+    const unmarked = (sample: string) => sample.replace(/[*`]/g, "");
+    expect(text).toContain(unmarked(ONBOARDING_SAMPLE.simple.split(". ")[0]));
+    expect(text).toContain(unmarked(ONBOARDING_SAMPLE.plain.split(". ")[0]));
+    expect(text).toContain(unmarked(ONBOARDING_SAMPLE.simple.split(". ")[3]));
     expect(text).toContain("That loop is what autoregressive means.");
     expect(text).toContain(ONBOARDING_SAMPLE.moduleTitle);
     // The lesson's own bold and code marks are rendered, not shown as raw punctuation.

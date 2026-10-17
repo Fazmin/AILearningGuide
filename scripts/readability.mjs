@@ -17,12 +17,13 @@ import path from "node:path";
 
 /**
  * Each measured mode's band (CONTENT_STYLE_GUIDE.md). Plain is written at a grade 8 to 10 reading
- * level; Simple is written so an 8th grader can follow, in sentences under 20 words. A sentence
- * longer than `sentenceLimit` is listed in the detail report; one longer than `sentenceMax` fails
- * --check. Standard is not measured.
+ * level; Simple is written so an 8th grader can follow, in sentences of 12 to 16 words on average
+ * and all under 20 (19 at most). A sentence longer than `sentenceLimit` is listed in the detail report; one
+ * longer than `sentenceMax` fails --check, as does an average outside `wpsMin` to `wpsMax` (Simple
+ * only: below it the lesson reads as chopped-up fragments). Standard is not measured.
  */
 export const BANDS = {
-  simple: { gradeMin: 0, gradeMax: 7, sentenceLimit: 16, sentenceMax: 20 },
+  simple: { gradeMin: 0, gradeMax: 7, sentenceLimit: 17, sentenceMax: 19, wpsMin: 11, wpsMax: 17 },
   plain: { gradeMin: 8, gradeMax: 10, sentenceLimit: 30, sentenceMax: 35 },
 };
 
@@ -141,7 +142,8 @@ async function main() {
         console.log(`  most-used 3+ syllable words: ${r.longWords.slice(0, 40).map(([w, n]) => `${w}×${n}`).join(", ")}`);
       }
     } else if (rows.length) {
-      console.log(`${mode} (target grade ${target(band)}, no sentence over ${band.sentenceMax} words)`);
+      const wpsNote = band.wpsMin ? `, ${band.wpsMin}–${band.wpsMax} words per sentence` : "";
+      console.log(`${mode} (target grade ${target(band)}${wpsNote}, no sentence over ${band.sentenceMax} words)`);
       for (const r of rows) {
         console.log(`${r.grade.toFixed(1).padStart(5)}  ${r.wordsPerSentence.toFixed(1).padStart(5)} w/s  ${String(r.longSentences.length).padStart(3)} long  ${String(r.words).padStart(5)} words  ${r.folder}`);
       }
@@ -154,6 +156,10 @@ async function main() {
         if (r.grade < band.gradeMin || r.grade > band.gradeMax) {
           failed = true;
           console.error(`${r.folder}/${mode}.mdx: reading grade ${r.grade.toFixed(1)} is outside ${target(band)}`);
+        }
+        if (band.wpsMin && (r.wordsPerSentence < band.wpsMin || r.wordsPerSentence > band.wpsMax)) {
+          failed = true;
+          console.error(`${r.folder}/${mode}.mdx: ${r.wordsPerSentence.toFixed(1)} words per sentence is outside ${band.wpsMin}–${band.wpsMax}`);
         }
         for (const s of r.longSentences.filter((s) => s.words > band.sentenceMax)) {
           failed = true;

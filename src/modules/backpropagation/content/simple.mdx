@@ -5,56 +5,55 @@ terms: ["Chain rule", "Local derivative", "Computation graph", "Backward pass", 
 
 ## The big picture
 
-An AI model is a long chain of small calculations. The numbers that steer those calculations are
-called **weights**.
+An AI model is a long chain of small calculations, and the numbers that steer them are called
+**weights**.
 
 Picture each weight as a dial on a huge control panel. Turning a dial changes what the model gives
-back. Training is the slow work of turning those dials, a little at a time. It keeps going until the
+back. Training is the slow work of turning those dials a little at a time. It keeps going until the
 model's answers land closer to the right ones.
 
-The control panel picture is not perfect. No person turns these dials by hand. Training turns them,
-guided by numbers that this lesson shows you how to find.
+The control panel picture has one flaw: no person turns these dials by hand. Training turns them,
+guided by numbers this lesson shows you how to find.
 
-A big model stacks its calculations in **layers**. A layer is a row of small calculations. Each
-layer's output feeds the next layer. Each layer also has its own dials. The last card of this lab
+A big model stacks its calculations in **layers**, and a layer is a row of small calculations. Each
+layer's output feeds the next layer, and each layer has its own dials. The last card of this lab
 stacks up to twelve layers.
 
 Every time the model gets a practice example wrong, training faces the same question. Which dials
-should turn? In which direction? And by how much?
+should turn, in which direction, and by how much?
 
-This module is about the method that answers that question. It is called **backpropagation**. It
-starts from the error at the very end of the chain. Then it works backward, one step at a time,
-toward the dials. When it finishes, every dial has a number. That number says which way to turn the
-dial. It also says how strongly the dial affects the error.
+This module is about the method that answers that question, and it is called **backpropagation**. It
+starts from the error at the very end of the chain. Then it works backward toward the dials, one step
+at a time. When it finishes, every dial has a number that says which way to turn it. That number also
+says how strongly the dial affects the error.
 
-The previous lab, Loss & gradient descent, called that number a tilt. That lab needed a tilt for each
-of its two dials. It used them without saying where they came from. This lesson calls the same number
-a **slope**. This lab finishes the story by showing exactly how to work it out.
+The previous lab, Loss & gradient descent, called that number a tilt. It needed a tilt for each of its
+two dials and used them without saying where they came from. This lesson calls the same number a
+**slope**. This lab finishes the story by showing exactly how to work it out.
 
 ### Where it shows up
 
 Almost every slope used to train a model in this course comes from this method. That includes the
-one-dial model in this lab. It also includes the language models in later labs. Those are the kind of
-program behind a chatbot.
+one-dial model in this lab and the language models in later labs. Those are the kind of program behind
+a chatbot.
 
-During training, backpropagation runs over and over in the background. It runs after every round of
-practice examples. Each time, it tells training how to nudge the dials.
+During training, backpropagation runs over and over in the background, after every round of practice
+examples. Each time, it tells training how to nudge the dials.
 
-There are rare exceptions. They are steps that make a hard choice, such as picking one word. The end
-of this lesson comes back to them.
+The rare exceptions are steps that make a hard choice, such as picking one word. The end of this lesson
+comes back to them.
 
 ### Why it matters
 
-A large model has billions of dials. So the cost of finding all their slopes matters a great deal.
+A large model has billions of dials, so the cost of finding all their slopes matters a great deal.
 
 Without backpropagation, each dial's slope would need its own run of the whole model. One round of
 training would then need billions of runs. Backpropagation finds every dial's slope in one backward
-sweep. That sweep costs only about twice as much as one ordinary run of the model, from input to
-guess.
+sweep. That sweep costs only about twice as much as one ordinary run of the model, from input to guess.
 
-Backpropagation also explains a problem that shaped the design of modern models. Picture a model with
-many layers. The slope that reaches its earliest layers can shrink to almost nothing. It can also grow
-out of control. Several standard design choices exist mainly to stop that from happening.
+Backpropagation also explains a problem that shaped the design of modern models. In a model with many
+layers, the slope that reaches the earliest layers can shrink to almost nothing. It can also grow out
+of control, and several standard design choices exist mainly to stop either problem.
 
 ### What you will be able to explain
 
@@ -62,67 +61,66 @@ By the end of this lesson, you should be able to explain these ideas in your own
 
 - how numbers flow forward through a small model to make a guess and an error score;
 - how slopes then flow backward from the error to the dial;
-- how a rule called the chain rule finds the dial's slope, by multiplying each step's own small slope;
+- how a rule called the chain rule finds the dial's slope by multiplying each step's own small slope;
 - how to check that slope by measuring it;
 - why the first layer of a tall stack can get almost no slope, or far too much;
 - how four choices change the slope that reaches the first layer:
-  - how many layers are stacked;
+  - how many layers are stacked one after another;
   - which squashing step each layer applies to its numbers;
-  - how big the dials' random starting numbers are;
-  - whether shortcuts let numbers skip past a layer.
+  - how big the random numbers are that the dials start at;
+  - whether shortcuts let numbers skip past a layer, as well as pass through it.
 
 ### What the lab lets you do
 
-Every number in this lab comes from your settings. Nobody drew any of them by hand. Nothing in the
-lab is a trained model. The lab is spread across four cards:
+Every number in this lab comes from your settings, and nobody drew any of them by hand. Nothing in the
+lab is a trained model, and the lab is spread across four cards:
 
-- **Interactive backpropagation computation graph** shows the one-dial model as a small map of
-  circles and arrows. You step through it. First you watch numbers fill in from left to right. Then
-  you watch slopes fill in from right to left.
-- **Loss versus weight tangent chart** draws the error score for every possible setting of the dial.
-  That error score is called the loss. A straight line touches the curve at your current setting.
-  This line is called a tangent, and its steepness shows the slope there.
-- **Backpropagation controls and chain rule** holds the sliders. It also writes the slope out as a
+- **Interactive backpropagation computation graph** shows the one-dial model as a small map of circles
+  and arrows. You step through it and watch numbers fill in from left to right. Then slopes fill in
+  from right to left.
+- **Loss versus weight tangent chart** draws the error score, called the loss, for every possible
+  setting of the dial. A straight line called a tangent touches the curve at your setting, and its
+  steepness shows the slope.
+- **Backpropagation controls and chain rule** holds the sliders and writes the slope out as a
   multiplication. A button on this card turns the dial by one step.
 - **Gradient flow through depth** builds a stack of up to twelve layers with random starting dials. It
   runs 32 made-up practice examples through the stack once, before any training. Then it shows how
   much slope reaches each layer.
 
-Along the way, you will break the slope on purpose. You will see for yourself how a big error can
-still produce a tiny slope.
+Along the way, you will break the slope on purpose. You will see how a big error can still give a tiny
+slope.
 
 ## What it is
 
 ### A model with one dial
 
-Start with the smallest model that still has every important part. It takes one input number, `x`.
-It has one dial, the weight `w`. It multiplies the two numbers. Then it squashes the result into a
-number between 0 and 1. Finally, it compares that guess with the right answer.
+Start with the smallest model that still has every important part. It takes one input number, `x`, and
+it has one dial, the weight `w`. It multiplies the two numbers and squashes the result into a number
+between 0 and 1. Then it compares that guess with the right answer.
 
-Picture it as a short assembly line with three stations. A number moves along the line. Each station
-does one small calculation and passes its result on.
+Picture it as a short assembly line with three stations. A number moves along the line, and each
+station does one small calculation and passes its result on.
 
-1. The **multiply** station works out `z = x · w`. At the lab's starting settings, x is 0.8 and w is
-   0.6. So z comes out as 0.8 × 0.6, which is 0.48.
+1. The **multiply** station works out `z = x · w`. At the lab's starting settings x is 0.8 and w is
+   0.6, so z is 0.8 × 0.6, or 0.48.
 2. The **sigmoid** station squashes z into a number between 0 and 1. Large positive numbers come out
-   close to 1. Large negative numbers come out close to 0. If z is exactly 0, the sigmoid gives 0.5,
-   right in the middle. Its output is the model's guess. The lab writes the guess as `ŷ`, and you
-   read it "y-hat". At the start, the guess is 0.618.
-3. The **loss** station compares the guess with the right answer. The right answer is called the
-   **target**, written `y`. The target starts at 0.9. The station finds the gap between the guess
-   and the target. Then it squares that gap. The result is about 0.0797.
+   close to 1, and large negative numbers come out close to 0. If z is exactly 0, the sigmoid gives
+   0.5, right in the middle. Its output is the model's guess. The lab writes it as `ŷ`, read "y-hat",
+   and at the start it is 0.618.
+3. The **loss** station compares the guess with the right answer, called the **target** and written
+   `y`. The target starts at 0.9, and the station finds the gap between the guess and the target. It
+   then squares that gap to get about 0.0797.
 
-That last number is the **loss**. It scores how wrong the guess is. A loss of zero means a perfect
+That last number is the **loss**, a score for how wrong the guess is. A loss of zero means a perfect
 guess.
 
-Squaring the gap does two jobs. First, it makes every miss count as a positive number. That holds
-whichever side of the target the guess lands on. Second, it makes big misses count far more than
-small ones. Doubling a gap from 0.2 to 0.4 makes the loss four times bigger. You can check this:
-0.2 × 0.2 is 0.04, and 0.4 × 0.4 is 0.16.
+Squaring the gap does two jobs. First, it makes every miss count as a positive number, on either side
+of the target. Second, it makes big misses count far more than small ones. Doubling a gap from 0.2 to
+0.4 makes the loss four times bigger. Check it yourself: 0.2 × 0.2 is 0.04, and 0.4 × 0.4 is 0.16.
 
-The whole map of stations and arrows is called a **computation graph**. Running numbers through it
-from left to right is called the **forward pass**. The lab's tape writes down each forward step in a
-row. Each row shows the formula, the numbers and the result:
+The whole map of stations and arrows is called a **computation graph**. Running numbers through it from
+left to right is called the **forward pass**. The lab's tape writes down each forward step in a row,
+with the formula, the numbers and the result:
 
 ```
 z = x · w       0.80 × 0.60             =  0.480
@@ -130,70 +128,68 @@ z = x · w       0.80 × 0.60             =  0.480
 L = (ŷ − y)²    (0.618 − 0.90)²         =  0.0797
 ```
 
-The `σ` is the Greek letter sigma. Here it stands for sigmoid. In the middle row, the tape writes the
-sigmoid out in full: `1 / (1 + e^(−z))`, with z filled in. The e is a fixed number close to 2.718. You
-never need to work this out by hand. The lab does that part for you.
+The `σ` is the Greek letter sigma, and here it stands for sigmoid. In the middle row, the tape writes
+the sigmoid out in full: `1 / (1 + e^(−z))`, with z filled in. The e is a fixed number close to 2.718.
+The lab does that part for you, so you never need to work it out by hand.
 
 ### The question training asks
 
-The loss tells you how wrong the guess is. It does not tell you what to do about it. Training needs
-one more fact about the dial. If `w` moved up by a tiny amount, would the loss go up or down? And how
-fast would it change?
+The loss tells you how wrong the guess is, but not what to do about it. Training needs
+one more fact about the dial. If `w` moved up by a tiny amount, would the loss go up or down, and how
+fast?
 
-That fact is the slope of the loss at the current weight. Picture standing on a hillside. The slope is
-how steeply the ground rises or falls under your feet.
+That fact is the slope of the loss at the current weight. Picture standing on a hillside, where the
+slope is how steeply the ground rises or falls under your feet.
 
-The hill picture works here for one reason. This model has one dial, so its hill is a single curve
-you can draw. A big model has millions of dials, and nobody can draw its hill.
+The hill picture works here for a reason. This model has one dial, so its hill is a single curve you
+can draw. A big model has millions of dials, and nobody can draw its hill.
 
 A measure of how fast one number changes when another number moves is called a **derivative**. The
 slope of the loss for one particular dial is called that dial's **gradient**.
 
-The lab writes this slope as `∂L/∂w`. Read it like this: nudge w a tiny amount, and L changes by
-`∂L/∂w` times that amount. Say `∂L/∂w` were 2. Then a nudge of 0.01 to w would move L by about 0.02.
+The lab writes this slope as `∂L/∂w`. It means that a tiny nudge to w changes L by `∂L/∂w` times the
+nudge. Say `∂L/∂w` were 2, so a nudge of 0.01 to w would move L by about 0.02.
 
-The curly ∂ marks a **partial derivative**. That is a slope you measure with everything else held
-still. Here, `x` and `y` stay put as you nudge `w`.
+The curly ∂ marks a **partial derivative**, a slope you measure with everything else held still. Here,
+`x` and `y` stay put as you nudge `w`.
 
 ### Each station's own number
 
 The trick behind backpropagation is that no station needs the whole formula. Each station answers one
-small question about itself. If my input moves up by a tiny amount, how many times that amount does
-my output move? The answer is that station's **local derivative**. It is "local" because the station
+small question about itself. If my input moves up by a tiny amount, how many times that amount does my
+output move? The answer is that station's **local derivative**, and it is "local" because the station
 looks only at itself.
 
-Take the multiply station first. Keep x at 0.8, and nudge w up by 0.01. Then z rises by 0.008. That is
-0.8 times the size of your nudge. So the multiply station's local derivative toward w is 0.8, the
+Take the multiply station first, and keep x at 0.8 while you nudge w up by 0.01. Then z rises by 0.008,
+or 0.8 times the size of your nudge. So the multiply station's local derivative toward w is 0.8, the
 value of x.
 
-The same reasoning works the other way. Nudge x up by 0.01, and z rises by 0.006. That makes the local
-derivative toward x equal to 0.6, the value of w. So each input's local derivative is the *other*
-input's value from the forward pass. That detail will matter later.
+The same reasoning works the other way: nudge x up by 0.01, and z rises by 0.006. That makes the local
+derivative toward x equal to 0.6, the value of w. Each input's local derivative is the *other* input's
+value from the forward pass. Remember this detail, because it matters later.
 
-The sigmoid station's local derivative has a short formula, `ŷ(1 − ŷ)`. The formula appears on the
-tape once the lab works backward to the sigmoid. With a guess of 0.618, the other part is 1 − 0.618, or 0.382. So the
-formula works out as `0.618 × 0.382`, which comes to 0.236. A nudge of 0.01 to z then moves the guess
-by only about 0.0024.
+The sigmoid station's local derivative has a short formula, `ŷ(1 − ŷ)`. The formula appears on the tape
+once the lab works backward to the sigmoid. With a guess of 0.618, the other part is 1 − 0.618, or
+0.382. So the formula gives `0.618 × 0.382`, or 0.236. A nudge of 0.01 to z then moves the guess by only
+about 0.0024.
 
-This number is largest when the guess sits exactly in the middle. There, `0.5 × 0.5` gives 0.25. The
-number shrinks toward zero as the guess gets close to 0 or 1. At a guess of 0.99, it is only about
-0.01. A sigmoid stuck near one end like this is called **saturated**. As you will see, a saturated
-sigmoid passes almost nothing backward.
+This number is largest when the guess sits exactly in the middle, where `0.5 × 0.5` gives 0.25. It
+shrinks toward zero as the guess gets close to 0 or 1. At a guess of 0.99, it is only about 0.01. A
+sigmoid stuck near one end like this is called **saturated**, and it passes almost nothing backward.
 
-Picture a sponge that is already soaked. Pour a little more water on it, and it holds almost no more.
-A saturated sigmoid is like that. A nudge to z barely changes its output. The sponge picture only
-covers one end, though. A sigmoid can also get stuck near 0, and it barely responds there too.
+Picture a sponge that is already soaked: pour a little more water on it, and it holds almost none. A
+saturated sigmoid is like that, because a nudge to z barely changes its output. The sponge covers only
+one end, though. A sigmoid can also get stuck near 0, and it barely responds there either.
 
-The loss station's local derivative is `2(ŷ − y)`. That is twice the gap between the guess and the
-target. At the start, it is `2 × (0.618 − 0.90)`. The lab prints this as −0.565. The minus sign
-carries real meaning. The guess sits below the target. So pushing the guess up would make the loss go
-*down*.
+The loss station's local derivative is `2(ŷ − y)`, twice the gap between the guess and the target. At
+the start that is `2 × (0.618 − 0.90)`, and the lab prints it as −0.565. The minus sign carries real
+meaning. The guess sits below the target, so pushing it up would make the loss go *down*.
 
 ### The chain rule: multiply along the path
 
-Now you can link the three answers together. First, picture three gears in a row. When the first gear
-turns once, the second gear turns 3 times. Each turn of the second gear makes the third turn 2 times.
-So one turn of the first gear makes the third turn 3 × 2 = 6 times. To link gears, you multiply their
+Now you can link the three answers together. Picture three gears in a row: when the first gear turns
+once, the second turns 3 times. Each turn of the second gear makes the third turn 2 times. So one turn
+of the first gear makes the third turn 3 × 2, or 6 times. Linking gears means multiplying their
 numbers.
 
 The stations link the same way. A nudge to w moves z by 0.8 times as much. A nudge to z moves the guess
@@ -206,33 +202,31 @@ starts at w gets multiplied by each number in turn:
        =  −0.1066
 ```
 
-You can follow one nudge down the line. Nudge w up by 0.01. Then z rises by 0.008. The guess rises by
-about 0.0019. And the loss falls by about 0.001. That fits the answer: −0.1066 times 0.01 is about
+Follow one nudge down the line: w goes up by 0.01, so z rises by 0.008. The guess then rises by about
+0.0019, and the loss falls by about 0.001. That fits the answer, since −0.1066 times 0.01 is about
 −0.001. The slope is negative, so the weight should go up.
 
-Multiplying local derivatives along a path like this is called the **chain rule**. It is the whole
-engine of backpropagation.
+Multiplying local derivatives along a path like this is called the **chain rule**, the engine of
+backpropagation.
 
-The gear picture breaks down in one way. Real gears keep the same numbers forever. A station's number
-can change as its inputs change. The sigmoid's 0.236, for example, belongs to a guess of 0.618. At a
-different guess, it is a different number. That is why the chain rule talks about tiny nudges.
+The gear picture breaks down in one way. Real gears keep the same numbers forever, but a station's
+number can change as its inputs change. The sigmoid's 0.236, for example, belongs to a guess of 0.618,
+and a different guess gives a different number. That is why the chain rule talks about tiny nudges.
 
 ### Going backward
 
-Backpropagation does this multiplication in a particular order. It starts at the loss and works back
+Backpropagation does this multiplication in a particular order, starting at the loss and working back
 toward the dial.
 
-The chain begins with 1 at the loss. Why 1? A nudge to the loss changes the loss by exactly the same
-amount. The lab shows this as `∂L/∂L 1`. Then each station takes the number arriving from the loss
-side. It multiplies that number by its own local derivative. Then it passes the result to the station
+The chain begins with 1 at the loss, and the lab shows this as `∂L/∂L 1`. That makes sense, since a
+nudge to the loss changes the loss by exactly that much. Each station takes the number arriving from
+the loss side and multiplies it by its own local derivative. Then it passes the result to the station
 before it.
 
-This right-to-left sweep is called the **backward pass**. The lab shows it as a running total under
-each circle.
-
 The number arriving at a station from the loss side is called the **upstream gradient**. Picture the
-backward pass as a stream flowing from the loss toward the dial. The loss end is the upstream end.
-Unlike water, though, the number changes at every station it passes.
+backward pass as a stream flowing from the loss toward the dial, with the loss end upstream. Unlike
+water, though, the number changes at every station it passes. The lab shows this right-to-left sweep,
+called the **backward pass**, as a running total under each circle.
 
 Each row below shows the number that has arrived at one circle. The factor in each row comes from the
 station to its right. The sigmoid circle receives 1 times the loss station's −0.565. The multiply
@@ -245,106 +239,98 @@ multiply z    ∂L/∂z  =  −0.565 × 0.236     =  −0.1333
 weight w      ∂L/∂w  =  −0.1333 × 0.800    =  −0.1066
 ```
 
-Go back to the assembly line. The forward pass carries a number down the line to make a guess. The
-backward pass carries a report about the error back up the line. Each station scales the report by
-its own number, then passes it on. No station ever uses the whole formula. Yet the dial at the far end
+Go back to the assembly line: the forward pass carries a number down the line to make a guess. The
+backward pass carries a report about the error back up the line. Each station scales the report by its
+own number, then passes it on. No station ever uses the whole formula, yet the dial at the far end
 receives its exact slope.
 
 Working out how much each dial added to the final error is called **credit assignment**.
 Backpropagation answers it with an exact local measure. It finds how much the loss would change for a
-tiny nudge to each dial, right now. Every number in the chain comes from the stations' own formulas.
-So nothing is guessed.
+tiny nudge to each dial, right now. Every number in the chain comes from the stations' own formulas, so
+nothing is guessed.
 
-That measure is about sensitivity, not blame. Sensitivity means how strongly the loss reacts to a
-nudge. In the lab, you will see a dial push the guess far off target. Yet that dial will get a tiny
-slope. The slope only says how much a small nudge would help from where things stand.
+That measure is about sensitivity, not blame, and sensitivity means how strongly the loss reacts to a
+nudge. In the lab, a dial can push the guess far off target and still get a tiny slope. The slope only
+says how much a small nudge would help from where things stand.
 
 ### Why the forward numbers must be kept
 
-Look again at the multiply station. Its local derivative toward w is the value of x. Its local
-derivative toward x is the value of w. Both values came from the forward pass. So they have to stay
-stored until the backward pass comes back to that station.
+Look again at the multiply station. Its local derivative toward w is the value of x, and toward x it is
+the value of w. Both values came from the forward pass, so they have to stay stored. They wait there
+until the backward pass comes back to that station.
 
-It is a bit like a long sum in a maths test. A later line reuses a number from an earlier line.
-Picture erasing each line as soon as you finish it. You would have to redo the earlier work to get
-that number back. A memory-saving trick near the end of this lesson makes exactly that trade on
-purpose.
+It is a bit like a long sum in a maths test. A later line reuses a number from an earlier line. Picture
+erasing each line as soon as you finish it. You would have to redo the earlier work to get that number
+back. A memory-saving trick near the end of this lesson makes exactly that trade on purpose.
 
-Size is where the test picture falls short. Your test has a handful of lines. A big model has a huge
-pile of forward numbers to keep.
+Size is where the test picture falls short. Your test has a handful of lines, but a big model has a huge pile of forward numbers.
 
-People often call these stored forward values **activations**. So this storage is called
-**activation memory**.
+People often call these stored forward values **activations**, so this storage is called **activation
+memory**.
 
 ### The branch toward the input
 
-The multiply station also sends a slope back toward x. That slope is `−0.1333 × 0.600 = −0.0800`. Here
-x is the training example. Training never changes it, so nothing uses that number.
+The multiply station also sends a slope back toward x, and that slope is `−0.1333 × 0.600 = −0.0800`.
+Here x is the training example and training never changes it, so nothing uses that number.
 
-A deeper model is different. There, the thing feeding a layer is the output of the layer before it.
-That output depends on the earlier layer's own dials. So this branch is exactly how the backward pass
-reaches earlier layers.
+In a deeper model, the thing feeding a layer is the output of the layer before it. That output depends
+on the earlier layer's own dials, so this branch is how the backward pass reaches them.
 
-The target gets no slope at all. It is data, not a dial. So during the backward pass, the lab labels
-it `no gradient: data`.
+The target gets no slope at all, because it is data and not a dial. So during the backward pass, the
+lab labels it `no gradient: data`.
 
 ### Many layers: the product gets long
 
 Recall that a real network stacks many layers. Each **layer** is a row of small stations that sit side
-by side. These stations are called **units**. In the lab, each unit takes in 16 numbers from the layer
-before it. It multiplies each of those numbers by a separate weight. Then it adds them all up and
-squashes the total.
+by side, and these stations are called **units**. In the lab, each unit takes in 16 numbers from the
+layer before it. It multiplies each number by its own weight, adds them all up, and squashes the total.
 
-The **Activation** control picks that squashing step. The step makes each unit's output, called its
+The **Activation** control picks the squashing step that makes each unit's output, called its
 activation. There are three choices:
 
-- **sigmoid** is the squashing step you have already met. Its local derivative is never more than
+- **sigmoid** is the squashing step you have already met, and its local derivative is never more than
   0.25.
-- **tanh** squashes numbers into the range from −1 to 1. Its local derivative can reach 1 in the
-  middle.
+- **tanh** squashes numbers from −1 to 1, and its local derivative can reach 1 in
+  the middle.
 - **ReLU** keeps positive numbers as they are and turns negative numbers into 0. So its local
-  derivative is either exactly 1 or exactly 0. With random starting weights, about half the units get
-  a negative total. ReLU passes nothing back through those units.
+  derivative is either exactly 1 or exactly 0. With random starting weights, about half the units get a negative total. ReLU passes nothing back through those units.
 
 On the way back, every layer multiplies the arriving slope by two things. One is its squashing step's
-local derivative. The other is its own weights. With twelve layers, that makes a long product. Long
-products can behave in extreme ways.
+local derivative, and the other is its own weights. With twelve layers, that makes a long product, and
+long products can behave in extreme ways.
 
 Picture a made-up game where you keep only a quarter of your points every round. You start with a
-million points. After one round, you have 250,000. After two rounds, you have 62,500. After eleven
+million points. After one round you have 250,000, and after two rounds you have 62,500. After eleven
 rounds, you are left with about a quarter of one point.
 
-Now picture the opposite. A chain message goes around, and every person forwards it to three new
+Now picture the opposite: a chain message goes around, and every person forwards it to three new
 friends. In the eleventh round alone, 177,147 new people receive it.
 
 The same thing happens to slopes. A slope passing back through many layers gets multiplied once at
 every layer. When most of the numbers in the chain are below 1, the product shrinks toward zero. The
-earliest layers then get almost no slope, and they barely learn. That is called the
-**vanishing gradient**. When most of the numbers are above 1, the product blows up. It hands the
-earliest layers huge slopes. That is called the **exploding gradient**.
+earliest layers then get almost no slope and barely learn, and this is called the **vanishing
+gradient**. When most of the numbers are above 1, the product blows up and gives the earliest layers
+huge slopes. That is called the **exploding gradient**.
 
-The game and the chain message differ from a network in one way. They use the same number every
-round. In a network, each layer can multiply by a different number. What counts is whether most of
-them sit below 1 or above 1.
+The game and the chain message use the same number every round. In a network, each layer can multiply
+by a different number. What counts is whether most of them sit below 1 or above 1.
 
 ### Reading tiny and huge numbers
 
-The **Gradient flow through depth** card prints some very tiny and very huge numbers. So it uses a
-short form to write them.
+The **Gradient flow through depth** card prints very tiny and very huge numbers, so it uses a short
+form. The number 2.6e-8 means 2.6 with the decimal point moved 8 places to the left, or 0.000000026.
+In the same way, 3.5e5 means 3.5 with the point moved 5 places to the right, or 350,000.
 
-The number 2.6e-8 means 2.6 with the decimal point moved 8 places to the left. That is 0.000000026. In
-the same way, 3.5e5 means 3.5 with the point moved 5 places to the right. That is 350,000.
+The readouts under the bars use this form even for ordinary sizes, so 0.21 appears as 2.13e-1. The
+number 1.3 appears as 1.32e+0 and 350,000 appears as 3.48e+5. In these forms, the + only means the
+point moves to the right.
 
-The readouts under the bars use this form even for ordinary sizes. So 0.21 appears as 2.13e-1. The
-number 1.3 appears as 1.32e+0. And 350,000 appears as 3.48e+5. The + only means the point moves to the
-right.
+Each layer in the card has 16 × 16 = 256 weights, so it has 256 slopes, one for each weight. The card
+sums them up as a single size called the **norm**. Here is the recipe: square every slope, add the
+squares together, and take the square root.
 
-Each layer in the card has 16 × 16 = 256 weights. So it has 256 slopes, one for each weight. The card
-sums them up as a single size called the **norm**. Here is the recipe. Square every slope. Add the
-squares together. Then take the square root.
-
-Picture a tiny layer with only two slopes, 3 and 4. Their squares are 9 and 16. Those add up to 25.
-The square root of 25 is 5. So the norm is 5. A slope of −3 would give the same square, 9, so the norm
+Picture a tiny layer with only two slopes, 3 and 4. Their squares are 9 and 16, and those add up to 25.
+The square root of 25 is 5, so the norm is 5. A slope of −3 would give the same square, 9, so the norm
 ignores the sign.
 
 A bigger norm means that layer's dials would get a bigger push in a training step. A norm near zero
@@ -352,27 +338,26 @@ means they would barely move.
 
 ### What the card measures
 
-Take sigmoid units with Glorot starting weights, a setting explained below. Stack twelve layers. On
+Take sigmoid units with Glorot starting weights, a setting explained below, and stack twelve layers. On
 the way back, each layer multiplies the slope by about 0.24 on average. That 0.24 comes from two things
-multiplied together. The sigmoid's slope is at most 0.25. The layer's weights also have an effect, and with this setting that
-effect stays close to 1.
+multiplied together. The sigmoid's slope is at most 0.25. The layer's weights also have an effect, and
+with this setting it stays close to 1.
 
 Twelve layers have eleven steps between them, from the last layer back to Layer 1. Multiply 0.24 by
 itself eleven times, and you get roughly one ten-millionth.
 
-The card shows exactly this. **Layer 12 norm** reads about 0.21. **Layer 1 norm** reads 2.6e-8.
-**Layer 1 ÷ last** reads 1.2e-7. That is 0.00000012. So the first layer gets roughly one
-ten-millionth of the slope that the last layer gets. The readouts print one extra digit, such as
-2.58e-8. The story is the same.
+The card shows exactly this, since **Layer 12 norm** reads about 0.21 and **Layer 1 norm** reads 2.6e-8.
+**Layer 1 ÷ last** reads 1.2e-7, or 0.00000012. So the first layer gets roughly one ten-millionth of
+the slope that the last layer gets. The readouts print one extra digit, such as 2.58e-8, but the story
+is the same.
 
-Three controls change this product.
+Three controls change this product, and we look at them one at a time.
 
 ### The first control: Activation
 
-The first control is **Activation**. Switching to tanh raises the ceiling on each layer's local
-derivative. The ceiling goes from 0.25 to 1. At twelve layers with Glorot weights, Layer 1 then reads
-about 0.21. That is almost the same as the last layer's 0.23. So the slope barely shrinks on the way
-back.
+Switching **Activation** to tanh raises the ceiling on each layer's local derivative from 0.25 to 1. At
+twelve layers with Glorot weights, Layer 1 then reads about 0.21. That is almost the same as the last
+layer's 0.23, so the slope barely shrinks on the way back.
 
 ### The second control: Initial weight scale
 
@@ -380,17 +365,15 @@ The second control is **Initial weight scale**. Every weight starts out as a ran
 training. How spread out those random numbers are is a choice called **weight initialization**.
 
 The control offers four settings: `small (std 0.1)`, `Glorot`, `He` and `large (std 1.0)`. Here "std"
-is short for standard deviation. It measures how far from zero the random numbers typically land. With
+is short for standard deviation, a measure of how far from zero the random numbers typically land. With
 0.1, a typical starting weight sits around 0.1 above or below zero.
 
-Think of darts thrown at a bullseye, where the bullseye is zero. Tight throws land close to zero. Wild
-throws land far from it. The std measures how wild the throws are. The darts picture is not exact,
-though. A dart can miss in any direction across the board. A weight can only land above or below
-zero.
+Think of darts thrown at a bullseye, where the bullseye is zero. Tight throws land close to zero, and
+wild throws land far from it. The std measures how wild the throws are. The darts picture is not exact,
+though. A dart can miss in any direction across the board, but a weight lands only above or below zero.
 
-Glorot and He are two recipes for that spread. Each one is named after the first author of the paper
-that proposed it. For this lab's layers of 16 units, Glorot works out to about 0.25. The He recipe
-works out to about 0.35.
+Glorot and He are two recipes for that spread. Each is named after the first author of the paper that
+proposed it. For this lab's layers of 16 units, Glorot works out to about 0.25 and He to about 0.35.
 
 With ReLU units at twelve layers, the starting spread decides how big every layer's slope is. Here is
 what **Layer 1 norm** reads:
@@ -402,116 +385,112 @@ He                  1.3
 large (std 1.0)     3.5e5      which is 350,000
 ```
 
-Small starting weights shrink the signal at every layer. Large ones make it grow at every layer. Here,
-the signal means the numbers going forward and the slopes coming back. Over twelve layers, that one
-choice decides whether every slope is a whisper or a roar.
+Small starting weights shrink the signal at every layer, and large ones make it grow at every layer.
+Here, the signal means the numbers going forward and the slopes coming back. Over twelve layers, that
+one choice decides whether every slope is a whisper or a roar.
 
 Why does Glorot leave Layer 1's slope at only about 0.02 here? Glorot keeps the weights' own effect
-close to 1. But ReLU switches off about half the units. So each layer still weakens the signal a
-little. The He recipe uses a wider spread, about 0.35 instead of 0.25. That extra spread makes up for
-the switched-off units. The He recipe was designed for ReLU in this way. With it, each layer's effect
-stays close to 1.
+close to 1, but ReLU switches off about half the units. So each layer still weakens the signal a
+little. The He recipe uses a wider spread, about 0.35 instead of 0.25, to make up for the switched-off
+units. That is why He was designed for ReLU, and it keeps each layer's effect close to 1.
 
 You might expect large weights to give Layer 1 a far bigger slope than the last layer. Yet Layer 1's
 3.5e5 is only about a third of the last layer's 1.05e6.
 
 The reason goes back to the multiply station. There, the slope on w was the slope arriving at z times
-x, the number fed in. Every weight in the stack works the same way. So each weight's slope has two
+x, the number fed in. Every weight in the stack works the same way, so each weight's slope has two
 parts. One is the slope arriving from the loss side. The other is the number fed in from the input
 side.
 
 With ReLU and large weights, the arriving slopes grow on the way back toward the input. Meanwhile, the
 numbers fed into each layer grow on the way forward toward the output. Those two effects roughly
-cancel. So every layer's slope ends up about the same size. They are all huge, or all tiny when the
+cancel, so every layer's slope ends up about the same size. They are all huge, or all tiny when the
 weights are small.
 
-Think of each weight's slope as the area of a rectangle. Area is length times width. The length is
-the arriving slope. The width is the number fed in. With large weights, the length is big near the
-input, and the width is small. Near the output, the length is small and the width is big. So the areas come out roughly
-alike. The match is rough, though. Layer 1 still ends up at about a third of the last layer.
+Think of each weight's slope as the area of a rectangle, and area is length times width. The length is
+the arriving slope, and the width is the number fed in. With large weights, the length is big near the
+input and the width is small. Near the output, the length is small and the width is big, so the areas
+come out roughly alike. The match is rough, though, and Layer 1 still ends up at about a third of the
+last layer.
 
-Sigmoid has no such balance. Its outputs always sit between 0 and 1. So the numbers fed into each
-layer stay about the same size. Meanwhile, the slope shrinks on the way back. Nothing makes up for it.
+Sigmoid has no such balance. Its outputs always sit between 0 and 1, so the numbers fed into each layer stay a similar size. Meanwhile, the slope shrinks on the way back, and nothing makes up for it.
 
 ### The third control: Skip connections
 
-The third control is **Skip connections**. A **skip connection** is a shortcut that adds a layer's
-input straight onto its output. People also call it a residual connection. With a shortcut, the
-numbers can hop over the layer as well as pass through it.
+The third control is **Skip connections**. A **skip connection** is a shortcut that adds a layer's input
+straight onto its output. People also call it a residual connection, and the control turns it on or
+off. With a shortcut, the numbers can hop over the layer as well as pass through it.
 
-Picture a layer that handles a single number. Say it receives 0.5, and its own calculation gives 0.25.
-With a shortcut, the layer hands on 0.5 + 0.25, which is 0.75.
+Picture a layer that receives 0.5 and whose own calculation gives 0.25. With a shortcut, the layer
+hands on 0.5 + 0.25, or 0.75.
 
 On the way back, the shortcut becomes an express lane. The slope arriving at a layer passes straight
 back to the layer before. That happens on top of whatever comes through the layer's own weights and
 squashing step.
 
-The express lane picture misses one thing. On the way forward, the shortcut adds its numbers on top.
-So the values pile up, layer after layer.
+The express lane picture misses one thing. On the way forward, the shortcut adds its numbers on top, so
+the values pile up, layer after layer.
 
-Set sigmoid, Glorot and twelve layers. Turning **Skip connections** on lifts Layer 1's norm from 2.6e-8
-to 0.24. The fix has a price. It shows in **Loss at the start**, the untrained stack's error score on
-its practice examples. That score climbs from 0.90 to 7.30.
+With sigmoid, Glorot and twelve layers, turning **Skip connections** on lifts Layer 1's norm from 2.6e-8
+to 0.24. The fix has a price, and it shows in **Loss at the start**. That is the untrained stack's error
+score on its practice examples, and it climbs from 0.90 to 7.30.
 
-That score uses a different rule from the small graph. The rule is called **cross-entropy**. Each of
-the 32 made-up examples has a yes-or-no answer. The stack ends with a sigmoid. So its guess is the
-chance that the answer is yes.
+That score uses a different rule from the small graph, called **cross-entropy**. Each of the 32 made-up
+examples has a yes-or-no answer, and the stack ends with a sigmoid. So its guess is the chance that the
+answer is yes.
 
-Guessing a 50 percent chance every time scores about 0.69. The score has no upper limit. A guess that
-is confident and wrong costs a great deal.
+Guessing a 50 percent chance every time scores about 0.69. The score has no upper limit, because a guess
+that is confident and wrong costs a great deal.
 
-Picture a weather app that gives a 99 percent chance of sun. Then a storm rolls in. That app deserves
-a much worse score than one that said 60 percent. Cross-entropy scores guesses the same way.
-One difference: the app story covers one guess. The card's score is the average over all 32 examples.
+Picture a weather app that gives a 99 percent chance of sun, and then a storm rolls in. That app
+deserves a much worse score than one that said 60 percent. Cross-entropy scores guesses the same way.
+The app story covers one guess, but the card's score is the average over all 32 examples.
 
-Every shortcut adds more numbers on top. So values grow larger at each layer on the way forward. This
+Every shortcut adds more numbers on top, so values grow larger at each layer on the way forward. This
 lab has no step that shrinks them back down. By the last layer, the stack's guesses are pushed to
-near-certain answers. About half of those answers are confidently wrong.
+near-certain answers, and about half are confidently wrong.
 
 ## Why it’s here
 
 ### Every dial needs its own slope
 
-Picture a made-up group project with four people. It comes back with a low mark. To do better next
-time, the group needs to know something. How much would the mark change if each person changed their
-part a little? With four people, you could talk it through. Now imagine asking that about a billion
-people at once, after every single practice test.
+Picture a made-up group project with four people that comes back with a low mark. The group needs to
+know how much the mark would change if each person changed their part a little. With four people, you
+could talk it through. Now imagine asking the same question about a billion people at once, after every
+single practice test.
 
-That is the credit assignment problem. Training faces it with every round of examples. The most direct
-fix is to nudge one dial, rerun the model, and measure what happens to the loss. The lab's
-**Numeric check** does exactly that for its single dial. In a big model, though, this approach would
-mean a separate run for every dial.
+That is the credit assignment problem that training faces with every round of examples. The most direct
+fix is to nudge one dial, rerun the model, and measure the loss. The lab's **Numeric check** does
+exactly that for its single dial. In a big model, though, it would mean a separate run for every dial.
 
-Backpropagation avoids all those runs. It works backward from the one loss at the end. Each number it
-finds on the way back serves all the dials behind that point. So it finds each shared number only
-once.
+Backpropagation avoids this by working backward from the one loss at the end. Each number it works out
+on the way back is shared by all the dials behind it. So it finds each shared part only once.
 
 In the small graph, both w and x use the multiply station's slope, −0.1333. In a big model, the slope
-arriving at a layer gets reused. Every dial in that layer reuses that slope. So does every layer
-before that one.
+arriving at a layer gets reused by every dial in that layer. Every layer before it reuses that slope
+too.
 
-It is like one message in a group chat. Everyone in the chat reads the same message. Nobody needs a
-separate copy. Unlike a chat, though, each dial does one more multiplication of its own after reading
-the shared number.
+It is like one message in a group chat. Everyone reads the same message, and nobody needs a separate
+copy. Unlike a chat, though, each dial does one more multiplication of its own after reading the shared
+number.
 
 That is why one backward sweep gives every dial its slope at once. You could carry nudges forward from
 one dial toward the loss instead. But that answers the question for only one dial per run.
 
 The backward method that programs use is called **reverse-mode autodiff**. That is short for
-reverse-mode automatic differentiation. Differentiation means finding derivatives.
+reverse-mode automatic differentiation, and differentiation means finding derivatives.
 
 ### The weak point: long products
 
-The multiplying that makes backpropagation cheap is also its weak point. Slopes get multiplied along
-the chain. Picture a long line of layers that each pass back only a fraction. The earliest layers get
-almost nothing.
+The multiplying that makes backpropagation cheap is also its weak point, since slopes get multiplied
+along the chain. A long line of layers that each pass back only a fraction leaves almost nothing for
+the earliest layers.
 
 That vanishing-gradient problem shaped how modern models are built. The shortcuts you will meet in The
 transformer block lab are largely a fix for it. Careful starting weights help too. So does a kind of
-layer that rescales the numbers passing through it. That kind of layer is called normalization.
+layer that rescales the numbers passing through it, called normalization.
 
-The Gradient flow card lets you measure two of these fixes: shortcuts and starting weights. It has no
-normalization layer.
+The Gradient flow card lets you measure the first two of these fixes, but it has no normalization layer.
 
 ## How to play with it
 
@@ -521,26 +500,25 @@ The **Interactive backpropagation computation graph** card has six circles. They
 `weight w`, `multiply z`, `sigmoid ŷ`, `target y` and `loss L`. A circle shows `?` until the lab works
 out its value.
 
-Below the graph sits the **Backpropagation trace**. It has six steps. You can move through them with
-the **Advance one edge** button. You can also click any arrow on the graph.
+Below the graph sits the **Backpropagation trace**, six steps you can move through with the **Advance
+one edge** button. You can also click any arrow on the graph.
 
-The trace opens on step 1, `Multiply`, with z already filled in. So your first press of
-**Advance one edge** moves on to `Activate`.
+The trace opens on step 1, `Multiply`, with z already filled in. So your first press of **Advance one
+edge** moves on to `Activate`.
 
-1. `Multiply` multiplies the input by the weight and fills in z. At the start, z is 0.480.
-2. `Activate` sends z through the sigmoid and fills in the guess ŷ. The guess is 0.618.
-3. `Measure loss` compares the guess with the target and fills in the loss L. The loss is 0.0797.
-4. `Loss → output` starts the backward pass. It multiplies in the loss station's factor, −0.565.
-5. `Output → product` multiplies in the sigmoid's factor, 0.236. That brings the running total to
+1. `Multiply` multiplies the input by the weight and fills in z, giving 0.480 at the start.
+2. `Activate` sends z through the sigmoid and fills in the guess ŷ, giving 0.618.
+3. `Measure loss` compares the guess with the target and fills in the loss L, giving 0.0797.
+4. `Loss → output` starts the backward pass by multiplying in the loss station's factor, −0.565.
+5. `Output → product` multiplies in the sigmoid's factor, 0.236, and the running total becomes
    −0.1333.
-6. `Product → weight` multiplies in x, which is 0.800. That gives the weight its slope of −0.1066.
+6. `Product → weight` multiplies in x, or 0.800, and gives the weight its slope of −0.1066.
 
 During the first three steps, the heading reads "Forward pass" with `values →`. From the fourth step
-on, the heading reads "Backward pass" with `← gradients`.
+on, it reads "Backward pass" with `← gradients`.
 
-Each backward step adds a pink `×` tag under an arrow. The tag shows the factor that arrow multiplies
-in. A pink pill also appears under each circle, showing its running total. And the next row of the
-tape fills in.
+Each backward step adds a pink `×` tag under an arrow, showing the factor that arrow multiplies in. A
+pink pill under each circle shows its running total, and the next row of the tape fills in.
 
 Check the tape as you go. Each pill should equal the pill to its right times the factor on the arrow
 between them. At the last step, the tape reads `−0.1333 × 0.800 = −0.1066`. A small line under that
@@ -552,18 +530,18 @@ Before you touch anything, make a prediction. If the loss gets ten times bigger,
 the weight get bigger too?
 
 **Try this:** Set **Input x** to 1.5, **Weight w** to 3, and **Target y** to 0.1. Then walk the trace
-again.
+again. Now z is 1.5 × 3, or 4.5, so the sigmoid pins its guess near 1, at 0.989.
 
-Now z is 1.5 × 3, which is 4.5. The sigmoid pins its guess near 1, at 0.989. That guess is a long way
-from the target of 0.1. The loss jumps to 0.790, about ten times its starting value.
+That guess is a long way from the target of 0.1. The loss jumps to 0.790, about ten times its starting
+value.
 
 Yet the slope on the weight is only 0.029. Ignoring the sign, that is less than a third of the 0.1066
-you started with. The slope is also positive now. The guess sits above the target, so the weight
-should go down.
+you started with. It is also positive now, since the guess sits above the target and the weight should
+go down.
 
-Where did the slope go? Look at the three factors. The loss station's factor is large, about 1.778.
-That is because the miss is big. The multiply station's factor, x, is 1.5. But the sigmoid's factor
-has collapsed to 0.011. That means the sigmoid passes on only about one percent of any nudge. A saturated
+To see where the slope went, look at the three factors. The loss station's factor is large, about
+1.778, because the miss is big. The multiply station's factor, x, is 1.5, but the sigmoid's factor has
+collapsed to 0.011. That means the sigmoid passes on only about one percent of any nudge. A saturated
 sigmoid barely responds, and that one tiny factor shrinks the whole product:
 
 ```
@@ -572,26 +550,24 @@ sigmoid barely responds, and that one tiny factor shrinks the whole product:
 
 That is the vanishing gradient in miniature, with one layer instead of twelve.
 
-You can also move **Target y** on its own. Then read the **Chain rule** row. It updates straight
-away. First, put **Input x** back to 0.8 and **Weight w** back to 0.6.
-
-Now set the target to 0. That flips the slope to about +0.233, so the weight should now go down. Then
-set the target to 0.6, close to the guess. That shrinks the slope to about 0.0067. A guess that is
-nearly right needs only a small correction.
+You can also move **Target y** on its own and watch the **Chain rule** row update straight away. First
+put **Input x** back to 0.8 and **Weight w** back to 0.6. Setting the target to 0 then flips the slope
+to about +0.233, so the weight should now go down. Setting the target to 0.6, close to the guess,
+shrinks the slope to about 0.0067. A guess that is nearly right needs only a small correction.
 
 ### Spend the slope
 
-A slope only becomes useful when you act on it. That is the job of the last two controls. The
-**Learning rate** slider sets how big a step to take. The lab writes it as η, which you read "eta".
+A slope becomes useful only when you act on it. That is the job of the last two controls. The
+**Learning rate** slider, written η and read "eta", sets how big a step to take.
 
-The button **Apply w ← w − η∂L/∂w** takes one step. It sets the new weight to the old weight minus
-the learning rate times the slope.
+The button **Apply w ← w − η∂L/∂w** takes one step. It sets the new weight to the old weight minus the
+learning rate times the slope.
 
-Picture walking downhill in thick fog. The slope tells you which way is down. The learning rate sets
-the length of your stride. Real walking differs in one way. A walker's stride stays about the same
-length. Here, the step is the learning rate times the slope. So a gentler slope gives a smaller step.
+Picture walking downhill in thick fog. The slope tells you which way is down, and the learning rate
+sets the length of your stride. Real walking differs in one way: a walker's stride stays about the same
+length. Here, the step is the learning rate times the slope, so a gentler slope gives a smaller step.
 
-Put **Target y** back to 0.9. Now all three sliders are at their starting values again. Then, with a
+Put **Target y** back to 0.9, so all three sliders are at their starting values again. Then, with a
 learning rate of 0.70, one press works out like this:
 
 ```
@@ -600,40 +576,38 @@ w  ←  0.600 − 0.70 × (−0.1066)
    =  0.675
 ```
 
-Subtracting a negative number is the same as adding. So subtracting a negative slope moves the weight
+Subtracting a negative number is the same as adding, so subtracting a negative slope moves the weight
 up. That is exactly what the slope said to do.
 
 The loss falls from 0.0797 to 0.0720. On the **Loss versus weight tangent chart**, the ball slides a
 little way downhill. Moving the **Learning rate** slider on its own changes nothing until you press the
 button.
 
-The chart draws the loss for every weight from −3 to 3. A ball marks the current weight. A dashed
-straight line, called a tangent, touches the curve at the ball. The tangent's steepness is the slope
-that the backward pass worked out.
+The chart draws the loss for every weight from −3 to 3, with a ball at the current weight. A dashed
+straight line, called a tangent, touches the curve at the ball. Its steepness is the slope that the
+backward pass worked out.
 
-A green dashed line marks the weight where the guess would equal the target. At that weight, the loss
-would be zero. At the start, the line's label reads `ŷ = y at w 2.75`.
+A green dashed line marks the weight where the guess would equal the target. There the loss would be zero.
+At the start, its label reads `ŷ = y at w 2.75`.
 
 ### Check the slope by measuring
 
-Under the chart, compare **Analytic slope** with **Numeric check**. The first comes from the
-chain-rule formula. The second comes from nudging the weight and measuring. So the lab finds the two
-in completely different ways.
+Under the chart, compare **Analytic slope** with **Numeric check**. The first comes from the chain-rule
+formula, and the second comes from nudging the weight and measuring. So the lab finds the two in
+completely different ways.
 
-Picture a student who solves an equation with algebra. Then the student checks the answer a second
-way, by plugging numbers back in. The **Numeric check** works in a similar spirit. It nudges the
-weight a tiny bit up and a tiny bit down. It measures the loss both times. Then it divides the change
-in loss by the distance between the two weights it tried.
+Picture a student who solves an equation with algebra. Then the student checks the answer a second way,
+by plugging numbers back in. The **Numeric check** works in a similar spirit. It nudges the weight a
+tiny bit up and a tiny bit down, and measures the loss both times. Then it divides the change in loss
+by the distance between the two weights it tried.
 
-The two checks are not quite alike, though. Plugging numbers back in checks an answer exactly. The
-nudge has a real size, so the numeric check gives an estimate.
+The two checks are not quite alike, since plugging numbers back in checks an answer exactly. The nudge
+has a real size, so the numeric check gives an estimate.
 
 You can try a rougher version yourself, with a much bigger nudge. Drag **Weight w** to 0.62 and read
-the **Loss** readout. It shows about 0.07755. Then drag **Weight w** to 0.58. The **Loss** readout now
-shows about 0.08182.
-
-So the loss changes by about −0.00427. Divide that by 0.04, the distance between the two weights. That
-gives the slope:
+the **Loss** readout, about 0.07755. Then drag **Weight w** to 0.58, where the **Loss** readout shows
+about 0.08182. The loss changes by about −0.00427, and dividing by 0.04, the distance between the two
+weights, gives the slope:
 
 ```
 loss at w = 0.62        0.0775517
@@ -647,204 +621,193 @@ Even this rough measurement lands on the chain rule's −0.1066. The lab uses a 
 
 ### Stack the layers
 
-Now open **Gradient flow through depth**. It builds a stack of layers, each a row of 16 units. It runs
-the stack once on 32 made-up practice examples, before any training. Then it shows how much slope
+Now open **Gradient flow through depth**, and it builds a stack of layers, each a row of 16 units. It
+runs the stack once on 32 made-up practice examples, before any training. Then it shows how much slope
 reaches each layer.
 
-The bars run from **Layer 1 · in**, nearest the input, down to the last layer. The last layer is
-marked `· out`. A full bar is split into 20 equal stretches. The empty end stands for 1e-13. The full
-end stands for 1e7. Each extra stretch stands for ten times more slope.
+The bars run from **Layer 1 · in**, nearest the input, down to the last layer, marked `· out`. A full
+bar is split into 20 equal stretches. The empty end stands for 1e-13, and the full end stands for 1e7.
+Each extra stretch stands for ten times more slope.
 
 Think of a price tag that gains a zero: $10, then $100, then $1,000. Each stretch of bar is like one
-more zero. Unlike prices, though, most of this scale covers numbers below 1. Thirteen of the 20
-stretches sit below 1.
+more zero. Unlike prices, though, most of this scale covers numbers below 1: 13 of the 20 stretches.
 
 Each factor of ten is called an **order of magnitude**. So a bar three stretches shorter shows a slope
-three orders of magnitude smaller. That is 10 × 10 × 10, or a thousand times smaller. A bar half as
-long is therefore not half the slope. Trust the printed number beside it.
+three orders of magnitude smaller. That is 10 × 10 × 10, or a thousand times smaller. A bar half as long
+is therefore not half the slope, so trust the printed number beside it.
 
 Under the bars, **Layer 1 norm**, the last layer's norm and **Layer 1 ÷ last** give the exact values.
 **Loss at the start** gives the untrained stack's average cross-entropy score on its 32 examples. The
-card opens at six layers. There, Layer 1 reads 1.4e-4 and Layer 6 reads 2.3e-2.
+card opens at six layers, where Layer 1 reads 1.4e-4 and Layer 6 reads 2.3e-2.
 
-Run these comparisons in order. Before each change, predict which way **Layer 1 norm** will move:
+Run these comparisons in order, and before each change, predict which way **Layer 1 norm** will move:
 
 1. Set **Activation** to `sigmoid`, **Initial weight scale** to `Glorot`, and **Skip connections** to
-   `off`. Then lower **Network depth** to 1. Raise it back up to 12, one step at a time.
+   `off`. Then lower **Network depth** to 1 and raise it back up to 12, one step at a time.
 2. Watch Layer 1's norm start at about 0.15 with one layer. It falls at every single step, down to
-   2.6e-8 at twelve. The last layer's own number wobbles up and down. At twelve layers, it still reads
-   about 0.21.
-3. Switch **Activation** to `tanh`. Notice that Layer 1 now reads about the same as the last layer.
-4. Switch to `ReLU`, and keep twelve layers. Step **Initial weight scale** from `small (std 0.1)`
+   2.6e-8 at twelve. The last layer's own number wobbles up and down, and at twelve layers it still
+   reads about 0.21.
+3. Switch **Activation** to `tanh`, and notice that Layer 1 now reads about the same as the last layer.
+4. Switch to `ReLU` and keep twelve layers. Step **Initial weight scale** from `small (std 0.1)`
    through `Glorot` and `He` to `large (std 1.0)`. Every bar moves together, from tiny to enormous.
 5. Switch back to `sigmoid` with `Glorot`, and turn **Skip connections** on. Then compare
    **Layer 1 ÷ last** and **Loss at the start** with your twelve-layer readings from step 2.
 
-For more detail, open **Table of the same numbers**. It adds two columns.
+For more detail, open **Table of the same numbers**, and you will find two extra columns. **Mean slope
+f′(z)** is the average local derivative of each layer's squashing step. Here f′(z), read "f-prime of
+z", is the lab's short way to write a squashing step's local derivative.
 
-**Mean slope f′(z)** is the average local derivative of each layer's squashing step. Here f′(z), read
-"f-prime of z", is the lab's short way to write a squashing step's local derivative.
-
-**Output RMS** is short for root mean square. It gives a typical size for a layer's output numbers. To
-find it, square the numbers, take the average, then take the square root. The only change from the
-norm is the average in the middle. With the numbers 3 and 4, the squares are 9 and 16. Their average
-is 12.5. The square root of 12.5 is about 3.5, a typical size for 3 and 4.
+**Output RMS**, short for root mean square, is a typical size for a layer's output numbers. To find it,
+square the numbers, take the average, then take the square root. The only change from the norm is the
+average in the middle. With the numbers 3 and 4, the squares are 9 and 16. Their average is 12.5, and
+the square root of 12.5 is about 3.5. That is a typical size for 3 and 4.
 
 ## What to notice
 
-- No station uses the whole formula. Each one multiplies whatever arrives from its right by its own
-  local derivative. The running product carries the information back to the dial.
+- No station uses the whole formula. Each one multiplies what arrives from its right by its own local
+  derivative. The running product is what carries the information back to the dial.
 - The multiply station reports the other input's value. So x scales the slope on w, and w scales the
   slope toward x. That is why forward values have to stay in memory until the backward pass reaches
   them.
-- The sigmoid's local derivative peaks at 0.25 when the guess is 0.5. It falls toward zero at both
-  ends. A sigmoid can never pass back more than a quarter of the slope it receives.
-- A large loss does not guarantee a large slope. One flat, saturated station in the middle of the
-  chain can block almost all of it.
+- The sigmoid's local derivative peaks at 0.25 when the guess is 0.5 and falls toward zero at both ends.
+  A sigmoid can never pass back more than a quarter of the slope it receives.
+- A large loss does not guarantee a large slope. One flat, saturated station in the middle of the chain
+  can block almost all of it.
 - The branch toward x gets a real slope, even though it has no dial to turn. In a deeper model, that
   same branch is how slope reaches the earlier layers.
-- The target is data, not a dial. So no slope flows toward it, and the graph marks it
-  `no gradient: data`.
+- The target is data, not a dial, so no slope flows toward it. The graph marks it `no gradient: data`.
 - **Analytic slope** and **Numeric check** agree in every printed digit. Comparing a formula's slope
   with a measured one like this is called **gradient checking**. In real code, it catches mistakes in
   derivatives that someone wrote by hand.
-- The **Chain rule** row reports that match as **Numeric agreement**. It shows a relative error. That
-  is the gap between the two slopes, as a share of their size. Say two slopes were 2.0 and 2.1. Their
-  gap of 0.1 is about 5 percent of their size. At the start, the lab's readout shows about 9.2e-10
-  percent. That is less than a billionth of a percent.
+- The **Chain rule** row reports that match as **Numeric agreement**, a relative error. A relative error
+  is the gap between the two slopes, as a share of their size. Say two slopes were 2.0 and 2.1: their
+  gap of 0.1 is about 5 percent of their size. At the start, the readout shows about 9.2e-10 percent,
+  less than a billionth of a percent.
 - Vanishing is about the gap between the first and last layers. The starting weights set the size of
   every layer at once. With ReLU at twelve layers, Layer 1 stays within a factor of ten of the last
   layer. That holds at every starting setting.
 - At twelve layers, sigmoid vanishes at every starting setting. Even its best setting leaves Layer 1
   with less than one part in 250 of the last layer's slope.
-- The table's **Mean slope f′(z)** column shows why sigmoid struggles. With sigmoid, that column stays
-  below 0.25 at every layer. So each step back starts by cutting the slope to under a quarter.
-- At twelve layers, tanh with `large (std 1.0)` shows the opposite problem. Layer 1's slope ends up
-  more than ten times bigger than the last layer's. So the slope grows as it travels back toward the
-  input.
-- A shortcut fixes the gap, not the growth. With sigmoid, Glorot, twelve layers and skips on, look at
-  the **Output RMS** column. It climbs from about 0.55 at Layer 1 to more than 6 at Layer 12. That
-  swelling pushes the final guesses to near-certain answers. About half of them are wrong. So
+- The table's **Mean slope f′(z)** column shows why sigmoid struggles. With sigmoid, it stays below 0.25
+  at every layer. So each step back starts by cutting the slope to under a quarter.
+- At twelve layers, tanh with `large (std 1.0)` shows the opposite problem. Layer 1's slope ends up more
+  than ten times bigger than the last layer's. So the slope grows as it travels back toward the input.
+- A shortcut fixes the gap, not the growth. With sigmoid, Glorot, twelve layers and skips on, the
+  **Output RMS** column climbs from about 0.55 at Layer 1. It reaches more than 6 at Layer 12. That
+  swelling pushes the final guesses to near-certain answers, and about half of them are wrong. So
   **Loss at the start** rises from 0.90 to 7.30.
 
 ## Where it breaks
 
 ### What this lab simplifies
 
-The lab calculates the small graph honestly. But the graph is tiny. It has one dial, one example and
-one squashing step. It also scores the guess with a squared gap, not cross-entropy. Cross-entropy is
-the kind of loss that language models actually use. The **Gradient flow through depth** card uses
-cross-entropy too. No station feeds two others. So the lab never has to combine slopes arriving from different
-paths.
+The lab calculates the small graph honestly, but the graph is tiny. It has one dial, one example and
+one squashing step. It also scores the guess with a squared gap, not cross-entropy, the kind of loss language models actually use. The **Gradient flow through depth** card uses cross-entropy too. No
+station feeds two others, so the lab never has to combine slopes arriving from different paths.
 
 The chart works only because the model has one dial. A real model has millions of dials, so nobody can
-draw its loss curve. The tangent here stands for one slope out of millions. The same backward pass
-would produce all of them at once.
+draw its loss curve. The tangent here stands for one slope out of millions that the same backward pass
+would produce at once.
 
 The **Gradient flow through depth** card is one random draw of the starting weights and the practice
-examples. Think of a random draw as one shuffle of a deck of cards. A new shuffle deals different
-cards.
+examples. Think of a random draw as one shuffle of a deck of cards. A new shuffle deals new cards. The card uses a stack 16 units wide on 32 made-up points, measured before any training step. It
+has no normalization layers, and it reports one norm for each layer's weights.
 
-The card uses a stack 16 units wide on 32 made-up points. The lab measures it before any training
-step. The card has no normalization layers. And it reports one norm for each layer's weights.
+A different random draw changes the card's numbers but not the orderings this lesson describes. That is
+where the shuffle picture breaks down: in a card game, a new shuffle can change who wins. Here, a new
+draw leaves the orderings in place. The course's own checks re-run the card with seven different random
+draws to make sure.
 
-A different random draw changes the card's numbers. It does not change the orderings this lesson
-describes. That is where the shuffle picture breaks down. In a card game, a new shuffle can change
-who wins. Here, a new draw leaves the orderings in place. The course's own checks re-run the card with
-seven different random draws to make sure.
-
-That card shows how big the slopes start. It does not show whether the network would actually learn.
-Learning also depends on the method that applies the slopes. It depends on the learning rate and on
-how the error is scored. And the slopes keep changing as training goes on.
+That card shows how big the slopes start, not whether the network would actually learn. Learning also
+depends on the method that applies the slopes, the learning rate and how the error is scored. The
+slopes also keep changing as training goes on.
 
 ### Where the real method runs into trouble
 
-The assembly-line picture and the group-project story both suggest fault and intent. But there is
-none. The backward pass is arithmetic. It works out how one number responds to a nudge in another. A
-big slope does not mean a dial is "wrong". It only means the loss reacts strongly to that dial right
-now.
+The assembly-line picture and the group-project story both suggest fault and intent, but there is none.
+The backward pass is arithmetic about how one number responds to a nudge in another. A big slope does not mean a dial is "wrong", only that the loss is sensitive to it now.
 
-The assembly line also stops matching in another way. Real graphs branch. This lab never shows that. A station's output can feed several other stations. That station then collects slopes from each
-of them. It **adds** them together before multiplying by its own local derivative.
+The assembly line also stops matching in another way, since real graphs branch and this lab never shows
+that. A station whose output feeds several others collects slopes from each of them. It **adds** them
+together before multiplying by its own local derivative.
 
-Picture one path sending back 0.3 and another sending back −0.1. The station's total is then
-0.3 + (−0.1), which is 0.2. One weight can also be reused in many places. Its slope is then the sum of
-the pieces from every place it appears.
+Picture one path sending back 0.3 and another sending back −0.1. The station's total is 0.3 + (−0.1), or
+0.2. One weight can also be reused in many places. Its slope is then the sum of the pieces from every
+place it appears.
 
 The backward pass also has a hidden cost. The forward values must stay in activation memory until the
-backward pass reaches them. That storage grows as you add layers. It grows with more examples in each
-round. It also grows with longer text. For long documents and deep models, storage often limits
-training more than the arithmetic does.
+backward pass reaches them. That storage grows with the number of layers, the examples in each round
+and the length of the text. For long documents and deep models, that storage often limits training more
+than the arithmetic does.
 
 Skip connections on their own make numbers grow, as the card shows. Real deep networks, such as the
-transformers in later labs, pair shortcuts with normalization layers. This lab leaves those layers
-out. So the card shows what shortcuts do alone, growth included.
+transformers in later labs, pair shortcuts with normalization layers. This lab leaves those out, so the
+card shows what shortcuts do alone, growth included.
 
 **A common mix-up:** Backpropagation is not how brains learn. It needs a single error signal sent
-backward through the exact same connections used going forward. Real brains do not appear to work
-that way. Backpropagation is an efficient method for finding the slopes of a calculation, and nothing
-more.
+backward through the exact same connections used going forward. Real brains do not appear to work that
+way. Backpropagation is an efficient method for finding the slopes of a calculation, and nothing more.
 
 ## Going deeper
 
 ### Programs do the bookkeeping
 
-People build models with software toolkits called frameworks. Frameworks do all of this
-automatically. Every operation quietly records what it needs to report its own local derivative. So
-the program builds a tape as the forward pass runs, much like the tape in this lab.
+People build models with software toolkits called frameworks, and frameworks do all of this
+automatically. Every operation quietly records what it needs to report its own local derivative. So the
+program builds a tape as the forward pass runs, much like the tape in this lab.
 
-Asking for slopes then replays that tape in reverse. That is reverse-mode autodiff in action. Nobody
-has to write derivatives by hand. That is why trying out a new model design is cheap.
+Asking for slopes then replays that tape in reverse, and that is reverse-mode autodiff in action.
+Nobody has to write derivatives by hand, so trying out a new model design is cheap.
 
 ### Saving memory
 
-The memory problem has a standard trick called gradient checkpointing. The program does not store
-every forward value. It saves them only at a few chosen points. Then it recomputes the rest during the
-backward pass.
+The memory problem has a standard trick called gradient checkpointing. Instead of storing every forward
+value, the program saves them only at a few chosen points. It recomputes the rest during the backward
+pass.
 
-That is the maths-test trade from earlier. You keep a few key lines and redo the steps between them
-when you need them. Checkpointing costs roughly 30 percent more computing. In exchange, it saves a
-large amount of memory.
+That is the maths-test trade from earlier. You keep a few key lines and redo the steps between them when
+you need them. Checkpointing costs roughly 30 percent more computing, but it saves a large amount of
+memory.
 
 ### Slopes too small to store
 
-Computers store numbers using bits. A bit is a single digit that is either 0 or 1. A 16-bit number
-uses 16 of them. The usual format uses 32 bits. To save memory, training sometimes stores numbers in a
-16-bit format called fp16 instead. With fp16, a very small slope can round down to exactly zero. Then
-that slope is lost.
+Computers store numbers using bits, and a bit is a single digit that is either 0 or 1. A 16-bit number
+uses 16 of them, and the usual format uses 32 bits. To save memory, training sometimes stores numbers in
+a 16-bit format called fp16 instead. With fp16, a very small slope can round down to exactly zero and
+be lost.
 
 Picture a kitchen scale that reads 0 for anything under 1 gram. A pinch of salt would read 0, even
 though it weighs something.
 
-The fix is to multiply the loss by a large number before the backward pass. That scales every slope
-up by the same amount. Afterward, the program divides that number back out. On the kitchen scale, that
-is like weighing a thousand pinches, then dividing by a thousand. Training differs on one point.
-It gathers no extra pinches. One multiplication makes every slope bigger.
+The fix is to multiply the loss by a large number before the backward pass. That scales every slope up
+by the same amount, and afterward the program divides that number back out. On the kitchen scale, that
+is like weighing a thousand pinches and then dividing by a thousand. Training differs on one point: it
+gathers no extra pinches, and one multiplication makes every slope bigger.
 
 A different 16-bit format, called bf16, covers the same range of sizes as the 32-bit format. So it
 usually needs no scaling.
 
 ### Taming the size of slopes
 
-Glorot and He are short formulas from research papers. The Glorot paper came out in 2010. The He paper
-came out in 2015.
+Glorot and He are short formulas from research papers. The Glorot paper came out in 2010 and the He
+paper in 2015.
 
-Glorot divides 2 by the number of inputs plus the number of outputs. Then it takes the square root.
-This lab's layers have 16 inputs and 16 outputs. So Glorot works out 2 ÷ 32, which is 0.0625. The square
-root of 0.0625 is exactly 0.25.
+Glorot divides 2 by the number of inputs plus the number of outputs, and then takes the square root.
+This lab's layers have 16 inputs and 16 outputs, so Glorot works out 2 ÷ 32, or 0.0625. The square root
+of 0.0625 is exactly 0.25.
 
-The He formula divides 2 by the number of inputs alone. Then it takes the square root too. Here that
-is the square root of 2 ÷ 16, which is about 0.35. The He formula was designed for units like ReLU.
+The He formula divides 2 by the number of inputs alone, then takes the square root too. Here that is the
+square root of 2 ÷ 16, or about 0.35. The He formula was designed for units like ReLU.
 
-Sometimes a slope grows too large anyway. A trick called gradient clipping then shrinks it back. It
-does this whenever the slope's norm passes a set limit.
+Sometimes a slope grows too large anyway. A trick called gradient clipping then shrinks it back whenever
+its norm passes a set limit.
 
-Normalization layers rescale the numbers inside the model as they pass through. They help keep both
-the forward values and the slopes in a workable range.
+Normalization layers rescale the numbers inside the model as they pass through. They help keep both the
+forward values and the slopes in a workable range.
 
 ### Clearing slopes between steps
 
-In most frameworks, new slopes get added to the old ones by default. They do not replace them. So
+In most frameworks, new slopes get added to the old ones by default instead of replacing them. So
 programs clear the slopes to zero before each new step.
 
 It is like a scoreboard that keeps adding points until someone resets it. Unlike a scoreboard, though,
@@ -857,11 +820,11 @@ Some steps cannot pass a slope backward at all. Picking one word from a list of 
 a hard choice. So there is no smooth answer to the question "what if it moved slightly?"
 
 Compare a dimmer with a light switch. Turn a dimmer slightly, and the light changes slightly. Push a
-switch slightly, and either nothing happens or the light flips all the way. A word is a bigger
-choice than a switch, though. A switch has two settings. Picking a word means choosing one from many.
+switch slightly, and either nothing happens or the light flips all the way. A word is a bigger choice
+than a switch, though. A switch has two settings, but picking a word means choosing one from many.
 
 Training through a step like that needs different ways to estimate slopes. That is part of why the
 reinforcement stage in the Post-training lab does not look like ordinary training.
 
 The Reinforcement learning foundations lab runs the simplest of these methods on a four-armed bandit.
-That is a toy game. You keep choosing one of four slot-machine arms and see whether it pays.
+That is a toy game where you keep choosing one of four slot-machine arms and see whether it pays.

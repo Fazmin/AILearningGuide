@@ -1,0 +1,376 @@
+---
+objectives: ["Read accuracy, precision, and recall from the same confusion matrix","Explain why accuracy can look fine while the rare class is always missed, and why the same detector's precision falls as positives get rarer","Say why choosing a threshold on the test slice is leakage that inflates the held-out score, and how train versus val curves diagnose overfitting","Trace the precision-recall trade-off as the decision threshold moves on a population with a realistic share of positives"]
+terms: ["Accuracy","Precision","Recall","F1 score","Confusion matrix","ROC curve and AUC","Class imbalance and base rate","Held-out, validation, and test sets","Epoch","Leakage","Overfitting","Cross-validation","Stratified split","MSE, MAE, and RMSE"]
+---
+
+## The big picture
+
+When someone says a model works, the proof is nearly always a number. It might be "99% accurate" or "catches 8 cases in 10". This lesson shows where those numbers come from and what each one really measures. A number can be calculated perfectly and still mislead you about a model.
+
+A **model** is a computer program that learns to give answers from examples. **Training** is that learning. The program sees many examples with known right answers. It gets adjusted a little at a time until its answers come closer to them.
+
+The lab uses a simple kind of model called a **detector**. It gives every example a score and then answers yes or no. It scores 100 examples, and the lab calls each one a row, like a row in a table.
+
+The detector works like a smoke alarm. An alarm measures the smoke in the air and rings whenever there is enough of it. Most of this lesson is about judging an alarm like that fairly. So the alarm is the picture you will keep coming back to.
+
+In real life, each row might be one email. The detector's job might be to spot a rare scam among lots of ordinary emails. The lab's rows are made up, so they stand for no real thing. A scam checker is still a good picture to hold beside the alarm.
+
+There are several ways to turn the alarm's right and wrong answers into one score. Accuracy is the best known. In this lab, each of those ways is called a **reading**.
+
+### Where you have met it
+
+When you read that a model scored well on a test, someone checked its answers against the right answers. This lab does the same thing on a small scale, so you can see every single answer. The previous lab, The supervised learning loop, already scored a trained model on a holdout. A holdout is a slice of data kept away from training.
+
+Later in this app, the Evaluation lab ranks four saved versions of a model on a benchmark. A benchmark is a fixed set of test questions. Then the lab lets the benchmark leak into training, so you can watch the rankings stop measuring ability. The leak you will make on purpose here is a small version of that same mistake.
+
+### Why it matters
+
+People use a score to decide whether to trust a model. A misleading score can make them trust a model that has not earned it. This lab shows four ways a score can mislead. Each one gets its own card or comparison later on:
+
+- **The wrong reading:** An alarm that never rings can score 99% accuracy while missing every fire. Real fires are that rare.
+- **A borrowed precision:** Where fires are common, an alarm can be right on about 7 of every 10 rings. Where fires are rare, the very same alarm can be right on fewer than 1 in 10.
+- **A leaked test:** Suppose you use your final test rows to make choices. Then the score you report looks better than what the model will do on new rows.
+- **Half the evidence:** A model can keep improving on its training rows while it gets worse on unseen rows. You only spot that if you track the unseen rows too.
+
+### What you will be able to explain
+
+By the end of this module, you should be able to explain each of these in your own words:
+
+- How to read accuracy, precision and recall from one small table of four counts. Each one answers a different question.
+- Why accuracy can look great while every rare case is missed. Also, why the same alarm's rings become mostly false when real fires get rarer.
+- Why choosing the alarm's cut-off by looking at the test rows is a kind of cheating. It pushes the reported score up and is called **leakage**.
+- How two curves, one for training rows and one for held-back rows, can show trouble. The model gets better on old rows and worse on new ones. That problem is called **overfitting**.
+- How moving the cut-off trades one reading against another when about 1 row in 5 is a real case.
+
+### What the lab lets you see and try
+
+The lab has seven cards, and each one shows a different way a score can be read or misread:
+
+- **Threshold and baseline:** This card puts 100 scored rows on a strip. You pick one of two made-up sets of rows and choose how touchy the alarm is.
+- **Train, val, test:** This card splits the rows into three slices. One is to learn from, one is to practise on and one is a final exam. You can watch what happens when someone peeks at the exam.
+- **Confusion matrix:** This card counts the alarm's catches, misses, false alarms and correct silences.
+- **Four readings:** This card turns those four counts into four different scores. It also draws two charts that show every cut-off at once.
+- **Learning curves:** This card shows how wrong a model is over time. It tracks rows the model learned from and rows it never saw.
+- **Cross-validation:** This card cuts the same 100 rows into five pieces. The pieces take turns being held back from the rest.
+- **Regression residuals:** This is a separate small example about scoring guesses of a number, such as a price. One big miss can take over the whole score there.
+
+Everything here is made up on purpose. The scores were written by hand or drawn at random. The curves come from formulas, not from a real model in training.
+
+## What it is
+
+### A detector, a score and a cut-off
+
+Picture a smoke alarm in a building that almost never has a fire. How touchy should you make it? An alarm that never rings is right on nearly every ordinary day. It is useless on the one day that matters. An alarm that rings at every slice of burnt toast is useless in a different way. Soon nobody trusts it.
+
+The lab's detector works in the same way, except that it scores 100 separate examples called **rows**. It gives each row a **detector score** between 0 and 1. A higher score means the row looks more like the thing the detector is hunting for.
+
+Some rows really are that thing, and those are called **positive** rows, the real fires. The rest are **negative** rows, the harmless ones.
+
+Here, "positive" does not mean good, and "negative" does not mean below zero. They only mean the thing is really there, or it is not. Positive and negative are the two **classes** of row. The lab labels a positive row 1 and a negative row 0. On the score strip, positives are diamonds and negatives are circles, so you can tell them apart by shape.
+
+To turn a score into a yes-or-no answer, you pick a cut-off called the **threshold**, written t. The rule named score ≥ threshold makes the alarm ring on every row whose score is at least t. The sign ≥ means "greater than or equal to". So with t at 0.50, a row scored 0.64 sets the alarm off. A row scored 0.30 leaves it quiet.
+
+The lab's notes call the alarm ringing on a row **firing**, so be careful with that word. A harmless row can "fire" too, and that is a false alarm, not a real fire. In this lesson, a fire always means a real positive row, whether or not the alarm notices it. When the alarm goes off on a row, this lesson says the alarm rings.
+
+You set t with the **Decision threshold** slider. It runs from 0.00 to 1.00 in small steps of 0.01.
+
+The **Baseline** control also offers two rules that ignore the scores completely. A baseline is a basic rule to compare against, so any real detector should beat both of them. Always negative never rings, like an alarm with its battery taken out. Always positive rings on every row, like an alarm stuck on. Dumb rules like these can still post numbers that look impressive, as you will see.
+
+### Two populations
+
+The **Population** control switches between two sets of 100 rows. They differ in their **base rate**, which is the share of rows that are really positive.
+
+- **1 in 100:** This set has a single real fire, row 99, which scores 0.42. One harmless row, row 12, scores a high 0.88. It sets the alarm off at any cut-off up to 0.88. Every other harmless row scores 0.256 or less, far below both of those rows.
+- **1 in 5:** This set has twenty real fires among its 100 rows. They score around 0.64, while the harmless rows score around 0.30. Both groups are spread out, so they overlap. Some harmless rows score higher than some real fires.
+
+The first set shows how a single number can hide a total failure, so it is extreme on purpose. The second has a more realistic share of positives. Because its two groups overlap, every choice of t costs you something.
+
+The smoke alarm picture stops matching in two places, and both are worth keeping in mind. First, a real alarm sits in one building and takes readings over time. The lab's rows are 100 separate examples instead. Second, no trained model produced the lab's scores. They were written by hand for 1 in 100. For 1 in 5, they were drawn at random from a fixed starting number. So the same "random" scores come out every time.
+
+### Four outcomes: the confusion matrix
+
+Once the alarm has rung or stayed quiet on each row, every row lands in one of four groups. Two questions decide which group. Was there really a fire, and did the alarm ring?
+
+- **True positive (TP):** There was a real fire and the alarm rang, so this is a catch.
+- **False positive (FP):** There was no fire but the alarm rang anyway, so this is a false alarm.
+- **False negative (FN):** There was a real fire but the alarm stayed quiet, so this is a miss.
+- **True negative (TN):** There was no fire and the alarm stayed quiet, so this is a correct silence.
+
+Here is a handy way to read the names. The second word is what the alarm said. The first word says whether it was right. So a false negative is a "no" that turned out to be wrong. That is why it counts as a miss.
+
+Count the rows in each group and lay the four counts out in a two-by-two grid. That grid is a **confusion matrix**. It is a table of what each row really was against what the rule predicted. It is named for showing where the detector mixes the two classes up.
+
+On the **Confusion matrix** card, the grid's two lines across are labelled True 0 and True 1. They say what each example really was. The two columns, Pred 0 and Pred 1, say what the rule predicted, since "pred" is short for predicted.
+
+Here is a real example from the lab. Set Population to 1 in 5, Baseline to score ≥ threshold and Decision threshold to 0.50. The Pred 1 column holds the rows where the alarm rang, and it reads 16 TP and 7 FP. The Pred 0 column holds the rows where it stayed quiet, and it reads 4 FN and 73 TN. Together, the four counts cover every row. The coloured grid beside the table shows the same four cells. Each is shaded by its share of the scored rows.
+
+### Four readings of one table
+
+Accuracy, precision, recall and F1 are four different ways of reading those same four counts. That is the central idea of this module. The **Four readings** card shows all four. It also draws a **threshold sweep** chart. The chart shows each reading for every t from 0 to 1 at once.
+
+The Confusion matrix card prints the formula for each one. Below, we work each formula on the example you set up a moment ago. N stands for the number of rows being scored.
+
+**Accuracy** asks what share of all the rows the rule got right. Its formula is (TP+TN)/N. On the example, that is 16 plus 73, out of 100. So 89 of the 100 rows were handled correctly, and accuracy is 89%.
+
+**Precision** asks how often the alarm was right when it rang. Its formula is TP/(TP+FP). The alarm rang 23 times, and 16 of those rings were real. So precision is 16/23, or 69.6%. Precision never looks at the misses. So an alarm can be very precise and still miss most of the fires.
+
+**Recall** asks how many of the real fires the alarm caught. Its formula is TP/(TP+FN). There were 20 real fires, and the alarm caught 16 of them. So recall is 16/20, or 80%. Recall never looks at false alarms. An alarm that rings on every single row gets a perfect recall of 100%.
+
+The **F1 score** combines precision and recall into one number. The lab writes it as 2PR/(P+R), with P for precision and R for recall. That means 2 × P × R, divided by P + R. The same score also equals 2TP/(2TP+FP+FN). Here 2TP means twice the TP count, not 2 × T × P. On the example, that is 32/(32+7+4), which is 32/43, or 74.4%.
+
+F1 is a kind of average called a **harmonic mean**. It gets dragged toward whichever of the two readings is smaller. On 1 in 5 at t = 0.90, for example, precision is 100% while recall is only 10%. An ordinary average of those would be 55%, which sounds respectable. F1 is only 18.2%. That lower number is the fairer one. An alarm that catches only 1 fire in 10 is not a good alarm.
+
+F1 also ignores the true negatives completely, so correct silences earn it nothing. A rule that never rings has TP = 0, so its F1 is 0. That holds even when its 99 correct silences give it 99% accuracy.
+
+### When a reading has no value: n/a
+
+Sometimes a formula would mean dividing by zero, and the lab handles that case carefully. If the alarm never rings, TP + FP is 0, so precision becomes 0/0. If the scored rows hold no real fires at all, TP + FN is 0, so recall becomes 0/0.
+
+Zero divided by zero has no answer. So the lab prints **n/a**, short for "not available". It does not pretend the value is 0% or 100%.
+
+That difference matters. A recall of 0% means there were fires and the alarm caught none of them. A recall of n/a means there were no fires to catch. Those rows cannot tell you anything about recall.
+
+### Precision and recall by hand
+
+Keep Population on 1 in 5 and Baseline on score ≥ threshold. Then walk the threshold upward from 0.50 and watch the counts shift.
+
+**At 0.50**, the matrix holds the counts you worked with above. They give a precision of 69.6% and a recall of 80%.
+
+**At 0.54**, two false alarms drop out while no real fire does. That leaves 16 true alarms, 5 false alarms and 4 misses. Precision rises to 16/21, or 76.2%. Recall stays at 80% because no fire was lost. F1 becomes 32/41, or 78.0%, which is the best F1 on these rows. So this small nudge improved the alarm and cost nothing.
+
+**At 0.60**, the alarm gets pickier, so true alarms fall to 11 and false alarms fall to 1. Precision climbs to 11/12, or 91.7%. Recall drops to 11/20, or 55%, because nine real fires are now missed.
+
+This pattern is the **precision-recall trade-off**, and it comes from how the scores are laid out. At low thresholds, most of the rows sitting right above t are harmless. There are four times as many harmless rows, and they tend to score lower. You can see this by raising t from 0.30 to 0.50. Over that stretch, 40 false alarms go quiet but only 4 fires do.
+
+Higher up, more of the rows left near the threshold are real fires. So each further step costs recall, as the step from 0.54 to 0.60 showed. The two groups overlap, so no single t separates them. Moving t trades one reading for the other. It can never push both to 100%.
+
+### Class imbalance: when accuracy looks fine and is useless
+
+Now switch Population to 1 in 100 and Baseline to always negative. This turns the detector into a silent alarm. The silent alarm gets all 99 harmless rows right and misses the one fire. The lab's note sums it up bluntly as "99% accuracy, zero recall."
+
+A set where one class is much rarer than the other has **class imbalance**. On a set like that, always giving the common answer is called **majority guessing**. It looks accurate because the common answer is nearly always right. On 1 in 5, the same silent alarm reads 80% accuracy and 0% recall. That looks less impressive, but it hides exactly the same total failure.
+
+This is why accuracy on its own can be the wrong number to publish. The math behind it is correct. The silent alarm really was right on 99 rows out of 100. But if the rare class is the reason the detector exists, that fact does not help.
+
+### The base rate: the same alarm, fewer fires
+
+Precision has a weakness of its own. It depends on how common real fires are, and not only on the alarm.
+
+Go back to 1 in 5 with score ≥ threshold at t = 0.50. The alarm catches 16 of the 20 fires, which is a rate of 0.80. That rate is called the **true positive rate**, and it is the same thing as recall. The alarm also rings on 7 of the 80 harmless rows, a rate of 0.0875, or 8.75%. That rate is called the **false positive rate**. It is the share of harmless rows that set the alarm off.
+
+Now picture the same alarm, with those two rates, where only 1 row in 100 is a fire. To see what happens, imagine 10,000 rows. Then 100 of them are fires and the other 9,900 are harmless:
+
+1. The alarm catches 80% of the 100 fires, which gives 80 true alarms.
+2. It also rings on 8.75% of the 9,900 harmless rows, which gives about 866 false alarms.
+3. That makes about 946 rings in total, and only 80 of them were real fires.
+4. Precision is therefore 80 out of about 946, which works out to about 8.5%.
+
+It is the same alarm, yet now about nine rings in ten are false. Nothing about the alarm itself changed. What changed is the crowd. False alarms come from the harmless rows. When fires are rare, there are far more harmless rows around to raise them.
+
+The Four readings card does this calculation for you. It has two readouts. One is named Precision if 1 row in 5 is positive. The other is Precision if 1 row in 100 is positive. In its note, the lab uses the Greek letter π as a name for the base rate. Here π is not 3.14. It also uses a raised dot to mean multiply.
+
+The note writes the formula as precision = TPR·π / (TPR·π + FPR·(1−π)). TPR is the true positive rate, and FPR is the false positive rate.
+
+Try it with π = 0.01. The top of the fraction is 0.80 × 0.01, which is 0.008. The bottom adds that same 0.008 to a false-alarm part. That part is 0.0875 × 0.99, which is about 0.0866. Precision is then 0.008 divided by about 0.0946, which gives the same 8.5% as before.
+
+### Held-out data: train, val and test
+
+So far you have judged the alarm on all 100 rows at once. Real evaluation adds an important rule. You cannot fairly grade a model on rows that were used to build it or tune it. Tuning means choosing its settings, such as t. A score on those rows partly measures memory instead of skill.
+
+So you hold some rows back from training, and those rows are called **held-out** data. In practice, they get cut into two slices with different jobs. You may use one while tuning, and no choice may touch the other. Together with the training rows, that makes three slices. The **Train, val, test** card draws all three as a strip of 100 coloured cells:
+
+- **train:** These are rows 0 to 69, which are the rows a model would learn from.
+- **val:** These are rows 70 to 84. The name is short for **validation set**, and you may look at it while choosing settings such as t.
+- **test:** These are rows 85 to 99, called the **test set**. You score it only once, after every choice is final.
+
+The small line above the card's title sums this up as "70 / 15 / 15". Those are the numbers of rows in each slice. You can think of val as the practice exams you are allowed to study from. Test is the final exam. It only tells you something true if you have never seen its questions.
+
+The **Scored split** control on the Threshold and baseline card picks which rows the matrix counts. The choices run from all 100 down to a single slice. On 1 in 100, the one real fire, row 99, sits in test. So train and val have no positives at all. There, the silent alarm scores 100% accuracy and n/a recall. It looks perfect only because there is nothing to miss.
+
+### Leakage: choosing t on the test slice
+
+**Leakage** means using the held-out rows to make a choice, such as a threshold. Then you report a score on those same rows as if they were unseen. The score comes out too high, because the choice was made to fit those exact rows. If you choose t on test, the test slice quietly becomes a second practice slice. The number you report is then no longer a test at all.
+
+Picture a friend who is tuning a cookie recipe for a bake sale. She bakes batches with slightly different amounts of sugar and asks the same 15 tasters to score every batch. Then she announces the top batch's score as proof of how good her cookies are.
+
+The sugar really does matter, but she picked the batch that happened to suit those 15 people. A new crowd at the sale will usually rate it lower than she claimed. Part of her top score was those 15 people's personal taste. The honest way is to choose the sugar with one group of tasters. Then you score the final recipe once with a different group.
+
+The lab does the same thing with the threshold. It uses two controls and a button on the **Train, val, test** card. You pick a slice with **Choose t using**. You pick the reading to aim for with **Maximize**, which offers accuracy, recall and F1. The button then tries 101 thresholds on that slice alone, from 0.00 up to 1.00 in steps of 0.01. It keeps whichever one scores best.
+
+The button is labelled Set t from val or Set t from test. It shows the threshold it found in brackets. Pressing it switches Baseline to score ≥ threshold and moves Decision threshold to that value. So the other cards update too.
+
+A table on the card compares two paths, Intact · t from val and Leaked · t from test. It scores each path twice. Its Test claim column is the number you would publish from the test slice. Fresh rows scores the same threshold on 400 extra rows. Those fresh rows come from the same random process and took no part in either choice. The lab can offer them only because it makes its own data.
+
+Here is what the table shows on 1 in 5 with Maximize set to F1:
+
+- **Intact:** Looking only at val, the search picks t = 0.55. That claims an F1 of 66.7% on test and gets 77.9% on the fresh rows.
+- **Leaked:** Looking at test, the search picks t = 0.46. That claims 85.7% on test but gets only 68.8% on the fresh rows.
+
+A **percentage point**, shortened to pts, is the plain difference between two percentages. So going from 66.7% to 85.7% is a rise of 19 points. The Leak inflation readout shows exactly that rise, +19.0 pts.
+
+Yet on rows that took no part in the choice, the leaked threshold did worse than the honest one. It got 68.8% against 77.9%. The leak changed the number you would report, and it did nothing to make the alarm better.
+
+The reason is that the test slice has only 15 rows and only 3 real fires. The best of 101 tries on it partly fits luck. A threshold chosen that way soaks up quirks, such as which few harmless rows happened to score high. So it looks great there and disappoints elsewhere.
+
+The honest claim is off as well. Fifteen test rows with only 3 fires make a tiny sample. One row more or less moves the score a lot. The honest number can land too high or too low by luck, and here it landed low. The choice itself pushed the leaked number upward.
+
+The val search produces a flattering number in exactly the same way. You can see it in the card's readouts. With Choose t using on val, the readout val F1 at that t shows 100.0%. That is because 0.55 was picked to suit those 15 val rows. That is why the honest path never publishes the val number. It scores the untouched test slice once instead.
+
+### Overfitting: two curves, not one
+
+Training a model means nudging it over and over to lower its **loss**. Loss is a number that measures how wrong its guesses are, and lower is better. One full pass of training over every training row is called an **epoch**. A plot of the loss after each epoch is a **learning curve**.
+
+The useful picture always has two curves, one for the training rows and one for the val rows. Loss measures wrongness. So a line going down means the model is getting better. A line going up means it is getting worse.
+
+Picture a student who prepares for an exam by redoing the same practice sheet every night. At first they are learning the subject, so they improve on the sheet and on new questions alike. After a while, though, they are mostly learning that one sheet. Their practice score keeps climbing while their score on fresh questions starts to slip. On a loss chart, that slipping score shows up as the val line rising.
+
+That slip is what **overfitting** looks like. The model keeps improving on the training rows while getting worse on rows it has not seen. On the **Learning curves** card, set **Pattern** to overfit. The solid train line keeps falling all the way to epoch 20. The dashed val line falls until epoch 10, where the Lowest val loss readout shows 0.262. After that it turns back up.
+
+By epoch 20, the Val rise since then readout shows 0.204. That is how far the val loss has climbed above its low point. Meanwhile the train loss has sunk to about 0.06. That would look like a big success if it were the only curve you saw.
+
+The vertical guide on the chart marks the epoch with the lowest val loss. That is where **early stopping** would keep the model. Early stopping means you stop, or roll back, at the point where the model did best on unseen rows.
+
+The other two patterns tell different stories, and neither has a val line that turns up. With good fit, both curves fall and stay close together, ending about 0.05 apart at epoch 20. With underfit, both curves flatten early and stay high and close together. The model is too weak to capture the pattern.
+
+In real training, stopping much too early can also leave a model underfit. In this sketch, though, both curves have already flattened, so more epochs would barely help.
+
+These curves come from formulas written for the lab, not from a model trained on the 100 rows. They show shapes, not a real run.
+
+### Cross-validation and stratified splits
+
+A val slice of 15 rows is small, so one lucky or unlucky slice could mislead you. **Cross-validation** deals with this by letting the data take turns, so no single slice decides the result. You cut the rows into equal pieces called folds. You hold each fold out once while the rest do the training. Then you average the scores.
+
+The **Cross-validation** card cuts the 100 rows into five folds of 20. It scores the silent alarm, always negative, on each fold. Nothing is trained on this card, since the silent alarm needs no learning. The **Held-out fold** slider picks which of the five is held out. Its label tells you which rows that fold covers.
+
+- On 1 in 100, folds 0 to 3 each score 100% accuracy, while fold 4 scores 95%. Fold 4 is the one that holds row 99.
+- The average on 1 in 100 is 99.0%, shown as CV mean acc, short for cross-validation mean accuracy. Only fold 4 can measure recall, because the other folds have no fire to miss.
+- On 1 in 5, every fold scores 80% accuracy and 0% recall. So the failure shows up in every single fold.
+
+Two lessons come out of this card. The first is that cross-validation does not repair a bad reading. It averages accuracy more fairly across the folds, and the average still looks fine on 1 in 100. The second is that a rare class can go missing from whole folds or slices.
+
+A **stratified split** fixes that by keeping each class's share the same in every slice. A rare class then turns up in train, val and test alike. On 1 in 5, the twenty fires were placed so that train holds 14. Val and test hold 3 each. That is exactly 20% of every slice. On 1 in 100 no split can manage it, because one fire cannot sit in three slices at once.
+
+### The ROC curve and AUC: grading the ranking
+
+Every reading so far judges one threshold. A different question is how well the detector ranks the rows. Do the real fires tend to score higher than the harmless rows, whatever t you pick?
+
+Slide t from 1 down to 0, and two rates climb together. A lower threshold lets more rows ring. The true positive rate, the share of fires that ring, rises as more fires get caught. The false positive rate, the share of harmless rows that ring, rises as more false alarms creep in.
+
+Plot one rate against the other for every t, and you get the **ROC curve**. False positive rate runs along the bottom, and true positive rate runs up the side.
+
+For example, take 1 in 5 at t = 0.50. The alarm catches 0.80 of the fires and rings on 0.0875 of the harmless rows. That threshold becomes one dot, 0.0875 along the bottom and 0.80 up the side. Every other t gives a dot of its own, and joining them all makes the curve.
+
+Both rates run from 0 to 1, so the chart is a square with a total area of 1. A perfect detector's curve would fill all of it. The area under the curve is the **AUC**. It is a number from 0 to 1. It equals the chance that a randomly picked fire outscores a randomly picked harmless row.
+
+An alarm that guessed at random would ring on fires and harmless rows at the same rate. Its dots would fall along the dashed diagonal line. That line cuts the square in half, which is why pure guessing gives an area of 0.5.
+
+On 1 in 100 with all 100 rows scored, row 99 outscores 98 of the 99 harmless rows. Only row 12 beats it. So the AUC is 98/99, about 0.990. The What AUC means here readout says "row 99 outranks 98 of 99 negatives". Yet at t = 0.50 the one real fire does not ring, so recall is 0%.
+
+Both facts are true at once. AUC grades the ranking across every possible t, while recall grades the one t you actually chose. A great ranking can still ship with a threshold that never catches anything. That is why AUC alone is not enough. On 1 in 5 the AUC is 0.949. That means 94.9% of the fire-and-harmless pairs are ranked the right way round.
+
+### Regression: MAE, MSE and RMSE
+
+Some models guess a number, such as a price, instead of answering yes or no. This is called **regression**. It needs scores of its own. So the **Regression residuals** card is a separate small example that has nothing to do with the 100 rows.
+
+It has five points, each with an x value and a y value. Its model is very plain and always guesses ŷ = x. The symbol ŷ, said "y-hat", means the model's guess for y. So this model guesses that y equals x.
+
+The miss on each point is the real y minus the guess. It is written y − ŷ and is called a **residual**. The first four points sit close to the line ŷ = x drawn on the plot. You move the fifth point, the outlier, with the **Outlier y** slider. It runs from 3 to 16.
+
+Three common scores boil all five misses down to a single number. Each one treats a big miss differently:
+
+- **MAE:** Mean absolute error is the average size of the misses with any minus signs dropped. The table writes that size as `|y − ŷ|`, where the two bars mean "drop the minus sign".
+- **MSE:** Mean squared error squares each miss first and then averages them. So a big miss counts far more than a small one.
+- **RMSE:** This is the square root of MSE. Squaring also squares the units, so if y were a price in dollars, MSE would be in dollars squared. The square root brings RMSE back to plain dollars.
+
+Take the default, with Outlier y at 12. The fifth point has x = 4, so the model guesses 4, and the miss is 12 − 4 = 8. The other four misses are small: 0.2, 0.1, −0.1 and 0.2.
+
+1. For MAE, add the sizes, 0.2 + 0.1 + 0.1 + 0.2 + 8, to get 8.6. Then divide by 5 to get 1.72.
+2. For MSE, square each miss to get 0.04, 0.01, 0.01, 0.04 and 64, which add up to 64.1. Then divide by 5 to get 12.82.
+3. For RMSE, take the square root of 12.82, which is about 3.58.
+
+The outlier's one squared miss of 64 makes up 99.8% of that total. That is what the Outlier's share of MSE readout shows. Drag Outlier y from 4 up to 16. MAE climbs steadily to 2.52, while MSE leaps all the way to 28.82. MSE is the usual training loss for misses like these. Even so, it is not automatically the number to publish, because one wild point can take it over.
+
+## Why it’s here
+
+The previous lab ended with a score on a holdout. The natural next question is whether a published score means what you think it means. A model's quality has to be squeezed into one number that someone can report. The squeezing is where things go wrong. A score can be calculated with no errors and still be the wrong reading. It can also be measured on the wrong rows, or miss the evidence that would expose it.
+
+This lesson pins the published number down as a reading of one matrix. So you can see exactly which counts each number uses and which it ignores. Each of the four traps in the overview comes down to the same thing. The calculation is correct, but it answers a different question from the one you care about.
+
+It also separates two kinds of number that often get blurred. One is the loss that training lowers. The other is the readings that people publish. A loss shifts a little whenever any score shifts a little. For instance, picture a real fire whose score rises from 0.40 to 0.45 while t stays at 0.50. The loss drops a little, because the model is a bit less wrong about that row. The alarm still stays quiet on that row, though, so accuracy and recall do not move at all.
+
+That steady response is what lets the training program tell which way to nudge the model. The readings only change when a row crosses the threshold. So a model can reach a low loss while the reading you publish still hides its failures.
+
+Two populations are here on purpose, because each one can show things the other cannot. A single real fire is enough to break accuracy. But with one positive, recall can only ever be 0% or 100%. That is too few to show a trade-off, a base-rate effect, or how much a leak is worth. Twenty fires are enough for all three.
+
+## How to play with it
+
+The lab's seven steps walk you through the cards in order. Each one sets up a comparison worth making:
+
+1. **Keep the never-fire baseline:** Leave Population on 1 in 100 and Baseline on always negative. Leave Scored split on all 100. That is how the lab opens. Then read Accuracy against Recall on the Four readings card, which read 99.0% and 0.0%.
+2. **Move the threshold:** Switch Baseline to score ≥ threshold and set Decision threshold to 0.42. The alarm now rings on row 99 and also on row 12, the harmless row. At 0.60 it rings only on row 12, giving a false alarm and a miss. At 0.90 it rings on nothing at all.
+3. **Switch to 1 in 5:** Set Population to 1 in 5 and slide Decision threshold from 0.30 to 0.70. In the matrix, FP drains away first while TP mostly holds. Then TP starts to fall into FN, as Precision rises and Recall falls.
+4. **Change the split:** Set Scored split to train, then val, then test, on each population, and compare the readings. On 1 in 100, train and val hold no fire, so recall reads n/a. On 1 in 5, every slice holds some fires.
+5. **Choose t on a slice:** Set Population to 1 in 5 and Maximize to F1. Then press Set t from val. Then set Choose t using to test and press Set t from test. Compare the Test claim and Fresh rows columns for both paths. Watch the Holdout? readout flip from intact to leaked.
+6. **Read a learning curve:** Set Pattern to overfit, then to good fit. Compare where the lowest val loss sits and whether the val line turns up after it.
+7. **Rotate a fold:** Move Held-out fold from 0 to 4 on each population. Notice which folds can measure recall. Only fold 4 can do it on 1 in 100, but every fold can on 1 in 5.
+
+**Try this:** On 1 in 5 with Baseline on score ≥ threshold, drag **Decision threshold** slowly from 0.30 to 0.70. Watch the threshold sweep chart on the Four readings card. Guess first whether F1 and accuracy will peak at the same threshold. F1 has one sharp peak, at 0.54.
+
+Accuracy reaches its top value of 91% there too. But it comes back to that same 91% several times up to 0.62. The lab's note reports the last of these, 0.62. By 0.62, F1 has dropped to 71.0%. So a search that chases accuracy can land on a threshold that F1 rates clearly worse. The "best" threshold depends on which reading you decided to chase.
+
+Two more comparisons are worth a minute. First, set Population to 1 in 100, Choose t using to val and Maximize to recall. Then press Set t from val. Val holds no fire, so the honest search has nothing to find. It falls back to t = 1.00, a threshold where the alarm never rings.
+
+Now set Choose t using to test and press Set t from test, which finds 0.42 instead. That catches row 99, but it marks the holdout leaked.
+
+Last, on the Regression residuals card, drag **Outlier y** from 4 to 16. Watch MSE leave MAE far behind.
+
+## What to notice
+
+- **99% accuracy and 0% recall can happen together:** On 1 in 100, the silent alarm does exactly that. This is majority guessing. On 1 in 5, the same rule reads 80% accuracy and 0% recall.
+- **Each reading has a blind spot:** Precision ignores misses, and recall ignores false alarms. A slice with no fires cannot measure recall at all, so it prints n/a.
+- **The trade-off is gradual:** On 1 in 5, sliding t from 0.30 to 0.70 lifts precision. It rises from 29.9% to 100%. Over the same slide, recall falls from 100% to 45%. F1 peaks at t = 0.54, while accuracy tops out at 91% at several thresholds from 0.54 to 0.62. The lab reports 0.62.
+- **Rare fires lower precision:** At t = 0.50, the same alarm is 69.6% precise at 1 in 5. At 1 in 100 it would be only 8.5% precise, so most of its rings would be false.
+- **On 1 in 100, accuracy barely moves:** Its sweep line stays high for every t above about 0.26. Recall, by contrast, falls off a cliff at 0.42. Below about 0.26, the ordinary harmless rows start ringing and accuracy drops fast.
+- **AUC can be near 1 with no fire caught:** On 1 in 100, the AUC is about 0.99. Yet at t = 0.50 the alarm rings only on row 12, a false alarm, and recall is 0%.
+- **Only untouched rows predict new data:** Once you choose t on test, test is no longer untouched. The Holdout? readout then switches to leaked.
+- **A leak raises the claim:** On 1 in 5 with F1, choosing t on val claims 66.7%. That path gets 77.9% on fresh rows. Choosing t on test claims 85.7% but gets 68.8%. The claim rose by about 19 points while the alarm got no better.
+- **Overfitting is a val line that turns up:** In the overfit sketch, val loss bottoms out at epoch 10. Then it rises with every extra epoch. A low train line alone is not the diagnosis. Train loss keeps falling in all three patterns.
+- **Stratifying needs a fire in every slice:** One fire in 100 rows is too few for three slices. Only test holds row 99. On 1 in 5, by contrast, train, val and test each hold exactly 20% fires. That makes a stratified split.
+- **Cross-validation averages a reading but does not fix it:** Five-fold accuracy of the silent alarm still looks fine. On 1 in 100, only the fold that holds row 99 can show a miss. On 1 in 5, every fold can.
+- **MSE jumps while MAE walks:** Drag the outlier, and the squared error races ahead. The absolute error climbs at a steady pace.
+
+## Where it breaks
+
+### What this lab fakes or simplifies
+
+- **The scores are not from a trained model:** On 1 in 100, all 100 scores were written by hand. On 1 in 5, they were drawn from a fixed seed. A seed is a starting number that makes the same "random" draw come out every time. Harmless rows centre around 0.30 and real fires around 0.64. Real detectors do not come with tidy, known score patterns like these.
+- **The leak was picked to be visible:** The seed is the lowest one that shows the leak clearly. Across 400 redraws of the same random process, choosing t on test raised F1 by about 22 points. That is the average. So the direction you see is typical. The exact size varies a lot, because the test slice has only 15 rows.
+- **No model from earlier labs is scored here:** Nothing from the previous page, The supervised learning loop, is reused. These scores stand on their own.
+- **The learning curves are drawn formulas:** No training happens on that card, and nothing in it is random.
+- **Cross-validation does not retrain anything:** Its folds also include the test rows, which a real setup would keep out.
+- **Zero over zero prints n/a:** The lab shows n/a, not a made-up 0%, when a reading divides by zero.
+- **There is no calibration plot:** Calibration asks whether rows scored 0.4 are fires about 40% of the time. Checking that needs many rows at each score level, and neither population has them.
+- **Percentages on 100 rows are exact counts:** They are not estimates with a margin of error.
+- **The setup is as small as it can be:** There are only two classes. A miss costs no more than a false alarm.
+- **The regression card uses ŷ = x:** Its model is fixed in advance. It is not a line drawn to fit the five points.
+
+### Where the real mechanism fails
+
+- **The rare class may matter most:** Accuracy can read the matrix correctly and still be the wrong headline.
+- **Nobody hands you fresh rows:** In real work, you protect yourself with a test slice no choice has seen.
+- **Leaks come in many forms:** One form is building a model's inputs from numbers taken from the test rows. They also include deciding when to stop training by watching the test curve. Another form is benchmark text that ended up in the training data.
+- **The base rate rarely stays put:** Real-world fires seldom match how common they were in your test set. It might be higher or lower, so the precision you measured in testing does not carry over.
+- **A val slice wears out:** Every choice you make by looking at it fits it a little more. So you still need an untouched test.
+- **A good ranking is not a good rule:** A high AUC says nothing about what your shipped threshold catches.
+
+**A common mix-up:** People often treat accuracy, precision and recall as one number with three names. They also treat a low training loss as proof that a model works. The three readings share a table but ask different questions. A low training loss says nothing about rows the model has not seen. People also assume that a precise alarm is precise everywhere. The same alarm is far less precise wherever fires are rarer. To know whether a model works, you need both curves, the right reading and an untouched holdout.
+
+## Going deeper
+
+- **Benchmarks and contamination:** Later, the Evaluation lab ranks saved versions of a model, called checkpoints. It scores them by how likely the model thinks each answer is. Then it lets the benchmark leak into training, which it calls contamination. That is the same mistake as choosing t on test. Here whole test questions leak, instead of a single threshold.
+- **The same honesty, later on:** Tokens & embeddings and Attention will hand you tidy numbers too. The warning carries over. A number can describe a matrix perfectly and still not describe the skill you wanted.
+- **Where the 1 in 5 scores come from:** Each score is drawn from a bell-shaped spread. It is centred on 0.64 for fires and 0.30 for harmless rows. The fires are spread a little wider. Every score is then kept between 0.02 and 0.98 and rounded to three decimal places.
+- **The base-rate formula has a name:** It is a form of Bayes' rule. That rule works out a chance once you know how common something is.
+- **AUC as a count:** The lab works out AUC by comparing every fire with every harmless row. A tie counts as half a win. The share of wins equals the area under the stepped ROC curve, so the two descriptions of AUC agree. With twenty fires, the curve has many small steps. So one row moves it far less than on 1 in 100. There the curve is a single step, and the whole number hinges on row 99.
+- **Cross-validation in practice:** Real cross-validation rotates only inside train and val and keeps the test slice out. It also trains the model again for every fold, which this lab skips.
+- **Loss versus reading:** Training works on a smooth loss computed from the scores, such as one called cross-entropy. The readings in this lab are what gets published.

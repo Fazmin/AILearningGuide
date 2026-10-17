@@ -30,6 +30,7 @@ for (const folder of folders) {
     "card-info.ts",
     "content/standard.mdx",
     "content/plain.mdx",
+    "content/simple.mdx",
     "assets.json",
   ];
 
@@ -125,7 +126,6 @@ for (const folder of folders) {
     failures.push(`${folder}: glossary needs at least 6 terms, found ${glossaryTerms.length}`);
   }
 
-  // TODO(simple-mode): add content/simple.mdx to `required` above once every module has one.
   for (const mode of ["standard", "plain", "simple"]) {
     let content = "";
     try {

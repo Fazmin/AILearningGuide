@@ -1,0 +1,273 @@
+---
+objectives: ["Compute a weighted sum", "Describe how activation functions shape outputs", "Relate the weights and bias to the position of the decision boundary"]
+terms: ["Weight", "Bias", "Weighted sum", "Dot product", "Weight vector", "Activation", "Sigmoid", "ReLU", "Step function", "Decision boundary", "Linear separability", "Saturation", "Parameter"]
+---
+
+## The big picture
+
+Picture deciding whether to go to the beach on Saturday. You check a few things, like how sunny the forecast is and how much homework you still have. Some of them count for more than others, since sunshine pulls you toward going and homework pulls you back. You weigh it all up into one answer: go, or stay home.
+
+This lab is about the smallest working part of an AI model, a single artificial neuron. It does a stripped-down version of that beach decision using only numbers. It takes in a few numbers and scales each one by how much it counts. Then it adds them up and turns the total into one answer. No thinking is involved, only multiplying and adding. Still, that small recipe is the brick the later models in this course are built from.
+
+### Where it shows up
+
+Every model in the rest of this course is built from huge numbers of copies of this one piece. That includes the text-writing model behind a chatbot. A **layer** is a row of neurons that all read the same inputs but count them differently. A deep network is layers feeding their answers into more layers.
+
+In the last lab, Tokens & embeddings, text became lists of numbers. A neuron is the kind of piece that reads a list like that and returns one number. Even the attention scores you will meet later come from the same multiply-and-add.
+
+### Why it matters
+
+When a model learns, a process called training adjusts the few numbers inside each neuron. So one neuron shows you what learning really changes. The neuron's last step, called the **activation**, makes stacking neurons worth doing. Without it, a tall stack would be no better than one neuron. The neuron's biggest limit is that it can only draw one straight line between its yes and no answers. That is why real models need many neurons working together.
+
+### What you will be able to explain
+
+By the end of this lab you will be able to do three things:
+
+- Work out a neuron's total by hand. You multiply each input by how much it counts, add the results, and add one fixed nudge.
+- Describe how the three answer-shaping curves in the lab turn that same total into three kinds of answer. You will also see why the flat parts of a curve slow learning down.
+- Explain how the neuron's numbers turn and slide the line where its answer flips from no to yes. You will also see why one neuron can never solve a small puzzle called XOR.
+
+### What the lab shows
+
+The lab has three cards, and the same sliders drive all of them. **Decision boundary and controls** shows a square map of every possible pair of inputs. The map is colored by the neuron's answer, and it shows the line where that answer flips. **Neuron equation** writes out the arithmetic with your current numbers. **Activation curve** shows where your total lands on the chosen curve and how steep the curve is there.
+
+A **Corner task** setting also puts a small four-corner puzzle on the square. You try to make the neuron say yes at the right corners.
+
+The neuron's own formula works out every number on screen. Nothing is guessed or measured from a real model. Nothing is trained either, because you set by hand the numbers a real network would learn. The four-corner puzzle is a tiny made-up test, not real data.
+
+## What it is
+
+A neuron does two small jobs in a row. First it weighs and adds up its inputs. Then it passes the total through a curve that shapes the answer.
+
+### Job one: weigh and add
+
+Go back to the beach decision and turn each thing you check into a number from 0 to 1. Call the sunshine forecast x₁, where 0 means pouring rain and 1 means a clear sky. Call the homework you still have x₂, where 0 means none left and 1 means all of it. These are the neuron's inputs, and in the lab they are the **Input x₁** and **Input x₂** sliders.
+
+Each input gets a multiplier, called a **weight**. It says how much each unit of that input counts, and in which direction. Sunshine pulls you toward going, so its weight w₁ is positive, and the lab starts it at 1.2. Homework pulls you back, so its weight w₂ is negative, and the lab starts it at −0.8. A negative weight means "the more of this, the less likely yes."
+
+The neuron then adds one fixed amount that does not depend on any input, called the **bias**. Think of it as your mood before you even check the forecast. The lab starts it at −0.1, a slight lean toward staying home. When every input is 0, only the bias is left in the total. So it alone decides which way the neuron leans.
+
+Multiply each input by its weight, add the results, and then add the bias. That gives you the **weighted sum**. The lab writes it as `z = x₁ × w₁ + x₂ × w₂ + b`. Here z is the total and b is the bias. Try it with the lab's starting numbers. The forecast is a fairly sunny 0.70, and about a third of your homework, 0.35, is left.
+
+- The sunshine part is 0.70 × 1.2 = 0.84, a push toward going.
+- The homework part is 0.35 × (−0.8) = −0.28, a pull toward staying home.
+- Adding both parts and the bias gives 0.84 − 0.28 − 0.10 = 0.46.
+
+So z is 0.46, a small positive total, and the neuron leans toward yes. The **Neuron equation** card shows exactly this arithmetic. Each line into the middle circle carries its weight and the product it adds. The **Weighted sum** row prints the whole sum with your current numbers, so you can check every step.
+
+Multiplying two lists of numbers pair by pair and adding the results has its own name, the **dot product**. Here one list holds the two inputs and the other holds the two weights. So the weighted sum is their dot product plus the bias. You will meet the dot product again in later labs. Attention uses the same move to score how well two lists of numbers line up.
+
+The weights and the bias are the neuron's adjustable settings, called **parameters**. In a real network nobody sets them by hand. Training shows the network many examples with known right answers. Then it nudges the parameters a little at a time until the network makes fewer mistakes. Training does not adjust the inputs, because they arrive fresh with each example, like a new forecast each Saturday. In this lab you set the parameters yourself with the **Weight w₁**, **Weight w₂** and **Bias b** sliders.
+
+### Job two: the activation
+
+The weighted sum can be any number, large or small, positive or negative. So the neuron's second job is to turn it into a useful answer. The curve that does this is called the **activation**. The **Activation** control in the lab offers three of them.
+
+Picture a graph with the total z along the bottom and the answer up the side. Find your z on the bottom and go straight up until you hit the curve. Then read across, and that height is the neuron's answer. The **Activation curve** card draws exactly this picture for whichever curve you pick.
+
+**Sigmoid** squashes any total into a number between 0 and 1 along a smooth S-shaped curve. A total of 0 gives exactly 0.5. Big positive totals creep toward 1 and big negative totals toward 0, but it never quite reaches either end. The lab prints its recipe as `1 / (1 + e^−z)`, where e is a fixed number a little over 2.7. You never need to work that out by hand, but one case is quick. At z = 0 the `e^−z` part becomes `e^0`. That is 1, because any number to the power 0 is 1. That leaves 1 ÷ (1 + 1), which is 0.5. The Neuron equation card shortens sigmoid to σ, the Greek letter sigma.
+
+**ReLU** passes a positive total through unchanged and turns any negative total into 0. Its recipe is `max(0, z)`, which means "whichever is bigger, 0 or z". So a total of 0.46 stays 0.46, while a total of −2 becomes 0.
+
+**Step**, known in full as the **step function**, gives a flat yes or no with nothing in between. It answers 1 when z is above 0 and 0 otherwise. That includes the case where z is exactly 0.
+
+With the starting total of 0.46, the three activations give three different answers.
+
+- Sigmoid gives 0.613, a mild lean toward yes that sits about 61% of the way from 0 to 1.
+- ReLU gives 0.460, which is the total itself, because the total is positive.
+- Step gives 1, a flat yes, because the total is above 0.
+
+The activation never changes z, only what the neuron does with it. Each of these curves bends somewhere, and a plain multiply-and-add can never do that. Why it’s here explains why that bend matters so much.
+
+### The line where the neuron is undecided
+
+Now picture every possible Saturday at once. They sit on the big square of the **Decision boundary and controls** card. Sunshine x₁ runs from 0 on the left to 1 on the right. Homework x₂ runs from 0 at the bottom to 1 at the top. So each point is one pair of inputs. The dark dot, called the probe, marks the pair your **Input x₁** and **Input x₂** sliders are set to.
+
+Every point on the map has its own total z. Points where z is positive are shaded green. Points where it is negative are shaded red, or grey with ReLU. How deep the shading looks depends on the activation. Between the two colors runs a solid dark line made of every point where z is exactly 0. It is called the **decision boundary**. These are the Saturdays where the pushes and pulls cancel out, so the neuron is perfectly undecided.
+
+With the starting numbers, the line runs from near the bottom-left corner up to the top edge. One point on it is a forecast of 0.75 with all your homework still to do. The sum shows why it sits there, since 0.90 − 0.80 − 0.10 comes to 0.
+
+Why is the boundary always straight? Imagine z as a height above each point of the map. With the starting weights, each step of 0.1 to the right raises z by 0.12, wherever you start. Every step of 0.1 upward lowers it by the same 0.08. That happens because z only ever multiplies and adds.
+
+A surface with no bumps or dips rises by the same amount for every equal step. That makes it a flat, tilted sheet, like a ramp. The decision boundary is where the ramp crosses floor level. A flat ramp always meets a flat floor along a straight line. So one neuron's boundary is straight whatever numbers you choose.
+
+The weights set which way the ramp tilts and how steeply. Changing them turns the line. It can shift the line too, because a new tilt changes where the ramp crosses the floor. The bias raises or lowers the whole ramp without tilting it. So changing the bias slides the line to a new spot without turning it.
+
+The ramp is a picture and not a perfect copy. The real z is only numbers, and nothing in the neuron is a slope you could walk on.
+
+### The arrow and the distance
+
+The lab also draws the two weights together as one arrow, labeled w. The first weight says how far the arrow goes across, and the second says how far it goes up. With the starting weights of 1.2 and −0.8, the arrow points to the right and somewhat downward. A list of numbers drawn as an arrow is called a vector, and this one is the **weight vector**.
+
+The arrow always points straight uphill on the ramp, toward bigger z and the green "yes" side. You can check it with the starting weights. Moving right raises z by 1.2 for each full step, and moving down raises it by 0.8. So the fastest climb heads right and somewhat down, exactly where the arrow points. Any part of a step that runs along the line is wasted, because z does not change along it. So the steepest climb cuts straight across the line at a right angle.
+
+The thin dashed lines join points at the same height, like the height lines on a hiking map. They mark where z is 1 or 2 on the green side. On the red side they mark −1 and −2.
+
+The true length of w measures how steep the ramp is, and the lab prints it as **‖w‖**. You can read that as "the length of w". The drawn arrow gets longer as ‖w‖ grows, but it is resized to fit the picture. You find ‖w‖ the way you find the long side of a right triangle. Square each weight, add the squares, and take the square root. With the starting weights the squares are 1.44 and 0.64. They add to 2.08, and the square root of 2.08 is about 1.442. That is how much z rises when you walk one full unit along the arrow. So it measures steepness.
+
+**Distance to boundary** tells you how far the probe sits from the line along the shortest path. The lab draws it as a short dotted line from the probe. It works the distance out as `z / ‖w‖`. That is the probe's height divided by how steep the ramp is.
+
+To see why, picture a ramp that rises 2 metres for each metre you walk uphill. Suppose you stand 1 metre up. Then the floor line is half a metre away across the floor, which is 1 ÷ 2.
+
+In the lab, at the start, that is 0.460 ÷ 1.442, or about 0.319. That is a bit under a third of the square's width. The sign only tells you which side you are on. It is positive on the side the arrow points to, and negative on the other side.
+
+## Why it’s here
+
+Every model needs a way to turn many incoming numbers into one useful signal. That way of combining them also has to come with knobs that learning can adjust. A neuron does both with very few moving parts. Each weight decides how much one input counts and whether it pushes toward yes or toward no. The bias sets the starting lean before any input arrives.
+
+### Why the bias is there
+
+You can see the bias earn its place on the map. Without it, a neuron whose inputs are all 0 would have a total of exactly 0. That would force the decision boundary through the bottom-left corner every single time. Step would always say no there, and Sigmoid would always say exactly 0.5. With a bias the line can sit anywhere. So the neuron can choose its own answer even when every input is 0.
+
+### Why the bend matters
+
+A model gets its power from stacking neurons in layers. But stacking only helps if each layer adds something the others cannot. Without an activation, every neuron is a multiply-and-add. One multiply-and-add fed into another collapses into a single multiply-and-add.
+
+Here is a tiny example with one input. The first neuron doubles its input and adds 1, and the second neuron triples that answer and subtracts 4. Feed in 5 and the first neuron gives 11, which the second neuron turns into 29. Now picture a single neuron that multiplies by 6 and subtracts 1. It also turns 5 into 29, and it matches the pair for every other input you try. So the two-neuron stack was one neuron in disguise all along.
+
+A hundred layers would collapse the same way, which would make all that depth useless. The reason is that graphing any multiply-and-add, like 6 × x − 1, always gives a straight line. Two straight-line steps in a row still give a straight line.
+
+An activation stops the collapse because its curve bends. ReLU has a sharp corner at 0, sigmoid flattens out at both ends, and step jumps. To see a bend at work, let a first neuron give x − 2. Then let ReLU turn anything negative into 0. Inputs 0, 1 and 2 all come out as 0, while 3 gives 1 and 4 gives 2. That graph is flat and then climbs, a bent line that no single multiply-and-add can draw.
+
+With a bend between layers, the stack can no longer be squeezed into one neuron. So each extra layer can add new shapes. The next lab, Stacking neurons, tests this directly.
+
+### Why one neuron is not enough
+
+The flat ramp also explains the neuron's biggest limit. A boundary that is always one straight line can only sort inputs that a straight line can split. Real tasks are rarely that tidy. So models use many neurons that each draw their own line. Later neurons combine those lines into more complicated shapes. The last step of this lab shows exactly where one neuron runs out. Set **Corner task** to XOR to see it.
+
+## How to play with it
+
+Work through these five steps in order, since each one builds on the last.
+
+### 1. Move the inputs
+
+Move **Input x₁** and **Input x₂** and watch the probe travel across the square. The **Weighted sum** and **Activation** rows on the Neuron equation card update as you go. So does the z badge on the Decision boundary and controls card. Notice that moving the inputs never moves the line, because the inputs are data, not parameters.
+
+### 2. Turn and slide the line
+
+**Try this:** Hold the inputs still and push **Weight w₁** up to 2. Then drag it slowly down toward 0, and watch the line. It turns around a point a little below the bottom-left corner, and it lies flatter as you go. Meanwhile the arrow w swings with it, always at a right angle to the line. All you changed was how much the sunshine counts.
+
+Bring it down to 0.1 and the solid line leaves the square altogether. Now no point on the map has a positive total. Even the best Saturday, full sun and no homework, now gives at most 0.1 − 0.1 = 0. The arrow keeps turning, though, so you can still see which way the ramp tilts.
+
+Now set **Weight w₁** back to 1.2 and move **Bias b**. This time the line slides without turning, staying parallel to where it was. The worst corner, no sun and all the homework, gives −0.8 plus the bias. The best corner, full sun and no homework, gives 1.2 plus the bias. So push the bias up to 0.8 and the whole map turns green. Pull it down to −1.2 and the whole map turns red. Either way, the line has slid right off the square and left only one color behind.
+
+### 3. One total, three answers
+
+Return the two weights to 1.2 and −0.8 and the bias to −0.1, which are the lab's starting values. Then set **Input x₁** to 0.75 and **Input x₂** to 1.00. That puts the probe exactly on the decision boundary. The z badge on the Decision boundary and controls card now reads 0.000. Flip **Activation** between Sigmoid, ReLU and Step, and read the output each time.
+
+- Sigmoid gives 0.500, exactly halfway between no and yes, which is what it gives anywhere on the line.
+- ReLU gives 0.000, because a total that is not positive becomes 0.
+- Step gives 0, because it only says yes when z is above 0, and 0 is not above 0.
+
+Keep an eye on the **Activation curve** card as you switch. The solid violet curve is your pick, and the faint dashed ones are the other two. The dot on the solid curve marks where your z lands. Right now that is the center line of the plot, z = 0. It sits halfway up for Sigmoid, and down at 0 for ReLU and Step.
+
+### 4. Double everything
+
+Put the inputs back at their starting values, 0.70 and 0.35, and set **Activation** to Sigmoid. Set the three parameters to the first values below and note what z and **Distance to boundary** say. Then double all three.
+
+- **Weight w₁**: first 1.0, then double it to 2.0.
+- **Weight w₂**: first −0.5, then double it to −1.0.
+- **Bias b**: first −0.2, then double it to −0.4.
+
+Before doubling, z reads 0.325, and after doubling it reads 0.650, which is twice as much. Yet the solid line does not budge, and **Distance to boundary** reads 0.291 both times. The dashed lines for z = 1 and z = −1 do move, though. Before doubling they sit outside the square, and after doubling they slide into view, closer to the solid line. A ramp twice as steep reaches a height of 1 in half the distance.
+
+In ramp terms, doubling all three makes the ramp twice as steep. It still crosses the floor in the same place. The height doubles and the steepness doubles, so height divided by steepness, which is the distance, stays the same.
+
+### 5. The corner puzzle
+
+Set **Corner task** to AND, and four marks appear at the corners of the square. A filled circle wants the neuron to answer 1, and an open square wants 0. The ✓ or ✗ beside each mark scores the current setting. A corner counts as a yes when its z is above 0. That is the same rule Step uses, whichever activation you picked.
+
+AND wants a yes only at the top-right corner, where both inputs are 1. Think of a game that starts only when both players press ready. With the lab's starting sliders, the **Corners correct** readout shows 3 / 4. See if you can find a setting that scores 4 / 4. You can check the answer in What to notice.
+
+Then switch to OR, which wants a yes whenever at least one input is 1. Last, switch to XOR and try to get all four corners right. Give it a real try before you read Where it breaks.
+
+## What to notice
+
+- **The three activations differ near the line and far out on the green side.** Right on the line they give 0.5, 0 and 0. Just past it, Step jumps to 1, while sigmoid is still near 0.5 and ReLU is still near 0. Far out on the red side, all three settle near 0 and agree. Far out on the green side, sigmoid creeps up to 1 and step is already at 1. ReLU keeps climbing with z, so there the gap grows.
+- **Switching Activation never moves the line.** It changes the shading and the output, but the line, the arrow and the corner marks stay put. They come from z and the weights alone, before the activation is applied. The line is where z = 0 and the arrow is the two weights. A corner counts as yes when its z is above 0.
+- **Each activation shades the map its own way.** Sigmoid is pale near the line and deepens further out. Step splits the square into two flat regions, one on each side of the line. ReLU paints the whole negative side grey, because every output there is exactly 0.
+- **A negative weight is not a mistake**, because it means "the more of this, the less likely yes." The Neuron equation card draws it as a dashed red line instead of a solid green one. The thickness of each line shows the size of its weight.
+- **Doubling all three parameters makes sigmoid more sure of itself**, because z doubles while the line stays put. With Sigmoid selected, the output in step 4 rose from 0.581 to 0.657. That moves it further from the undecided halfway point.
+- **Doubling only the weights does move the line.** If you leave the bias at −0.2 while the weights double, the line slides toward the bottom-left corner. The bias no longer keeps pace with them.
+
+### The flat zone
+
+Push z as high as it can go. Set both inputs to 1, and set both weights and the bias to 2. Now z is 6, and with Sigmoid selected the output reads 0.998, almost exactly 1.
+
+The **Slope f′(z)** readout tells you how steep the curve is at your dot. Its label f′(z) is math shorthand for "the slope of the curve at z". The short pink line on the Activation curve card shows the same slope as a picture. Both answer one question: if z moved a tiny bit, how much would the output move?
+
+Sigmoid is steepest at z = 0, where its slope is 0.25. That means nudging z by 0.1 there moves the output by a quarter as much, about 0.025.
+
+At z = 6 the slope reads 0.0025, a hundred times smaller. The readout turns red because it is below 0.05. The shaded bands on the sigmoid plot are labeled `slope < 0.05`. They mark where z is beyond about 2.9 in either direction. This flat stretch, where big changes in z barely change the output, is called **saturation**. It comes back in the training labs.
+
+### Solving AND and OR
+
+AND reaches 4 / 4 with both weights at 1 and the bias at −1.5. Adding up each corner shows why.
+
+- At the bottom-left corner both inputs are 0, so the total is −1.5, a no.
+- At the two side corners one input is 1, so the total is 1 − 1.5 = −0.5, also a no.
+- At the top-right corner both inputs are 1, so the total is 2 − 1.5 = 0.5, a yes.
+
+OR reaches 4 / 4 with the same weights and the bias at −0.5 instead. That makes every corner except the bottom-left one positive. XOR, by contrast, never gets past 3 / 4 whatever you try, and Where it breaks explains why.
+
+## Where it breaks
+
+### What this lab simplifies
+
+- Nothing is trained, so you set by hand the numbers a real network would learn. There is no data, no running score of mistakes, and no rule for improving the weights.
+- The inputs only run from 0 to 1, and the weights and bias only run from −2 to 2. So z always stays between −6 and 6.
+- The four corners are a truth table, a short list of the right answer for every combination of inputs. They are not a real collection of examples.
+- The arrow's direction is exact, but its drawn length is scaled so that it fits the picture.
+- The neuron has only two inputs, which is what lets its whole map fit on a flat square.
+
+### The beach picture stops matching
+
+You know what sunshine and homework mean, but a neuron does not know what its inputs stand for. It receives plain numbers with no labels. In a real network its weights come from training rather than from anyone's reasons. The beach decision is a way to picture the arithmetic, not a description of what a neuron is doing.
+
+### A weight is not an importance score
+
+Picture two friends who each build the same beach neuron. One measures homework in hours and the other measures it in minutes. Every homework number in the minutes version is 60 times bigger. So its weight has to be 60 times smaller to give the same answers. Both neurons behave identically, yet one weight looks tiny. So a small weight does not mean an input matters less. A weight tells you how much one unit of its input counts. That depends on the unit you measure in.
+
+### One straight line is all it gets
+
+XOR wants a yes when exactly one input is 1 and a no when both inputs match. Picture a hallway light with a switch at each end. The wiring turns the light on when exactly one switch is up. Both switches down means off, one up means on, and both up means off again.
+
+On the lab's square, the two yes corners sit at the top-left and bottom-right. They are diagonally across from each other. The two no corners sit on the other diagonal. Any straight line you draw leaves at least one corner on the wrong side. That is why **Corners correct** never passes 3 / 4.
+
+You can check why with a pencil, starting with the totals at the two yes corners. The top-left gives w₂ + b and the bottom-right gives w₁ + b, so together they make w₁ + w₂ + 2b. Now add up the two no corners. The bottom-left gives b and the top-right gives w₁ + w₂ + b, which together also make w₁ + w₂ + 2b.
+
+To score 4 / 4, both yes totals must be above 0, so their sum is above 0. Both no totals must be 0 or below, so their sum is 0 or below. One number cannot be both, so some corner is always wrong, whatever the sliders say.
+
+On the map, the two diagonals cross at the center of the square. The center's total is exactly half of that shared sum. So the center would have to sit on both sides of the line at once. A computer search through every setting of the three sliders agrees. Wider sliders would not help either, because bigger numbers can only turn or slide the line, never bend it.
+
+A pattern that one straight line can split, like AND or OR, is said to have **linear separability**. XOR is the classic pattern that lacks it, because no single line can split its corners. Solving it takes more than one neuron. You need two that each draw a line, and one more that combines their answers. That is where the next lab begins.
+
+### Flat zones stall learning
+
+Training improves a network by nudging each weight in whichever direction makes its mistakes smaller. It finds that direction by following slopes. The usual method is called **gradient descent**, and the gradient is the collection of all those slopes. A slope of about 0 gives training almost nothing to follow, so the weights behind that neuron barely move.
+
+Picture a class test with questions so basic that everyone scores 99 or 100. Studying harder barely changes anyone's score, so the test cannot tell the teacher who improved. A saturated sigmoid works the same way. Its output sits so close to 0 or 1 that changing the weights hardly shows.
+
+Here the test picture falls short, because everyone in that class is already right. A saturated neuron inside a network can also be stuck near the wrong end. It might sit near 1 when the right answer is 0. It is then badly wrong, but its slope is about 0, so it gets almost no push to change. That is when saturation hurts most.
+
+ReLU has its own version of this problem, because its slope is 0 whenever z is negative. A ReLU neuron whose total is negative for every example gets no signal at all. It may never recover. Step is worse still. Its slope is 0 everywhere except at the jump, where there is no slope at all. So gradient descent cannot train it.
+
+### Real neurons live in bigger spaces
+
+A real neuron usually has many more than two inputs. With three inputs, the square becomes a box and the boundary becomes a flat wall cutting through it. With more inputs the same idea continues in more directions than anyone can draw. So only two or three inputs can be pictured the way this lab does.
+
+Inside a trained network, one neuron's line is also only one of many lines that later layers combine. A single neuron's boundary, read on its own, says much less about the whole model than it seems to.
+
+**A common mix-up:** The name comes from nerve cells in the brain. But an artificial neuron is not a tiny brain cell making a decision. It is one multiply-and-add followed by one bending curve, and it remembers nothing it saw before.
+
+## Going deeper
+
+Real models mostly use smoother activations called GELU and SiLU in their hidden layers. Those are the layers between the input and the final output. Both are close relatives of ReLU that keep a gentle slope near zero and allow slightly negative outputs. That makes training steadier than with ReLU's sharp corner.
+
+Sigmoid still shows up where a model gives a final yes-or-no answer. It also works inside parts called gates. There, a value between 0 and 1 sets how much of a signal gets through. Its relative for choosing among many answers, called softmax, appears in every attention head. That is a part of the attention step you will meet later.
+
+Deep stacks of sigmoids have a further problem. Training multiplies the slopes of one layer after another, and even sigmoid's steepest slope is only 0.25. Multiply ten of those together and you get less than one in a million. That is one reason the learning signal can fade to almost nothing.
+
+To avoid flat zones, builders size the starting weights so z lands in the responsive middle of the activation. Inside deep models, extra steps called normalization keep z in that range as more layers are added.
+
+With Step as its activation, this neuron is the perceptron that the researcher Frank Rosenblatt described in 1958. In 1969 the researchers Marvin Minsky and Seymour Papert showed what one layer like this cannot compute. XOR was among their examples. The next lab, Stacking neurons, puts two of these lines together and solves XOR.

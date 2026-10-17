@@ -1,0 +1,323 @@
+---
+objectives: ["Trace one model through adapt, align, compress and serve, and name what each stage costs", "Gate a release on held-out loss for the target task and for a control task, and explain what a six-item benchmark cannot settle", "Fit the artifact you would ship to a memory and concurrency budget before calling it ready"]
+terms: ["Release gate", "Control set", "Catastrophic forgetting", "Replay", "Alignment tax", "Held-out loss", "Regression", "Not decisive", "Merged adapter", "Quantization", "Pruning", "Serving budget"]
+---
+## The big picture
+
+This module is the last stop on the training path, and it pulls together everything the earlier labs taught. Each earlier lab studied one step alone. One lab taught a model a new job, and another squeezed it into a smaller file. Here you carry one small model through all of those steps in a row. At the end you make one decision: is the model ready to go out, or should it wait? Releasing a finished model so people can use it is called **shipping** it. That is where the module gets its name.
+
+The steps always come in the same order, and each one changes the model in its own way. First the model learns to write one kind of text, which becomes its old job. Next it learns a second kind of text, its new job. Then it is tuned toward the answers people prefer, and after that it is squeezed into a smaller form. Last, you check whether a machine has enough memory to run it for many people at once.
+
+The catch is that any step can have a price, and some prices hide where nobody is looking. A step can look almost free when you study it alone. The costs add up when you chain the steps together. This lab turns each cost into a number that you can read and compare.
+
+### Where you have met it
+
+This app can download a program called **llama.cpp**. It uses that program to run a small model on your own computer as your guide. In this lab you pick a format for storing the model’s numbers, with names such as `Q4_K_M`. These are formats that llama.cpp uses to fit a model into a smaller file.
+
+Every other step in this lab also has a full-size version that people use on real models. The last section of this lesson names those tools. Real releases make the same ship-or-wait decision that you make here. They use much bigger tests and take more care afterward. They test with thousands of questions across many topics. They give the new model to a small share of users first. They also keep watching the numbers after launch.
+
+### Why it matters
+
+Without a careful check at the end, a change can quietly hurt a model. It may help the model with its new job and harm it at its old one. Nobody notices, because nobody tested the old job again. The starting settings in this lab make exactly that kind of change. Here it is the gate’s check on the old job that catches it.
+
+A model can also pass every quality test and still run out of memory on its first busy day. So a release decision has to check both quality and memory. It also has to check the version that will actually go out.
+
+### What you will be able to explain
+
+By the end of this lesson, you should be able to explain these ideas in your own words:
+
+- **The journey:** one model, after its first training, moves through four more stages. They are adapting, aligning, compressing and serving. You will also name what each stage costs it.
+- **The decision:** you can decide on a release using scores on text the model never trained on. You score both its new job and an old job you meant to keep.
+- **The small quiz:** a quiz with only six questions cannot settle a close call. That holds for any two versions of a model.
+- **The memory limit:** the exact version you would release has to fit in a machine’s memory. It must fit with as many people using it as you expect, before you can call it ready.
+
+### What the lab shows
+
+The lab really trains a tiny model while you watch. It trains the whole thing again from the start whenever you move a setting. Every quality score you see is measured on that tiny model. Its texts, its pairs of better and worse answers, and its quiz questions are all fixed. So the same settings always give exactly the same numbers. The lab lays all of this out across five cards:
+
+- **Training recipe** holds the settings for the first three stages. Those stages train the model and then adapt and tune it.
+- **Stage by stage** shows the model’s scores after each stage. So you can see what every step did to it.
+- **Eval gate** runs two pass-or-fail checks on the finished model. You can move the pass marks yourself.
+- **Compress and serve** shrinks the model and then works out whether it fits in a machine’s memory.
+- **Release report** gives the final answer, ship or hold, along with the reasons behind it.
+
+The memory check works differently from everything else. It is arithmetic about an imagined model of about 8 billion numbers. That model runs on one imagined machine. So none of the memory figures come from real hardware.
+
+## What it is
+
+### A picture to hold on to
+
+Picture a small studio getting ready to release an update to a game that people already play. The update adds a new level. It is polished using players’ votes on which of two versions they like better. Then it is shrunk so the download takes less space. Before it goes out, the team works through a checklist that was written in advance. The new level has to be clearly better. The old levels must still play as well as before. The servers must also cope with the crowd on launch day. If any one item fails, the update waits, however good the rest of it looks.
+
+This lab follows the same plan with a model, and each part of the update has a match:
+
+- **The old levels:** these are the model’s first job, which is writing harbor weather notes.
+- **The new level:** this is the second job you want to add, which is writing recipe steps.
+- **The polish and the download:** the polish is the preference step. The smaller download is the compression step.
+- **Launch day and the checklist:** launch day is serving many people at once. The checklist is the release gate.
+
+The picture stops matching in one important way. In a game, programmers change the code on purpose, and they can read exactly what they changed. Training nudges many of a model’s numbers at once, and nobody chooses any single number. So the only way to find out what got worse is to measure it. A broken level is also usually plainly broken, but a model slips by degrees. That is why the gate uses scores and pass marks instead of a quick play-through.
+
+### The model: a table of 900 numbers
+
+The model is the same kind of tiny model as in the Train one from scratch lab. Its only job is to guess the next **character**. Here that means a letter, a space or a full stop. The model works with 30 of them in all. Those are the 26 letters, the space, the full stop and two special marks. The two special marks never appear in its text.
+
+For each character, the model keeps a row of 30 scores, one for every character that might come next. It turns that row into chances that add up to 100%. That gives 30 rows of 30 scores, or 900 numbers in all. The numbers a model learns are called its **weights**. So this is the 900-weight table that the lab keeps mentioning.
+
+Each row belongs to one character. So the model only looks at the single character right before the one it guesses. The lab calls this tiny model the **toy**. That is why some readouts begin with the word Toy.
+
+After its first training, the row for the letter t makes h by far the likeliest next character. That happens because the word “the” turns up in every sentence of both texts. That one row serves both texts at once, which will matter a great deal later on.
+
+### Two jobs: harbor text and recipe text
+
+The lab uses two short texts with eight sentences each, and the model learns them one after the other. The first is harbor weather notes. One example is “the morning fog settles over the harbor and the air feels cool.” The second is recipe steps. One example is “warm the pan over medium heat and add a spoon of oil.” The model learns harbor text first, so that is its old job. Recipe text is the new job you want to add.
+
+The last two sentences of each text are kept away from every stage of training. Text kept back like this is called **held-out** text. For recipes, the held-out text is two sentences. The first is “drain the pasta and toss it with the warm sauce.” The second is “finish the dish with fresh basil and a little cheese.” The lab writes all of its text in lowercase, which is why “finish” has no capital letter. Testing on sentences the model trained on would reward it for repeating them. Held-out text shows how it does on writing it has never seen.
+
+### Scoring the model: held-out loss
+
+To score the model, the lab walks through a held-out sentence one character at a time. At each step it checks the chance the model gave to the character that really came next. A big chance means little surprise, and a small chance means a lot. The average surprise over every character is the model’s **loss**. So a lower loss is better, because the model was less surprised by real text.
+
+The unit of surprise is called the **nat**, so the lab reports loss in nats per character. You will not need the formula, only one rule of thumb. Every time the chance given to the right character halves, the surprise goes up by about 0.69 nats. That gives a few landmarks to read the numbers by:
+
+- **A perfect model:** a model that was always certain and always right would score exactly 0.
+- **A 1-in-8 guess:** a model that gave the right character a 1-in-8 chance every time would score about 2.08. Going from a sure thing to 1 in 8 takes three halvings, and 3 × 0.69 is about 2.08.
+- **A blind guess:** a model that gives all 30 characters the same 1-in-30 chance scores 3.401.
+
+Small changes in loss read almost like percentages. When the loss drops by 0.03, the model gives the right characters roughly 3% more chance on average. When it rises by 0.10, the model gives them roughly 10% less.
+
+At the start, the base model scores 2.098 on held-out harbor text. That is about as surprised as a steady 1-in-8 guess. On held-out recipe text it scores 2.540, which is nearer a 1-in-13 guess. It has never trained on a single recipe. Loss measured on held-out text like this is called **held-out loss**. Both of the gate’s quality checks run on it.
+
+### The five stages
+
+The lab runs one model through five stages. Stage 1 builds the starting model. The four stages after it are the ones whose costs this lesson tracks. The **Stage by stage** table has a row for the model after each of the first four stages. The fifth stage, serving, is worked out on the **Compress and serve** card instead. The **Training recipe** card holds the settings for the first three stages. The **Compress and serve** card holds the rest.
+
+#### Stage 1: pretrain
+
+The empty table trains on the six harbor training sentences, and the result is the row called **Base model**. **Base training epochs** sets how many times the model reads through those sentences. One full pass through them is called an **epoch**.
+
+#### Stage 2: adapt
+
+The model then learns recipe text through a small add-on called an **adapter**. It uses a method called **LoRA**, short for low-rank adaptation, which the LoRA & adapters lab covers. The model does not retrain all 900 numbers freely. Instead, the adapter builds a correction to the table out of a few simple patterns. That keeps the add-on small.
+
+Each pattern is one list of 30 numbers, one for each row. It also has another list of 30, one for each column. Every cell of the pattern is the number for its row times the number for its column. **LoRA rank** sets how many patterns get added together, from 1 to 12. At rank 4 the adapter learns 4 × 60 = 240 numbers instead of 900. So it can only change the table in a limited, regular way. In a big model, that saving makes adapters cheap to train and store.
+
+**Adapter epochs** sets how long the adapter trains. **Replay sentences** can mix some harbor sentences back in. The part called Replay, under Why it’s here, explains how.
+
+When training ends, the correction is added into the table for good. The result is a **merged adapter**, and it gives the row called **After adapting**. Merging means the shipped model is still one table, so it costs nothing extra to run. The catch is that you can no longer lift the adapter off or swap it for another.
+
+#### Stage 3: align
+
+Next the model is tuned toward answers people prefer, using a method called **DPO**, short for direct preference optimization. DPO works from three pairs. Each pair gives two endings for the same opening, one preferred and one rejected. For the opening “stir the”, the preferred ending is “onions until they turn soft.” The rejected one is “onions onions onions onions.”
+
+DPO nudges the table so that each preferred ending gains on its rejected partner. That means the gap between how likely the two endings are grows wider. To see how far each ending has moved, DPO compares the model with a **frozen copy**. This is a saved copy of the model from right before this stage, and it never changes. **DPO steps** sets how long this runs, and 0 switches it off. The result is the row called **After aligning**.
+
+**DPO beta** sets how big a gap counts as good enough. Once training has run long enough, a higher beta settles for a smaller gap. That keeps the model nearer the frozen copy. A lower beta pushes the pairs further apart and lets the model wander further. The Preference optimization in practice lab explores this.
+
+**Preference pairs ordered** sits on the **Stage by stage** card. It gives the share of pairs where the preferred ending gained on the rejected one. It measures that gain against the frozen copy. **Reward margin** shows how far ahead the preferred endings have pulled on average. DPO beta scales that readout too. So compare it only between runs that use the same beta.
+
+#### Stage 4: compress
+
+The computer stores each weight as a string of **bits**. A bit is a single 0 or 1, and 8 bits make one **byte**. Storing each weight in fewer bits is called **quantization**. The **Weight format** control picks how many bits each weight gets.
+
+With 16 bits a number can be stored very precisely. But 4 bits can only be set in 16 different ways. So in a 4-bit format, every weight is rounded to the nearest value the format allows. That loses a little detail. The formats run from `F16`, which uses 16 bits per weight, down to `Q4_0`. The lab starts at `Q4_K_M`. Apart from `F16`, each format uses roughly the number of bits after its Q. It adds a little extra for bookkeeping.
+
+**Pruning** is a second kind of squeezing. It sets the smallest weights, the ones closest to zero, to exactly zero. The **Prune** slider picks what share of all the weights to remove, from 0% up to 90%. The hope is that a table full of zeros takes less space or runs faster. That needs software and chips built to skip over the zeros. In this lab it does not make the file any smaller, as Where it breaks explains. So here you only see what it costs.
+
+The result of both steps is the row called **As shipped**. This is the version that would actually go out. That finished version is called the **artifact**. The first line of the **Release report** describes it. At the start it reads `Q4_K_M, not pruned, merged adapter of rank 4`. That names its format, its pruning and its adapter.
+
+#### Stage 5: serve
+
+The last stage asks whether the model fits on a machine at the load you expect. Here the lab switches to an imagined model. A table of 900 numbers fits anywhere. So the card imagines a model of about 8 billion weights instead, which the lab calls **8B-class**. It runs on one **accelerator**, a chip built to run models quickly. That chip has 24 GiB of memory. A **GiB**, short for gibibyte, is a little over a billion bytes. So 24 GiB is room for about 26 billion bytes.
+
+A full-size model writes one small piece of text at a time, called a **token**. A token is often a short word or part of a longer one. For each token, the model saves notes about the text so far. That way it does not redo the same work for every new token. A store of saved work like this is called a cache. These notes are the **KV cache**. The name comes from the two kinds of note it keeps, known as keys and values.
+
+Every conversation needs its own notes, and the lab calls each conversation it serves a **stream**. So the cache grows with **Concurrent users**, the number of people served at once. It also grows with **Context length**, the number of tokens each conversation can hold. Three things have to fit inside the machine’s 24 GiB. They are the weights, every stream’s notes and 1 GiB of working space. Adding those three up and checking the total against the memory is called the **serving budget**.
+
+### The release gate
+
+Once the stages are done, the **Eval gate** card runs two pass-or-fail checks. It always runs them on the **As shipped** row and never on an earlier one:
+
+- **Gains on the recipe text** passes only if recipe loss has fallen below the base model’s. The fall must be at least **Required recipe-loss gain**, which starts at 0.030 nats.
+- **Keeps the harbor text** passes only if harbor loss has not risen above the base model’s. The rise must be no more than **Allowed harbor-loss rise**, which starts at 0.100 nats.
+
+The **Release report** then adds the serving budget as a third condition. So the verdict depends on quality and memory together. Its badge reads `Verdict: ship` only when both checks pass and the budget fits. In every other case it reads `Verdict: hold`. A set of checks like this is called a **release gate**. Its pass marks are fixed before the run. It is applied to the version you would actually release.
+
+## Why it’s here
+
+Chaining the steps together creates problems that no single lab could show. Each part of the release gate is there to catch one of them.
+
+### Getting better at one job can mean getting worse at another
+
+Picture a friend on a soccer team who spends a whole month practising nothing but penalty kicks. Her penalties get sharp, but at the first real match her passing has gone rusty. Nobody saw it coming, because nobody watched her pass all month.
+
+The adapter in Stage 2 can do something similar. With **Replay sentences** at `none`, it trains on recipe sentences only. Yet harbor text and recipe text lean on the very same table. Both use letter pairs such as t followed by h. When training bends those shared numbers toward recipes, the harbor guesses move with them. At the starting settings, harbor loss rises by 0.150 nats during adapting.
+
+Losing an old skill when a model trains on new data alone is called **catastrophic forgetting**. The name sounds dramatic, but what matters is whether the old skill got worse and by how much. The lab shows you that number.
+
+The soccer story stops matching in one way. Her passing fades from lack of use. The model’s harbor guesses, by contrast, are pushed away by the very same changes that teach it recipes.
+
+### Replay: practising the old job alongside the new one
+
+In the soccer story, the fix would be to mix a few passing drills into every practice session. The model’s version is called **replay**. It mixes some old harbor sentences back into the adapter’s training. Every change then has to keep working for harbor text as well as recipe text. **Replay sentences** sets how many of the six harbor training sentences join in.
+
+In general, replay has a price, because one small update now has to serve two texts at once. The push that training gives toward the new job is called the training signal. It is now shared with the old job. So the update cannot bend as far toward the new one. In bigger jobs that cost is real, and it is worth watching for.
+
+In this lab, though, you will not see it. With four replayed sentences, recipe loss ends at 2.367. That is lower than the 2.497 it reaches with no replay at all. One likely reason is that the adapter trains for a set number of epochs. Adding harbor sentences also gives it more practice steps in total. Here, replay is the cheapest defence against forgetting, and it leaves the recipe text better off.
+
+### You only see what you measure: the control set
+
+If the gate checked recipe text alone, the starting model would pass. Its recipe loss falls by more than the bar. The damage to harbor text would go out with the release. Nobody would find out until people started using the model.
+
+So the gate also reads a **control set**. This is held-out text from a job that the adapting was not meant to change. Here the control set is the two held-out harbor sentences. The check called **Keeps the harbor text** reads them. In the game picture, this is the checklist item that says to re-test the old levels.
+
+### Test the version you ship, not the one you trained
+
+Compression comes after training, and it changes the numbers. So a gate that read the **After aligning** row would grade a model that never goes out. Take four replayed sentences and **Prune** at 90%, for example. **After aligning** would pass both checks with room to spare. **As shipped** fails both. That is why the gate always reads the last row, the artifact itself. It never reads the model as it left training.
+
+### A six-question quiz cannot settle a close call
+
+The lab also runs a short quiz, called a **benchmark**, with six questions for each of the two texts. Each question gives the start of a sentence and two possible next words. One is right and one is wrong, but the wrong one is still a normal English word. The model passes a question if it scores the right word higher than the wrong one. One recipe question gives “season the soup with salt and a pinch of”. It asks whether the next word is “pepper” or “rain”. The **Recipe items** and **Harbor items** columns count the questions the model passes at each stage, out of six.
+
+Picture a friend who makes 1 of 6 free throws on Monday and 4 of 6 on Tuesday. She may really have improved overnight, or Monday may have been an unlucky day. Six shots cannot tell you which.
+
+The quiz has the same weakness, so the lab puts a range around each count, called a 95% interval. Suppose you built ranges this way for many different tests. About 95 in every 100 of them would contain the model’s true pass rate. That true pass rate is the share it would get right on a huge number of similar questions. It is what you really want to know. For 1 of 6 the range runs from 3% to 56%. For 4 of 6 it runs from 30% to 90%. Both ranges include everything from 30% to 56%, so they overlap.
+
+When two ranges overlap, the quiz cannot say whether the model really changed. The lab calls the difference **not decisive**. Held-out loss suffers much less from that problem. It scores every character, which comes to about a hundred in each held-out text. It can also move by a thousandth of a nat at a time, instead of jumping a whole question. That is why both gate checks read held-out loss. The quiz appears beside them only as extra evidence. Held-out loss is still a small test, though, since it reads only two sentences per text. A gap of a few hundredths of a nat can be luck too, as Where it breaks explains.
+
+### A model that does not fit is not ready
+
+Passing on quality says nothing about memory. In the game picture, a great update that crashes the servers on launch day has still failed. The model’s weights take the same space however many people use it, but every conversation adds its own notes. Longer conversations add more. A release has to fit at the load you actually expect. That is why the **Release report** adds the serving budget to the two quality checks.
+
+### Pass marks have to come first
+
+Picture a class where the pass mark is chosen after the tests are marked. It keeps sliding down until everyone passes. Everyone does pass, but the result now tells you nothing about who actually learned the material.
+
+A gate works the same way. Any model can pass if you loosen the pass marks after seeing the results. A real release gate writes its marks down before the run and then leaves them alone. It does this whatever the results turn out to be.
+
+## How to play with it
+
+The lab’s five steps walk you through one full release, and each part below matches one of them. Begin at the starting settings, and read each card in turn before you move anything.
+
+### 1. Run the pipeline
+
+Read **Stage by stage** from the top row down, comparing the recipe and harbor columns at each step. Going from **Base model** to **After adapting**, recipe loss improves from 2.540 to 2.461. The table marks this `−0.079 better`. Harbor loss gets worse, from 2.098 to 2.248, marked `+0.150 worse`. That rise is catastrophic forgetting caught in the act.
+
+The next row, **After aligning**, nudges both losses up a little. Recipe loss rises by 0.035 and harbor loss by 0.042. **As shipped** then barely moves, because rounding the weights to `Q4_K_M` costs almost nothing. Under the table, **Recipe loss, base to shipped** reads `−0.043`. **Harbor loss, base to shipped** reads `+0.194`.
+
+The box under those numbers lists every rise bigger than 0.02 nats from one stage to the next. Each one is called a **regression**. A regression is any stage that made a loss more than 0.02 nats worse than the stage before it. It counts even if the model ends up better overall.
+
+### 2. Read the gate
+
+Open **Eval gate**, where the badge reads `Gate: fail` and the two checks sit underneath it. **Gains on the recipe text** passes, because recipe loss fell by 0.043 against a bar of 0.030. **Keeps the harbor text** fails. The shipped model is 0.194 worse than the base on harbor text, and 0.100 is the most allowed. So the release is on hold.
+
+Now read the benchmark line under the two checks, which gives the quiz results for the same comparison. The recipe count went from 1 to 4 correct, and the harbor count fell from 5 to 1. Yet both are marked “overlapping, so not decisive”. Even a drop from 5 correct to 1 cannot be called decisive with only six questions. Meanwhile the loss check shows a 0.194 rise, nearly twice the allowance.
+
+### 3. Fix the regression
+
+**Try this:** raise **Replay sentences** one step at a time, starting from `none`. Watch **Keeps the harbor text** in **Eval gate**. At `1 of 6 harbor sentences` it already passes. Harbor loss now rises by only 0.057, which is under the 0.100 limit. The badge turns to `Gate: pass`. The budget already fits, so the **Release report** now reads `Verdict: ship`.
+
+Keep going until the slider reads `4 of 6 harbor sentences`, and watch both losses as you go. Harbor loss now ends at 2.086, a hair better than the base model’s 2.098, so the forgetting is gone. Recipe loss ends at 2.367, so the recipe text actually gained more with replay than it did without it.
+
+### 4. Compress
+
+Leave **Replay sentences** at 4, then step **Weight format** through every option from `F16` down to `Q4_0`. While you do, watch **Recipe loss, as shipped** and **Harbor loss, as shipped**. They sit in the first row of numbers on **Compress and serve**. Across all five formats, neither one moves by as much as 0.02 nats. Meanwhile **Toy bits per weight** falls from 16.04 to about 5.
+
+Then set **Weight format** back to `Q4_K_M`, the starting format, and drag **Prune** to 50%. **Recipe loss, as shipped** moves only from 2.367 to 2.372. So cutting half the weights costs almost nothing here, and the model still ships. Now drag **Prune** all the way to 90%. Recipe loss jumps back to 2.530, which is nearly the base model’s 2.540. Almost all of the recipe training is undone, and the gate fails on both of its checks.
+
+### 5. Budget and decide
+
+Set **Prune** back to 0%, and look at the second row of numbers on **Compress and serve**. The starting load is 8 users and 4,096 tokens. At that load, **8B-class weights** reads 4.58 GiB and **KV cache for all streams** reads 4.00 GiB. Add the 1 GiB of working space and you get 9.58 GiB. The box below confirms that this fits in 24 GiB with 14.42 GiB to spare.
+
+Now set **Concurrent users** to 64 and **Context length** to 32,768, then read the **Release report**. The model still passes both quality checks, but the verdict is hold. The budget has grown to 261.58 GiB, which is more than ten times the machine’s memory. Last, bring the two sliders down until the budget fits again. Then read the verdict and its reasons once more.
+
+### More comparisons worth running
+
+- **Adapter epochs without replay:** set **Replay sentences** to `none`. Slide **Adapter epochs** from 8 up to 40 and watch the harbor column. Harbor loss ends worse than the base at every setting. Past about 25 epochs, recipe loss also ends worse than the base at most settings, including 40. It jumps up and down from one setting to the next. Long training on six recipe sentences pushes the shared table hard. The lab shows the result without pinning down the exact cause.
+- **Adapter epochs with replay:** repeat the slide with replay at 4. Harbor never rises more than about 0.03 above the base. Recipe loss stays below the base at every setting, by more than 0.1 nats from 14 epochs on.
+- **Turning off DPO:** set **DPO steps** to 0 to switch the preference step off. Then **After aligning** becomes identical to **After adapting**, so the cost of aligning vanishes. **Preference pairs ordered** reads `DPO off`, because no preference training ran.
+- **A weak adapter:** with replay at 4, set **LoRA rank** to 1. That gives the adapter only one pattern to build its correction from. The adapter is now too weak to move the model much, so the recipe check fails. That is a different kind of failure from forgetting.
+
+## What to notice
+
+- **Replay buys back the old job:** at the starting settings, the shipped model is 0.194 worse on harbor text. It is also 0.043 better on recipe text. With four replayed sentences it is 0.173 better on recipe text and no worse on harbor text. So in this lab replay helped both texts.
+- **Aligning has a price:** use four replayed sentences. Going from **After adapting** to **After aligning** then raises recipe loss by 0.030 and harbor loss by 0.040. Meanwhile **Preference pairs ordered** reads 100%. In all three pairs the preferred ending has gained on the rejected one. Ability lost to preference training like this is called the **alignment tax**. It shows up here because DPO edits the same 900 numbers that both held-out texts rely on. DPO only cares about the gap inside each pair, not about making real recipe text likelier. The rejected endings, such as “onions onions onions onions.”, are built from everyday letter pairs. Pushing them down can make ordinary text a little less likely too.
+- **The report keeps every cost on the record:** those two rises are regressions. The **Release report** lists them under **Cost of getting here** even though the model ships. The recipe text still improved overall. Listing each stage stops a loss from hiding inside an overall gain.
+- **The quiz barely notices:** use four replayed sentences. The recipe quiz then reads 1 of 6 before and 1 of 6 after. Yet recipe loss fell by 0.173. The ranges overlap, so the quiz is not decisive. Held-out loss shows a clear gain because it counts every character.
+- **Shrinking is nearly free, but pruning is not:** these numbers use four replayed sentences. The shipped model is 0.022 worse on recipe text than **After aligning** at 50% pruning. It is 0.180 worse at 90%. Rounding to `Q4_K_M` causes 0.017 of that first rise on its own. So pruning half the weights adds only about 0.005. Pruning 90% adds about 0.163. Removing a little under twice as much does about thirty times the damage. The harm grows much faster than the amount removed.
+- **Memory fails in a different place:** look at the heaviest load the sliders allow. The imagined 8B-class budget is 261.58 GiB at `Q4_K_M`. At `F16` it is 271.96 GiB. Switching formats saves only about 10 GiB, because the notes alone take 256 GiB. So the KV cache, not the weights, is what runs out of room.
+
+**A common mix-up:** “The recipe count went from 1 to 4, so the model clearly got better at recipes.” At the starting settings the count did jump from 1 to 4, while recipe loss fell by only 0.043. With four replayed sentences the count stayed at 1, while recipe loss fell about four times as far. Six questions move in jumps that can point the wrong way. That is exactly what “not decisive” warns you about.
+
+### Working out the memory
+
+At 4,096 tokens, each conversation’s notes take half a GiB. That is why 8 users need 4.00 GiB of cache. To find **Streams that fit**, start from the 24 GiB. Subtract the 4.58 GiB of weights and the 1 GiB of working space. Then divide the 18.42 GiB that is left by half a GiB per conversation, which gives 36.84. A conversation cannot be split into pieces, so the lab rounds down and shows 36.
+
+Raising **Context length** to 32,768 makes each conversation eight times as long. So its notes grow eight times bigger, to 4 GiB each. With 64 users that comes to 64 × 4 = 256 GiB of notes, before the weights are even counted. Adding users also slows each person down, because every step of writing has to read through more notes. You can see this in **Per user**, the number of tokens each person gets per second. It reads 43.4 tok/s at the starting load.
+
+### The bill, stage by stage
+
+Putting it all together, here is what each stage of the journey costs the model in this lab:
+
+- **Adapting:** this can cost the old job through forgetting, unless replay mixes some of the old text back in.
+- **Replay:** this asks one update to serve both texts. In general it costs some of the training signal for the new job. In this lab, four replayed sentences left the recipe text better off.
+- **Aligning:** this costs a little loss on both texts at once, which is the alignment tax.
+- **Quantizing and pruning:** quantizing costs almost nothing here. Pruning costs more and more the harder you push it.
+- **Serving:** this costs memory, mostly in notes that grow with every user and every token of context.
+
+## Where it breaks
+
+### What this lab fakes or simplifies
+
+- **A tiny model makes the costs look bigger:** the model has only 900 weights. The adapter and the preference step both edit that one table. So forgetting and the alignment tax are bigger here than they would be in a large model.
+- **The tests are tiny:** twelve quiz questions and two held-out sentences per text cannot tell close models apart. The toy also looks back only one character. For a quiz word, it sees only the space in front and the word’s own letters. The start of the sentence barely matters to it at all. A reader would use that start to choose.
+- **The pass marks are sliders:** that lets you do what the pass-mark story warned against. Try it once to see. Drag **Allowed harbor-loss rise** to the top at the starting settings, and the forgetful model ships. A real gate fixes its marks before the run.
+- **The memory numbers are arithmetic, not measurements:** the quality numbers come from the toy. The budget describes an imagined 8B-class model that is not in the lab. The arithmetic treats every conversation’s notes as full length from the start. It adds a flat 1 GiB of working space. It also works out speed only from how fast memory can be read.
+- **Pruning saves nothing here:** pruning that removes weights wherever they sit is called unstructured pruning. It keeps the table the same size. So in this lab **Prune** does not change **Toy file at this format**, which is the toy’s file size. It does not change the memory budget either. It only adds damage.
+- **The toy is not a chatbot model:** it reads single characters, not words. It looks back only one character. It was also never trained to follow instructions. Eight sentences per text stand in for what would really be a huge collection of training data.
+
+Nothing in this lab is measured on a real model or real hardware, even where the numbers look precise.
+
+### Where the real mechanism fails
+
+- **Passing is evidence, not proof:** a gate shows that a model cleared the tests you chose. It cannot speak for the tests you never ran.
+- **Real tests are far bigger:** releases of real models use thousands of test questions across many topics. They check that those questions never slipped into the training data. They also test the whole product, such as search, tools and safety. They re-run a set of old cases after every change.
+- **A test can be worn out:** suppose you keep adjusting a model until the same held-out text scores well. The model ends up tuned to that one text, which is called overfitting. A gate tuned against its own test text can be overfit like any other test.
+- **Compression depends on the model:** how much quality a format loses depends on the model. It also depends on the sample text used to tune the rounding. Unstructured pruning saves time only on hardware that can skip over the zeros it leaves behind.
+- **Real speed depends on more than memory:** the math software matters. So do the way requests are grouped and the way chips are linked. This arithmetic skips them.
+- **People make the final call:** real release decisions weigh quality, safety, cost, speed and risk. Usually people who answer for the choice make them. A verdict from a script like this one is only one input to that decision.
+
+**A common mix-up:** “It passed the gate, so it is safe to ship.” The gate here is two held-out texts and one imagined machine. That is far too little to vouch for a real release. A pass says nothing about a real model’s safety or its accuracy on real tasks. It also says nothing about how the model behaves under real traffic.
+
+## Going deeper
+
+### What a real release adds
+
+- **A bigger, fresher test:** this means hundreds to thousands of questions for each skill, kept away from the model. The uncertainty is written down beside every score.
+- **Tests for the whole product:** these check whether search finds the right passage. They also check whether the answer sticks to what it found. A model that carries out tasks on its own is called an agent. For an agent, they check whether it finishes and what each task costs. Safety tests count how often attacks succeed. They also count how often harmless requests get refused by mistake.
+- **A careful rollout:** a small share of users goes first. There is an automatic way back if a watched number moves. The team also keeps a record of which model, data and pass marks produced the release.
+- **Watching after launch:** people type things nobody tested, and the world changes. So the gate is the start of the evidence, not the end.
+
+### Behind the numbers
+
+- **The ranges:** the ranges in the benchmark line are Wilson intervals, the same kind the Evaluation lab draws. They stay sensible even at 0 of 6 or 6 of 6.
+- **The weight sizes:** these come from real file sizes. llama.cpp reports them for a real model of this size. Everything built on them is arithmetic.
+- **The notes per token:** for the imagined model, every token of every conversation needs 128 KiB of notes. One KiB is 1,024 bytes. The Deployment & serving lab shows step by step where that figure comes from.
+
+### Where to go next
+
+Every piece of this lab has a full-size version that you can download and run on your own computer:
+
+- **Training and adapting:** Hugging Face Transformers does this. It has PEFT for LoRA adapters and TRL for preference training such as DPO.
+- **Squeezing and running a model on your own computer:** llama.cpp is the engine this app downloads for its guide.
+- **Serving many people at once:** vLLM does this. It groups many people’s requests together so they share the work.
+- **Testing:** EleutherAI’s lm-evaluation-harness covers standard tests. You can add your own held-out set for the job you care about.
+
+Four research papers cover most of what the labs touched. Two of them describe stages in this lab directly:
+
+- *Attention Is All You Need*, by Vaswani and colleagues in 2017, introduced the design behind most of today’s chatbots.
+- *LoRA*, by Hu and colleagues in 2021, describes the adapter method used in Stage 2.
+- *Direct Preference Optimization*, by Rafailov and colleagues in 2023, describes the preference method used in Stage 3.
+- *Training Compute-Optimal Large Language Models*, by Hoffmann and colleagues in 2022, works out how big a model should be. The answer depends on how much training you can afford.
+
+A good first project is to repeat this lab’s loop on a small real model of your own choosing. Pick one job and hold out a control set. Adapt the model, and write your gate down before you run anything.

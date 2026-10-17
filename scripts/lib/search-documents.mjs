@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { existsSync } from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 
@@ -238,8 +237,7 @@ export async function collectSearchSources(root) {
     );
   }
 
-  // TODO(simple-mode): drop this filter once every module has simple.mdx.
-  return files.filter((file) => path.basename(file) !== "simple.mdx" || existsSync(file));
+  return files;
 }
 
 export async function fingerprintSources(files, root) {
@@ -393,14 +391,7 @@ export async function extractSearchDocuments(root) {
     });
 
     for (const [mode, label] of Object.entries(MODE_LABELS)) {
-      let mdx;
-      try {
-        mdx = await readFile(path.join(directory, "content", `${mode}.mdx`), "utf8");
-      } catch (error) {
-        // TODO(simple-mode): drop this once every module has simple.mdx; the module checker requires the others.
-        if (mode === "simple" && error.code === "ENOENT") continue;
-        throw error;
-      }
+      const mdx = await readFile(path.join(directory, "content", `${mode}.mdx`), "utf8");
       const sections = splitLearnSections(mdx);
       const known = new Set(sections.map((section) => section.title));
       for (const required of REQUIRED_LEARN_SECTIONS) {

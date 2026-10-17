@@ -1,0 +1,260 @@
+---
+objectives: ["Distinguish a base model, a fine-tune, an API, open weights, and open-source AI","Check a proposed use against a license's clauses and separate permission from data provenance","Read a model card's numbers critically, including evaluation error and estimated training energy"]
+terms: ["Base model","Fine-tune","Open weights","Open source AI","API","License","Permissive license","Acceptable-use policy","Model card","Data provenance","Evaluation harness","Standard error"]
+---
+
+## The big picture
+
+Training an AI model means letting it learn from huge amounts of text. When a company or a research group finishes one, it must decide what to hand to everyone else. That choice is called a **release**. Some releases come with a download button, and some only let you type into a website. Many sit somewhere in between.
+
+This module unpacks a release piece by piece, like checking a delivery against its packing slip. It answers three questions that a download button hides. What did you actually receive? What are you allowed to do with it? How far can you trust the numbers printed about it? People talk as if the word "open" answers all three, but on its own it answers none.
+
+### Where you have met it
+
+Every AI model you have heard of was released in one of these ways, and they differ a lot. When GPT-4 came out in 2023, you could only use it through OpenAI's own apps and online service. Nobody outside the company could download the model itself. That same year, Meta's Llama 2 and a model called Mistral 7B came out as files anyone could download. Those two came with quite different rules about what you could do with them.
+
+A release also comes with a written description, a bit like the label on a box. It comes with test scores too, which people use to rank models on a leaderboard. This module builds on three earlier labs:
+
+- **Post-training:** This lab showed how a raw starting model gets adapted into other models.
+- **Scaling laws:** This lab linked a model's size to its training text and its computing cost.
+- **How we know a model works:** This lab showed that one headline score can hide what matters.
+
+### Why it matters
+
+Treating one part of a release as the whole thing leads to real and costly mistakes. Here are four of them:
+
+- You build a paid app on a model whose rules allow research only.
+- You train a model of your own on another model's answers, even though its rules forbid that.
+- You assume generous rules on the download mean the training data was gathered fairly, with the writers' agreement.
+- You declare one model better than another because of a 3-point gap. The test's scores can wobble by about 7 points from luck alone.
+
+### What you will be able to explain
+
+By the end of this module, you should be able to explain these things in your own words:
+
+- How a raw starting model, called a **base model**, differs from a version adapted from it, called a **fine-tune**.
+- How using a model through a company's online service differs from downloading it. The first is called an **API**, and the second is called **open weights**.
+- Why a download with generous rules still falls short of **open-source AI**. That term also needs the code that built the model and a detailed description of its training data.
+- How to check a planned use against a **license**, the legal rules attached to a model. You check one rule at a time, and the strictest rule decides.
+- Why that permission says nothing about where the training data came from, or whether its writers agreed.
+- How to read the numbers on a **model card**, the description that comes with a model. Start with how much a test score could wobble by chance.
+- What an estimate of the electricity used in training counts, and what it leaves out.
+
+### What the lab lets you see and try
+
+Nothing in this lab is trained, and no model answers anything. The model, called harbor-lm-7b, is made up for this lab, and so are its test and its three licenses. Each kind of rule in those licenses is borrowed from real ones, though. When the lab says a use is allowed or not, it only checks the made-up rules. So it is never legal advice. Two numbers on the card come from fixed formulas that use the card's own figures. One shows how much the test score could wobble. The other estimates the electricity the chips used for one training run.
+
+The lab has three cards, and they work together:
+
+- **Sample model card:** This card shows the model's description. Its **License** control sets the rules. Its **Training code** and **Data information** controls set what comes with the model. A badge names the kind of release you have made.
+- **Release spectrum:** This card has no controls of its own. It is a table of four kinds of release, running from API only to open-source AI. It highlights the column that matches the model on the Sample model card.
+- **Is this use allowed:** This card lets you pick an **Intended use** and checks it against the license. It then reports **License match**, **Clauses checked** and **Still unknown**.
+
+The most important experiment comes last. You give the model its most generous license and ask about selling a product built on it. You get a yes. Meanwhile, **Still unknown** keeps showing what the license could never answer.
+
+## What it is
+
+### A release is a bundle of parts
+
+Picture a bakery that has made a remarkable cake and must now decide what to give away. It could serve you a slice across the counter, or hand you the whole cake in a box. It could add the recipe card and list every ingredient and where it came from. It could also print rules on the box about what you may do with the cake. Each of those is a separate choice, and getting one tells you nothing about the others.
+
+An AI model release works the same way. It is a bundle of parts, and each can be shared freely, held back or shared with rules attached:
+
+- **The weights:** This file is the trained model itself, which is the cake.
+- **Inference code:** This program uses the weights to turn your typed text into the model's answer.
+- **Training code:** This program made the weights in the first place, so it is the recipe.
+- **Data information:** This is a description of the text the model learned from, like an ingredient list.
+- **The license:** These legal terms say what you may do, like the rules printed on the box.
+- **Evaluation results:** These are the model's scores on tests.
+- **Cost figures:** These tell you how much computing and electricity training used.
+
+The weights need a word of explanation, because everything else hangs off them. A model is a huge collection of adjustable numbers, called **parameters** or **weights**. Training is the long process of nudging each number until the model's guesses get better. When training stops, those numbers are the finished model, so the weights file is the model you would download. The made-up harbor-lm-7b has 7 billion of them, which is what the "7B" on its card means.
+
+The bakery picture stops matching in two places. You eat a cake once, but a weights file can be copied endlessly at almost no cost. That is why licenses have rules about passing copies on. Even with the full recipe and ingredient list, rebuilding the model takes huge computing power that few people have. A home baker with a recipe faces no such barrier. Later you will see how large that amount is.
+
+### Base model and fine-tune
+
+A big training run first produces a **base model**. It learned from a huge pile of text to do one job. That job is to guess the next small piece of text. That small piece is called a **token**, and it is usually a word or part of a word. A base model is good at continuing text, but it is not yet an assistant. If you type a question, it might add more questions instead of answering.
+
+A **fine-tune** is a second, narrower training run on top of a base model. It uses a smaller set of examples chosen for one purpose, such as answering questions politely. The name "fine-tune" does not say whether those extra examples were public, paid for or written by another model. A fine-tune starts from the base model's weights. So it usually carries along that model's license and any problems hidden in its training data.
+
+You can see both ideas on the lab's **Sample model card**. Its Base model row reads "7B parameters, next-token pretrained on 2T tokens. Not an assistant." In everyday words, it has 7 billion weights and learned by guessing the next token across 2 trillion tokens. Nobody trained it to be a helper. "Pretrained" names that first big training run, the one that comes before any fine-tune. The Fine-tunes row reads "None from the authors. Community adapters exist, unreviewed." That means the makers built no fine-tunes. Other people have trained small add-on pieces, called adapters, and nobody has reviewed them.
+
+### Open weights and the API
+
+There are two very different ways to let people use a model. With **open weights**, you download the weights file and run the model on your own computer. Your copy keeps working the same way, even if its makers later change their own service. That is all the phrase promises, though. It says nothing about training code, data information or permission for every use.
+
+The other way keeps the model on the company's own computers. You send your text over the internet, the company runs the model, and it sends back the answer. The doorway that lets one program send requests to another like this is called an **API**. With an API you can use what the model does, but you never get its weights. The company's **terms of service** are the rules you accept to use it. They decide what you may do with its answers. For example, they might forbid training a rival model on them. The company can also change the model behind the API whenever it likes. Your app will feel that change, even though you did not choose it.
+
+Back at the bakery, open weights are like the whole cake in a box. An API is like a café that serves slices but keeps the cake. Only the API only column of **Release spectrum** says "no" in its "Run on your own hardware" row. Your own hardware means your own computers.
+
+### Open source AI: the full kit
+
+You may have heard "open source" used for apps whose code anyone may read, change and share. For AI, the Open Source Initiative, or OSI, published a definition of **open source AI** in October 2024. It is called the Open Source AI Definition 1.0, which the lab shortens to **OSAID 1.0**. It asks for three things together:
+
+- The weights, which are the trained model itself.
+- The complete code used to train the model and to run it.
+- Information about the training data, detailed enough for a skilled person to build a substantially equivalent system.
+
+A substantially equivalent system is one that does the same job about as well.
+
+On top of that, all three must come under terms that allow use for any purpose, including making money. Notice what is missing from the list: the training data itself. The definition asks for detailed information about the data, not always the data. That is why the last row of **Release spectrum** says "not always required" for open-source AI. In that table, "not required" or "not always required" means that kind of release does not promise the item.
+
+Open source AI is like getting the cake, the recipe and an ingredient list you could shop from. You also get permission to sell whatever you bake. The bakery still does not have to hand over its own sacks of flour.
+
+A **permissive license** allows any use, including selling, with only light conditions such as keeping the original notices attached. Those notices are the short lines that say who made the work and under what license. Apache-2.0 and MIT are two examples, and Apache-2.0 is one of the three choices in the lab. Even so, a permissive license on the weights alone leaves a release short of open source AI. The training code and data information can still be missing.
+
+**A common mix-up:** People often call any downloadable model "open source". Under the definition this lab uses, a download on its own is only open weights. It becomes open source AI only when the complete code, detailed data information and any-purpose terms come with it.
+
+### The license, one rule at a time
+
+A **license** is the set of legal terms attached to weights, code, data or answers. It works like a list of separate rules called **clauses**. Each use you might plan needs particular permissions, such as these:
+
+- Permission to make money from the model, called **commercial use**.
+- Permission to change the model, such as by fine-tuning it.
+- Permission to pass copies on to other people, called **redistributing**.
+- Permission to use the model's answers to train another model.
+
+The lab's **Intended use** menu offers four plans. A `Research paper` means studying the model and writing up what you find. A `Hosted product` is an app or website you charge for. It runs the model on computers you control, so customers never get a copy. `Fine-tune and ship` means changing the model and handing out the result. `Train on its outputs` means training another model on the first model's answers, which the lab calls its **outputs**.
+
+The **Is this use allowed** card checks a use in three steps. First it lists each clause the use needs. Then it looks up each one in the license and marks it ✓ allowed, ◐ allowed with conditions or ✗ not allowed. Finally it reports the strictest of those marks, because one refusal is enough to block the whole use.
+
+Think of a school trip that needs a yes from your parent, your teacher and the coach. If any one of them says no, you stay home, however keen the other two are. If one says yes only if you bring a packed lunch, then you go only with the lunch. A license check works the same way, so a use is only as allowed as its strictest clause. The picture stops matching in one place. A real license clause can come with many conditions, not one lunch.
+
+Here is a worked example from the lab. Set **License** to `Apache-2.0` and **Intended use** to `Fine-tune and ship`. This use needs three clauses, because you would be selling, changing and handing out the model. Commercial use shows ✓ "granted for any purpose". Modify or fine-tune shows ✓ "allowed; modified files must say they were changed". That row gets a ✓ even though it carries a small duty. The lab treats labelling your changes as part of the permission itself.
+
+Redistribute the weights shows ◐ "allowed with a copy of the license and the notices". The lab counts passing the license on with every copy as a real condition. In real licenses both of these are light duties. The strictest mark is the ◐, so **License match** reads "if conditions met". **Clauses checked** reads 3, even under the most generous license in the lab.
+
+Some licenses attach an **acceptable-use policy**, which is a list of banned uses. Your permission only holds while you stay away from them. In the lab, the `Custom community` license allows commercial use "below a monthly-user cap, subject to an acceptable-use policy". That means you may sell a product only while its monthly users stay under a set cap. Even then, your product must stay clear of every use on the banned list. Conditions like these are one reason custom model licenses fall short of the OSI's definition. That definition asks for freedom to use something for any purpose.
+
+### What a license cannot settle
+
+The word **provenance** means where something came from and how it got here. A museum does this when it tracks who owned a painting before it arrived. **Data provenance** is the same idea for training data. It covers where the text came from and on what terms it was collected. It also covers whether its writers agreed, which is called **consent**.
+
+A license can only give away rights that its authors actually had. Picture a classmate who makes a poster from photos found online. The classmate writes "free for anyone to use" across the bottom. That note can let you reuse the classmate's own layout and lettering. It cannot give away the photographers' rights, because the classmate never had them. A model license works the same way. It can let you use the weights. It cannot promise that the training text was collected fairly or with consent.
+
+The match is not exact, since a model's weights are adjusted numbers, not a folder of original texts. The point is only that whoever writes a license cannot give away rights to material they never owned.
+
+You can watch this in the lab's **Still unknown** readout. With Data information set to `not published`, the card says only "Web crawl and licensed books". It notes that there are no sources, mix or consent log. That describes text gathered automatically from websites plus books the makers got permission to use. It names no actual sources, so Still unknown reads "data sources, consent".
+
+Now set Data information to `published`. The card then says it has published three things. They are the sources, the filtering steps used to clean the text, and how much text each source gave. It adds that these are detailed enough to rebuild a similar set. It still says "No consent log", though, so Still unknown shrinks to "consent" but never disappears. Changing **License** never moves this readout, because it depends only on **Data information**.
+
+### Reading a model card
+
+A **model card** is a structured document that describes a model. It says what the model is meant for and what it was trained on. It also says how it was tested and where it falls short. It is the label on the box. Like any label, it is only as good as what its authors chose to put on it. Nothing forces a card to be complete or accurate, so a missing field tells you something too.
+
+Two rows on harbor-lm-7b's card are worked out from the card's own figures rather than typed in. Reading them well is the third skill this module teaches.
+
+#### How much a test score could wobble
+
+An **evaluation harness** is a fixed set of test questions, called items, along with rules for scoring the answers. A program runs it, so every model is tested in exactly the same way. A leaderboard place is a score on one harness, not a full verdict on how good a model is. The card says harbor-bench has 40 items and the model scored 70%, or 28 right answers out of 40.
+
+Picture a student who has learned about 70% of a history chapter and sits a 40-question quiz on it. If the quiz happens to lean toward the parts they know, they might get 31 right. If it leans the other way, they might get 25. Their knowledge did not change between those two quizzes. Only the luck of which questions were picked did. The amount a score spreads out from that luck alone is called the **standard error**. Going from 28 right to 25 or 31 is 3 questions either way. Since 3 out of 40 is 7.5% of the quiz, that is close to the standard error below.
+
+The card's info panel shows the formula: standard error = √(p(1 − p)/n). Here p is the score written as a decimal, and n is the number of items. Here is the calculation with the card's numbers, one step at a time:
+
+1. The score is 70%, so p is 0.7, and 1 − p is 0.3.
+2. Multiplying gives 0.7 × 0.3 = 0.21.
+3. Dividing by the 40 items gives 0.21 ÷ 40 = 0.00525.
+4. The square root of 0.00525 is about 0.072.
+5. Because p was a decimal, multiply by 100 to turn the answer back into percentages. That gives about 7.2 **percentage points**.
+
+A percentage point is the plain gap between two percentages. So 7.2 points is the distance from 70% to 77.2%. That is why the card says "One standard error is ±7.2 points", where ± means "plus or minus".
+
+The card then gives a **95% interval**. This is a range wide enough that the model's true score very likely sits inside it. The true score is the one it would earn on a huge test. The "95%" says how likely: a range built this way catches the true score about 95 times in 100. To build it, you go about two standard errors either side of 70%. That is roughly 14 points each way. So the card shows "about 56–84%".
+
+That range changes how you should read a leaderboard. Suppose another model gets 29 of the 40 items right, which is 72.5%, or 2.5 points higher. That gap is smaller than one standard error, so fresh questions could flip which model comes out ahead.
+
+More items help, but slowly. With 160 items, which is four times as many, step 3 becomes 0.21 ÷ 160. That is a quarter of 0.00525. The square root of a quarter is a half, so the wobble only halves, to about 3.6 points. To cut the wobble in half, you need four times as many questions.
+
+#### What the energy figure counts
+
+The Training energy (estimated) row reads "6 × 7B × 2T = 8.4×10²² FLOP". It comes from a standard rule of thumb. Training takes about 6 arithmetic operations per weight for every token of training text. One multiplication or addition of two decimal numbers is called a **FLOP**, short for floating-point operation. Computers call decimal numbers floating-point numbers.
+
+Here is the chain of steps the card follows:
+
+1. Multiply 6 by 7 billion weights and then by 2 trillion tokens. The result is about 84,000 billion billion FLOP. The card writes it as 8.4×10²², which means 8.4 with its decimal point moved 22 places to the right.
+2. Training runs on graphics chips, called **GPUs**, which are built to do enormous numbers of these operations at once. The card assumes a chip called the A100. Its top speed is 312 trillion FLOP per second, written 312 TFLOP/s.
+3. Chips in real training rarely run at top speed. The card assumes they average 40% of it, which is about 125 trillion FLOP per second.
+4. Dividing 8.4×10²² FLOP by that speed gives about 673 million seconds of work for one chip.
+5. There are 3,600 seconds in an hour, so that is about 187,000 **GPU-hours**. One GPU-hour is one chip working for one hour.
+6. Each chip draws about 400 **watts**, a unit for how fast electricity is used. One chip running for an hour therefore uses 400 watt-hours, and 187,000 chip-hours use about 75 million watt-hours.
+7. "Mega" means million, so 75 million watt-hours is 75 **megawatt-hours**, written 75 MWh.
+
+To feel the size of 187,000 GPU-hours, imagine one chip doing all the work alone. That would take about 21 years, but spread across 1,000 chips it would take about 8 days.
+
+Now read the end of that row: "one run, not serving". The estimate counts only the chips' own power for one successful training run. It leaves out cooling, the computers' other parts and the network between them. It also leaves out failed runs and the experiments before the final run. It also leaves out **serving**, the energy used every time someone asks the finished model a question. So the true total is larger.
+
+## Why it’s here
+
+A download feels like a product off a shop shelf. Once it is yours, you expect to use it however you like. AI releases do not work like that. Three separate questions decide whether you can safely build on one. Each answer lives in a different part of the release. Nobody gathers the answers for you, and the download button answers none of them.
+
+Picture a friend who finds harbor-lm-7b and likes its 70% test score. The friend builds a homework-helper app that charges a small monthly fee. Each part of the card has something different to tell them:
+
+- **License:** This answers the legal question. Under `Research only`, the Commercial use clause says "no commercial use of the weights or a hosted service". The app is blocked before cost or quality even come up.
+- **Data information:** This answers the data question, but only partly. Even with the most generous license, the card cannot say whether the writers behind the training text ever agreed. That risk travels into the app.
+- **Evaluation harness:** This answers the quality question, but only together with its standard error. Say your friend picked this model over a rival because it scored 3 points higher. The card's own arithmetic says that gap is smaller than the wobble from luck alone.
+
+The same problem repeats down the chain. Say your friend fine-tunes harbor-lm-7b first. The new model usually inherits the original license and any data gaps, whatever its new name says. That is why this module trains you to read every part separately, not only the first one you saw.
+
+The **Ethics and impact** lab builds on these same distinctions. It asks who pays the costs that a model card only hints at.
+
+## How to play with it
+
+Work through the cards in this order, and predict what will change before each click:
+
+1. Read **Sample model card** top to bottom before changing anything. Pay special attention to the License, Data information, Evaluation harness and Training energy (estimated) rows. With the starting settings, the badge reads "Open weights, restricted license".
+2. Set **License** to `Apache-2.0`, then **Training code** to `released`, and then **Data information** to `published`. After each click, read the note under the controls and watch the highlighted column in **Release spectrum**.
+3. Set **Intended use** to `Hosted product`, then to `Train on its outputs`. Try each under `Research only` and then under `Custom community`. Read which clause row carries the ✗ or ◐ that decides the result.
+4. Set **License** to `Apache-2.0` and **Intended use** to `Hosted product`. **License match** says yes, so now read **Still unknown** and ask yourself why switching licenses never changed it.
+
+For step 2, here is what to expect. The column moves from restricted to permissive after the first click. It stays put after the second and jumps to Open source AI after the third. Until then, the note lists what is still missing for OSAID 1.0. After the third click, the note stops listing missing pieces. It says the card has the components OSAID 1.0 asks for. It adds that OSI's own review would also check the exact terms.
+
+For the step 3 comparison, here is what to expect. A `Hosted product` needs only commercial use. So `Research only` gives "no", while `Custom community` gives "if conditions met". `Train on its outputs` needs commercial use plus the outputs clause. Under `Custom community`, that second clause says "outputs may not be used to improve another model family". So License match turns to "no". The commercial clause on its own would have been allowed with conditions. Under `Research only`, both rows of `Train on its outputs` show ✗, so either one alone would block it. The lab assumes you train the new model to make money. That is why this use also needs the commercial clause.
+
+**Try this:** With **Training code** at `released` and **Data information** at `published`, switch **License** back to `Research only`. Every file is still on offer. Yet the **Release spectrum** title drops back to "This card sits in: Open weights, restricted license". The note now lists only one missing piece: "terms that allow any purpose".
+
+## What to notice
+
+- **Terms matter as much as files.** `Research only` with the training code and data information both released is still restricted open weights. The rules do not allow every purpose.
+- **Permissive weights are not the full kit.** Under `Apache-2.0` with nothing else released, the badge reads "Open weights, permissive license". It only reaches "Open source AI (OSAID 1.0 components)" once code and data information arrive too.
+- **The strictest clause decides.** One ✗ row turns License match to "no", however many ✓ rows sit beside it. One ◐ row with no ✗ gives "if conditions met".
+- **Permission and provenance are different questions.** Under `Apache-2.0` the hosted product is allowed, and the data's consent is still unknown. The data's sources are unknown too, unless Data information is `published`.
+- **Forty items make a small test.** At 70%, one standard error is about 7 points. So the true score very likely sits somewhere from about 56% to 84%. A 3-point gap between two models means little.
+- **The energy figure is a calculation, not a meter reading.** For comparison, Meta reported 184,320 GPU-hours to train Llama 2 7B on the same 2 trillion tokens. That is close to the card's estimate of about 187,000.
+
+## Where it breaks
+
+### What this lab simplifies
+
+- The model harbor-lm-7b, its harness and all three licenses are made up for this lab. The kinds of clauses come from real licenses, though. Each verdict is a lookup in those made-up clauses, and none of it is legal advice.
+- The four columns in **Release spectrum** are categories, not products. They squeeze a smooth range into four boxes, and real releases mix their parts in many ways. OSI's own review of a release would also weigh its exact terms.
+- "Not required" or "not always required" in a column means that kind of release does not promise the item. Some real releases in that column include it anyway.
+- The energy figure uses fixed guesses, 40% of top speed and 400 watts per chip. It counts only the chips' own power for one successful run. It leaves out cooling, the other computer parts, networking, failed runs, experiments and serving.
+- The standard error only covers the luck of which questions were picked. It cannot catch a score pushed up by other problems, such as the ones in the next list.
+
+### Where the real thing goes wrong
+
+- Licenses change between versions and differ from country to country. Custom model licenses often change from one release to the next.
+- An API's terms of service can limit what you do with its answers. You never see the weights, but the terms still apply.
+- A fine-tune usually inherits its base model's license, along with any problems in the base model's data.
+- A real model card can be wrong or silent. A missing field is information, not a blank to fill with hope.
+- A test score can be inflated when test items leak into the training data. The model has then effectively seen the answers before the test.
+- OSAID 1.0 is one definition of openness. Other groups define it differently, and some releases that their makers call "open" do not meet it.
+
+**A common mix-up:** People treat a download button as permission. Permission lives in the license. Even the most generous license cannot promise that the training data was collected fairly or with consent.
+
+## Going deeper
+
+Here are real examples of where releases sat when they came out, though later versions may have changed:
+
+- **GPT-4 (2023):** OpenAI offered it only through its API and apps, and the weights were not released.
+- **Llama 2 (2023):** It came out as open weights under a custom license with an acceptable-use policy. Services with more than 700 million monthly users needed a separate license. The OSI said Llama 2 is not open source.
+- **Mistral 7B (2023):** It came out as weights under Apache-2.0, without its training data.
+- **Pythia and OLMo:** These two released their weights, their training code and their training data. EleutherAI made Pythia (2023), and AI2 made OLMo (2024).
+
+The rule of 6 operations per weight per token counts two kinds of work in training. One pass runs forward through the model to make a guess. A second pass runs backward to work out how each weight should change. Meta's reported 184,320 GPU-hours for Llama 2 7B is less than 2% away from the card's estimate. So the card's simple rule, with its 40% guess, lands close to a real reported figure.
+
+Mitchell and colleagues proposed the idea of a model card in 2019. It is a structured way to describe a model's intended uses, training data, testing and limits.
+
+**Ethics and impact** compares the energy used in training with the energy used in serving. It also asks who is represented in a benchmark. **Evaluation** shows how a harness gets contaminated when its test items leak into training data. **Deployment & serving** follows the hosted-product path from a model to a working service.

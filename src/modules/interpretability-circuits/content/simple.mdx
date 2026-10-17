@@ -1,0 +1,333 @@
+---
+objectives: ["Read the two halves of an induction circuit in attention and test them on a repeat period the model never saw", "Use ablation and patching to test causality", "State the limits of circuit claims"]
+terms: ["Circuit", "Activation patching", "Induction head", "Previous-token head", "Ablation", "Mean ablation", "Path patching", "Attribution patching", "Logit difference", "Clean and corrupted run", "Steering", "Causal scrubbing", "Self-repair", "Faithfulness"]
+---
+
+## The big picture
+
+When you ask a chatbot a question, the reply comes from a **language model**. This is a program that writes by guessing text one small piece at a time. Inside it are many small working parts, and nobody gave them their jobs by hand. The model's inner numbers were set automatically while it learned from example text. So even the people who build a model cannot point to the part that handles a task.
+
+This module is about finding which of those parts a behavior really depends on. Looking inside a model shows you which parts are busy while it works. That helps, but it is not enough, because a part can be busy without the answer depending on it. To learn what the answer depends on, you have to change something inside the model on purpose. Then you check whether the output changes too.
+
+Researchers run these tests on real models. One well-known study traced how a model picks which of two names should come next in a sentence. It found a whole team of parts doing the job. The team included backup parts that step in when the main ones are switched off. The same tests help with safety work. One example is finding where inside a model the choice to refuse a request gets made. They can also check whether extra training removed an ability from a model or only stopped it from showing.
+
+This matters because, without these tests, an explanation of a model's insides is only a convincing story. Nobody can catch it being wrong. With them, a story has to predict what happens when you change something. A prediction can fail, and that is what makes a story worth trusting once it passes.
+
+The parts this module studies are called **attention heads**. Each head decides, at every letter, which earlier letters to look back at. By the end, you will be able to explain these four things:
+
+- How two kinds of heads team up to copy a repeating pattern. One kind sits in each of the model's two stages, called layers.
+- How to spot those heads in a picture of attention. You will also test the idea on a repeat length the model never saw in training.
+- How switching parts off, called **ablation**, tests what an answer depends on. So does swapping values between two runs of the model, called **activation patching**.
+- Why every claim about a model's insides has limits. You will also see which limits apply to the tests in this lab.
+
+The lab runs a real, small language model, the same one the Attention lab uses, on a copying puzzle. The model sees a block of capital letters repeated several times, such as `QXZRKWMP` three times in a row. It has to guess the letter that comes next. The lab has three cards, and you will work through them in order:
+
+- **Copy task and attention** shows how well the model copies and where each of its eight attention heads looks.
+- **Head ablation** lets you switch heads off, one at a time or a whole layer at once. It measures how much worse the copying gets.
+- **Activation patching** runs the model on a normal prompt and on a broken copy. It swaps one piece between them and measures how much of the right answer comes back.
+
+The lab measures every number live from the model as you change the settings. It uses one fixed puzzle for each repeat length from 6 to 13. There are two exceptions. The third card offers two saved patching results, worked out ahead of time, that you can switch to. And the model's learned numbers are called its weights. If they cannot load, the first card's attention grid falls back to a saved example.
+
+## What it is
+
+### A small model with eight heads
+
+The model in this lab reads text one character at a time. At each character, it guesses the character that comes next. It holds about 1.4 million learned numbers, called **parameters**, so it is tiny next to the models behind chatbots. It learned from the plays of Shakespeare, mixed with made-up strings of letters that repeat.
+
+The model has two layers, which the lab also calls **blocks**. The first layer finishes its work before the second one begins. Each layer holds four **attention heads**. At every letter, a head decides how much to look back at each earlier letter. Then it carries information forward from the letters it looks at most.
+
+The lab names each head by its layer and number. So `L1 H4` is layer 1, head 4, and `L2 H3` is layer 2, head 3. A head shares out its attention among the letters it can see. Each letter gets a share, called an **attention weight**, and the shares always add up to 1. A weight of 0.67 means about two-thirds of the head's attention goes to that letter. A weight of 0.05 means the head barely looks there.
+
+### The copying puzzle
+
+The prompt is always 24 capital letters. The lab builds it by repeating a short block taken from a fixed list of letters. The length of that block is the **Repeat period**, which is the lab's main control. At period 8 the block is `QXZRKWMP`, so the prompt is that block three times. The model must guess the 25th letter, which should be `Q` if the model copies the pattern.
+
+The lab counts positions from 0, the way many computer tools do. So the first letter sits at position 0 and the last one at position 23. At period 8, each copy of the block fills 8 positions. So the third copy covers positions 16 to 23. The last letter, at position 23, is a `P`. The `Q` that should come next last appeared at position 16.
+
+### Two halves of the copying trick
+
+How can a model copy a pattern of letters in an order it has never seen before? The standard explanation uses two heads, one in each layer, working one after the other.
+
+The first half happens in layer 1. At every letter, a head looks at the letter right before it. It carries a trace of that letter forward. So each position ends up holding a note that says "the letter before me was …". The piece of text a model reads at each step is called a **token**, which here is one character. A head that does this job is called a **previous-token head**.
+
+The second half happens in layer 2. A head at the last letter, `P`, hunts for a note saying "the letter before me was `P`". Position 16 carries that note, because it comes right after the `P` at position 15. The letter stored at position 16 is a `Q`. The head puts much of its attention on position 16 and reads the `Q`. Then it pushes the model's guess toward `Q`.
+
+A head that works this way is called an **induction head**. Its rule is "A was followed by B before, so after A comes B again". Position 8 carries the same note, because it follows the `P` at position 7. So the head can spread its attention across both earlier copies. The lab outlines the nearer one, position 16, because it is the previous occurrence of the letter to copy.
+
+The layer-2 head can find position 16 only because a layer-1 head already wrote the note there. That is why the trick needs two layers working in order. Together, the two halves form a **circuit**. A circuit is a claim that particular parts, connected in a particular way, produce a particular behavior.
+
+In this model, the attention picture points to two previous-token heads, `L1 H3` and `L1 H4`. It also points to two induction heads, `L2 H2` and `L2 H3`. The rest of the lab tests whether that picture is true and how far it goes.
+
+### Watching is not testing
+
+A picture of where heads look is a good start, but it is only a picture. To see why, imagine a kitchen where eight helpers work in two shifts to bake a cake. They pass ingredients between bowls lined up along a counter. You want to know which helpers and bowls the cake's sweetness really depends on. You have three ways to find out.
+
+- **Look:** You watch which bowls each helper reaches into, which shows who handles what. But a helper can stir a bowl all afternoon without the cake depending on it.
+- **Send a helper home:** You bake again without one helper and taste the result. If the cake comes out wrong, that helper was needed, at least for this cake.
+- **Swap a bowl:** You set up a second kitchen where someone filled the sugar jar with salt by mistake. Its cake tastes wrong. Partway through, you move one bowl from the good kitchen into the same spot in the salty kitchen. Then you let the baking finish. If the cake now tastes sweet, the sweetness was traveling in that bowl at that moment.
+
+In the model, the helpers are the eight heads. The cake is the model's guess for the next letter. The bowls are the lists of numbers the model keeps at each letter. You will meet them properly below. Looking means reading the attention. Sending a helper home is called **ablation**, and swapping a bowl is called **activation patching**.
+
+The analogy stops matching in one important way. In a real kitchen, you can peek into any bowl and ask any helper what their job is. In the model, every bowl is a long list of unlabeled numbers. No head ever got a job title. One job can be split across several heads, and one head can help with several jobs. That is exactly why you need tests and not only a look.
+
+### Ablation: switching a head off
+
+When you switch a head off, you have to decide what to put in its place. That choice changes the result. The plainest choice is called **zero-ablation**. It replaces the head's output with zeros, as if the head added nothing at all. The trouble is that the parts after the head never got a zero from it during training. So some of the damage may come from that strange input, not from the head's missing work.
+
+In the kitchen, zero-ablation is like the missing helper's ingredient never landing in any bowl. The later work never met that gap during practice. It could throw off what comes next for reasons that have nothing to do with the helper's real job.
+
+A gentler choice is called **mean ablation**. It puts in the head's typical output instead. That is its average over eight other random letter strings that repeat with the same period. The lab uses that one average at every letter, whatever the prompt is. It is like a stand-in who pours the same average scoop into every bowl, whatever this cake needs. The later work gets something familiar. But it gets none of the information the real helper would have added for this cake.
+
+The **Ablation** control in the **Head ablation** card switches between these two choices. It labels them `Zero` and `Mean`.
+
+### Activation patching: swapping one value
+
+At every letter, the model keeps a running list of numbers that sums up the text so far. Each block adds its own results to that list. A list of numbers like this is called a **vector**. This running one is called the **residual**, or residual stream. In the kitchen picture, the residual at each letter is one of the bowls on the counter.
+
+Patching needs two runs of the model that differ in one small way. The **clean** run uses the normal prompt. The **corrupted** run uses the same prompt with one letter changed to `Y`, a letter the prompt never uses. Together they are called a **clean and corrupted run**. The contrast between them gives a patching result its meaning.
+
+With **Corrupt** set to `The letter to copy`, the lab changes the `Q` at position 16 into a `Y`. The model then copies what it finds there, so the corrupted run's top guess becomes `Y` instead of `Q`.
+
+To patch, the lab takes the clean run's residual at one position, right after one block. It pastes that residual into the corrupted run at the same place. Then it lets the corrupted run finish and checks how much of the right answer came back. Each square in the patching grid stands for one experiment of this kind. It happens at one position, after one block.
+
+### Keeping score: logit difference and recovery
+
+Before a model turns its guesses into percentages, it gives every possible next character a raw score. That score is called a **logit**. A higher logit means the model ranks that character higher, and a logit can be negative.
+
+The lab scores each run with a **logit difference**. It takes the logit of the right letter and subtracts the logit of the decoy `Y`. It reads the result at the last position. At period 8 the card writes this as `logit(Q) − logit(Y)`. A large positive value means `Q` is far ahead of `Y`. A negative value means `Y` has pulled ahead instead.
+
+At period 8, the clean run scores 10.69, so `Q` is far ahead. The corrupted run scores −1.01, so `Y` is slightly ahead. The distance between those two scores, 11.70, is called the **gap**. It is the whole amount a patch could possibly win back.
+
+**Recovery** says what share of the gap a patch wins back. The rule is `recovery = (patched − corrupted) ÷ (clean − corrupted)`. Say a patch lifts the corrupted score from −1.01 up to about 10.55. The score started below zero, so the climb is 10.55 plus 1.01, which comes to about 11.56. Divide that climb by the full gap of 11.70 and you get about 0.988, or 98.8%. That is the recovery you will find in one square of the lab's grid.
+
+A recovery near 100% means that one pasted vector brought back almost all of the answer. A recovery near 0% means it changed almost nothing. A negative recovery means the patch pushed the score even further in the wrong direction.
+
+## Why it’s here
+
+The previous lab found **features**. These are patterns inside a model that tend to appear with an idea, like "this is a name". It found them by noticing what goes along with what. This lab is where the course stops describing and starts testing.
+
+Picture a friend who wore the same pair of socks to every game their team won. Now they believe the socks cause the wins. Watching more games can never settle it, because the socks and the wins keep turning up together. The only fair test is to change one thing on purpose. Play a game without the socks and see what happens. The comparison stops matching in one place. A model has many parts to test, not one pair of socks.
+
+Reading an attention map is like watching the games. In this lab it runs into three problems that only an **intervention** can get past. An intervention means changing something inside the model on purpose and measuring what follows.
+
+### Two stories can draw the same picture
+
+At period 8, the letter an induction head should read is always 7 positions back. That distance is measured from the letter doing the looking. From the last letter at position 23, for example, the letter to read is the `Q` at position 16. A head that had learned to always look 7 back, whatever the letters are, would draw the same picture. It would copy equally well too.
+
+Attention at period 8 cannot tell these two stories apart, but changing the period can. A new period moves the right letter to a new distance. A head stuck at 7 back would keep looking at the old distance.
+
+### Needed is not the same as doing the job
+
+A head can be needed for copying without doing what the textbook story says. A head can also show a neat pattern while the answer does not depend on it. Ablation measures whether the answer gets worse without a part. That tells you the part is needed in this setting. It does not tell you what the part calculates.
+
+### Where the information actually travels
+
+Attention shows where a head could pull information from. It does not show where the information the answer needs actually travels. Patching answers that second question. It shows which single position, after which block, carries the letter to copy.
+
+## How to play with it
+
+Work through the cards from top to bottom. Each one tests the picture that the one before it draws. Start with **Repeat period** at 8, the setting the lab opens on. Keep it there until the last step.
+
+### Step 1: find an induction pattern
+
+In **Copy task and attention**, the prompt appears as a row of letter chips. The `Q` at position 16 is outlined in green, because it is the previous occurrence of the next letter. Beside the row, a `next` box shows the letter the pattern calls for, `Q?`. It also shows the model's top guess and how much probability the model gives that guess.
+
+There are three readouts underneath. **Copy accuracy** is the average probability the model gives the right next letter. It averages from the start of the second repeat to the end. **P(Q) at the end** is that probability at the last letter only. **Top 3 next letters** lists the model's three highest-scoring guesses there.
+
+The lab starts on head `L2 H3`. The eight head buttons above the grid let you switch to any other head. The grid shows the chosen head's attention across the whole prompt. It has one row and one column for each of the 24 letters. Each row is a letter doing the looking, and each column is a letter it can see. Darker purple means more attention.
+
+In the Attention lab's words, the letter doing the looking is the **query**. A letter being looked at is a **key**. Each row stops at its own letter. A letter can look at itself and at earlier letters, but never at later ones.
+
+Solid green outlines mark the key an induction head would read, in every row from the second repeat onward. An induction head does this lookup at every letter, not only the last one. That is why the outlines run down the grid in a diagonal stripe.
+
+The legend under the grid gives the rule as `i − 8 + 1`, where `i` is the row's position. Stepping back 8, one whole block, lands on the same letter in the copy before. Stepping 1 forward lands on the letter that came after it. For the last row, 23 − 8 + 1 = 16, which is the `Q` that follows the earlier `P`.
+
+Dashed amber outlines mark the previous letter, `i − 1`. For the last row, that is position 22. With `L2 H3` chosen, the dark cells should sit on the green outlines. When you choose `L1 H4`, they should jump to the dashed outlines instead.
+
+The line under the grid names the single distance that takes the biggest share of the chosen head's attention. That lets you check the picture in words as well. Try `L1 H2` too and read where its attention goes, because that head will matter later in the lesson.
+
+The table beside the grid scores all eight heads at once. Its **previous letter** column is each head's average attention on the letter right before. Its **after previous occurrence** column is the average on the green key. Clicking a row in the table also picks that head for the grid. That is a quick way to move between heads.
+
+A chip in the corner checks the lab's own arithmetic against a standard program, ONNX Runtime. That program runs the same model file on the same prompt. The chip first reads `Weights loaded`. Then it reads `Matches ONNX` followed by a tiny number. That number is the largest difference the check found between the two.
+
+The model's learned numbers are also called its weights. If they cannot load, the chip reads `Weights unavailable · cached view`. Then the grid falls back to a saved example at period 13.
+
+### Step 2: ablate a head
+
+In **Head ablation**, click `L1 H4` to switch it off. Its button changes from `on` to `off`. The **Change** readout gives the difference in copy accuracy in percentage points, shown as `pts`. A fall from 90% to 10% would read as −80.0 pts.
+
+Next to it is the readout **Attention on the induction key, L2 H2 · L2 H3**. It shows how much the two induction heads look at the induction key. That key is the green-outlined letter from Step 1. The readout gives the values with every head on, then an arrow. After the arrow come the values with your chosen heads off. That lets you see whether switching off a layer-1 head disturbs the layer-2 heads.
+
+Head switches add up. So click **Restore all** before each new head, to keep only one head off at a time. Restore, then switch off `L2 H3`, then restore again and switch off `L2 H1`. Each head's button also shows an `alone` figure. That is the change in points when only that head is off. That lets you compare all eight heads at a glance. The **Ablate layer 1** and **Ablate layer 2** buttons switch off a whole layer in one click.
+
+With a layer-2 head off, the induction-key readout does not move at all. That holds even when you switch off `L2 H3` itself. Switching a head off removes what it writes, not where it looks. Heads in the same layer cannot affect each other. Only switching off a layer-1 head changes where the layer-2 heads look.
+
+The bars at the bottom show the probability of the right letter at every scored position. They are outlined blue for the intact model and solid red with your chosen heads off. The scored positions are every letter from the start of the second repeat on. **Copy accuracy** averages the same letters. With `L2 H3` off, the red bars collapse almost everywhere. With only `L2 H2` off, the losses are partial and uneven, deep at some letters and small at others.
+
+Finally, click **Restore all** and set **Ablation** to `Mean`. Switch off `L2 H3` again. Then compare what the copying loses under `Mean` with what it lost under `Zero`.
+
+### Step 3: patch activations
+
+In **Activation patching**, the **Sweep** control picks where the grid's results come from. Keep it on `Live · copy task`, which runs the patching on the copy puzzle in front of you. Keep **Corrupt** on `The letter to copy`. The clean and corrupted prompts appear as two rows of chips, with the changed position outlined in amber. The readouts give the logit difference for **Clean** and **Corrupted**, the **Gap** between them, and each run's top letter.
+
+The grid has two rows, `After block 1` and `After block 2`, and one column for each position. Green squares bring the score back toward the clean run, and red squares push it the other way. The color stops getting darker once it reaches 100%. The exact recovery for whichever square you pick appears in the line under the grid.
+
+Above the grid, the letter of the changed column, position 16, is highlighted in amber. Click the square in the `After block 1` row under that column. The lab opens with that square already selected. Read its recovery. Then click the last square in the same row, position 23, and compare the two.
+
+Then set **Corrupt** to `An unrelated letter`. The lab now changes the `K` at position 4, a letter the answer does not depend on. Read the **Gap** before anything else. Notice the warning that appears whenever the gap is smaller than 1.
+
+The **Sweep** control also offers two saved sweeps, `Cached · speaker` and `Cached · letters`. The lab worked these out ahead of time and stored them.
+
+- `Cached · speaker` uses a short script in the style of the plays: `ROMEO: hello`, then `JULIET: hello`, then `ROMEO:`. In its corrupted prompt, the last speaker is JULIET instead, cut to the clean prompt's length. So it ends `JULIET` with no colon.
+- `Cached · letters` uses the same period-13 letter puzzle that the live sweep builds at period 13.
+
+Both saved sweeps score each run by the right character's logit alone. So their **Clean**, **Corrupted** and **Gap** numbers differ from the live sweep's. The recoveries in the `Cached · letters` grid still come out almost the same as the live sweep's.
+
+### Step 4: try an unseen period
+
+The made-up repeating strings in the model's training covered almost every period from 4 to 31. Training skipped a few on purpose, including 11 and 13, so the lab marks those two as `unseen`.
+
+**Try this:** Set **Repeat period** to `13 · unseen`, a length the model's repeated-string training never used. Look again at **Copy accuracy**, the green outlines, and the `L2 H3` row of the table. Then go back to 8 and compare what moved with what stayed the same.
+
+## What to notice
+
+### The attention picture matches the textbook
+
+At period 8, copy accuracy is 94.5%. On average, the model gives the right next letter about a 19-in-20 chance. Across every period the lab offers, copy accuracy stays between 88.0% and 97.2%. That range includes the unseen periods, so the model still copies well at lengths its training skipped.
+
+The one weak spot is the guess at the first letter of the second repeat. That is the very first point where copying is possible, when the pattern has only begun to repeat. From the second letter of that repeat onward, the average is at least 95% at every period.
+
+The unseen periods still cost a little. Period 13 gives the lowest copy accuracy of any period, 88.0%, and period 11 gives the next lowest. Every other period scores 93.4% or more. Almost all of that drop comes from the weak first letter. There, the model gives the right letter under a 5% chance at period 13. From the next letter on, its average is at least 95% there too.
+
+Only two heads put much attention on the green key, `L2 H2` and `L2 H3`. At period 8, they put 0.66 and 0.67 of their attention there. No other head puts more than 0.10 there, which is a tenth of its attention. Meanwhile `L1 H3` and `L1 H4` put 0.98 or more of their attention on the previous letter. That holds at every period. Those four heads are the two halves of the textbook picture, found by looking alone.
+
+### The heads follow the pattern, not a fixed distance
+
+Picture a classmate who aces every practice quiz. You start to wonder whether they learned the topic or only noticed that the answer is always C. Watching them retake the same quiz cannot settle it, because both habits give the same score. You need a new quiz where the right answers sit in different places.
+
+Changing the period gives the heads that kind of new quiz. At period 13, the green key moves to 12 back. A head stuck at 7 back would keep its dark cells at 7 back, off the green outlines. Instead, `L2 H2` and `L2 H3` always give the most attention to one distance. That distance is the period minus 1. So at every period, the outlines and the dark cells move together. At period 13, `L2 H2` and `L2 H3` put 0.82 and 0.80 of their attention on the green key. That key is 12 back.
+
+Any period other than 8 already rules out a head stuck at 7 back. The unseen periods 11 and 13 go further. They rule out a head that only memorized one look-back distance for each period it trained on. Passing both tests is strong evidence that these heads follow the letters. It does not prove that position plays no part at all.
+
+At short periods, the prompt holds several earlier copies, and the induction heads spread their attention across them. Take period 6, where the two heads put 0.55 and 0.56 on the green key. That key is the letter after the nearest earlier copy. Count the matching letter after every earlier copy, and their totals rise to 0.89 and 0.93.
+
+### Single heads are needed
+
+At period 8, the intact model scores 94.5%. Switching off one head at a time with Zero sorts the eight heads into three groups:
+
+- **Badly needed:** Without `L1 H2` the score falls to 5.1%. Without `L2 H3` it falls to 6.0%, and without `L1 H4` to 9.9%.
+- **Partly needed:** Without `L2 H2` the score falls to 50.2%, and without `L1 H3` it falls to 56.6%.
+- **Hardly needed:** Without `L1 H1` the score is still 89.2%. Without `L2 H1` it is 95.8%, and without `L2 H4` it is 99.6%.
+
+Switching off all of layer 1 leaves 1.9%, and switching off all of layer 2 leaves 0.4%. So the model needs both layers to copy.
+
+Notice that switching off `L2 H4` raises the score above the intact 94.5%. Switching off `L2 H1` does so to a lesser degree. So `L2 H4` is not needed for copying here, and it even gets slightly in the way. That does not make it useless. It may do a different job, such as helping with the Shakespeare text the model also learned from. This score never checks that. An ablation only reports what happened to one score on one prompt, not what a head is for.
+
+### Layer 1 feeds layer 2, as far as ablation can tell
+
+Switch off `L1 H4` and watch **Attention on the induction key, L2 H2 · L2 H3**. With every head on, the two induction heads put 0.66 and 0.67 on the green key. With `L1 H4` off, those values fall to 0.19 and 0.24. With `L1 H3` and `L1 H4` both off, they fall to almost nothing, 0.01 and 0.03.
+
+That is what the story predicts. The layer-2 heads lose their aim when the layer-1 heads stop writing their notes. But the story is not complete. Switching off `L1 H2` cuts the same attention to 0.30 and 0.21. Yet `L1 H2` puts nearly all its attention two letters back. This lab cannot tell you what `L1 H2` adds to the copying.
+
+### Zero exaggerates, and the layer-1 result holds up
+
+The later parts never got a zero from that head during training. So zero can make a head look more important than it is. Each layer has one more step that runs after all four of its heads have finished. So for a layer-2 head, two parts come after it. One is that later step inside its own layer. The other is the final step that turns the model's numbers into a guess.
+
+Switch to `Mean` and switch off `L2 H3` alone. The model keeps 47.9% instead of 6.0%. In the same way, switching off `L2 H2` alone keeps 75.9% instead of 50.2%.
+
+The layer-1 heads still matter under Mean. Without `L1 H4` the score drops to 24.3%, and without `L1 H2` it drops to 27.4%. Losing `L1 H3`, the least harmful of the three, still drops it to 48.8%, about half the intact score.
+
+So the two ways of switching off agree on which layer-1 heads matter. They disagree about how much each induction head matters alone. Under `Mean`, the two induction heads overlap. Each does part of the same copying on its own, so losing one leaves the other's share. With both of them off, the score is 2.4%, close to the 1.3% that `Zero` gives.
+
+The two heads sit in the same layer, so neither can react to the other being switched off. This is overlap, not one head stepping in for the other.
+
+Checks built into the lab's code repeat this comparison on random letter strings at periods 9 and 13. They find the same split, but you do not see those checks on screen.
+
+### Patching finds one route
+
+With **Corrupt** on `The letter to copy`, the `After block 1` square at position 16 recovers 98.8%. That is almost all of the gap. Every other square in that row stays within 0.6 points of zero. That includes the last position, which recovers −0.5%.
+
+So after the first block, the letter to copy still sits at its own earlier position. The layer-2 heads can read it there, and it has not moved to the last position.
+
+The corrupted run shows that the model copies whatever it finds there. With `Y` planted at position 16, its top guess becomes `Y`. At period 8, the planted `Y` gets 48% of the probability, about half. At period 13, it gets 99.5%, nearly all of it.
+
+At period 8, an untouched `Q` still sits at position 8 for the heads to read. At period 13, the planted `Y` is the only earlier copy. That fits the idea that the heads read from every copy they can find.
+
+The gap is large at every period, between 6.05 and 22.35. So the patching results rest on a big, clear difference between the two runs.
+
+In the `After block 2` row, every square except the last reads exactly 0%, and the last reads 100%. The design builds in that pattern. After the last block, no layer is left to move information between positions. Only the last position's list can affect the guess at that point.
+
+So pasting the clean list at any earlier position changes nothing, which reads 0%. Pasting it at the last position hands the model the clean run's finished answer, which reads 100%. This row is a check that the tool works, not a discovery.
+
+### A control shows what a bad measurement looks like
+
+A **control** is a run set up so that you already know what should happen. That lets you check the measuring tool itself. Set **Corrupt** to `An unrelated letter`. The model still copies correctly, because the changed letter is not one it needs.
+
+Both runs now give nearly the same answer. So the gap between their scores falls to 0.16 at period 8, and the warning appears. Yet the grid still prints percentages, up to 43% in one square, because recovery divides by that tiny gap. A shift of less than a tenth in the score, divided by 0.16, becomes a large-looking percentage.
+
+Picture two runners who cross the finish line two hundredths of a second apart. New shoes make the slower one a hundredth of a second faster. Someone could say the shoes "closed 50% of the gap". That sounds impressive, yet a hundredth of a second is far too small to matter in a race.
+
+The model's shift is also far too small to tell you anything about how it copies. Dividing by a tiny gap is what makes it look big.
+
+The unrelated letter's gap stays under 0.35 at every period, so this control never gives a usable measurement. The lesson for any patching experiment is to check the gap before you read a single square.
+
+## Where it breaks
+
+### What this lab simplifies
+
+- The prompts are made-up capital letters from one fixed list, 24 letters long, with one prompt for each period.
+- Checks built into the lab's code repeat the main results on random letter strings. You do not see those on screen.
+- Repeated capital letters are not a far-out test for this model. Made-up repeating strings were part of its training, even though two of the lab's periods were left out.
+- Ablation switches off a whole head at a time. Patching swaps the whole residual at the end of a block. Neither tool here tests a single connection between two heads.
+- Patching never swaps the output of one head on its own.
+- The score is one logit difference against one decoy letter, `Y`, which was chosen before the experiment.
+- Mean ablation uses one typical value per head, averaged over eight random repeats. Other ways of choosing the stand-in could give different sizes. One example is a separate average for each position.
+- Nobody here has checked the wiring between the layers directly. That is the job of **path patching**, which swaps the signal along one single connection between two heads. Going deeper describes it.
+- The claim that layer 1 feeds layer 2 rests on one result. The induction heads' attention falls when layer-1 heads are off. And `L1 H2` shows that other layer-1 heads matter too.
+- This is one small model from one training run. A second training run also passed the same induction check offline, but only this one is in the lab.
+- A model with 1.4 million parameters says little about the huge models behind chatbots. Those have far more layers and heads.
+- The saved `Cached · speaker` sweep recovers 96% at the last position, but that result is close to built in. Its two prompts differ only in the last speaker's name, right at the end.
+- The final six characters are `ROMEO:` in one prompt and `JULIET` in the other. The lab outlines all six in amber. The last of those six is the very character the guess is made from.
+- Pasting the clean list back at that position restores what the model knows about that character. So a big recovery there could hardly fail to appear. It shows a pattern, not a discovery.
+
+### Where the real method fails
+
+**Switching a part off puts the model in a state it never met.** Zero is an arbitrary value. Later parts may rely on a head's usual output as a steady background level. That is why Wang and colleagues used mean ablation, not zero, in their 2022 study of names. A typical value reduces this problem without removing it. The big change in `L2 H3`'s result from Zero to Mean shows this.
+
+**Other parts can quietly take over.** Picture a group project where one member is off sick and the others cover their part without saying anything. A teacher who compares the final grade with and without that member might decide the member added nothing.
+
+Models can do something similar, called **self-repair**. Other parts make up for a part that has been switched off. In 2023, McGrath and colleagues saw one layer make up for another. They called this the Hydra effect. The name comes from a monster in Greek myth that grows new heads when one is cut off. Wang and colleagues found backup heads that took over when the main ones were knocked out. So a small effect does not prove a small role.
+
+**A circuit may not travel.** A circuit found for one kind of prompt may fail on a reworded prompt. It may also fail in another model or training run.
+
+**Patching says where, not who.** It shows where the needed information passes through, but not which head wrote it there.
+
+**A score can be useless.** As the control showed, a score that barely changes between the two runs makes every recovery meaningless. So choose a score that clearly changes between the runs before you start the experiment.
+
+**A common mix-up:** "Every part that matters belongs to the circuit." Switching off `L1 H2` hurts copying about as much as switching off `L1 H4`. Yet `L1 H2` looks two letters back, not at the previous letter. Being needed shows that the answer depends on a part. It does not show that the part does the job the story describes.
+
+## Going deeper
+
+### Sharper interventions
+
+Ablation and patching each ask about one location at a time. **Path patching** swaps a single connection between two parts. That separates "this head matters" from "this head matters because it feeds that one". It is the missing test for this lab's claim that layer 1 feeds layer 2.
+
+A full patching grid costs one complete run of the model for every square. That gets expensive in large models. **Attribution patching** estimates the whole grid from two ordinary runs. It adds one extra calculation that works backward through the model. It trades some accuracy for speed.
+
+### Making claims testable
+
+**Causal scrubbing** turns an explanation into a list of changes that should not matter if the explanation is right. Then it tries every one of them. Changing the period in this lab is a small version of that idea. The induction story says changing the period should move where the heads look without breaking the copying. The outlines and dark cells moved with the period, as predicted.
+
+Researchers now judge a circuit by three standards. The first, **faithfulness**, asks if the claimed parts can produce the behavior without the rest of the model. Completeness asks whether the circuit includes everything that matters. Minimality asks whether every part in it is truly needed.
+
+### Where the idea came from
+
+In 2021, Elhage and colleagues showed that induction heads need at least two layers. A previous-token head feeds an induction head, as in this lab. The following year, Olsson and colleagues argued that induction heads may be behind much of **in-context learning**. That is a model's ability to pick up a pattern from the prompt itself.
+
+The best-known example of a circuit is the 2022 study of names by Wang and colleagues. It used a model called GPT-2 small. The researchers mapped 26 heads sorted into 7 groups. They scored their circuit on faithfulness, completeness and minimality. They said themselves that those scores also pointed to gaps in their understanding.
+
+More recent work maps how readable features connect, not how raw heads connect. One example is Anthropic's circuit tracing, by Ameisen and colleagues in 2025. That work builds its maps inside a stand-in model that imitates the original. The stand-in is built from features like the previous lab's, which makes it easier to read.
+
+**Steering** means turning one feature up or down by hand while the model writes. Suppose turning up a feature labeled "talks about the ocean" makes the model start talking about the ocean. Then the label has passed a real test of cause. Checking that turning it down has the opposite effect makes the test stronger still.
+
+The Attention and The transformer block labs show the heads and the residual stream. This lab switches off the heads and swaps the residual.
