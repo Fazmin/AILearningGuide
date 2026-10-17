@@ -17,6 +17,7 @@ src/modules/mixture-of-experts/
   card-info.ts
   assets.json
   content/
+    simple.mdx
     plain.mdx
     standard.mdx
 ```
@@ -81,7 +82,7 @@ State is JSON-safe. `serializeState` produces the state placed in snapshots and 
 - `state` — current JSON-safe module state
 - `setState(patch)` — persistent partial updates
 - `currentStep` — the shell's active step index
-- `mode` — `plain` or `standard`
+- `mode` — `simple`, `plain`, or `standard`
 - `narrate(message)` — screen-reader narration when verbose mode is enabled
 
 Controls need visible labels, keyboard operation, and useful output text. A drag surface must have a slider, arrow-key behavior, or numeric alternative. Do not infer meaning from colour alone.
@@ -172,7 +173,7 @@ sections, in this order:
 6. Where it breaks
 7. Going deeper
 
-Plain mode is written at a grade 8 to 10 reading level, and additionally requires an analogy, a bold `Try this:` nudge, and a bold `A common mix-up:` correction. See "Plain mode" in `CONTENT_STYLE_GUIDE.md`; `npm run check:readability` measures the reading level.
+Plain mode is written at a grade 8 to 10 reading level, and additionally requires an analogy, a bold `Try this:` nudge, and a bold `A common mix-up:` correction. See "Plain mode" in `CONTENT_STYLE_GUIDE.md`. Simple mode rewrites the Plain lesson so an 8th grader can follow it, in sentences under 20 words, and keeps the same three extras; see "Simple mode". `npm run check:readability` measures both reading levels.
 
 Sections may use `###` subheadings, ordered and unordered lists, inline `code`, and fenced
 code blocks; `.learn-copy` styles all of them. Depth comes from more short paragraphs and

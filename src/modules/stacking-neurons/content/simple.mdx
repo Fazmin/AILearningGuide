@@ -1,0 +1,372 @@
+---
+objectives: ["Relate width to model capacity, and show with real training a task where depth beats width at the same parameter count", "Explain hidden representations", "Show why a nonlinearity is required for depth to add anything", "Tell memorizing noisy labels from learning the pattern by comparing training and held-out accuracy"]
+terms: ["Hidden layer", "Representation", "Width and depth", "Nonlinearity", "Universal approximation", "Feature hierarchy", "Distributed representation", "Capacity", "Parameter count", "Forward pass and backpropagation", "Binary cross-entropy", "Gradient descent, momentum, and epochs", "Initialization", "Overfitting and held-out data"]
+---
+
+## The big picture
+
+In the last lab, you worked with a single artificial neuron. It multiplies each input by a dial setting and adds up the results. However you set its dials, it can draw only one straight line between "yes" and "no".
+
+This module connects many of those neurons, some side by side and some one after another. Together they form a small **neural network**.
+
+The big question is how a team of simple parts can draw shapes that one part cannot. Examples are a bent boundary and a closed ring. The module also asks when adding more parts helps, and when it quietly makes things worse.
+
+### Where it shows up
+
+Stacking layers of neurons is the basic plan behind the models in the rest of this course. Models that work with pictures and models that work with language both pass their input through many layers. Each layer builds on what the one before it produced. Even the transformer block, which later labs build on, is a stack of layers with some extra structure added.
+
+### Why it matters
+
+Without stacking, a network would be stuck drawing one straight line. That sounds like a small limit until you meet a puzzle like XOR. XOR has four clumps of dots, one near each corner of a square. A single neuron can sort at most 3 of the 4 correctly.
+
+Two more lessons sit inside this one. The first is that stacking only helps if each layer bends its numbers before passing them on. Without that bend, a hundred layers collapse into one plain multiply-and-add. That can never beat a single straight line.
+
+The second is that bigger is not automatically better. A large network can memorize mistakes in its practice data. You only catch this by testing it on fresh examples.
+
+### What you will be able to explain
+
+By the end of this module you should be able to explain:
+
+- how adding neurons to a layer lets a network draw more complicated shapes;
+- a real case where two narrow layers beat one wide layer with exactly the same number of dials;
+- what a hidden layer hands to the next one, which is a new description of each input;
+- why the bend between layers has to be there for extra layers to add anything at all;
+- how comparing scores on practice dots and fresh dots separates memorizing mistakes from learning the real pattern.
+
+### What the lab shows
+
+The lab trains a real, tiny network right in front of you. It trains a new one every time you change the network's shape. Every color, score and curve you see is measured from that training, not drawn by hand.
+
+The data is different, because it is made up. There are three fixed sets of dots on a square: XOR, Ring and Checkerboard. Each set has 48 to 64 dots.
+
+Each of the lab's five cards shows a different side of the experiment:
+
+- **Decision surface:** This card colors every spot on the square by the network's answer. That shows you the shape it has drawn.
+- **Network training controls:** These let you pick the puzzle and the network's shape. You can then train it and replay the training round by round.
+- **Network builder:** This card shows each neuron's own map of the square. It also shows the numbers flowing through the network at one point you choose.
+- **Depth against width:** This card trains two networks side by side, one wide and one deep. Both have the same number of dials.
+- **Held-out data:** This card scores two networks on fresh dots they never practiced on. It also lets you flip the labels on some practice dots to see which network memorizes them.
+
+## What it is
+
+### One neuron, one straight line
+
+Here is a quick reminder of how a single neuron works on this lab's square of dots. Each dot is described by two numbers. The number x₁ says how far left or right it sits, and x₂ says how far up or down. Both run from −1 to 1, so the middle of the square is the point (0, 0).
+
+A neuron multiplies x₁ and x₂ by its own dial settings, called weights, and adds them. Then it adds one more fixed nudge, called a bias. Finally it passes that total through an activation. This is a small rule that reshapes the number before handing it on.
+
+Every spot where the total comes out exactly zero lies on one straight line across the square. On one side of that line the total is positive, which leans "yes". On the other side it is negative, which leans "no". However you set the dials, one neuron gives you one straight cut.
+
+### Three puzzles made of dots
+
+Every dot has a label of 1 or 0. You can read these as "yes" or "no". On the **Decision surface**, filled circles are label 1 and open squares are label 0. The network must color the square so each dot sits on the side that matches its label.
+
+The background is shaded by the network's answer. It is green where the network leans "yes" and red where it leans "no". It is pale where the network is unsure. A dot the network gets wrong has a red ring drawn around it.
+
+The **Dataset** control offers three sets of dots. Each is laid out so that no single straight line can split it:
+
+- `XOR` has 48 dots in four clumps of 12, with one clump near each corner of the square. A dot is "yes" when exactly one of its two numbers is positive. So the two yes clumps sit diagonally across from each other.
+- `Ring` has 24 "yes" dots packed into a small disc in the middle. It also has 36 "no" dots in a band around them.
+- `Checkerboard` splits the square into a 4 × 4 grid of small squares that alternate between yes and no. Each small square holds 4 dots, so there are 64 in all.
+
+The name XOR is short for "exclusive or". It is the kind of "or" on a menu that says a meal comes with soup or salad. You get one or the other, but not both and not neither. In the XOR puzzle, "x₁ is positive" and "x₂ is positive" play the parts of soup and salad. That puts the yes clumps in the top-left and bottom-right corners.
+
+### A hidden layer: neurons side by side
+
+Now put several neurons side by side and give them the same two inputs. Each one keeps its own dial settings. That group is called a **hidden layer**.
+
+Each neuron in it draws its own straight line. On the **Decision surface**, that line shows up as a dashed line. The lines are labeled h1, h2 and so on, where the h stands for hidden.
+
+The layer is called hidden because you never read its outputs as the answer. Its numbers go to the next layer instead. At the very end, one more neuron, the output neuron, turns them into the network's answer.
+
+That answer is written ŷ, and you say it "y-hat". It is always a number between 0 and 1, where near 1 means "yes" and near 0 means "no". A dot counts as correct when ŷ lands on its label's side of 0.5. A "yes" dot, for example, needs an answer of at least 0.5.
+
+### An assembly line of neurons
+
+Picture a network as an assembly line in a furniture workshop. Logs come in at one end and a chair comes out at the other. The first station turns logs into planks, and the next turns planks into frames. The last turns frames into a chair. The plank station never makes a chair, and nobody there hears about chairs. Its only job is to hand the next station better raw material.
+
+In a network, each station is a layer and each worker is a neuron. That gives you two separate ways to grow the network:
+
+- Making a layer **wider** adds more workers at the same station. In the lab you do this with **Neurons per layer**, from 1 to 6.
+- Making the network **deeper** adds more stations, each building on what the last one made. In the lab you do this with **Hidden layers**, from 1 to 3.
+
+These two numbers are the network's **width and depth**. Width is how many neurons sit in each layer, and depth is how many layers there are.
+
+The picture gets one thing right. Each station only hands its work forward, and the finished chair judges the whole line. It gets one important thing backwards, though. A real plank station is told to make planks. A hidden neuron is told nothing at all about what to make.
+
+Its dials are tuned only by how good the final answer turns out to be. So whatever in-between material it ends up producing is whatever happened to help. The picture gets a few more things wrong, and "Where it breaks" comes back to them.
+
+### Capacity: what a network could draw
+
+More workers at one station means more straight cuts for the next station to combine. How complicated a shape a network could draw is called its **capacity**. Width and depth set it, more than anything else.
+
+The Ring puzzle shows this clearly. Two neurons give the output neuron only two straight lines to work with. Two crossing lines make an X. The space between two arms of an X is a wedge that stays open at its far end. In the lab the two lines may meet outside the square. Then you see a funnel rather than an X. It is still open on one side.
+
+Two lines can fence off a wedge but never a closed area. Choose the Ring and leave the other settings alone. The network gets 86.7% of the dots right and stops there. A third neuron adds a third line. Three lines can form a triangle around the middle disc, so the score climbs to 100%.
+
+### Counting the dials
+
+Every number that training can adjust is called a parameter, and the **Parameters** readout counts them for you. That total is the network's **parameter count**, and you can work it out by hand. Each neuron has one weight for every number it reads, plus one bias of its own.
+
+Here is the count for the lab's starting network, which has one hidden layer of two neurons:
+
+- Each hidden neuron reads x₁ and x₂, so it has 2 weights plus a bias, which makes 3 dials.
+- There are two hidden neurons, so together they hold 6 of the network's dials.
+- The output neuron reads the two hidden numbers and has its own bias, which adds 3 more.
+- That makes 9 in total, which is exactly what the **Parameters** readout shows at the start.
+
+With 3 hidden layers of 6 neurons, the count climbs all the way to 109. Every neuron in a later layer reads all six neurons of the layer before. So each one carries 7 dials. Layer by layer, the count goes like this:
+
+- The first hidden layer has 6 neurons with 3 dials each, which makes 18.
+- The second and third hidden layers each have 6 neurons with 7 dials each, which makes 42 apiece.
+- The output neuron reads 6 numbers and adds a bias, which makes 7.
+- Adding 18, 42, 42 and 7 gives 109.
+
+Between two layers of 6, every neuron reads every neuron before it. So 6 × 6 = 36 weights sit between them. Make both layers 12 wide and that becomes 144, which is four times as many. This is why width drives most of the total.
+
+### Representation: a new description of each dot
+
+Now for the central idea of the module. Each neuron in a layer hands one number forward. The list of those numbers is that layer's **representation** of the input. A representation is not an answer. It is a new description of the dot, written in a form the next layer finds more useful.
+
+At the lab's starting settings, the hidden layer has two neurons that use `tanh`. This activation keeps every output between −1 and 1. That gives each dot two new numbers, h1 and h2. Here is where the four XOR corners end up after training:
+
+- The "no" dot at the top right, (0.6, 0.6), becomes about (1, 1).
+- The "no" dot at the bottom left, (−0.6, −0.6), also becomes about (1, 1).
+- The "yes" dot at the top left, (−0.6, 0.6), becomes about (1, −1).
+- The "yes" dot at the bottom right, (0.6, −0.6), becomes about (−1, 1).
+
+Look at the two "no" corners. On the original square they sat at opposite ends of a diagonal. In the new description they land almost on top of each other. Each "yes" dot gets one number close to −1.
+
+Now add up each dot's two new numbers. Both "no" corners give about 1 + 1 = 2. Both "yes" corners give about 1 + (−1) = 0. So the output neuron only needs one cut somewhere between 0 and 2. After training, it says "yes" when h1 + h2 comes out below about 0.9. Its own dials set that value, and the next section reads them.
+
+Imagine drawing h1 and h2 as a new square. Every spot where h1 + h2 equals 0.9 would sit on one straight line. Among the four corners, a sum that small only happens when one of the two numbers is near −1. That is true for both yes dots and for neither no dot.
+
+This is the whole trick behind solving XOR. The hidden layer never answers the question itself. Instead, it moves the dots into a new layout where the output neuron's one straight line is enough.
+
+### Reading the output neuron's sum
+
+**Network builder** prints this last step as a formula, in the row called "Output unit at the probe". The probe is a point you place with **Probe x₁** and **Probe x₂**. It starts at the bottom-right corner, (0.6, −0.6).
+
+The lab starts at seed 2 and epoch 150. The seed picks which random starting dials the network gets. The epoch counts how many rounds of training it has had so far. "What training does here" explains both more fully. At those starting settings, the row reads `ŷ = σ((−6.39)·(−1.00) + (−6.36)·1.00 + 5.74)`. If you have already changed things, press **Reset interactive** to get back to that starting point.
+
+In each product, the first number is one of the output neuron's weights. The second is h1 or h2 at the probe. The number 5.74 is the output neuron's bias.
+
+The σ is a Greek letter called sigma. It stands for the sigmoid from the last lab. The sigmoid squashes any total into a number between 0 and 1. Big positive totals come out near 1 and big negative ones near 0. Here is the sum at the starting probe, step by step:
+
+- The first product, −6.39 times −1.00, is +6.39, because a negative times a negative is positive.
+- The second product, −6.36 times 1.00, is −6.36, since multiplying by 1 changes nothing.
+- Those two nearly cancel, so the total, which the lab calls z, lands close to the bias. The lab shows z = 5.73 because it adds up the exact values, not the rounded ones in the row.
+- The sigmoid turns 5.73 into 0.997, which is very close to 1, so the answer is "yes".
+
+Now move **Probe x₂** up to 0.6, so the probe sits on the top-right "no" corner. Both hidden numbers are now close to 1. The products come out at about −6.2 and −6.3, and together they outweigh the bias. The total z drops to about −6.8, and the sigmoid turns that into 0.001, a clear "no".
+
+Working out an answer this way, layer by layer from the inputs to ŷ, is called the **forward pass**. The number under each tile in **Network builder** is one step of it, read at the probe.
+
+### The bend between layers
+
+Every hidden neuron passes its total through an activation before handing it on. The **Hidden activation** control offers three choices:
+
+- `tanh` squashes any total into a number between −1 and 1. It passes small totals through almost unchanged and flattens big ones. A total of 3, for example, comes out as about 0.995.
+- `ReLU` keeps a positive total as it is and turns any negative total into 0.
+- `none (linear)` passes the total through untouched, so the neuron only multiplies and adds.
+
+Draw either `tanh` or `ReLU` as a graph, and you will not get a straight line. For `ReLU`, the inputs −2, −1, 0, 1 and 2 give 0, 0, 0, 1 and 2. Plot those points and you get a flat line that turns a corner at 0 and then climbs. That corner is the bend. The `tanh` activation has a smooth version of it, flattening out at both ends.
+
+An activation that bends like that is called a **nonlinearity**. Stacking only pays off because of it.
+
+To see why, picture a friend who doubles a cookie recipe for a party. A second friend then triples that doubled batch. Together they have multiplied the original by 6, which one person could have done in a single step. Layers without a bend behave the same way, because each one only multiplies and adds. The comparison stops at the numbers, since real layers also add a bias.
+
+Now try it with actual numbers. Say one layer doubles its input and adds 1, and the next layer triples the result and subtracts 4. Feed in 5, and the first layer turns it into 11. The second layer turns 11 into 29. But multiplying 5 by 6 and subtracting 1 also gives 29. That shortcut works for every input you try.
+
+So however many multiply-and-add layers you stack, they collapse into a single multiply-and-add. That can only ever draw a single straight line. A bend breaks the shortcut, and you can check this with `ReLU` between two layers.
+
+Feed in −2, 0 and 2, and `ReLU` turns them into 0, 0 and 2. Any single multiply-and-add, graphed, is a straight line. No straight line passes through all three of these results. It would have to stay flat at 0 for −2 and for 0. Then it would rise to 2 at 2.
+
+That corner is something no multiply-and-add can copy, so the next layer receives something genuinely new to work with. That is what lets each new layer add something the last one could not.
+
+A stack with no bend at all does worse on XOR than a single `tanh` neuron. One `tanh` neuron can still sort 3 of the 4 clumps. It flattens out, so it can say a firm "no" on one side of its line. A plain multiply-and-add never flattens out. Its total keeps changing at the same steady rate across the whole square.
+
+The two "yes" corners sit opposite each other. So any tilt that pushes one of them toward "yes" pushes the other one as far toward "no". Those pushes cancel out, and the best training can do is answer 0.5 everywhere, which scores 50%.
+
+### What training does here
+
+The network starts with random dial settings, called its **initialization**. Each random start has a number, called its **seed**, so the same seed always gives the same start. The note under the loss chart shows which seed you are on. Each press of **New initialization** moves to the next seed and draws a fresh random start. From there, training repeats one loop. First it measures how badly the network misses on the practice dots. Then it nudges every dial a little to shrink that miss.
+
+- The miss score is the **Training loss**. This lab measures it with **binary cross-entropy**, a score for yes-or-no answers that punishes confident wrong answers heavily.
+- A network that shrugs and answers 0.5 for every dot gets a loss of 0.693. That is why the loss chart has a dotted line marked "0.693 = always 50%".
+- Nudging every dial in the direction that lowers the loss is called **gradient descent**. This lab adds **momentum**, which lets the nudges build up speed while they keep pointing the same way.
+- One full round of practice over all the dots is an **epoch**. Here, every epoch is exactly one nudge of every dial.
+- Working out how far each dial should move is the job of **backpropagation**. It runs backward through the same layers after the forward pass.
+
+You do not need the details of any of these yet. The next two labs, Loss & gradient descent and Backpropagation, take them apart. For now, read training as nudging every dial to shrink one miss number.
+
+Each run lasts 300 epochs, and the lab keeps the dials from every one of them. So the **Training epochs** slider replays the run instead of training again. Dragging it to 0 shows the random start, and dragging it to 300 shows the end.
+
+### Two cards that run extra networks
+
+Two more cards train networks of their own beside the main one. Each is built to answer one question.
+
+**Depth against width** uses the same puzzle, activation and seed as the main controls. It compares two shapes with the same budget of 85 dials. One has a single hidden layer of 21 neurons, and the other has two hidden layers of 7 each. You can count them the same way as before:
+
+- One wide layer: each of the 21 neurons has 3 dials, which makes 63. The output neuron reads all 21 numbers and has a bias, which adds 22, for a total of 85.
+- Two narrow layers: the first 7 neurons have 3 dials each, which makes 21. Each neuron in the second layer reads all 7 numbers from the first layer. With its bias, that makes 8 dials. Seven such neurons make 56. The output neuron adds 8 more, for a total of 85.
+
+The size is the same, so any difference between the two comes from shape alone.
+
+**Held-out data** asks a different question. Did the network learn the pattern, or did it memorize its practice dots? The card trains two networks on the Ring's 60 dots. It then scores them on 120 fresh ring dots that they never practice on.
+
+One is a narrow network with a single hidden layer of 3 neurons, which has 13 dials. The other is a large network with two hidden layers of 6 neurons and 67 dials. It is bigger in both width and depth. Dots kept out of training like this are called **held-out data**, because they are held back from practice. On the card, the practice dots are called training points and the fresh dots are called held-out points.
+
+The card can also flip the labels on 12 of the 60 practice dots. Some "yes" dots turn into "no", and the other way around. Those flipped labels make up 20% of the practice set, and they are called label noise. They do not repeat in the fresh dots, so memorizing them gains nothing.
+
+Sometimes a network fits its practice dots so closely that it copies their mistakes too. Then it does worse on fresh dots. That is called **overfitting**.
+
+Picture a classmate who studies for a quiz from a practice sheet. A few answers in the key were misprinted. If they memorize the sheet word for word, misprints included, they ace the sheet. On the real quiz, though, the misprints are useless or worse.
+
+Now picture a classmate who learns the method instead. They answer the misprinted questions correctly, so the sheet's key marks them wrong. They score a little lower on the sheet but equally well on the quiz. The memorizer is the one whose sheet score is much higher than their quiz score. The gap between the two scores is what gives them away.
+
+In a network, memorizing a flipped label means curving the boundary around that one dot. The curve then gets nearby fresh dots wrong, because their labels follow the real ring.
+
+## Why it’s here
+
+### The puzzle one neuron could not solve
+
+The single neuron lab ended on XOR. Its "yes" clumps sit in opposite corners, top left and bottom right. The "no" clumps fill the other two. Try placing one straight line across the square so that both yes corners fall on the same side. Wherever you put it, at least one "no" corner lands on that side too. The best one line can do is 3 clumps out of 4.
+
+You can watch this happen here. With **Neurons per layer** at 1, the network stalls at 75%, which is 3 clumps out of 4. Stacking more layers after that one neuron does not help, because **Neurons per layer** sets every layer to 1. Each later layer only reshapes that same single number again. It can never turn the one straight cut into a bend.
+
+### Nobody tells the hidden neurons what to look for
+
+Look again at the trained XOR network at the starting settings. There, h1 is negative only on the bottom-right side of its dashed line. That side holds only one clump of dots, the bottom-right "yes" clump. In the same way, h2 is negative only on the top-left side of its line. That side holds only the top-left yes clump.
+
+You could call h1 a "bottom-right corner" detector, though that name is only a story people put on it. Its tile in **Network builder** shows what it actually does across the whole square.
+
+Nobody wrote those jobs into the network. The dials started out random, and the only pressure on them was that the final answer be right. A pair of corner detectors happened to make the final answer right, so that is where training ended up. A real workshop is different, because someone decides each station's job.
+
+This is what people mean when they say a network learns its own features. Features are useful in-between quantities that nobody asked for by name.
+
+A different random start can split the work differently, and some starts never find a good split at all. With two neurons on XOR, one press of **New initialization** takes you from seed 2 to seed 3. That start ends at 68.8% after 300 epochs, even though a perfect answer exists. The note under the chart says its best was 75%, a score it reached early on before slipping lower.
+
+That is worse than a single neuron's 75%, which seems strange at first. Training works to lower the miss score, not to raise the number of dots it gets right. From this start, lowering the miss score meant becoming more sure about most dots while giving up a few. The two lines settled in an unhelpful place, and training had no way to climb back out.
+
+### Why both width and depth matter
+
+A wider layer gives the next layer more straight cuts to combine. That is how three neurons close the Ring. A deeper network lets later layers combine the shapes that earlier layers made, rather than only straight cuts. Their boundaries can then bend in ways that one layer would need many more straight cuts to copy.
+
+The Checkerboard gives one way to picture this. The lab does not prove that the trained network works this way. On a checkerboard, the answer flips every time you step one square across or one square up. That makes it like XOR repeated all over the board.
+
+A first layer could draw straight cuts along the grid lines. A second layer could then combine those cuts to track the flips. That is how the XOR network's output neuron combined h1 and h2. One wide layer has to do all of that in a single step. It has nothing but straight cuts to combine. With `tanh`, training in this lab did not manage that.
+
+Which one helps more at the same size depends on the puzzle, the activation, and how long training runs. The Checkerboard in **Depth against width** is the one place in this lab where the two shapes come apart. There, depth wins clearly with `tanh`, while with `ReLU` the wide layer ties or wins.
+
+### The same plan in bigger models
+
+Every later design in this course answers the question "what should the layers be?" That includes the transformer block that later labs build on. The block is a small stack of layers with extra structure. One part mixes information between the words in a text, and another reworks each word on its own. Underneath that extra structure, the stacking works the same way as in this lab.
+
+### Checking on fresh dots
+
+This is also the first lab in the course that scores a network on dots it never practiced on. That habit matters because a score on practice dots can look perfect while hiding memorized mistakes. Later labs build on it, starting with Training dynamics.
+
+## How to play with it
+
+The numbers below come from the lab's starting seed, which is 2. The note under the loss chart always tells you which seed you are on. After a press of **New initialization** your exact numbers will differ, and a few runs may get stuck. **Reset interactive** always takes you back to the starting settings.
+
+### Solve XOR
+
+**Try this:** With **Hidden layers** at 1, set **Neurons per layer** to `1`. The network scores 75% and stalls, because one neuron gives one straight cut. Now set it to `2`. Two dashed lines, h1 and h2, appear on the **Decision surface**. The red band between them catches both "no" clumps. Every dot is on the correct side from epoch 28 onward. The green dashed line on the loss chart marks this.
+
+Next, drag **Training epochs** to `0` to see the random start, where only about half the dots are right. Then press **Train 50 epochs** a few times and watch the loss fall while the boundary forms.
+
+Press **New initialization** a few times as well. Each press draws a new random start and sends you back to epoch 0. Train each one forward, and you will find that some starts get stuck below 100%.
+
+### Look inside
+
+If you pressed **New initialization** above, press **Reset interactive** first to get back to seed 2 at epoch 150. Keep one hidden layer of two neurons. Move **Probe x₁** and **Probe x₂** to each XOR corner in turn. Try (0.6, 0.6) and then (−0.6, −0.6). Read h1 and h2 under the tiles in **Network builder**. At the starting seed, both "no" corners should give numbers near 1 for both neurons.
+
+Then raise **Hidden layers** to `2` and compare the columns of tiles. Each tile shows one neuron's number over the whole square. Look for how the tiles in the second column differ from the ones in the first.
+
+### Remove the bend
+
+Set **Hidden activation** to `none (linear)`. Then try any mix of **Hidden layers** and **Neurons per layer**, even 3 layers of 6. Keep an eye on the **Accuracy** readout and the **Training loss** as you change them.
+
+### Need more width
+
+Set **Dataset** to `Ring`, put **Hidden activation** back to `tanh`, and set **Hidden layers** to 1. Compare 2 neurons per layer with 3. Watch whether the green "yes" area closes around the middle disc.
+
+### Match the size
+
+Set **Dataset** to `Checkerboard`, keep `tanh`, and drag **Training epochs** to `300`. Then, in **Depth against width**, compare one layer of 21 neurons with two layers of 7. Both have 85 dials.
+
+Next, switch **Hidden activation** to `ReLU` and press **New initialization** a few times. Each press resets **Training epochs** to 0. Drag it back to 300, or read the chart's legend, which always gives each network's score at epoch 300.
+
+### Hold data out
+
+On **Network training controls**, drag **Training epochs** to `300`. Then, in **Held-out data**, switch **Training labels** between `Clean` and `20% flipped`. Watch the readouts under each chart: **Training accuracy**, **Held-out accuracy**, **Gap**, and **Held-out loss**.
+
+Then set **Curves** to `Loss` and watch the large network's dashed line. It tracks the fresh dots, while the solid line tracks the practice dots.
+
+## What to notice
+
+- **Tiles:** Each tile in **Network builder** is one neuron's view of the whole square. It is shaded green where its number is positive and red where it is negative with `tanh`. First-layer tiles are always split by one straight edge, because those neurons read x₁ and x₂ directly. Second-layer tiles can have curved edges, because they read the already-bent outputs of the first layer.
+- **Corners:** At the starting settings, the hidden layer moves both "no" corners to about (1, 1). One straight rule can then separate them from the "yes" corners. You can check every corner yourself by moving the probe and reading h1 and h2.
+- **No bend:** With `none (linear)`, adding layers or neurons stops helping, and XOR stays at 50%. That is the score of guessing at random, often called chance. It holds however big you make the network. The loss sits at 0.693, the score for answering 0.5 everywhere. The stacked layers collapse into one multiply-and-add with no flat part, and on XOR no tilt beats answering 0.5.
+- **Ring:** On `Ring`, two neurons carve a wedge and reach 86.7%. A third neuron closes the circle and gets every dot right from epoch 74 onward.
+- **Findable:** Width also changes what training manages to find, because with two neurons on XOR some starts get stuck. With three or more neurons, every seed from 1 to 6 solves it.
+- **Checkerboard with tanh:** The two narrow layers beat the one wide layer at every seed from 1 to 6. At the starting seed, the two narrow layers finish at 87.5% while the wide one stops at 56.3%.
+- **Checkerboard with ReLU:** The one wide layer does at least as well as the two narrow ones. So the winner depends on the activation.
+- **The badge:** The top of **Depth against width** shows "two layers minus one layer" in percentage points. That is the plain difference between the two scores. With `tanh` at the starting seed and 300 epochs, it reads about 31 points for the two layers.
+- **An unfair test:** Adding layers in the main controls also adds dials. So it is not a fair test of depth. At the starting seed on the Checkerboard, three layers of six neurons beat one layer of six. But they also carry more than four times as many dials.
+- **Clean labels:** Both networks score about the same on fresh dots as on practice dots. So the **Gap** readout sits near zero.
+- **Flipped:** With `20% flipped`, the large network scores 96.7% on practice dots but only 79.2% on fresh ones. The narrow network scores 90.0% and 91.7%, so its two scores stay close.
+- **The ceiling:** On these flipped practice dots, 12 of the 60 labels are wrong. So a network that followed only the true ring could score at most 80%. The narrow network's 90% means it has fitted some mistakes too. But with only three straight cuts it cannot curve far, so its score on fresh dots holds up.
+- **Many seeds:** Across the first six seeds, the large network's gap is always at least 15 points. The narrow network's never passes 7.
+- **Loss curves:** With **Curves** on `Loss` and labels flipped, the large network's training loss keeps falling, down to 0.07. Its held-out loss bottoms out near 0.28 around epoch 71. After that it climbs all the way to 0.99, a rise the training loss alone would never show you.
+
+## Where it breaks
+
+### What this lab simplifies
+
+- The main network is tiny. It has two inputs, at most 64 practice dots, and at most 3 layers of 6 neurons. Even the biggest network anywhere in the lab has only 109 dials. The **Decision surface** can only be drawn because there are two inputs. A real model reads far more numbers at once than any flat picture can show.
+- Training always uses the same size of nudge, called the learning rate, with the same momentum, for 300 epochs. Different settings would change which random starts succeed and how quickly they get there.
+- The **Decision surface** and **Network training controls** score only the practice dots. A 100% there says nothing about how the network would do on new dots.
+- **Held-out data** is the only card that uses fresh dots. It works only on the Ring, always with `tanh` neurons. It also flips the same 12 labels every time. Flipping a different 12 would change how big the gap is.
+- **Depth against width** has only one puzzle where the two shapes come apart. Depth wins there only with `tanh`, within 300 epochs, and a longer run might close the gap. With `ReLU` the result flips at some seeds, where the wide layer wins by up to 31 points. Read it as one case, not a rule.
+- That card also does not prove that one wide layer is unable to draw a checkerboard. It shows only that this training method, in this much time, did not find a way.
+- Stacking layers after a single neuron adds nothing here, because **Neurons per layer** sets every layer to 1. Each later layer only reshapes the same single number again, so the cut stays one straight line.
+- The dots are made up and fixed. The fresh dots come from the same made-up ring as the practice dots, with every label correct. Real fresh data may have wrong labels too, and may not look like the data a model practiced on.
+
+### Where real networks struggle
+
+The assembly-line picture is too tidy, because workers on a real line each have one clear job. Real hidden neurons are messier. One neuron often responds to several unrelated things at once. A single idea is usually spread across many neurons. That spreading is called a **distributed representation**. It is why a single hidden neuron rarely has a clean human label.
+
+The XOR network's neat corner detectors are the exception that a tiny toy allows. The interpretability labs take up the harder real case.
+
+More capacity does not mean more learning. Past a point, a network starts fitting the noise in its practice data. The large network does this on **Held-out data**. A held-out set also stops being held out once you use it again and again to pick between models. Your choices slowly start to fit it too. Picture checking dozens of study methods against the same practice quiz and keeping whichever scores best. In the end you have picked a method that suits that one quiz. It may fail on any other quiz.
+
+Deep stacks bring a training problem too. Backpropagation works out each dial's share of the blame by passing it backward through every layer. In a deep stack, that blame signal can fade away or blow up on its way back.
+
+Look at the Gradient flow card in the Backpropagation lab. Twelve sigmoid layers leave the first layer's nudges millions of times weaker than the last layer's. That holds even with sensible starting dials. Very deep stacks were hard to train until extra design pieces became standard. These pieces are called normalization and residual connections.
+
+**A common mix-up:** Bigger is not reliably better, and adding layers is no exception. On **Held-out data**, the large network has both more layers and more dials. With flipped labels, it memorizes more of the mistakes and does worse on fresh dots than the narrow one.
+
+Adding layers also does not rescue a bad start. With two neurons per layer on XOR, seed 3 gets stuck with one hidden layer or two. A perfect answer still exists. And very deep stacks bring the fading-blame problem above, which makes them harder to train at all.
+
+## Going deeper
+
+A mathematical result called **universal approximation** says something about one hidden layer. Give it enough width and a bend like `tanh`. Then it can copy any shape that has no sudden jumps. The copy can be as close as you like. This holds as long as you stay within a limited area of inputs.
+
+The result is true but not very useful in practice. It says nothing about how wide the layer must be. It also says nothing about whether training will ever find the right dials. The Checkerboard with `tanh` may be a small example of that second gap.
+
+The lab does not show that one wide `tanh` layer is unable to draw the board. It shows only that this training method did not find a way in 300 epochs. With `ReLU`, the same 21-neuron layer gets 86% to 100% of the board across seeds 1 to 6. That hints that the hard part is finding the dials rather than having too few.
+
+Depth is often the practical shortcut, because later layers reuse what earlier layers built. For many shapes, a deep network needs far fewer neurons than a shallow one would. The Checkerboard card is one small case of this, with the limits above.
+
+Because of that reuse, the layers of big models tend to go from simple to complex. This progression is called a **feature hierarchy**. In image models, early layers react to edges and later ones to parts of objects. In language models, early layers handle surface form, which means the exact words and how they look. Later ones handle the grammar, and later still the structure of the task.
+
+Some layer designs go further, sharing or routing their dials in special ways:
+
+- A convolution layer slides one small set of dials across every position of its input. It reuses the same dials everywhere.
+- A recurrent layer reuses one layer again and again, once at each step of a sequence.
+- A mixture-of-experts layer sends each token to only a few of its many smaller layers. A token is a small piece of text.
+
+The next lab, Loss & gradient descent, opens up the training step that this lab ran for you.

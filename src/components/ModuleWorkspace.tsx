@@ -26,7 +26,7 @@ import { listen } from "@tauri-apps/api/event";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import type { LocalChatChunk } from "@app/lib/local-ai";
-import type { ModuleState } from "@app/module-sdk";
+import type { ExplanationMode, ModuleState } from "@app/module-sdk";
 import { CardInfoProvider, checkpointQuestions } from "@app/module-sdk";
 import type { RegisteredModule } from "@app/modules/registry";
 import { modules, modulesById } from "@app/modules/registry";
@@ -42,6 +42,12 @@ import { IconButton } from "./IconButton";
 function normalizeHeading(value: string) {
   return value.replace(/[’‘ʻʼ`']/g, "'").replace(/\s+/g, " ").trim().toLowerCase();
 }
+
+const learnModeLabel: Record<ExplanationMode, string> = {
+  simple: "simple language",
+  plain: "plain language",
+  standard: "standard",
+};
 
 function LearnPanel({ module }: { module: RegisteredModule }) {
   const mode = useAppStore((state) => state.mode);
@@ -108,7 +114,7 @@ function LearnPanel({ module }: { module: RegisteredModule }) {
     <aside className="learn-panel" aria-label={`Learn about ${module.title}`}>
       <div className="learn-panel__header">
         <div>
-          <span>Learn / {mode === "plain" ? "plain language" : "standard"}</span>
+          <span>Learn / {learnModeLabel[mode]}</span>
           <strong>Keep the idea beside the experiment.</strong>
         </div>
         <div className="learn-panel__actions">

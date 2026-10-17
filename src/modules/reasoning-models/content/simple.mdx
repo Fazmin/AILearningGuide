@@ -1,0 +1,521 @@
+---
+objectives: ["Contrast a reasoning model, whose long traces come from reinforcement learning against a checker, with in-context chain-of-thought prompting", "Explain how group-relative training against a verifiable reward lengthens traces, and why a missing length cost lets them pad", "Treat test-time compute as extra generated tokens or search, not as proof of inner thoughts", "Predict when majority voting helps and when only a verifier does"]
+terms: ["Chain of thought", "Test-time compute", "Reasoning model", "Verifiable reward", "RLVR", "GRPO (group-relative advantage)", "Overthinking", "Process supervision", "Majority vote", "Verifier / best-of-n", "Distillation", "Pass@n", "Padding", "Unfaithful step"]
+---
+
+## The big picture
+
+When you solve a hard math problem, you probably do not write the answer straight away. You fill a
+page of scratch paper with working and check each line. Only then do you copy the final answer into
+the box.
+
+Some AI models are trained to do something similar. They write out a long stretch of steps before they
+answer, and they are called **reasoning models**. This module looks at where that habit comes from and
+what it costs. It also looks at what the written steps do and do not prove.
+
+### Where you have met it
+
+Maybe you have asked a chatbot to show its working. That is one way to get steps out of a model: you
+ask for them. A reasoning model gets there by a different route. It was trained to write long working without being asked.
+
+That training uses a program that checks final answers. For math questions the program can be an
+answer key. For computer code it can be a set of automatic tests.
+
+The same ideas turn up in other places too. Smaller models are sometimes trained to copy the long
+working of a stronger model. AI agents are programs that take actions, such as running a search. They
+spend extra time and computing power on those actions instead of on more working.
+
+### Why it matters
+
+A program that checks answers lets this training run without a person grading every try. Knowing how it
+works protects you from three tempting mistakes.
+
+- **Reading working as a true record:** Long working looks like careful thought. It is tempting to
+  treat it as the real story of how the answer was reached. It is only generated text. Some lines can be filler or even wrong while the final answer is right.
+- **Paying for length that does little:** Every extra line costs time and computing power, even when it
+  adds nothing. If training never puts a price on length, the working keeps growing. Each extra line
+  may improve the answers by only a tiny bit.
+- **Trusting the wrong way to pick:** Another way to spend effort is to make several tries and pick one. Picking by a vote can leave you right less often than a single try would. A
+  perfect checker never does that, so you need to know when each one applies.
+
+### What you will be able to explain
+
+By the end, you should be able to explain each of these in your own words.
+
+- Why a reasoning model is different from a model asked for steps in a prompt. A prompt changes only
+  what the model reads. Training against a checker changes the model itself, so long working becomes
+  its habit.
+- How comparing a group of tries against a checker makes the working longer. Also why it keeps growing
+  past what the task needs when nothing charges for length.
+- Why extra working, or extra tries, is extra generated text and extra searching. It is not proof of
+  thoughts going on inside the model.
+- When taking a vote among several tries helps, and when only a checker can find the right answer.
+
+### What the lab shows
+
+The lab has five cards. Each one is honest about what is real and what was set up by hand.
+
+- **Problem:** This card picks one of three practice questions and shows it in full. The questions are
+  Sunday hours, 17 + 28 and Dog on the ferry.
+- **Train against a checker:** This card really runs a tiny training session of 100 updates. Each
+  update makes a group of tries, checks them and nudges the learner. A slider lets you step through the
+  updates one at a time. The toy trains a single number, the length of working it likes best. The
+  checker is a rule written by hand, so no language model is involved.
+- **Thinking budget** and **Inspectable trace:** These cards reveal working one step at a time. They
+  label each step useful, padding or unfaithful. The steps, the labels and the final answer were all
+  written in advance, so no model produces them.
+- **Sampling and voting:** This card works out exactly how often a vote or a checker picks the right
+  answer. It uses an accuracy you choose, not a measured one.
+
+## What it is
+
+### Working, one piece at a time
+
+A language model writes text in small pieces, and each piece is called a **token**. A token is a word
+or part of a word. For every new token, the model reads everything written so far and picks the next
+piece. It adds that piece to the end and repeats.
+
+The steps a model writes before its final answer are called a **chain of thought**. Each step links to
+the next, like the links of a chain. Here is the working the lab shows for the question "What is 17 +
+28?"
+
+```
+1. Add the ones: 7 + 8 = 15, write 5 carry 1.
+2. Add the tens: 1 + 2 + 1 = 4.
+3. The pair is 45.
+```
+
+Each line is ordinary text, written one token at a time like any other sentence. The final answer comes
+only after the working.
+
+### Two ways to get working: ask for it, or train for it
+
+Inside every model is a huge set of adjustable numbers called **weights**. Training sets them, and they
+decide what the model tends to write. There are two quite different ways to get a model to write
+working. The difference is whether the weights change.
+
+The first way is to ask. You put a couple of worked examples in your message, called the prompt.
+The model tends to copy their style. This is in-context prompting, and the ICL & reasoning
+lab covers it (ICL is short for in-context learning). Every weight stays exactly as it was, because
+only what the model reads has changed.
+
+The second way is to train. After its main training, the model gets extra training that changes its
+weights. This extra training is called post-training. It makes long working likely even when nobody asks for it. A model trained this way is called a **reasoning model**. Its design is the same as
+any other language model's, so it still writes one token at a time. Only the training recipe is
+different.
+
+### Training against a checker
+
+The recipe is a kind of **reinforcement learning**, which means learning by trial and score. The model
+makes tries, and each try gets a score. The weights then shift so that the high-scoring kind of try
+becomes more likely next time.
+
+Here the score comes from a program that checks the final answer. For 17 + 28 it compares the answer
+with 45. For computer code it might run small automatic checks, called unit tests. They see whether the code gives the right outputs. A score that a program can work out like this is called a **verifiable
+reward**. Training with it is called **RLVR**, short for reinforcement learning with verifiable
+rewards.
+
+Each round of RLVR has three steps. The lab's training card runs a tiny version of the same loop.
+
+1. The model writes several tries at the same question, each with its own working.
+2. A checker program marks each final answer as a pass or a fail, without looking at the working.
+3. The weights are nudged so the working in the passing tries becomes a little more likely. The
+   working in the failing tries becomes a little less likely.
+
+No person has to grade any try, which makes the method cheap. But the model can only learn what the
+checker can tell apart. The checker looks only at the final answer, so it rewards the working that
+comes before a pass. It does this whether every line was needed or not.
+
+### Grading on a curve: GRPO
+
+One way to do the nudging is called **GRPO**, and this lab copies it. GRPO never judges a try on its
+own. It compares each try with the other tries in its group. This is much like a test graded on a
+curve, where your mark depends on the class average.
+
+Each try's score is turned into an **advantage**. This number says how much better or worse the try did
+than its group's average. Tries above the average get pushed up, and tries below it get pushed down.
+The size of each push is scaled by how spread out the scores are. That scaling keeps the pushes about the same size, whether a group's scores differ a lot or a little. The group is the yardstick,
+so nothing else has to judge what counts as a good score.
+
+Here is how to measure how spread out a group's scores are.
+
+1. Take each score's distance from the average and square it.
+2. Average those squares.
+3. Take the square root of that average.
+
+A try's advantage is its distance from the average divided by that spread.
+
+Here is a small example with a group of four tries. A pass scores 1 and a fail scores 0.
+
+- **Half the group passes:** The average score is 0.5, and every score sits 0.5 away from it. So the
+  spread is 0.5. Each passing try gets 0.5 ÷ 0.5 = +1, and each failing try gets −0.5 ÷ 0.5 = −1.
+- **Only one try passes:** The average is 0.25, and the spread works out to about 0.43. The lone pass
+  sits 0.75 above the average, so it gets 0.75 ÷ 0.43, or about +1.73. Each of the three failures sits
+  0.25 below, so each gets a small −0.58. A rare success is pushed up hard because it stands out from
+  the rest of its group.
+- **All four pass, or all four fail:** Every score equals the average, so every advantage is 0. That
+  group teaches nothing at all.
+
+Keep that last case in mind. The lab's Groups with no signal readout counts exactly those groups.
+
+### Test-time compute
+
+Everything so far happens during training. **Test-time compute** is the extra work a model spends later,
+while it is answering you. It comes in two kinds. A model can write longer working before its answer.
+Or it can make several separate tries and use some way to pick one.
+
+A bigger version of the second kind is called **search**. It judges working that is still half-written
+and keeps going only with the most promising tries. Going deeper describes it. Every kind costs more
+tokens and more waiting time. None of them changes the weights, so the model itself is no different
+afterward.
+
+### The scratch-paper picture, and where it stops
+
+Picture a student who sits test after test. The teacher marks only the answer box and never looks at
+the scratch paper. Every right answer earns a gold star. The papers with stars tend to be the ones
+with more working above the answer. Test after test, the student drifts toward whatever habits came
+with stars. Their scratch paper slowly fills up, even though nobody ever marks the working itself.
+
+Training against a checker works in a similar way. Long working appears because it is more often
+followed by a right answer.
+
+The picture stops matching at the student. A student can decide to show more work because they understand why it helps. The model decides nothing, and nobody shows it a method. Training makes whatever working came
+before a pass a little more likely. Long working comes along because it is more often followed by a
+pass.
+
+## Why it’s here
+
+Reasoning models deal with two separate problems. One is about how a model computes, and the other is
+about how it can be trained. This lab connects them.
+
+### A fixed amount of work per token
+
+To choose each token, the model pushes everything written so far through the same set of weights once.
+That is a huge sum, and it grows a little as the text gets longer. But the sum always passes through
+the same fixed number of stages, one after another. So the model gets about the same amount of work for each token, however hard the question is.
+
+Picture being allowed exactly three seconds of thinking before every word you say. Some problems need a
+chain of steps where each step uses the result of the one before. A long chain may not fit into three
+seconds.
+
+In 17 + 28, you cannot finish the tens until you know whether adding the ones produced a carry. On a
+sum this small you would manage. A model that must answer in one go would need to fit the chain into one round of work.
+
+Writing working changes that. If you can write a note after each three seconds, you can carry on from
+the note. Once the model has written "write 5 carry 1", the carry sits in the text. The next step can read it there. Working spreads a long chain of steps across many tokens, and each token's calculation
+handles only a small part. That is the real reason working can help. It also explains why working helps
+most when later steps depend on earlier results.
+
+### Building the habit without a human grader
+
+A prompt cannot build the habit of long working into the weights, so you need a training signal. The
+Reinforcement learning foundations lab showed a learner improving against a reward. The hard part is
+finding a reward. A checker program fits well because it is cheap to run and hard to argue with. It can
+score a huge number of tries without anyone having to read them.
+
+This lab joins the two ideas. The reward is the checker, and the learner is something that writes
+working. The sampling card adds one more idea, which is the chance that at least one of several tries
+works. The Evaluation lab uses that idea too.
+
+## How to play with it
+
+Work down the cards from top to bottom, following the six steps below. They match the lab's own step
+list.
+
+### 1. Pick a practiced problem
+
+In the **Problem** card, choose Sunday hours, 17 + 28 or Dog on the ferry. Notice that switching
+Problem also resets Thinking budget to 3. Each one stands for a question the model met during its
+training, not an example pasted into a prompt. The card's note spells out that difference.
+
+### 2. Train against a checker
+
+Start the **Train against a checker** card at its default settings. Here is what each control means in
+this toy.
+
+- **Steps the task needs (k):** This is 3, the number of steps that must succeed for a right answer. In this toy, each step comes out right by chance, 4 times out of 5.
+- **Group size (G):** This is 16, the number of tries that each update makes and compares with one
+  another.
+- **Learning rate:** This is 0.3, and it sets how big each push is. A higher rate makes the run change
+  faster.
+- **Seed:** This is 1, and it decides which random tries get drawn. The same seed always gives exactly
+  the same run.
+- **Length cost:** This is Off, so steps are free and only the checker's pass or fail counts.
+
+The bar chart under the line charts shows how likely the toy is to write each length of working. The
+lab calls those odds the **policy**. Outlined bars show where the policy started. The dashed line shows
+how often the checker passes working of each length.
+
+The Training update slider does not retrain anything, because the whole run of 100 updates has already
+happened. The slider lets you look at any point along it.
+
+**Try this:** Set Length cost to Off, then drag Training update from 0 to 100 and watch both charts. Mean length climbs from 1.8 steps to 7.1, well past the 3 steps the task needs. Over the same
+run, the pass rate rises from 10% to 99%. The solid bars slide from short lengths over to long ones.
+
+### 3. Add a length cost
+
+Set Length cost to On · 0.05 per step. This charges 0.05 points for every step, while a pass is worth a
+whole point. Now the run ends at 5.3 steps with a 93% pass rate. That is shorter than before, and it
+still passes almost every time. A dashed line called Mean reward after cost also appears on the first
+chart. It shows the average score after the cost of the steps is taken off.
+
+Keep the cost on and set Group size to 8. This time the run collapses to one-step answers. It ends at
+1.2 steps with a 1% pass rate. The policy has settled almost entirely on 1-step and 2-step working,
+which can never pass.
+
+Then set Seed to 4 with everything else the same. This run finds a passing length before the collapse
+can set in. It ends near 4 steps with a 78% pass rate. That shows how much one run can depend on its
+random draws.
+
+### 4. Raise the budget
+
+Set Problem to Sunday hours, which asks "When does the north dock close on Sunday?" Then, in the
+**Thinking budget** card, raise Thinking budget one step at a time from 3 up to 6. Watch the readouts
+under the slider.
+
+At 4, Padding goes up to 1, and at 5, Unfaithful goes up to 1. Useful stays at 3 at budgets 3, 4 and
+5. It goes up to 4 at budget 6, when the last line, "Commit to 16:00", gives the answer.
+
+Padding means a line that adds nothing the answer uses. Unfaithful means a line that pretends to be
+part of the work when it is not. What to notice explains both.
+
+### 5. Inspect the extra tokens
+
+Set Problem to 17 + 28 and read the first two lines in the **Inspectable trace** card. The first line
+writes the carry, and the second line uses that carry to add the tens. Now drop Thinking budget to 0.
+The trace reports that no intermediate tokens ran. Answer (authored) still shows 45 anyway, because the
+lab wrote that answer in advance instead of working it out.
+
+While you are here, try Dog on the ferry at a budget of 4 and then 5. The fourth line is padding about
+ticket prices. The fifth line invents a leash rule that the harbor notes never mention.
+
+### 6. Sample and vote
+
+In **Sampling and voting**, leave Single-sample accuracy at p = 0.40 and Wrong answers on Split over 3.
+That means each try is right 40% of the time. The wrong tries spread evenly over three different wrong answers.
+
+Two ways of picking an answer are on this card, and What to notice explains both. Majority vote keeps
+whichever answer comes up most often. Verifier picks keeps any try that a perfect checker accepts. Set
+Samples to 16. Majority vote reads 70.8% while Verifier picks reads 99.97%.
+
+Now set Wrong answers to Always the same one. Majority vote falls to 21.3%, below the 40% that One
+sample shows. Verifier picks does not move at all, because it needs only one right try out of the 16.
+Decode cost is the lab's name for how much text gets written. It reads 16× tokens the whole time. Every extra try costs as much text as the first.
+
+## What to notice
+
+### Length grows because the checker rewards it
+
+In this toy, every step of the working lands with a chance of 0.80, or 4 in 5. Landing
+means the step comes out right. The answer passes when at least k steps land. With k = 3, any try
+shorter than 3 steps can never pass. A try of exactly 3 steps passes only when all three steps land.
+Since 0.8 × 0.8 × 0.8 = 0.512, it passes about 51% of the time.
+
+Think of this rule as standing in for "is the final answer right?" The answer comes out right when
+enough steps landed. The checker sees only that pass or fail, never which steps slipped.
+
+Longer tries have spare steps that can cover a slip. That is why the dashed line on the bar chart
+climbs fast as the length grows. A try of 4 steps passes about 82% of the time. A try of 6 steps passes about 98%. The checker never rewards length directly. But longer tries pass more often, so they
+earn more reward and the policy drifts toward them.
+
+### With no price on length, it keeps growing
+
+Once nearly every try passes, you might expect the length to stop growing, but it does not. With the
+cost off, nothing pushes back, and each extra step still adds a sliver of pass chance.
+
+Some groups still contain a single failure. That failure gets a large negative advantage. It works like
+the +1.73 a lone pass got in the four-try example, but it points down. In a group of 16 it is even
+bigger, about −3.87. The failure is usually one of the shorter tries, so each of those groups pushes the
+policy longer. The length keeps creeping up. At update 100, Steps past k still reads 4.1. That means the
+average try is about four steps longer than the task needs.
+
+This drift is called **overthinking**. It is working beyond what the answer needs, and it adds waiting
+time without adding understanding. In this toy the extra steps are not pure waste. Each one still buys a sliver of pass chance. But that sliver gets smaller with every step, while the time each
+step costs stays the same. The length cost trims away the steps whose sliver is worth less than their
+cost.
+
+The Groups with no signal readout shows why training slows down while the length keeps drifting. It
+reads 51 of 100 at the end of the run. In 51 of the 100 updates, every try in the group got the same score. Mostly, they all passed. Those groups taught nothing. Only the other updates, the ones
+with a rare failure, kept pushing.
+
+Picture a class where long answers are never marked down. An answer with extra lines is very slightly
+less likely to lose a mark. Week by week, the answers that keep full marks are the longer ones. So
+answers drift longer while marks creep up only a hair. Unlike the students, the model is not choosing
+to be careful. Longer tries passed a little more often, so they became a little more likely.
+
+### A price trims length, but not down to k
+
+With Length cost on, each step costs 0.05. A step is worth adding only if it raises the pass chance by
+more than 5 percentage points. A pass is worth 1 point, so a 5-point rise in pass chance earns 0.05
+points on average. That is exactly what the step costs.
+
+Adding a fifth step raises the pass chance from about 82% to 94%. That is a gain of 12 points, so the
+step pays for itself. A sixth step raises it only from 94% to about 98%. That gain is about 4 points,
+so the step costs more than it earns.
+
+That is why the run with the cost hovers around 5 steps, ending at 5.3 on this seed. That is 2.3 steps past k, but well short of the 7 you saw without the cost. The spare steps still
+protect against a slip. The cost removes only the steps that no longer pay for themselves.
+
+### Why a small group collapses
+
+The collapse at Group size 8 comes from grading on a curve when nobody passes. At the start, about 4 in
+5 tries are shorter than 3 steps, so they can never pass. A small group often contains no pass at all.
+Every group like that pushes the policy shorter, which makes the next pass even less likely.
+
+When every try fails, the only difference between them is the length cost. Say a group holds four
+failed tries, two with 1 step and two with 2 steps. The 1-step tries lose 0.05 each for their cost,
+while the 2-step tries lose 0.10 each. So the scores are −0.05 and −0.10, and the average is −0.075.
+Every score sits 0.025 from the average, which makes the spread 0.025.
+
+That gap is tiny, but dividing by a spread of 0.025 blows it up. The short tries get an advantage of
++1, and the long tries get −1. That is the same size of push that a pass gets over a fail. The policy
+learns "shorter is better" before it has ever seen a pass.
+
+Picture a quiz where every paper fails, but the teacher still has to grade on a curve. If the papers differ only in how much scratch paper they used, the shortest papers get the top marks. Week after week, the class learns to write less and less. Nobody ever gets close to a
+right answer.
+
+That is why Group size matters. A group of 16 is much more likely to catch at least one pass early on.
+A single pass is worth far more than any cost difference. It points the run toward longer working instead.
+
+### Working helps most where a later step needs an earlier result
+
+On 17 + 28, the first line writes the carry and the second line reads it. The working acts as memory. On Sunday hours the steps mostly look facts up. Only the third one leans on the others. It
+picks the Sunday slot from the two facts the first two steps wrote down.
+
+After the useful steps, the trace shows two kinds of extra text that add tokens without helping the
+answer. The first kind is **padding**. It restates or recalls something the answer never uses. It is
+harmless filler that does not pretend to be part of the work. An example is "Note that addition is
+associative, which is unused here." That line is true: when you add three numbers, it does not matter which pair you add first. But this sum never needs it.
+
+The second kind is an **unfaithful step**. It does not match the work the answer needs, yet it presents
+itself as part of that work. It might use the wrong operation, invent a rule, or drag in a fact as if
+it mattered. On 17 + 28 it reads "Check 17 × 28 as if the task were a product". That multiplies when the question asked for addition. An unfaithful step misleads anyone who reads the working as a record
+of how the answer was found.
+
+The lab puts a right answer next to the unfaithful step on purpose. Real models do this too. A right answer and working that honestly matches it are two separate things. A model can produce
+one without the other.
+
+### A checker needs only one right try
+
+A program or model that checks a candidate answer is called a **verifier**. A perfect one is an exact
+answer key or a full set of tests. With it, you can make n tries and keep any try it accepts. You
+succeed whenever at least one try is right, and that chance is called **pass@n**. Keeping the try that
+the verifier scores best is called **best-of-n**. With a perfect verifier, it succeeds exactly as often
+as pass@n says.
+
+The lab's chart labels the formula as `1 − (1 − p)ⁿ`. Here p is the chance a single try is right, and n
+is the number of tries. Let us work it out with p = 0.40.
+
+- A single try is wrong 60% of the time.
+- Two tries are both wrong 0.6 × 0.6 = 0.36 of the time, or 36%.
+- So at least one of the two is right 1 − 0.36 = 0.64 of the time, which is 64%.
+
+With eight tries the chance reaches 98%. With 16 tries it reaches the 99.97% you saw on Verifier picks.
+
+### A vote follows the most popular answer
+
+A **majority vote** needs no checker at all. It makes several tries and returns whichever final answer
+comes up most often. That works well when the right answer is the single most common answer. It works
+badly when one particular wrong answer is more common than the right one.
+
+Picture a group chat settling 17 + 28 by poll. Everyone who gets it wrong made the same slip of
+forgetting the carry, so they all answered 35. Say 40% of the chat answers 45 while the other 60% all
+answer 35. The poll picks 35. Adding more people only makes that wrong result more certain. That is
+exactly what the Always the same one setting shows.
+
+There the vote falls to 21.3% at 16 samples. Adding more tries never lifts it back up, so by 32 samples
+it is lower still. It is not 0%, because with only 16 tries, luck sometimes gives 45 more votes than 35.
+
+Now picture the wrong answers scattered evenly across 35, 44 and 46. This is what Split over 3 means.
+Each wrong answer then gets only about 20% of the votes. So 45 with its 40% is the most popular single
+answer, and more voters help.
+
+The bar chart in the card shows this directly. It has one bar for each possible number of right tries out of n. The height of a bar is the chance of getting that many right tries. Its solid part is the chance
+that the vote then picks the right answer.
+
+Check one more thing. At 2 samples, Majority vote always equals One sample, whatever the other settings are. When the two tries disagree, a coin toss settles the tie, so a second try cannot
+help a vote. Here is the arithmetic with p = 0.40.
+
+- Both tries are right 0.4 × 0.4 = 0.16 of the time.
+- They split one right and one wrong 0.48 of the time, and the coin toss wins half of those. That adds
+  0.24.
+- The total is 0.40, the same as one try.
+
+## Where it breaks
+
+### What this lab simplifies or fakes
+
+- **The learner is one number:** In Train against a checker, it is the length the toy likes best. The policy is a hump of odds over working of 1 to 8 steps, centred on that number. So
+  training slides the hump instead of setting each bar separately. It is not a language model, so it
+  learns how long to write and never what to write.
+- **The checker is made up:** It is a hand-written rule, and each step lands with a fixed 0.80 chance. No real checker works that way.
+- **The setup is bare:** There is one question instead of many. Each group of tries is used for one
+  push and then thrown away. There is also no reference model and no clipping, two parts of real
+  training that Going deeper explains.
+- **The path is random:** The curves and bars are exact averages for the policy at each update. Its path comes from randomly drawn groups, so another seed gives another path.
+- **The working is hand-written:** The Thinking budget and Inspectable trace cards use steps, labels and answers that people wrote. The order of useful, then padding, then
+  unfaithful is set by hand too. A real model mixes them together.
+- **The answer always prints:** It shows at every budget, even 0. So the lab cannot show that cutting
+  real working short usually costs accuracy on hard problems.
+- **Process supervision is only named:** This means grading each step of the working, not only the final answer. The lab names it but never computes it.
+- **Sampling is idealized:** In Sampling and voting, p is a number you choose, not a measured model.
+  Every try is independent of the others, and the verifier is perfect.
+
+### Where real reasoning models fail
+
+- **Small-group collapse is real:** With a length cost and no early pass, the cost is the only signal. Scaling by the spread makes that small signal look large. Real training softens
+  the problem by mixing many questions into each batch. A batch is the set of tries used for one round
+  of training.
+- **A checker cannot see waste:** It sees only the final answer, so it cannot spot filler. Padding and unfaithful steps that end in a right answer get rewarded along with
+  everything else.
+- **Real tries are not independent:** Tries from one model tend to repeat the same mistakes. The lab's
+  math treats every try as separate, so real extra tries can help less than it suggests.
+- **A learned grader can be fooled:** Some systems use a learned grader, a second model trained to
+  score answers. Best-of-n with such a grader can pick an answer that fools it instead of a right one.
+- **Step grading has gaps too:** Process supervision can catch a wrong step that happens to reach a
+  right answer. It can still reward a smooth-sounding step that the answer never uses.
+- **Working is not a window into the model:** Working can look useful and lead to a right answer.
+  It may still not be the real route the model took.
+
+**A common mix-up:** People often read a model's numbered steps as a faithful record of how it got there. But the steps are generated tokens. Researchers have tried changing or cutting lines of a
+model's working and letting it carry on. Sometimes it gives exactly the same answer. If changing the steps leaves the answer alone, those steps are not the full story of the answer.
+So the steps are not a window into a hidden mind.
+
+A second mix-up is to think that asking for steps in a prompt equals training a reasoning model. A prompt changes only what the model reads. Training against a checker changes the model's
+weights.
+
+## Going deeper
+
+Real RLVR and GRPO add four things that this toy leaves out on purpose. That keeps the lab small enough
+to follow.
+
+- **A policy over every token:** The push reaches the odds of every token the model writes. So a real
+  model learns what to write, not only how long.
+- **A penalty for drifting:** The **KL penalty** works like a leash. KL comes from the names of Kullback
+  and Leibler, the two mathematicians behind it. The penalty measures how far the model's writing has moved from a reference model, the version it started from. It charges for that distance. The
+  charge keeps the model from drifting into strange text that games the checker instead of solving the
+  problem.
+- **Clipping:** Real training reuses each batch of tries for several pushes. Clipping stops the model from moving too far from the version that made those tries. That keeps the reuse safe.
+- **Many questions per batch:** Mixing many questions into each batch averages out the noise. Groups whose tries all scored the same matter less. The other questions in the batch still give a push.
+
+Published versions of GRPO differ in how they size each push. They divide by the length of each answer
+and by how spread out the group's scores are. Those choices matter, because each one changes how long
+the answers grow as training goes on.
+
+On hard problems with many steps, reported accuracy rises when models get a bigger thinking budget. It
+falls when they are forced to stop early.
+
+Search goes further than voting. Voting only compares finished answers, but search also judges working
+that is still half-written. A system makes several tries and scores the unfinished working. It uses a
+trained model that grades each step, called a process reward model. Then it continues only the best
+tries.
+
+**Distillation** trains a smaller or faster model to copy the long working of a strong reasoning model.
+It is a bit like copying a classmate's homework. The student model copies the text of the steps, not a
+guaranteed method for solving the problem. Unlike copied homework, though, the student
+model learns to write similar working on new questions it never saw. What it does not get is any
+guarantee that the method behind that working is sound.
+
+Related recipes live in the Preference optimization in practice and Post-training labs. They cover
+other ways to train a model after its main training. The Agents lab shows a similar budget being spent
+on tool calls instead of on extra tokens. Tool calls are actions such as running a search.

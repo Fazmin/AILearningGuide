@@ -253,13 +253,14 @@ pub fn compatible_chat_url(base_url: &str) -> String {
     }
 }
 
-/// How the topic guide pitches its answers for the learner's explanation mode. Plain matches
-/// the Plain lessons, which are written at a grade 8 to 10 reading level (CONTENT_STYLE_GUIDE.md).
+/// How the topic guide pitches its answers for the learner's explanation mode. Simple and Plain
+/// match their lessons: Simple is written so an 8th grader can follow, Plain at a grade 8 to 10
+/// reading level (CONTENT_STYLE_GUIDE.md). Any other mode gets the Standard register.
 pub fn explanation_style(mode: &str) -> &'static str {
-    if mode == "plain" {
-        "Explain at a grade 8 to 10 reading level: everyday words, describe any technical term before using it, and give a concrete example or a short everyday comparison when it helps."
-    } else {
-        "Explain in standard language: use the accepted technical vocabulary and define specialized terms near first use."
+    match mode {
+        "simple" => "Explain so an 8th grader (about 13 to 14 years old) can easily follow. Keep sentences short and direct, under 20 words. Use everyday words, and define any technical term the moment you use it. Use active voice. Use a relatable real-world comparison for abstract ideas. Stay clear and engaging without talking down to the learner.",
+        "plain" => "Explain at a grade 8 to 10 reading level: everyday words, describe any technical term before using it, and give a concrete example or a short everyday comparison when it helps.",
+        _ => "Explain in standard language: use the accepted technical vocabulary and define specialized terms near first use.",
     }
 }
 
@@ -749,6 +750,14 @@ mod tests {
         assert!(prompt.contains("Add depth"));
         assert!(prompt.contains("{\"layers\":3}"));
         assert!(prompt.contains("grade 8 to 10"));
+    }
+
+    #[test]
+    fn simple_prompt_asks_for_short_sentences() {
+        let prompt = topic_guide_system_prompt("Attention", "simple", &[], "Score", "{}");
+        assert!(prompt.contains("8th grader"));
+        assert!(prompt.contains("under 20 words"));
+        assert!(!prompt.contains("grade 8 to 10"));
     }
 
     #[test]

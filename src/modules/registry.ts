@@ -20,8 +20,9 @@ const cardInfoFiles = import.meta.glob<{ default: ModuleCardInfo }>("./*/card-in
 
 export interface RegisteredModule extends ModuleDefinition {
   content: {
-    standard: ComponentType;
+    simple: ComponentType;
     plain: ComponentType;
+    standard: ComponentType;
   };
   /** Per-surface explanations, keyed by `LabSurface` label. */
   cardInfo: ModuleCardInfo;
@@ -29,13 +30,12 @@ export interface RegisteredModule extends ModuleDefinition {
 
 export const modules: RegisteredModule[] = Object.values(moduleFiles)
   .map(({ default: definition }) => {
-    const standardPath = `./${definition.slug}/content/standard.mdx`;
-    const plainPath = `./${definition.slug}/content/plain.mdx`;
-    const standard = contentFiles[standardPath]?.default;
-    const plain = contentFiles[plainPath]?.default;
+    const standard = contentFiles[`./${definition.slug}/content/standard.mdx`]?.default;
+    const plain = contentFiles[`./${definition.slug}/content/plain.mdx`]?.default;
+    const simple = contentFiles[`./${definition.slug}/content/simple.mdx`]?.default;
 
-    if (!standard || !plain) {
-      throw new Error(`Module "${definition.slug}" is missing standard.mdx or plain.mdx.`);
+    if (!standard || !plain || !simple) {
+      throw new Error(`Module "${definition.slug}" is missing simple.mdx, plain.mdx or standard.mdx.`);
     }
     if (
       definition.steps.length === 0 ||
@@ -49,7 +49,7 @@ export const modules: RegisteredModule[] = Object.values(moduleFiles)
 
     return {
       ...definition,
-      content: { standard, plain },
+      content: { simple, plain, standard },
       cardInfo: cardInfoFiles[`./${definition.slug}/card-info.ts`]?.default ?? {},
     };
   })

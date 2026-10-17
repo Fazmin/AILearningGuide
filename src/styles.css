@@ -2290,12 +2290,15 @@ select {
 
 .explanation-choices {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
   gap: 0.8rem;
 }
 
 .explanation-choices button {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
   min-height: 12rem;
   padding: 1.2rem;
   border: 1px solid var(--line);
@@ -7908,6 +7911,17 @@ input[type="range"]::-webkit-slider-thumb {
 
 .onboarding-options {
   margin-bottom: 0.9rem;
+}
+
+/* Three modes sit side by side so their samples compare at a glance, then stack when narrow. */
+.onboarding-modes {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+@media (max-width: 760px) {
+  .onboarding-modes {
+    grid-template-columns: 1fr;
+  }
 }
 
 .onboarding-mode,

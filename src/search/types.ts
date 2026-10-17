@@ -1,3 +1,5 @@
+import type { ExplanationMode } from "@app/module-sdk";
+
 export type SearchKind =
   | "module"
   | "group"
@@ -8,7 +10,7 @@ export type SearchKind =
   | "card"
   | "screen";
 
-export type ExplanationMode = "plain" | "standard";
+export type { ExplanationMode };
 
 export interface SearchDocument {
   id: string;

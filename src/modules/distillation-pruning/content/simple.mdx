@@ -1,0 +1,302 @@
+---
+objectives: ["Explain what soft labels carry that one-hot labels do not", "Say what distillation temperature controls", "Distinguish unstructured, 2:4, and structured pruning by what each one actually saves", "Read perplexity and stored size after each stage of distil, prune, and quantize, and compare importance scores by what they keep and what they cost to compute"]
+terms: ["Distillation", "Soft labels", "Temperature", "Dark knowledge", "Student capacity", "Magnitude pruning", "Unstructured pruning", "Semi-structured sparsity", "Structured pruning", "Sparsity", "Importance score", "Sparse format", "Compression pipeline", "Activation-weighted score"]
+---
+
+## The big picture
+
+A language model is the kind of program behind a chatbot. It is built from numbers that it learned during training. The computer must store every one of those numbers. It also uses many of them in a calculation each time the model guesses the next piece of text. So once you have a big model that works well, a practical question follows. Can you get a much smaller model that works nearly as well?
+
+This module shows two ways to do that, and both start from the same trained model. The first way is **distillation**. It trains a small model to copy a big model's guesses, the way a student learns from a teacher. The second way is **pruning**. It keeps the big model but deletes the numbers that seem to matter least. At the end, you chain both with the rounding trick from the Quantization lab. Then you measure what each step costs.
+
+### Where you have met it
+
+The model this lab shrinks may already feel familiar. It is the tiny language model from the earlier labs that reads one character and guesses the next one. Here it plays the **teacher**, and the lab measures every smaller model against it. If you did the interpretability labs, you have also met ablation. It means switching a part off to see what it was doing. Here it becomes one way to choose which numbers to delete.
+
+Outside this lab, real distillation recipes train a small model on a bigger model's guesses. They usually mix that with ordinary training on the right answers. Pruning even has hardware built around it. Some newer graphics chips can do huge numbers of multiplications at once. They have parts made to skip zeros that follow one particular pattern.
+
+### Why it matters
+
+A model's size decides how much memory it needs and how much multiplying each guess takes. A model that is too big may not fit on the machine you have. It may also answer too slowly to be useful. The next lab, Deployment & serving, turns a model's size into memory and speed. This module gives you two ways to bring that size down without training a new model from scratch.
+
+Without distillation, you would have to train a small model on right answers alone. This lab measures what that costs. In the lab's starting setup, you train two models of the same size. One copies the teacher, and the other learns from right answers alone. The right-answers model ends up about twice as far from the teacher as the copying model. Its score on the right answers looks almost the same. You only see the difference when you measure against the teacher. Pruning lets you trim a model that is only a little too big instead of replacing it.
+
+Shrinking also needs a check at every step. Each step passes its errors on to the next one. Only a reading after every step tells you which one cost the most quality. The last card in the lab gives you exactly that reading.
+
+### What you will be able to explain
+
+By the end of this lesson, you should be able to explain these ideas in your own words:
+
+- What the teacher's full set of guesses, called **soft labels**, carries that a single right answer does not.
+- What a single right answer, called a **one-hot label**, throws away.
+- What the **Distillation temperature** slider changes about the lesson the student gets, and what it leaves alone.
+- How three patterns of pruning differ in what they really save. The three savings are storage space, speed on special chips, and less multiplying on any computer.
+- How to read a model's size and quality after each step of distil, prune and quantize.
+- How three ways of choosing what to delete compare in what they keep and what they cost.
+
+### What the lab lets you see and try
+
+The lab is a set of cards, and each one lets you change something and watch what happens:
+
+- **Student controls** sets how big the students are, the temperature, and how long they train. Its **Training target** switch picks which student the readouts show.
+- **Distillation** trains two students of the same size side by side. One copies the teacher and one learns from right answers. It shows how close each ends up.
+- **Soft targets** shows the teacher's guesses after one character. Next to them, it shows how often each character really follows it in the text.
+- **Pruning controls** and **Pruning** delete a share of the teacher's numbers in three different patterns. They show how much worse the teacher gets.
+- **Compose the three steps** shrinks, prunes and rounds one student in a row. It weighs and tests the model after each step.
+
+Everything in the lab is really computed. The students train in front of you, and every score comes from running a model over real text. What is small is the scale. The teacher holds only 900 numbers and reads one character at a time. Nothing is timed, so the lab can show you size and quality, but never speed. The sizes on the last card are not measured either. They are worked out by counting bits, not by saving a real file.
+
+## What it is
+
+### The teacher, a model small enough to see whole
+
+The teacher reads one character and guesses the next. It chooses from 30 characters: the 26 letters, the space, the period, and two special markers. The Instruction tuning & templates lab uses those markers to lay out a chat. They never appear in ordinary text like the text here.
+
+Everything the teacher learned sits in one table of 900 numbers, with 30 rows and 30 columns. Each row belongs to the character the model has been given. Each column belongs to a character that might come next. A model that looks at one character to guess the next is called a **bigram** model.
+
+The number where a row and a column meet is a score for how likely that pair is. These learned numbers are called **weights**. The teacher learned its weights from a few short weather notes about a harbor. One note reads "the morning fog settles over the harbor and the air feels cool." It read that text 80 times, and each full pass through the training text is called an **epoch**.
+
+To make a guess, the model turns one row of scores into percentages that add up to 100%. After "h", for example, the teacher gives "e" a 76.6% chance. In the harbor notes, "e" really does follow "h" 76.0% of the time, as in the word "the". So the teacher's guess is close to the real count.
+
+The lab grades every model with **perplexity**. It measures how unsure a model is, on average, when it guesses the next character of the text. A perplexity of 6.6 is about as unsure as choosing between six or seven equally likely characters. Lower is better. The teacher scores 6.600, and the lab compares every smaller model with that.
+
+Perplexity comes from another score called the **loss**, which training tries to push down. The loss works like a penalty. Each time the real next character turns up, the model loses points. The lower the chance it gave that character, the more points it loses. The loss is the average penalty over the whole text. So loss and perplexity always rise and fall together. The teacher's loss appears on the **Student controls** card as **Teacher loss**, where it reads 1.887.
+
+### Two ways to get a smaller model
+
+**Distillation** trains a new, smaller model, called the **student**, to copy the teacher's guesses. Pruning keeps the teacher's own table but deletes some of its weights. Whatever survives becomes the smaller model. Both start from the same trained teacher, so the lab can show you exactly what each one costs. The teacher is needed only while the student trains, and after that the student runs on its own.
+
+### How the student is built
+
+A student still has to give a score for every one of the 900 pairs of characters. It needs a way to produce them all without storing a full table. Instead, it describes each character with two short lists of numbers. One list is for the character when it is the one given. The other is for it as a possible next character. To score a pair, the student multiplies the matching entries of the two lists and adds up the results.
+
+Here is a small example with lists of two numbers. Say "h" as the given character has the list 2, 1. Say "e" as a possible next character has the list 3, −1. Multiply first with first and second with second, then add: 2 × 3 + 1 × (−1) = 5. That 5 is the score for "e" after "h".
+
+The length of these lists is called the **rank**. The **Student size** slider sets it from 1 to 12. At rank 6, each character gets two lists of 6 numbers. Across all 30 characters, that makes 30 × 2 × 6 = 360 weights. The slider shows this as "rank 6 · 360 weights". The teacher has 900 weights, and 360 is 40% of that. So the badge on the **Distillation** card shows this student as 40% of the teacher.
+
+Short lists cannot hold every detail. A small student has to squeeze what it learns about each character into a few numbers. A student of a given size can hold only so much of the teacher. That limit is called its **student capacity**. Below some size, no amount of careful teaching closes the gap. The student has no room left for the details. It trains for as many passes through the text as **Student epochs** says. That runs from 1 to 40, starting at 18.
+
+### What the teacher knows that the answer key does not
+
+Picture a multiple-choice question on a quiz, where the answer key says only "C". A good teacher marking the same question might add, "B was nearly as good, and E is ridiculous." That ranking of the wrong answers is extra information, and the answer key throws it away.
+
+Ordinary training uses the answer key. At each spot in the text, the right answer is the character that really came next. It is written as a list of 30 numbers. A 1 sits in that character's slot, and a 0 sits in every other slot. Only one slot is switched on, so this is called a **one-hot label**. The `One-hot labels` setting of the **Training target** switch uses it. People also call one-hot labels **hard labels**, because they allow no shades in between.
+
+Distillation uses the teacher's full set of percentages instead. That includes the small shares it gives to characters it rates as unlikely. These full sets of percentages are called **soft labels**. The `Teacher distribution` setting shows the student trained on them. The information hidden in how a teacher ranks the wrong answers has an old nickname, **dark knowledge**.
+
+Picture two friends getting ready for the same test. One studies from an answer key. She learns which option was right each time, and she has to piece together the rest from many questions. The other studies with a tutor who says how close each wrong option came. He learns more from every question he practises. The student trained on soft labels is like the second friend, and the one-hot student is like the first.
+
+During training, the soft-label student gets a nudge after each small batch of examples. That nudge moves its percentages closer to the teacher's. The one-hot student gets nudged toward the right answers instead. It never looks at the teacher at all.
+
+To check how close a student came, the lab compares its percentages with the teacher's at every spot. Then it averages the gap. Say the teacher gives "e" 77% after "h" and the student gives 60%. That spot adds to the gap. A spot where they agree adds nothing. The average is shown as **KL to teacher**. A 0 would mean a perfect copy, and a bigger number means the student is further away.
+
+KL is short for Kullback–Leibler, the two mathematicians who described this way of measuring a gap. It compares two sets of percentages. The gap is measured in a unit called nats. That is why the callout under the controls says "nats per position". All you need to know about nats is that smaller means closer.
+
+Here is where the quiz picture stops matching. On a quiz only one answer is right. In text, several characters can rightly come next, such as after a space. The one-hot student does learn how often each one comes next in the end. But it can only do that by averaging many single answers. The teacher hands over the whole spread at every step.
+
+This teacher also learned little beyond how often each character follows another. That is why its 76.6% for "e" after "h" sits so close to the text's 76.0%. Its small guesses for characters that never follow, sometimes called the **tail**, carry little extra. So most of its help here comes from showing the whole spread, not from ranking wrong answers. A big teacher trained on far more text has much more dark knowledge to pass on.
+
+### What temperature does
+
+Turning a row of scores into percentages can be done sharply or gently, and **temperature** sets how gently. Go back to the quiz picture and think of the teacher handing out 100 points across the answers. At temperature 1, it hands out the points as it really rates the answers. Its favourite often gets a big share. A higher temperature moves points away from the favourite and toward the long shots, so the small guesses grow.
+
+Say the teacher gives three answers 80, 15 and 5 points at temperature 1. At temperature 2, the same scores give about 59, 26 and 15. The long shot's share triples.
+
+Inside the lab, temperature divides every score before the percentages are worked out. That shrinks the gaps between big and small scores. Distillation softens both the teacher's and the student's guesses this way while the student trains. The **Distillation temperature** slider sets how much, from 0.5 to 6. At its starting point, it reads "T = 1 (no tempering)", where T stands for temperature.
+
+To see the effect in real numbers, look at "h". At temperature 1, the teacher puts 4.8% of its guesses on characters that never follow "h" in the text. At temperature 2, that share grows to 39.3%. At temperature 4, it reaches 64.6%, which is more than half of everything the teacher guesses after "h".
+
+So temperature changes which parts of the teacher's guesses the training pays most attention to. It does not change what a perfect copy would be. A student able to match the teacher exactly at one temperature would match it at every temperature. These students are too small to do that, so temperature decides where their unavoidable mistakes land.
+
+At a high temperature, training pushes a small student to get the long shots right. It pays for that by matching the big guesses, like "e" after "h", less well. The lab grades the student at temperature 1, where the big guesses matter most, so it ends further away.
+
+Once training is over, the student is used and graded at temperature 1, the way it will run. That is why **KL to teacher** and the student's bars in **Soft targets** always use temperature 1. The slider does not change that.
+
+### Three ways to prune
+
+Pruning needs a rule for which weights to delete, where "delete" means setting a weight to exactly zero. The plainest rule removes the weights closest to zero, on the guess that numbers so small add the least. The size of a number with its minus sign ignored is called its **magnitude**. So this rule is called **magnitude pruning**. For example, −0.02 and 0.02 both have a tiny magnitude, while −3 has a large one.
+
+The share of a model's weights that are exactly zero is called its **sparsity**. On the **Pruning controls** card, **Pruned share** sets how much to delete, from 0% to 90%. **Pruning mode** picks the pattern the zeros must follow. Picture the teacher's table as a spreadsheet with 30 rows and 30 columns. The grid on the **Pruning** card draws exactly that. The three patterns work like this:
+
+- The `Unstructured` setting is **unstructured pruning**. It blanks the smallest cells wherever they happen to be, so the gaps end up scattered across the sheet.
+- The `2:4 semi-structured` setting is **semi-structured sparsity**. It walks down each column in groups of four cells and blanks the two smallest in every group.
+- The `Structured rows` setting is **structured pruning**. It blanks whole rows, choosing the rows whose numbers are smallest overall. The **Rows removed** readout counts them.
+
+A column of 30 cells makes seven groups of four plus one leftover pair, where one cell goes. So exactly half the cells still go in the 2:4 pattern. In that mode the pattern fixes the share, and the slider reads "fixed at 50% by 2:4".
+
+Each row of the table holds everything the teacher learned about what follows one character. Suppose every score in a row is 0. Then no character beats any other, so all 30 get the same share, about 3.3% each. That is as if the teacher had never seen that character.
+
+### What each pattern really saves
+
+In a real model, every guess involves multiplying through big grids of weights like this one. A zero still sits in its place in the grid. The computer multiplies by it like any other number unless it has a special way to skip it. That is why the three patterns save such different things, even when they remove the same share of weights:
+
+- Scattered zeros mostly save storage, and only in the right layout.
+- That layout stores the surviving values plus a note of where each one goes. It is called a **sparse format**, and even with one, scattered zeros save little time.
+- The 2:4 pattern is regular enough that some newer NVIDIA graphics chips, called GPUs, can skip its zeros. They use special parts called **sparse tensor cores**, which can make the multiplying up to about twice as fast.
+- Removing whole rows makes the grid itself smaller, so there is less to multiply on any computer.
+
+In a real model, a row stands for a part, such as a neuron. A neuron is a single unit of calculation, and you can take it out completely. That is the saving people usually want, but at the same share it costs the most quality.
+
+### Running the three steps together
+
+The **Compose the three steps** card chains distillation, pruning and quantization into one **compression pipeline**. It works like packing for a trip in three steps. First you swap to a smaller suitcase, which is distilling into the student. Then you take out the items you need least, which is pruning. Finally you vacuum-seal what is left, which is quantizing. After each step, the card weighs the bag and checks how well you can still make the trip.
+
+To weigh the bag, the card counts bits. A **bit** is the smallest piece of computer storage, a single 0 or 1. Eight bits make one **byte**, which the lab writes as B. Before any rounding, each stored value takes 32 bits, which is 4 bytes.
+
+So the teacher's 900 weights take 3,600 bytes, and the rank-6 student's 360 weights take 1,440 bytes. The student is stored as its two sets of short lists. That is why its size depends on its rank.
+
+Here the packing picture needs a warning. Taking an item out of a suitcase frees its space. A zero in a stored model still fills a full 32-bit slot. Pruning saves room only with a sparse format. It stores the kept values plus a note of where each one goes. Here that note is a **mask**. It holds one bit per position, 1 for a kept value and 0 for a removed one.
+
+Say you keep 4 of 8 values. You store those 4 values plus the 8 bits 1 0 1 1 0 0 1 0. Those bits tell the computer where each kept value belongs.
+
+Now see how the numbers work out when half the student's values are pruned. The 180 values it keeps cost 720 bytes. The mask adds one bit for each of the 360 positions, which comes to 45 bytes. Together they make the 765 bytes shown on the **Pruned** row. That is about half of what the student took before pruning.
+
+Quantizing then rounds each kept value so that it fits in fewer bits. This is the trick from the Quantization lab. At 4 bits, a value can only be one of 16 levels. That is because 4 bits can be set 2 × 2 × 2 × 2 = 16 ways. Every group of 32 values also stores two extra 16-bit numbers. They say how to turn the levels back into real values. **Final bit width** sets the bits per kept value from 2 to 8.
+
+At 4 bits, the 180 kept values take 720 bits, which is 90 bytes. They fill 6 groups, and each group's two extra numbers add 4 bytes, so 24 bytes in all. The mask still adds 45 bytes. Add 90 + 24 + 45 and you get the 159 bytes of the pruned student after quantizing.
+
+The packing picture also stops matching at the last step. A vacuum-sealed jacket comes out as the same jacket. But a rounded value is not quite the number it was before. Every step in this pipeline loses a little quality, and the card measures how much.
+
+### Choosing what to cut
+
+The prune step on this card needs a way to decide which values matter least. Any rule like that is called an **importance score**. The **Importance score** control offers three of them:
+
+- The `Magnitude` score reads the size of each value straight off the numbers. It needs no extra work at all.
+- The `Activation-weighted` score multiplies each value's size by how big its input usually is while the model runs.
+- That input is called an activation, so this is an **activation-weighted score**. It needs one pass through the text to measure the inputs.
+- In this lab, the input tracks how often a character shows up in the text. So values linked to common characters, like "e" and the space, score higher than values linked to rare ones.
+- The `Measured ablation` score removes one value at a time and runs the model over the text. Then it records how much worse the loss gets.
+- That is the ablation test from the interpretability labs. It needs one run through the text for every value, so 360 runs at rank 6.
+
+A score studies some text to decide what to cut. That text is called the **calibration text**, and here it is the harbor notes. The **Passes to score** readout shows how many runs through the text the chosen score needs. It reads 0, 1 or 360.
+
+Picture a coach who has to cut half the players from a big squad. She could cut the players with the weakest stats, which is quick. She could instead weigh each player's stats by how many minutes they usually play. That means going through the season's records once. A third choice is to play a full practice match without each player in turn. Then she sees how much the team's score drops. That tells her the most, but it costs one whole match per player.
+
+## Why it’s here
+
+Distillation solves a specific problem with learning from right answers. You can see it by looking at what follows a space in the harbor notes. Sometimes it is "t", sometimes "a", and sometimes "s" or "w". A one-hot label shows only one of these at a time. So a student sees "a" at one step and "t" at the next. It has to average many of these noisy nudges to work out the real shares.
+
+A soft label carries the whole spread at every step. So the student gets the full picture each time instead of piecing it together. That is why a student that copies the teacher can get closer with the same size and training.
+
+Pruning solves a different problem, and it suits a model that is nearly the right size already. It keeps the trained weights and trims a share of them without building a new model. The share and the pattern you choose then decide whether you save storage, time, or both.
+
+These steps also stack. Distillation cuts the number of weights. Pruning removes a share of what remains. Quantization shrinks the bits each survivor takes. Together, they can make a model far smaller than any one step could on its own.
+
+## How to play with it
+
+### Copy the teacher
+
+**Try this:** leave **Student size** at rank 6 and **Distillation temperature** at 1. Then flip **Training target** between `Teacher distribution` and `One-hot labels` while you watch **KL to teacher**. The copying student ends 0.1348 away from the teacher. The one that saw only right answers ends 0.2577 away, almost twice as far.
+
+Now look at the chart on the **Distillation** card. It tracks each student's loss on the right answers as it trains. The solid line for soft labels and the dashed line for hard labels nearly overlap. Yet one student ends up almost twice as close to the teacher. The copying student ends at a **Student loss** of 2.119, and the other student ends at 2.175. The dotted line is the finished teacher, which no student here is expected to reach.
+
+### Tune the temperature
+
+Keep `Teacher distribution` selected and move **Distillation temperature** from 0.5 up to 6. Read **KL to teacher** at each stop:
+
+- At 0.5, which sharpens the teacher's guesses instead of softening them, it reads 0.4037.
+- At 1, the starting point, it reads 0.1348.
+- At 1.5, it reads 0.1340, the closest the student gets at any of these stops.
+- At 2, it reads 0.1407, which is a little further away again.
+- At 4, it reads 0.2193, which is still closer than the one-hot student.
+- At 6, it reads 0.2737, which is now further away than the one-hot student's 0.2577.
+
+Then go to **Soft targets** and pick "h" with **Context character**. Each of the ten likeliest next characters gets three bars, and a "rest" row collects everything else. The top bar, "one-hot labels, averaged", shows how often that character really follows "h" in the text. The middle bar shows the teacher at the current temperature, and the bottom bar shows the student.
+
+The student is always shown at temperature 1. So compare it with the teacher bar only when the slider is at 1. At other settings the teacher bar is softened, and the two are not meant to match.
+
+Below the bars, the readout **Teacher mass on unseen next characters, T = 1** stays at 4.8%. Mass here means share of the guesses. So this is the share the teacher puts on characters that never follow "h". The readout beside it is labelled "Same, at T =" with the current temperature, and it follows the slider. It reaches 39.3% at temperature 2 and 64.6% at 4.
+
+Now set the temperature back to 1, switch **Training target** to `One-hot labels`, and pick "␣", the space. The hard-label student gives "a" a 46.2% chance after a space, even though the text says 14.1%. Switch back to `Teacher distribution`. The soft-label student gives "a" 14.6%, close to the real count.
+
+### Prune by magnitude
+
+On **Pruning controls**, keep **Pruning mode** on `Unstructured`. Drag **Pruned share** down to 0%, since it starts at 30%. Then raise it step by step, and watch the perplexity badge at the top of the **Pruning** card. With nothing removed, the badge reads 6.60. At 30%, it has barely moved, to 6.61. At 50%, it still reads only 6.65, so half of the teacher's weights are gone at almost no cost. After that, the curve bends upward, reaching 6.84 at 70% and 8.07 at 90%.
+
+On the same **Pruning controls** card, the teacher and the pruned table each write 68 characters starting from "the ". Each one picks a next character from its guesses and adds it to the text. Then it guesses again from there. The label above the pruned sample counts how many characters differ. So you can see the damage in actual text as well as in the score.
+
+### Compare the three shapes
+
+Set **Pruned share** to 50% and switch **Pruning mode** between its three settings. The perplexity badge reads 6.65 for `Unstructured` and 7.15 for `2:4 semi-structured`. The `Structured rows` setting reaches 8.22. Watch the grid change as you switch. You see blanks scattered everywhere, then exactly two in every four down each column. Last come whole empty rows, with **Rows removed** at 15 / 30.
+
+### Compose the stages
+
+Put the **Student controls** card back to its starting values. Those are rank 6, temperature 1, 18 epochs and `Teacher distribution`. Then go to **Compose the three steps**. Set **Share pruned from the student** to 50%, **Final bit width** to 4 and **Importance score** to `Magnitude`. Then read the four rows:
+
+- The `Teacher` row shows 3,600 B at perplexity 6.600, the starting point for everything else.
+- The `Distilled student` row drops to 1,440 B, while perplexity rises to 8.326.
+- The `Pruned` row drops further to 765 B, with perplexity at 8.560.
+- The `Quantized` row ends at 159 B, with perplexity at 8.619.
+
+The badge says the final model is 22.6 times smaller than the teacher. In exchange, its perplexity rose from 6.600 to 8.619, which makes it 30.6% worse.
+
+### Change the importance score
+
+Raise **Share pruned from the student** to 70% and switch **Importance score** between its three settings. The second bar list shows the perplexity right after the prune step for all three scores. It also shows the passes each one needs:
+
+- The `Magnitude` score leaves a perplexity of 9.682 and needs 0 passes, since it reads the values directly.
+- The `Activation-weighted` score leaves 9.999 and needs 1 pass to measure the inputs.
+- The `Measured ablation` score leaves 9.480 and needs 360 passes, one for every value.
+
+## What to notice
+
+- **Copying wins at every size:** Every run here uses temperature 1. At rank 2, the copying student lands at 0.4200, against 0.4668 for the one-hot student. At rank 12, it lands at 0.0722, against 0.1295. Each soft-label update shows the whole spread of guesses, while each one-hot update shows one sampled answer.
+- **A low loss does not mean a close copy:** The two loss curves nearly overlap. One student is still twice as close to the teacher. Fitting the right answers and matching the teacher are different questions. Only **KL to teacher** shows the second one.
+- **Size sets a ceiling:** **Student capacity** decides how much a student can match at all. Rank 12 gets nearly six times closer to the teacher than rank 2.
+- **Temperature has a sweet spot:** It sits near 1 to 1.5 here. From 4 upward, the rank-6 student spends its limited room on the tail of small guesses. At 6, it ends further away than the one-hot student.
+- **Right answers alone can mislead a small student:** After a space, the one-hot student gives "a" 46.2%. That is more than three times the text's 14.1%. The soft-label student's 14.6% is close to the real count.
+- **The first cuts are nearly free:** At 30%, unstructured pruning costs almost nothing. Perplexity moves from 6.60 to only 6.61. Both modes first remove the four rows the text never uses, for "j", "x" and the two markers. Those weights are already zero.
+- **Unstructured and structured pruning then split apart:** Unstructured removes 150 more of the smallest weights, wherever they sit. Structured has to blank 5 whole rows the text does use, big weights included. So at 30% it already reaches 6.95.
+- **A pruned table can still write well:** It may have lost weights that this text never needed.
+- **2:4 sits between the two curves:** A forced pattern costs more than free choice at the same share. It costs less than deleting whole rows.
+- **The three steps are not priced alike:** Distilling saves 2,160 bytes for 1.73 more perplexity. Pruning saves 675 bytes for 0.23 more, and quantizing saves 606 bytes for only 0.06 more. Drop **Final bit width** to 2, though, and the quantize step costs 1.34.
+- **The best score is the slow one:** `Measured ablation` leaves the lowest perplexity at 70%. It asks the loss directly what each value is worth. The price is one test per value, which is 360 here.
+- **The quick shortcut loses on this toy:** `Activation-weighted` does worse than plain `Magnitude`. Here, the size of a value's input only tracks how often its character shows up. That tells you how many guesses a value touches. It does not tell you how much each guess changes when the value is removed. On this toy, that leads it to keep the wrong values.
+
+## Where it breaks
+
+### What this lab simplifies
+
+- Every loss, KL and perplexity in the lab is really computed. But the toy has only 900 weights and one character of context.
+- A real model has many stacked **layers**, which are steps of calculation done one after another. This toy has none of them.
+- The teacher learned almost exactly the text's own counts, so its dark knowledge is a thin tail. The lab shows how distillation works, not how much it helps when the teacher is big.
+- **KL to teacher** skips the four characters that never appear in the harbor text. They are "j", "x" and the two markers. Neither model was trained on those rows.
+- Each student is a slimmed-down copy of the teacher's own shape, not a model with a different design.
+- Each student trains either purely on the teacher or purely on right answers, with no mix. Every result comes from one random starting point, called a seed.
+- Pruning happens once, with no retraining afterward to win back quality. Nothing is timed either, so the speed claims come from how the chips work, not from a stopwatch.
+- The compose card does no retraining between steps, and it removes the same share from both sets of lists.
+- The compose card also uses the harbor text twice, to pick what to cut and to test the result. So for the scores that study that text, pruning looks less harmful than it would on new text.
+- A row of the teacher's table stands in for a neuron or a group of neurons. A real model would remove them. Here the row is only set to zero and stays in the table, so nothing actually gets smaller.
+- The compose card's sizes are bit counts worked out on paper. They are not the size of a real file on a disk.
+
+### Where the real methods fall short
+
+**A common mix-up:** deleting half the weights does not make a model twice as fast. Picture a friend helping to mark a stack of quizzes in which half the answer boxes are blank. His marking sheet makes him check every box anyway. The blanks save him no time. Only taking those questions off the quiz would.
+
+Scattered zeros work the same way, since the computer still multiplies by every one of them. So unstructured **sparsity** mostly saves storage, and only with a sparse format. A strict 2:4 pattern can make the multiplying up to about twice as fast. That works only on GPUs built to spot that pattern. Deleting whole rows shrinks the grid, which saves work on any computer.
+
+Magnitude is the crudest **importance score**. A pruning method called Wanda also weighs how big each weight's input is. Its authors report that, on large models, this does much better than size alone. On large models, a few inputs are far bigger than the rest. Weighing by input catches weights that size alone would cut. You can read more about Wanda in Going deeper. This toy reverses that result, for the reason given in What to notice.
+
+A student also copies its teacher's mistakes along with its skills. Matching the next-character guesses does not, on its own, pass on behaviour that takes many steps. That is why a variant called sequence-level distillation exists, aimed at exactly that gap.
+
+Measured ablation has limits of its own. It tests one value at a time, so it misses values that matter only in combination. Think of two players who can each cover for the other. Benching either one alone barely changes the score, so the test rates both as unimportant. Cutting both would hurt badly. Ablation also needs one test per value, which is out of reach when a model has billions of them.
+
+## Going deeper
+
+Real distillation usually mixes the softened copying lesson with ordinary right-answer training, while this lab keeps the two apart. Both the lab and real recipes multiply the copying lesson by the temperature squared. That keeps each training step about the same size whatever temperature you pick.
+
+Real teachers learn far more than how often one character follows another. So the way they rank wrong answers carries much more. A higher temperature lifts those small guesses, which is where that ranking lives.
+
+There are two explanations for why soft labels help. The first says each position carries a whole set of percentages, not one sampled answer. So there is more to learn from. The second says the teacher's percentages are smoother than raw right answers. So they make gentler targets to aim at. This lab mostly shows the first, since its teacher barely differs from the text's own counts.
+
+### Composing the steps
+
+The usual order is to prune or distil first, retrain to win back quality, and quantize last. Quantizing assumes the weights are final. Each step also inherits the errors of the one before it. Its own cost depends a lot on the settings.
+
+In the lab, the 4-bit quantize step adds only 0.06 to the pruned student's perplexity. At 2 bits, the same step adds 1.34 to that pruned student. Set **Share pruned from the student** to 0% so nothing is pruned, and at 2 bits it costs 1.76. The Quantization lab prices that last step in detail, and Deployment & serving turns the result into memory and speed.
+
+### Importance scores beyond magnitude
+
+A method called Wanda multiplies each weight's size by the size of the input it meets. It compares weights only against others that feed the same output. Its authors report results on a family of large language models called LLaMA. There it does much better than size alone. Another method, SparseGPT, works layer by layer. It chooses what to remove and adjusts what stays, so each layer's output changes as little as possible.
+
+Both methods prune large models in one go without retraining. They exist to close the gap between magnitude, which is cheap but crude, and measured ablation. Ablation is the most direct test, but it needs one run per weight.

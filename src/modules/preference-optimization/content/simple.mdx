@@ -1,0 +1,347 @@
+---
+objectives: ["Run preference optimization on comparisons you authored", "Read an implicit reward margin correctly", "Explain what beta trades away", "Judge whether a preference gain carries over by scoring pairs the optimizer never saw"]
+terms: ["DPO", "Reference model", "Implicit reward", "Margin", "Beta", "KL divergence", "Length bias", "Degenerate repetition", "Reward hacking", "Policy", "RLHF", "Bradley-Terry", "Held-out pairs", "SFT checkpoint"]
+---
+
+## The big picture
+
+This lesson is about teaching an AI model by comparison. You show it two answers to the same prompt and say which one you prefer. You never write a perfect answer for it to copy. The lab turns a handful of your choices into real training.
+
+The model here is a **language model**. That is a program that writes text one piece at a time by guessing what comes next. The much larger models behind chatbots work the same way. The **Post-training** lesson showed that a model trained only to continue text gets extra training to shape its replies. Picking the better of two replies is one way people give that feedback. Choosing is quicker and more reliable than writing a perfect reply from scratch.
+
+The method in this lab is called **DPO**, short for direct preference optimization. It nudges the model to favor the answer you preferred over the one you rejected. It uses one formula and no separate program for scoring answers, and that is why it is called "direct".
+
+Without a method like this, you would have to write the ideal answer for every situation. The other choice is to train a second model whose only job is scoring answers. Comparisons are cheaper to collect. So DPO makes it practical to steer a model with feedback that people give quickly.
+
+DPO also comes with a trap. The number it pushes up can keep climbing while the model learns something much narrower than you meant. That is why most of this lesson is about reading the results honestly.
+
+By the end of the lesson, you should be able to explain each of these in your own words:
+
+- how to run preference optimization on comparisons that you wrote yourself, and what each part of a comparison does;
+- how to read the score gap in a pair, called the implicit reward margin, including which answer actually moved;
+- what you gain and lose when you change beta, a setting that limits how far the model may move;
+- how to judge whether a gain carries over, by scoring pairs that training never saw.
+
+The lab's model is tiny, and it looks only at the last character it read. It learned from short harbor weather notes and recipe steps. So the answers here are short phrases about a foggy harbor and cooking. Each rejected answer is a loop such as "fog fog fog fog fog." Small models really do fall into this failure.
+
+You can write your own pairs in the **Preference pair editor** and run training for more or fewer steps. Four other cards respond to what you do, and some of them chart the score gap and the drift. Drift means how far the model has moved from its starting copy. The last card scores every pair one by one, along with three test pairs that training never touches. That lets you check whether training carried over to new comparisons.
+
+## What it is
+
+### A model that guesses one character at a time
+
+The model in this lab reads one character, such as a letter or a space. Then it gives every possible next character a chance, called a **probability**, of coming next. It has 30 symbols in all. Those are a space, the letters a to z, a full stop and two spare symbols for special use. The model only looks one character back, so it cannot tell which word it is in. Its writing comes out as jumbled letters with a few real words.
+
+To find the chance of a whole answer, the model multiplies the chances of each step. Take "fog" after a space. You multiply three chances: "f" after a space, "o" after "f", and "g" after "o". Say those chances are one half, one half and one quarter, so the chance of "fog" is one sixteenth. A 28-character answer multiplies 28 chances, and the result is so tiny that it is hard to read.
+
+So the lab turns each chance into a score called a **log-probability**. Then it adds the scores instead of multiplying the chances. A step that is sure to happen has a chance of 1 and scores 0. Every time a chance halves, the score drops by about 0.69. These scores are measured in units called **nats**. A chance of one half scores about −0.69 nats, and a chance of one quarter scores about −1.39.
+
+For "fog", the three scores add up to about −2.77. That is four halvings, and it matches the one sixteenth from before. Ten halvings in a row make a chance about a thousand times smaller. The score drops by about 6.9, so remember this rule of thumb: about 0.69 per halving. It is the key to reading the numbers in this lab.
+
+Inside, the model is a table. For each of the 30 characters it might have just read, it keeps a row of 30 numbers. Those numbers set the chances of what comes next, so the table holds 900 numbers in all. **Training** means nudging those numbers a little at a time. Each nudge is called a **step**, and it makes some next characters more likely and others less.
+
+### Two copies of one model
+
+The lab first trains a model for 50 **epochs** on two small sets of text. An epoch is one full pass over the text. The two sets are harbor weather notes and recipe steps. The lab then freezes that trained model and keeps it as the **reference model**. The **Reference model** switch calls it `Base model`.
+
+Training works on a second, editable copy called the **policy**. It starts as an exact copy of the reference, and it is the only one that ever changes. Every result in this lab compares the two copies. So the question is never "how good is this answer?" The question is "how much more or less likely did training make it?"
+
+### What you tell it
+
+In the **Preference pair editor**, each line has three parts split by bars: `prompt | preferred | rejected`. The prompt is the start of the text. The preferred answer is the continuation you like, and the rejected answer is the one you do not. The lab also calls an answer a **completion** and calls the preferred one "chosen". You will see both words on the cards. These are the three default lines, one comparison per line:
+
+- `the | fog settles over the harbor. | fog fog fog fog fog.`
+- `warm the | pan and add a spoon of oil. | pan and the pan and the pan.`
+- `simmer the | sauce until it thickens. | sauce and simmer the sauce.`
+
+Every rejected answer loops on a phrase. That failure is called **degenerate repetition**, and it is a real and common problem for small models. In all three pairs, the reference model rates the loop as more likely than the good sentence. Training does not have to reverse that. It only has to move the two answers apart, compared with where the reference had them. Even after 40 steps, the trained model still rates the loop as more likely in pairs 1 and 2.
+
+### The picture: a playlist that learns from your taps
+
+Picture a music app that plays songs at random from a big playlist. Some songs come up far more often than others. Each song stands for one possible answer, and how often it plays stands for its chance. The app never asks you to name the perfect song. Now and then it shows you two songs, and you tap the one you like better.
+
+The app keeps a saved copy of the original playlist, which plays the part of the reference. It changes a working copy, which plays the part of the policy. To respect your tap, it can play your favorite more often. It can also play the other song less often, or do both. Total listening time is shared, so playing one song more always means playing something else less.
+
+The picture stops matching in two places, and the second one matters most. First, neither the app nor the model likes or dislikes anything. "Better" only means "the side you labeled preferred". Second, songs are separate tracks. The model builds its answers from small shared steps, like "a space followed by f". Turning down one answer also turns down every other answer that uses the same steps. You will see that happen in the lab.
+
+### The implicit reward and the margin
+
+Take any answer and subtract the reference's log-probability from the policy's. The result says how far training has moved that answer. Multiply it by a setting called **beta**, written β, and you get the answer's **implicit reward**. It is called implicit because no separate program hands out the reward. You read it straight off the model's own chances.
+
+A reward of zero means the policy rates the answer exactly as the reference did. A positive reward means the answer became more likely, and a negative one means it became less likely.
+
+The **margin** is the preferred answer's reward minus the rejected answer's reward. Pair 1 after the default training makes a good example. Its preferred sentence has a reward of about +0.18, and its loop has about −3.61. The margin is +0.18 minus −3.61, which is about 3.8. Nearly all of it came from the loop going down, not from the sentence going up.
+
+Each reward is measured against the reference, so an implicit reward is not a quality score. A great answer that the reference already liked can have a reward of 0. Training did not move it. A poor answer that training made a little more likely gets a positive reward. The reward tells you how much training moved an answer, not how good the answer is. Use it only to compare the two answers inside one pair.
+
+### The loss in one formula
+
+Training needs one number to aim at, called the **loss**. Each step nudges the table in whatever direction makes the loss a little smaller. A smaller loss means the model fits your choices better. DPO's loss depends on the margin and on nothing else. The **Where each pair sits on the loss** card draws it as `loss −log σ(β·m)`. That looks dense, so here it is piece by piece:
+
+- **m** is the margin divided by beta. It is the gap between how far the two answers moved. The readout **Log-ratio gap m = margin ÷ β** shows it in nats.
+- **β·m**, meaning β times m, is the margin itself. The card splits it so that m uses the halving rule, while β is a setting you choose.
+- **σ**, the Greek letter sigma, stands for an S-shaped squashing curve called the **sigmoid**. It turns any number into a share between 0 and 1, so zero becomes one half. Large positive numbers come out close to 1, and large negative ones come out close to 0.
+- **σ(β·m)** is the formula's predicted chance that the preferred answer wins the comparison. A gap of zero gives a coin flip, which is 50%.
+- **−log** uses the same log step that turned chances into scores earlier. Then it flips the sign, so the loss is never negative. A 50% chance is one halving away from certain, so its loss is about 0.69.
+
+Every pair starts at m = 0, so the predicted chance is 50% and the loss is 0.6931. That is the size of one halving, and mathematicians write it as ln 2. Now take pair 1 after the default training, where m is 9.50. With beta at 0.4, β·m is 3.8. The sigmoid turns 3.8 into about 97.8%, so the loss shrinks to about 0.022.
+
+### Where training starts
+
+The policy begins as an exact copy of the reference. So every reward and every margin starts at exactly zero. Set **DPO steps** to 0 and the slider reads `untrained`. Then **DPO loss** reads 0.6931, the value a zero margin always gives, whatever pairs you wrote.
+
+That 0.6931 does not mean the two answers are equally likely, because the reference still prefers every loop. It only means that the policy has not moved yet.
+
+## Why it’s here
+
+Picture planning a birthday message in a group chat. Writing the perfect message from scratch takes a while, and five friends would write five different ones. If someone shows you two drafts, you can pick the better one in seconds.
+
+That is why people train models on comparisons. The older way to do it is **RLHF**, short for reinforcement learning from human feedback. It first trains a separate scoring model on people's comparisons. Then it trains the main model to raise that score. A penalty keeps the main model near the reference, so it does not drift into nonsense.
+
+That needs extra machinery: the scorer itself, plus a loop where the model writes fresh answers to grade. DPO reaches the same goal from the same comparisons with one loss. It needs no separate scorer and no loop of fresh answers. The **Post-training** lesson stopped at that argument, while this lab runs real training steps on pairs you write.
+
+Running DPO for real shows a problem that the argument hides. The margin is the exact number DPO pushes up. So it will rise whether or not the model picks up the preference you meant. A rising margin is therefore the weakest evidence that training did what you wanted. That is why the lab puts four other readouts beside it:
+
+- the two sides of the margin plotted apart, so you can see which answer moved;
+- where each pair sits on the loss, so you can see which pairs still drive training;
+- the drift from the reference, so you can see how much of the whole model changed;
+- held-out pairs, so you can see whether the preference carried over to comparisons that training never saw.
+
+## How to play with it
+
+Work through these in order, because each step builds on the one before.
+
+### Run the optimizer
+
+The part of the lab that takes the training steps is called the **optimizer**. **DPO steps** sets how many steps it takes.
+
+**Try this:** Set **DPO steps** to 0 and read **DPO loss**. It shows 0.6931, and every line on the first chart, **Implicit reward margin during training**, sits at zero. The badge reads `0% ordered correctly`. It only counts pairs whose margin is above zero, and every margin is exactly zero.
+
+Now raise **DPO steps** to 40. Keep **Beta** at 0.4, and keep **DPO learning rate**, which sets how big each step is, at 0.35. The loss falls to 0.0317, and all three pairs end ordered correctly, so the badge reads `100% ordered correctly`.
+
+Here `ordered correctly` means the margin is above zero. The preferred answer has gained on the loop since training began. It does not mean the preferred answer is now the more likely of the two. In pairs 1 and 2 it still is not.
+
+Move the slider slowly up from 0. Watch the numbered circles on **Where each pair sits on the loss** slide right and down the curve. After only a few steps, every training pair is already ordered correctly. Even so, the loss keeps falling, because a bigger margin always gives a smaller loss.
+
+### Read the margin and its two sides
+
+The first card, **Implicit reward margin during training**, plots four lines against the step count. The solid `margin (chosen − rejected)` line is the average margin. The dashed `chosen reward` line follows the preferred side, and the dotted `rejected reward` line follows the loop side. The margin is always exactly the distance between the dashed and dotted lines. The fourth line comes up later in this lesson.
+
+At 40 steps, the chosen reward ends at +0.556 and the rejected reward ends at −2.940. The **Margin, β-scaled** readout shows the difference between those two lines, which is 3.497. Next to it, **Log-ratio gap m = margin ÷ β** shows the same gap with beta divided back out. So 3.497 ÷ 0.4 gives about 8.74 nats, the gap in real units.
+
+To turn those rewards into chances, divide by beta first. On the rejected side, −2.940 becomes a drop of about 7.35 nats. That is more than ten halvings, so on average a loop became over a thousand times less likely. On the chosen side, +0.556 becomes a rise of about 1.4 nats. That is two doublings, so on average a preferred sentence became about four times as likely.
+
+These are averages, and the pairs differ from one another. The loop in pair 3 became only about 230 times less likely. The preferred sentence in pair 1 became only about one and a half times as likely.
+
+### Watch where each pair sits
+
+The **Where each pair sits on the loss** card draws three loss curves. One uses half your beta, one uses your beta, and one uses double it. Each curve shows the loss for every possible gap m. The numbered circles sit on the curve for your own beta, which the legend marks `(current)`. They show where your pairs are now. Below the curve, each pair's row gives its m, its loss and its pull, labeled `pull σ(−β·m)`.
+
+The pull is the share of full strength that a pair still puts into training. It equals the chance the formula still gives the rejected answer of winning. So it starts at 50% when m is 0 and falls toward zero as the gap grows.
+
+At 40 steps, the pairs sit between m = 7.88 and m = 9.50. That is out on the flat part of the curve. There each one still pulls at only 2 to 4% of full strength. Pair 1 is the worked example from before. Its β·m is 3.8, so the formula gives the loop about a 2.2% chance, and its pull is 2.2%.
+
+Now set **DPO steps** to 4, and the pairs sit near m = 3 and still pull at around 20%. The least separated pair always pulls hardest. So training puts more effort into the comparisons closest to a tie.
+
+### Sweep beta
+
+Next, slide **Beta** and watch **Drift from the reference model**. This card runs three complete trainings side by side. One uses half your beta, one uses your beta and one uses double it. You can compare them at a glance. Each legend entry gives that run's final gap and its final KL, short for **KL divergence**. KL is the lab's measure of how far the policy has drifted from the reference. The badge shows the KL for your own run.
+
+Read the legend at 40 steps, then set **DPO steps** to 4 and read it again. You will see the order of the KL values flip.
+
+### Change the step size
+
+**DPO learning rate** sets how big each training step is. Raising it makes the loss fall faster, but it also makes the drift grow faster. Lowering it slows both down. You can see this on the **DPO loss** readout and the KL badge.
+
+### Check the held-out pairs
+
+Scroll to **Per-pair rewards**, where each pair gets a block with both answers and a bar called a dumbbell. A circle marks the chosen reward, and a square marks the rejected reward. The bar between them is the margin. The dashed line down the middle is zero, which is where the reference sits. Each block says `ordered correctly` or `not ordered`.
+
+Below your pairs sit three **held-out pairs**, `H1` to `H3`. They are the same kind of comparison, a good sentence against a loop. The lab fixed them before any run, and no training step ever uses them:
+
+- `H1` sets "clouds break apart and the sun warms the streets." against "clouds clouds clouds clouds clouds."
+- `H2` sets "onions until they turn soft and sweet." against "onions onions onions onions."
+- `H3` sets "pasta in salted water until it is tender." against "pasta and the pasta and the pasta."
+
+At 40 steps, all three training pairs are ordered correctly, but among the held-out pairs only `H3` is. `H1` and `H2` end at margins of −0.54 and −1.12, which means training pushed them the wrong way. `H3` moved the right way instead, and its block ends at a margin of +2.90.
+
+The badge `held-out: 1 of 3 ordered` and the readout **Held-out pairs ordered correctly** both report 1 of 3. On the first chart, the `held-out margin (never trained on)` line ends at +0.42. The training pairs end at +3.50.
+
+### Write your own pair
+
+Add a fourth line to **Preference pairs** with the same pattern. Use a short prompt, a sentence you like and a loop you do not. For example, try `the | rain falls on the boats. | rain rain rain rain.` as a fourth line. Then check whether the new pair ends ordered correctly, and whether the held-out badge changes.
+
+You should find the new pair ordered correctly, but the badge still at 1 of 3. Another loop that repeats a word does not teach the model that repeating a word is bad. It mostly changes the character steps inside "rain rain", not a general rule about repeating words.
+
+The editor keeps up to 5 lines, with up to 50 characters in each part. It turns capitals into small letters. Characters the model does not have, such as digits and commas, become spaces.
+
+### Train one pair at a time
+
+First copy the three default lines somewhere, so you can paste them back afterwards. Then delete every line except pair 2, whose loop is "pan and the pan and the pan." Read the margin on `H3`.
+
+Trained on pair 2 alone, `H3` ends at +2.25. If you keep only pair 1 instead, `H3` ends at only +0.28. Compare those two loops with the loop in `H3` before you read why in "What to notice".
+
+With pair 1 alone, look at the held-out badge too, because it reads 3 of 3. That sounds like great news, but every held-out margin is tiny, under +0.3. Training on the fog pair alone moves the held-out pairs only a little. This time it moves them slightly the right way. A passing badge with margins that close to zero is weak evidence too.
+
+### Switch the reference
+
+Last, switch **Reference model** to `SFT checkpoint`, which gives training a different starting point. A **checkpoint** is a saved copy of a model. **SFT**, short for supervised fine-tuning, means extra training on examples of good answers to copy.
+
+Here the lab takes the base model and trains it for 60 steps to copy your preferred answers. The model sees each prompt, but it is only trained to write the preferred answer that follows. That is the same kind of tuning as in *Instruction tuning & templates*. That lab's own model is never loaded, though. Real DPO starts from a tuned model like this, which is why the switch is here.
+
+The footers under **Per-pair rewards** now say the reference `already preferred it` on two of the three training pairs. The base model preferred none, but even so, at **DPO steps** 0 the **DPO loss** still reads 0.6931. The policy starts as a copy of whichever reference you pick.
+
+After 40 steps, `H1` and `H2` end at −1.48 and −1.76, while `H3` ends at +2.70. So still only one of the three carries over. Look at the dashed `chosen reward` line as well, which now ends a little below zero.
+
+## What to notice
+
+### The margin is bought lopsidedly
+
+The rejected side moves about five times further than the chosen side. The first chart shows this with −2.940 against +0.556. Here is how that looks pair by pair at the defaults:
+
+- In pair 1, the fog pair, the preferred sentence ends at +0.18 and the loop at −3.61.
+- In pair 2, the pan pair, the preferred sentence ends at +0.51 and the loop at −3.03.
+- In pair 3, the sauce pair, the preferred sentence ends at +0.97 and the loop at −2.18.
+
+In every row, the rejected side moved further. Most of the margin comes from making the bad answer unlikely. In the playlist picture, that means burying the song you skipped instead of playing your favorite more.
+
+**A common mix-up:** A growing margin does not mean the preferred answer became likely. The loss only sees the difference between the two sides. So pushing the rejected side down counts as complete success. Both sides might fall while the gap still opens. Then the run is working as designed, even though your preferred answer got less likely. That is why the lab plots the two sides apart.
+
+You can watch that happen by switching **Reference model** to `SFT checkpoint`. The chosen reward line ends below zero. On average, the preferred answers became slightly less likely than the reference rated them. Two of the three fell. Yet every training pair still ends ordered correctly, because the loops fell much further.
+
+### Beta does two jobs
+
+Think of beta as a leash on a dog that wants to run off. The reference is the owner and the policy is the dog, so a stronger beta means a shorter leash. Beta's first job is to set how big a gap counts as "done". The note under the loss curve shows this for a loss of 0.1:
+
+- at β 0.2, the gap m has to reach 11.26;
+- at β 0.4, it has to reach 5.63;
+- at β 0.8, it has to reach 2.82.
+
+Doubling beta halves the gap needed. So a higher beta reaches the flat part of the curve with a smaller change to the model. On the flat part a pair barely pulls, so training stops changing the model much.
+
+The leash picture stops matching at beta's second job. That job comes from the formula and from the simple way this lab takes its steps. Beta multiplies the gap inside the loss, so the push of each step is multiplied by beta too. A higher beta therefore also moves faster at the start. The two jobs pull in opposite directions, so beta's effect on drift depends on how long you train. With **Beta** at 0.4 and **DPO steps** at 40, the drift legend reads like this:
+
+- β 0.2 ends with a gap of 10.2 nats and a KL of 0.0133;
+- β 0.4 ends with a gap of 8.7 nats and a KL of 0.0102;
+- β 0.8 ends with a gap of 6.2 nats and a KL of 0.0053.
+
+So after 40 steps, a higher beta ends nearer the reference. At 4 steps the order flips:
+
+- β 0.2 ends with a KL of 0.0005;
+- β 0.4 ends with a KL of 0.0013;
+- β 0.8 ends with a KL of 0.0017.
+
+Early on, before any pair reaches the flat part, the bigger steps of a higher beta matter more.
+
+### What beta trades away
+
+The gaps in that first list show the trade. A higher beta settles for a smaller gap, so it changes the model less to honor your pairs. In exchange, the policy stays nearer the reference.
+
+Staying near the reference matters because the reference already writes ordinary text. The next part shows that editing the table for three pairs also changes the chances of much other text. Less drift means fewer of those side effects, and a lower beta trades the other way. It pushes the pairs further apart, but it lets the model wander further from its start.
+
+That trade holds once training has had enough steps to reach the flat part. Take a very low beta such as 0.05. Each step is so small that **DPO loss** is still about 0.58 after 40 steps. That is far from the flat part. The gap reaches only about 5 nats, which is smaller than at 0.4. So in the drift legend, a higher beta now gives both a bigger gap and more drift.
+
+Be careful with **Margin, β-scaled** when you compare different betas, because beta multiplies that readout. Set **Beta** to 0.2 and it reads 2.045, while at 0.8 it reads 4.949. It rises with beta even though the real gap shrinks. To compare runs fairly, use **Log-ratio gap m = margin ÷ β** instead.
+
+### Drift spreads across the whole model
+
+As you saw earlier, the model's table has one row of chances for each of the 30 characters. KL divergence measures how different the policy's row is from the reference's row, in nats. The lab averages it evenly over all 30 rows. A KL of 0 means the two tables match exactly, and bigger numbers mean they differ more.
+
+Say the reference gives "o" a 50% chance after "f" and the policy gives it 25%. That row now differs, and KL adds up differences like this across the row. It gives more weight to the characters the policy itself rates as likely.
+
+Editing three pairs changes every row your answers pass through. That is 21 of the 30 rows at the defaults. All other text uses those same rows, through steps like a space followed by "f". So the change spreads well beyond your three answers.
+
+With the `SFT checkpoint` reference, the lab measures drift from that checkpoint instead. At the default beta, the KL reads 0.0161 rather than 0.0102. The two numbers measure distance from different starting tables, so they are not a like-for-like comparison.
+
+### Passing the practice pairs is not learning the preference
+
+Picture a classmate who gets three practice questions with their answers the night before a test. They drill those three exact questions without learning the idea behind them. The practice sheet earns them 100%, but on the real test they get only one question of three right. It is the one that looked like a practice question.
+
+That is what the two badges show. The training badge reads 100%, and the held-out badge reads 1 of 3. Getting the studied pairs right is not the same as learning the preference behind them.
+
+The picture stops matching in one way, because the model memorized nothing. As the next paragraphs show, it only nudged the chances of single character steps. That helped one held-out pair and hurt the other two.
+
+Raising **DPO steps** keeps lifting the training margin. Meanwhile `H1` and `H2` get worse, and the held-out line stays near zero. At the default beta and learning rate, no step count orders more than one held-out pair.
+
+The loop in `H3` is "pasta and the pasta and the pasta." It shares ` and the ` with training pair 2's loop, so `H3` carries over. Pushing pair 2's loop down lowered the chances of the character steps inside ` and the `. The loop in `H3` uses those same steps. That is why training on pair 2 alone gives `H3` +2.25, while pair 1 alone gives only +0.28.
+
+The loops in `H1` and `H2` do not contain that piece, and training actually hurt them. Each row's chances must add up to 1. So lowering the steps in the training loops hands their share to other steps in the same rows. Some of that share went to steps the `H1` and `H2` loops use.
+
+The onion loop in `H2` ended up about 100 times more likely than before. Meanwhile `H1`'s good sentence, which contains ` and the `, became less likely. In the playlist picture, burying one song means the others play more, including songs you would also have skipped.
+
+The model changed the chances of particular character steps, not a general rule that repeating yourself is bad. That is the playlist picture's second limit at work.
+
+### Margins are always measured from the reference
+
+Switch to the `SFT checkpoint` reference, which already ranks pairs 2 and 3 correctly. Even so, the lab reports a loss of 0.6931 at 0 steps. Every margin is measured from the reference, whatever it happens to prefer. So the loss only reflects how the policy has moved since training began.
+
+## Where it breaks
+
+### What this lab fakes or simplifies
+
+The loss, the training steps, the rewards and the drift are all computed for real. The part that is small is the model itself, which looks at one character to guess the next. It uses a table of 30 rows by 30 columns, or 900 numbers in all. An answer is a chain of character-to-character steps, and nothing in the model can see a whole word.
+
+- **Prompts make no difference here.** The editor always ends a prompt with a space, and the model reads only that last character. Every answer starts from the same place, whatever prompt you write.
+- **Shared steps cause side effects.** The steps inside "fog fog fog" are the same steps ordinary harbor text needs. Pushing the loop down takes probability from useful text too. Even the preferred answer starts with "fog ", so the two share their first few steps. A model that sees more context could learn that a phrase is fine once but bad five times over. This one cannot.
+- **The training setup is tiny.** It has three pairs, and each step is one full update that uses every pair at once. The model writes no answers of its own during training. Real training works through thousands of pairs, fed in a group at a time.
+- **The flip in drift order at 4 steps comes from the simple stepping method this lab uses.** That method is called gradient descent, and it moves every number by the same rule. Real training often uses a method called Adam. It sizes each step on its own and mostly removes the flip.
+- **Drift is an even average.** Every one of the 30 rows counts equally, however often its character appears in real text.
+- **The held-out test is small.** It has three fixed pairs of one kind, a sentence against a loop. It shows that ordering does not carry over automatically, not how often it does.
+- **The SFT checkpoint is tuned on your own preferred answers**, so it prefers them by design. Real tuning data is separate and far larger.
+- **The sizes belong to a toy**, because these are chances for short strings of characters. Trust which answer wins more than the exact numbers.
+
+The drift card also shows two samples, which are short pieces of text that each model writes by itself. They are labeled `Reference model` and `After preference optimization`, and both start from "the " with the same random seed. The seed is a number that fixes the lab's dice rolls. Any difference between the two samples comes from training. Both look jumbled because the model only sees one character back.
+
+### Where the real method fails
+
+**A rising margin is evidence about the margin**, not about how good the answers are. Sometimes the measured number keeps improving while people judge the answers as flat or worse. That is called **reward hacking**, and DPO removes the separate scorer but not this problem. The margin itself becomes the number that can be gamed.
+
+**Length bias** is the concrete case, and it works in two ways. First, the raw score of an answer leans toward shorter answers. Every extra character adds another chance below 1 to multiply in, and pair 1 shows it. The preferred sentence is 28 characters against 20 for the loop, and that alone pulls its raw score down.
+
+Second, picture a teacher who tends to give higher marks to longer essays without meaning to. Students notice and start padding their work to match. In the same way, the preferred answers in a set of comparisons might tend to be the longer ones. Then the model learns to write longer answers, better or not.
+
+Real comparisons have other gaps between what they measure and what you want:
+
+- Real comparisons usually come from some other model's answers. So the policy learns about text that it would not have written itself.
+- Real collections run to tens of thousands of comparisons. They carry the habits of the people who labeled them, such as favoring length, confidence and formatting.
+- A small average drift can hide a large change in one narrow slice of behavior.
+- A small pull only means the loss has stopped asking for more. It does not prove the pair was learned in any useful sense.
+
+## Going deeper
+
+### The full formula
+
+The card shows the short form, `loss −log σ(β·m)`, and the long form below names every piece:
+
+`L = −log sigmoid(beta · ((logp_chosen − logp_chosen_ref) − (logp_rejected − logp_rejected_ref)))`
+
+Read it from the inside out, starting with the first bracket. That bracket is how far the preferred answer's score moved from the reference. The second bracket is the same for the rejected answer. The difference between the two brackets is the gap m. The rest is the same beta, sigmoid and −log that you worked through earlier.
+
+### Where the formula comes from
+
+The formula is not a guess. It starts from **RLHF**'s goal: raise the reward while a penalty holds the model near the reference. That penalty is a KL divergence, the same kind of drift measure this lab shows. RLHF measures it on answers the model writes itself.
+
+That goal has a known best answer. Working backwards from it lets you write the reward in a new form. The reward becomes beta times the log-ratio, plus a part that depends only on the prompt. The log-ratio is the policy's log-probability minus the reference's.
+
+Then you put that reward into the standard formula for comparisons, called the **Bradley-Terry** model. It says the chance of preferring one answer is the sigmoid of the reward difference. It works like a game where your chance of beating a rival depends on the gap in your ratings.
+
+The prompt-only part is the same for both answers, so it cancels out. The separate scorer drops out with it, and so does any need to train one. That is also why an implicit reward only compares answers to the same prompt. The penalty was folded into the formula, not removed. So beta is both the reward's scale and the strength of the pull toward the reference.
+
+### How real runs start
+
+Real DPO runs on top of an **SFT checkpoint**. That is a saved model that has already had supervised fine-tuning. This means extra training on examples of instructions and good responses. Real runs normally use that same checkpoint as the reference too.
+
+The DPO paper, by Rafailov and colleagues in 2023, says to begin with a tuned model when one exists. Otherwise, it says to tune on the preferred answers first. That fallback is what **Reference model** `SFT checkpoint` does here. The default is still the base model, so the usual order is only followed once you switch.
+
+### Fixes people have tried
+
+Later versions of the method each fix one of the limits above:
+
+- versions that take answer length into account, aimed at length bias;
+- versions that need no reference model, so there is no second model to keep in memory;
+- an extra term on the preferred side, to stop both sides from sinking together;
+- online versions, which have the current model write fresh answers and then get those answers labeled.
+
+### What people watch
+
+The checks people rely on in real training are the ones shown here. They start with both sides of the margin plotted apart and the share of pairs ordered correctly. The other two are the drift from the reference and a check on pairs the optimizer never trained on.

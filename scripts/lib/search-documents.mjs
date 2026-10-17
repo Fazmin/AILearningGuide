@@ -5,6 +5,9 @@ import path from "node:path";
 export const SEARCH_INDEX_VERSION = 1;
 export const SEARCH_INDEX_SCHEMA = "search-index-schema:1";
 
+/** Explanation modes with a lesson file each, labelled as the interface names them. */
+const MODE_LABELS = { simple: "Simple", plain: "Plain", standard: "Standard" };
+
 const REQUIRED_LEARN_SECTIONS = [
   "The big picture",
   "What it is",
@@ -230,8 +233,7 @@ export async function collectSearchSources(root) {
     files.push(
       path.join(modulesRoot, folder, "module.ts"),
       path.join(modulesRoot, folder, "card-info.ts"),
-      path.join(modulesRoot, folder, "content", "plain.mdx"),
-      path.join(modulesRoot, folder, "content", "standard.mdx"),
+      ...Object.keys(MODE_LABELS).map((mode) => path.join(modulesRoot, folder, "content", `${mode}.mdx`)),
     );
   }
 
@@ -388,7 +390,7 @@ export async function extractSearchDocuments(root) {
       );
     });
 
-    for (const mode of ["plain", "standard"]) {
+    for (const [mode, label] of Object.entries(MODE_LABELS)) {
       const mdx = await readFile(path.join(directory, "content", `${mode}.mdx`), "utf8");
       const sections = splitLearnSections(mdx);
       const known = new Set(sections.map((section) => section.title));
@@ -403,7 +405,7 @@ export async function extractSearchDocuments(root) {
             id: `learn:${slug}:${mode}:${slugify(section.title)}`,
             kind: "learn",
             title: section.title,
-            subtitle: `${mode === "plain" ? "Plain" : "Standard"} · ${title}`,
+            subtitle: `${label} · ${title}`,
             body: section.body,
             ...moduleMeta,
             mode,

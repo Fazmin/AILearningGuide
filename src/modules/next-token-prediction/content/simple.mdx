@@ -1,0 +1,524 @@
+---
+objectives: ["Describe autoregressive generation, including what ends it: an end-of-sequence token, a length limit or a stop sequence", "Explain temperature, top-k, top-p and min-p as reshaping the model's odds, without calling it creativity", "Read surprisal and cross-entropy as the model's own measure of how expected a token was, and compare models only on text they did not train on", "Trace one prediction from characters to probabilities, and read what each stage of the transformer would predict with a logit lens"]
+terms: ["Logit", "Softmax", "Temperature", "Autoregressive", "Top-k sampling", "Top-p sampling", "Min-p sampling", "Repetition penalty", "End-of-sequence token", "Surprisal and cross-entropy", "Bigram model", "Residual stream", "Unembedding", "Logit lens"]
+---
+
+## The big picture
+
+A chatbot builds every reply one small piece at a time. The program behind it is called a **language model**. Before each piece, it works out the odds for every piece that could come next. Then the chatbot picks one piece using those odds and adds it to the end of the text. After that, the whole process runs again on the slightly longer text.
+
+The small pieces are called **tokens**, so this one step is called **next-token prediction**. That is also the name of this module. The step is short to describe, but it carries a lot of weight. It is the only thing a language model actually works out. Repeat that one step many times, and you get a whole answer, a summary or a poem.
+
+### Where you have met it
+
+If you have used a chatbot, every reply you read came out of this loop. A loop is a set of steps that runs again and again. Answering a question uses this loop. So do translating a sentence, summing up an article and refusing a request. Even thinking out loud uses the same loop, and only the text in front of it changes.
+
+The model has no separate machine for answering questions and no stage for planning the whole reply first.
+
+The loop also explains something you may have noticed. A chatbot can sound completely sure of an answer and still be wrong. By the end of this lesson, you will have exact words for why.
+
+### Why it matters
+
+Without the loop, a model could give you odds for one piece of text and nothing more. Without a way to stop the loop, a reply would never end.
+
+How the program picks each piece matters too. The same model, with the same odds, can write dull, repeating text or near-nonsense, depending on a few settings. The model itself stays exactly the same either way, and only the picking changes.
+
+The same step also explains how these models learn from ordinary text. It shows how to test them fairly, too. You can grade a model by how surprised it is, on average, by real text. For a fair grade, the model must never have seen that text during training.
+
+### What you will be able to explain
+
+By the end, you should be able to explain each of these in your own words:
+
+- How a model writes text one token at a time, feeding each pick back in as text.
+- What ends the loop: a special "the end" token, a length limit or a stop phrase picked in advance.
+- What four settings do to the model's odds before each pick: temperature, top-k, top-p and min-p. You will also see why none of them is a creativity dial.
+- How surprisal and cross-entropy measure how expected each token was, using the model's own odds. Fair comparisons use text that no model trained on, and you will see why.
+- How one prediction travels from characters to odds inside the lab's biggest model, a type called a transformer. A tool called the logit lens shows what each of its stages would predict.
+
+### What the lab lets you do
+
+The lab runs three real but very small models. All three come from the same 1.1 million characters of Shakespeare's plays. Each model reads and writes a single character at a time, meaning one letter, space or punctuation mark.
+
+You type a starting text, called the **prompt**, and the lab shows each model's odds for the next character. You can reshape those odds with sliders. Then you draw one character, meaning you pick one by chance, using the odds.
+
+As you draw characters, you can watch each one join the text and change the next odds. Bars under the text show how surprised a model was by each character. A scoreboard compares how well the three models predict Shakespeare.
+
+The lab works out the odds and the surprise bars live as you type. But it measured the scoreboard's two main scores once, ahead of time. The draws are not truly random, so the same settings always give the same text. One card also lets you look inside one model, stage by stage, to see where its answer takes shape.
+
+One warning before you start: these models are tiny, so their writing looks like Shakespeare-flavoured spelling, not sense. That is fine for this lab, since they run the same loop that much bigger models run.
+
+## What it is
+
+### One step, repeated
+
+Picture a video game that makes up its weather one hour at a time. Each hour, it looks at the weather so far. It sets odds for the next hour, such as 70% sun and 30% rain, then picks one at random. A language model writes text the same way. It sets odds for every possible next piece, picks one, adds it to the end and starts again.
+
+The game's random pick matters as much as its odds. Say it picks rain for the 3 o'clock hour, and that rain becomes part of the day's weather. The game works out every later hour from a day with that rain in it. A model's picks work the same way: each pick becomes part of the text the model has to continue. Nothing ever goes back to change a pick.
+
+Notice what is missing from the picture. The game has no separate step that plans next week's weather. The model has no step that plans its paragraph or saves a draft of it. Each step looks at the text so far and sets odds for one more piece.
+
+Any planning for later text has to happen inside the work on that one next piece. And nothing holds the model to that plan at the following step. Run that one step again and again, and you get a whole paragraph, spelling and grammar included.
+
+Writing one piece at a time like this is called **autoregressive** generation. Each new piece joins the text before the model predicts the next one. The "auto" part means "self": the model's own writing becomes part of what it reads next.
+
+### Tokens and the vocabulary
+
+The pieces a model reads and writes are called **tokens**. In large chatbots, a token is usually a short word or a chunk of a longer word. The full list of tokens a model can pick from is called its **vocabulary**. In a large chatbot, that list holds tens of thousands of entries.
+
+In this lab, every token is a single character, and the vocabulary has 66 entries. Of those, 65 are the different characters found in the Shakespeare text. The last one is a catch-all entry for anything else you type. Most are capital and small letters, and the rest are punctuation marks, the space and the newline. The newline is the invisible character that starts a new line.
+
+The **Generation loop** card repeats this rule at the top, saying "1 token = 1 character".
+
+### From scores to odds
+
+At each step, the model does not produce percentages straight away. First, it gives a raw score to each of the 66 entries in the vocabulary. Each score can be any number, positive or negative, and a raw score like this is called a **logit**.
+
+A higher logit means the model favours that character more, and only the gaps between logits matter. Adding the same amount to every score changes nothing. With two characters, scores of 2 and 1 give exactly the same odds as 12 and 11. The gap is one point either way.
+
+Think of two friends standing side by side. If both step up onto a stair, the gap between their heights stays the same. Logits work like that: raise every score by the same amount, and every gap stays the same. The comparison stops there, because heights never turn into odds. The next step turns the gaps between logits into odds.
+
+A step called **softmax** turns the logits into odds that are all positive and add up to 100%. It follows one rule. Take two characters whose scores are one point apart. The higher one gets about 2.7 times the odds of the lower one. Softmax shares out the full 100% so that this rule holds for every pair of characters.
+
+Here is the smallest possible example, with only two characters. One has a logit of 2 and the other has a logit of 1. The one-point gap means the first must be about 2.7 times as likely as the second. Only one split of 100% does that: about 73% against 27%. You can check it, since 73 is about 2.7 times 27.
+
+A chance written as a share of 100% is called a **probability**. You can also write it as a decimal between 0 and 1. So 26% and 0.26 are the same probability. A model's probabilities always add up to 100%, so raising one character's probability always lowers the others.
+
+### Two bars for every character
+
+The **Next token distribution** card shows the ten most likely next characters, and each one gets two bars. The outlined bar is labelled "p model, T = 1", and it shows the model's own probability with nothing changed.
+
+The part of the lab that does the drawing is called the **sampler**. In these labels, p stands for the model's probability and q for the sampler's. T = 1 means a temperature of 1. That setting leaves the odds unchanged, as you will see below.
+
+The filled bar is labelled "q sampler", and it shows the probability the sampler actually draws from. That is the model's probability after your settings have reshaped it. Below the ten rows, a final row adds up the other 56 characters, so the card hides nothing.
+
+Think of a recipe card with your own notes in the margin. The printed amounts never change, and your notes say what you will actually use tonight. The outlined bar is the printed recipe, and the filled bar is your notes. The comparison stops at new ingredients, since a cook can add one that the recipe never listed. The sampler can never add a character the model did not score.
+
+The lab starts with **Temperature** at 0.80, not 1.00. So the two bars already differ a little when you first open it. Each row also prints both values, such as 26% → 32%, so you can read the change exactly.
+
+### Picking one character
+
+How does the lab pick one character once it has the odds? Picture a spinner from a board game, with one slice for each character. Each slice is as wide as that character's odds. A character with 26% gets about a quarter of the circle, and one with 1% gets a thin sliver. Wherever the arrow stops decides the character, so favourites win often and long shots still win now and then.
+
+The lab uses that spinner unrolled into a straight line, shown as a strip under the bars. The strip lays out the characters still in play, end to end, from 0 to 1. Each one takes a stretch as long as its odds.
+
+Then the lab picks a number between 0 and 1, called u. It draws the character whose stretch u lands in. The strip's label says "Inverse-CDF draw", the official name for this end-to-end method.
+
+The number u is not truly random, since the lab makes it with a fixed recipe. The recipe starts from the number you choose on the **Seed** slider, called the seed. It also uses the number of characters drawn so far. So the same prompt, seed and settings always give the same text.
+
+Picture a building game that makes its whole world from a code you type in. The same code always builds the same world, and the seed works like that code. The match is not perfect, though, because the game uses its code once to build the world. The lab uses the seed again for every draw, along with the draw count.
+
+A different seed gives different numbers for the draws still to come. That means different text after your prompt. The lab calls that text the **continuation**. The **Generation loop** card shows the whole text as a row of characters, called the tape. A dashed slot at its end shows where the next draw would land.
+
+### Reshaping the odds before the draw
+
+Before the spin, the lab can reshape the slices with four settings in the **Sampler controls** card. None of them changes what the model worked out. They only change how the lab draws from the model's odds.
+
+**Temperature** divides every logit by the same number, written T, before softmax runs. A value of T below 1 stretches the gaps between scores, so the favourite's slice grows. A value above 1 squeezes the gaps together, so the slices become more even.
+
+Think of the contrast slider in a photo app. High contrast makes the brightest spot stand out more, and low contrast makes everything look more alike. Contrast never swaps which spot is brighter. A low temperature is like high contrast, and a high temperature is like low contrast. The comparison stops at what you get. Contrast only changes how a photo looks, but temperature changes which character the lab is likely to draw.
+
+Take the two characters with logits 2 and 1 again, and set the temperature to 0.5. Dividing by 0.5 is the same as doubling, so the scores become 4 and 2. The one-point gap becomes a two-point gap. Two points make the favourite about 2.7 × 2.7 times as likely as the other, or about 7.4 times. So its share grows from 73% to about 88%.
+
+Now set the temperature to 2, and dividing by 2 halves both scores. The one-point gap shrinks to half a point. Half a point makes the favourite only about 1.6 times as likely as the other. This time, its share falls from 73% to about 62%.
+
+Temperature divides every logit by the same number, so the order never changes. The favourite stays the favourite at every temperature. As T gets close to 0, the favourite's slice covers almost the whole spinner. Turning odds into actual text is called decoding. Always taking the top character, with no chance involved, is called **greedy** decoding.
+
+The next three settings remove slices from the spinner, and each one cuts in its own way. To compare them, picture a talent show that sends some acts to the final based on a vote. The votes are like the odds.
+
+**Top-k** keeps only the k characters with the biggest slices, and you choose the number k. It removes every other slice from the spinner. With Top-k at 3, the lab can draw only the three favourites, however likely the fourth one was. With Top-k at 1, only the favourite remains, and that is greedy decoding. The slider shows that setting as "1 · greedy".
+
+In the talent show, top-k always sends the same number of acts to the final. With k at 3, the top 3 acts go through, however close the fourth came.
+
+**Top-p** keeps the smallest group of favourites whose odds add up to at least p. Say p is 0.50, so the kept group must hold at least half of the odds. If the favourite alone has 60%, top-p keeps only that one character. If the top few have about 20% each, three of them pass 50%, so top-p keeps three.
+
+That means top-p keeps few characters when the model is confident and more when it is unsure. In the talent show, top-p keeps adding acts, best first, until they hold half the votes. When Top-k is also on, top-p adds up the odds of only the characters top-k kept. You will test this in How to play with it.
+
+**Min-p** sets a cut-off that depends on the favourite. The lab writes the Min-p setting as `p_min` and the favourite's odds as `p_max`. A character survives only if its odds are at least `p_min` times `p_max`. The lab measures both odds after temperature has reshaped them, not on the outlined bars.
+
+Here is how that works with small numbers. With Min-p at 0.10, the cut-off is a tenth of the favourite's odds. Say the favourite has 26%, so the cut-off is 0.10 × 26%, or 2.6%. In the talent show, any act with at least a tenth of the top act's votes goes through.
+
+Now say the favourite has 99%, so the cut-off is 9.9%. All the other characters share only 1% between them, so none of them can clear the cut-off.
+
+The card always shows one formula row that works out the top character's share. When Min-p is on, a second formula row appears under it. It shows this test: keep a character if its probability ≥ `p_min × p_max`. The sign ≥ means "is at least". Like top-p, min-p keeps few characters when the model is confident and many when it is not.
+
+After the cuts, the lab stretches the kept slices to fill the whole spinner again. Their odds now add back up to 100%, and each slice keeps its size compared with the others.
+
+Say only two characters survive, holding 30% and 10%. Stretched to fill the spinner, they become 75% and 25%. Before the stretch, 30% is three times 10%, and after it, 75% is still three times 25%. This stretching step is called **renormalising**.
+
+Here the talent show stops matching, since a real final starts a fresh vote. The spinner does not start a fresh vote, so the kept slices keep their sizes compared with each other.
+
+The lab always runs these steps in the same order:
+
+1. Temperature reshapes the odds by stretching or squeezing the gaps between scores.
+2. Top-k cuts every slice except the k biggest ones.
+3. Top-p cuts the rest once the biggest slices add up to at least p.
+4. Min-p cuts every slice below its cut-off, a share of the favourite's odds.
+5. Renormalising stretches the surviving slices to fill the whole 100% again.
+6. The draw then picks one character from the slices that remain.
+
+A note at the bottom of the card spells out this order, and one detail of it matters. Top-p does its adding up on what top-k left, as if renormalising had already stretched those survivors to 100%.
+
+None of these steps can push a lower-ranked character above a higher one. None can add a character the model did not score. When a setting removes a character, its row reads "cut · top-k", "cut · top-p" or "cut · min-p".
+
+### Where generation stops
+
+The weather game could run forever, and so could the model's loop. Nothing in predicting, picking and adding says when to finish. Real systems stop the loop in three ways:
+
+- An **end-of-sequence token** is a special vocabulary entry meaning "the text ends here". When the draw lands on it, generation stops. That is how a chat reply can end on its own.
+- A **length limit** stops generation after a set number of new tokens, wherever the text has got to.
+- A **stop sequence** is a short piece of text set in advance by whoever runs the model. Generation stops as soon as the output contains it.
+
+Only the first one comes from the model's own draw. The other two are checks that the program running the model makes after every new token.
+
+Picture a friend telling you a long story. They might wrap it up on their own, or you might have said "ten minutes, tops" before they began. You might also have agreed that the story ends if they say "goodnight". So you keep an eye on the clock and an ear out for that word.
+
+The match is not perfect, because your friend knows when a story is over. The model ends a text on its own only when its draw lands on the end token.
+
+This lab has neither the first nor the third. Its 66 symbols include no end-of-sequence token, and it has no stop sequence. A newline is an ordinary character like any other, so the text keeps growing until you stop. The only other end is the lab's limit of 120 sampled characters.
+
+### How surprised was the model?
+
+Say you know which character actually came next. Then you can read the odds in reverse and ask how surprised the model should be. A character it gave 99% is hardly a surprise, and one it gave 1% is a big one. This measure is called **surprisal**, and you count it in units called **bits**.
+
+Bits work by halving, so a character the model gave 100% costs 0 bits. Each time the odds halve, the surprisal goes up by one bit:
+
+- 50%, the odds of a coin flip, is 1 bit.
+- 25%, or 1 chance in 4, is 2 bits.
+- 12.5%, or 1 chance in 8, is 3 bits.
+- 1 chance in 64 is 6 bits, since six halvings take you from 100% down to 1 in 64.
+
+Bits work like questions in a yes-or-no guessing game. Say a friend picks one of 8 equally likely cards. Each good question cuts the choices in half, so you go from 8 to 4, then 2, then 1. That takes 3 questions, so 1 chance in 8 costs 3 bits. The game stops matching at fractions: you cannot ask half a question, but bits can come in fractions.
+
+Odds between these steps give bits between whole numbers. Take 35%: it sits between 50% and 25%, so it costs about 1.5 bits.
+
+The lab shows this measure in its **Surprisal −log2 p** readout. A readout is a number the lab displays, and this one is for the last character you drew. The −log2 p in its name is the official formula, where p is the model's probability for that character.
+
+Read the formula as a question: "How many times do I halve 100% to reach p?" Take a p of 25%. Halve 100% once, and you get 50%, and halve again, and you get 25%. That is two halvings, so the surprisal is 2 bits.
+
+Surprisal measures how expected a piece of text was, not whether the text was right. Picture a model that has read "The capital of Australia is". Say it gives "Sydney" high odds and writes it. The surprisal is low, even though the capital is Canberra. Now say the real text says Canberra and the model gave that word low odds. Then the correct word gets a high surprisal.
+
+### How spread out the odds are: entropy
+
+A second measure, called **entropy**, appears all over the lab. Entropy is the surprisal the model expects on average, given its own odds. So it measures how spread out those odds are. If a model puts 100% on one character, its entropy is 0 bits. The only possible outcome costs 0 bits.
+
+Think of a weather forecast. A forecast of 100% sun leaves no room for surprise, but 50% sun and 50% rain leaves plenty. Entropy puts a number on that room for surprise. The comparison stops at being right. A forecast can turn out right or wrong. Entropy only describes how spread out the model's own odds are.
+
+A few small cases show how entropy grows. For a fair coin, each side has 50% and costs 1 bit. So the average, the entropy, is 1 bit. With 4 equally likely characters, each costs 2 bits, so the entropy is 2 bits. With 8, it is 3 bits, and each extra bit doubles the number of equally likely choices.
+
+At the other extreme, odds spread evenly over all 66 characters give the highest entropy possible here. That is about 6.04 bits. That is a little over 6 bits, since 66 is a little more than 64.
+
+On the lab's starting text, called the default prompt, the RNN's odds have an entropy of 3.46 bits. The RNN is one of the lab's three models, and you will meet it below. That 3.46 falls between 3 bits, for 8 choices, and 4 bits, for 16. Those odds are about as unsure as picking among 11 equally likely characters.
+
+You will find entropy in the **Model entropy** and **Sampler entropy** readouts. It also appears in the **Three models, one context** and **Layer by layer** cards. **Model entropy** measures the outlined bars, the model's untouched odds. **Sampler entropy** measures the filled bars, after your settings have reshaped them.
+
+### A score for a whole text: cross-entropy
+
+Average the surprisal over a long stretch of real text, one character at a time. That gives the model's score on that text, and the average is called **cross-entropy**. Training is how a model learns from text, and it tries to push this score down. So cross-entropy is also called the **loss**. Lower means the model found the text more predictable. That is not the same as the text being true.
+
+Cross-entropy works like a race time: lower is better. The match stops at what "better" means. A fast time means a fast runner, but a low loss does not mean true text. It only means the model found the text predictable.
+
+The full collection of text a model trains on is called its **corpus**. You can keep some text back from training on purpose, to use for a fair test later. Text kept back like this is called **held-out** text. A model can score well on its own training text partly by remembering it. That is why fair comparisons use held-out text.
+
+In the lab, the **Three models, one context** card shows cross-entropy in two rows. They are called Held-out loss and Whole-corpus loss, and both use bits per character. The card's **Mean surprisal on this text** row gives the same kind of average. It covers whatever is on the tape right now.
+
+### Three models, one context
+
+The lab runs three real models, all built from the same corpus, called **Tiny Shakespeare**. It is a file of about 1.1 million characters from Shakespeare's plays. You switch between the models with the **Model** control, and it offers Bigram, RNN and Transformer. The text a model predicts from is called its **context**. The card's name means that all three read the same text.
+
+**Bigram** is the simplest model possible, and the comparison card calls it Bigram table. It is a table that records, for every character, how often each character came next in the corpus. It looks only at the last character of the text, and everything before that has no effect. A model that bases its odds on the one previous token alone is called a **bigram model**.
+
+**RNN** is short for recurrent neural network. A neural network is a program built from a large set of adjustable numbers. Training tunes those numbers, as you will see below. Recurrent means the network repeats the same step for every character. The card calls this one Character RNN (GRU). A GRU is the particular kind of RNN the lab uses.
+
+The RNN reads the text one character at a time, from the start. As it reads, it carries a running memory and updates it after every character. The memory has a fixed size, so old details fade. In this model, text more than about a dozen characters back has almost no effect.
+
+Picture reading a book with one small sticky note as your only memory. After each letter, you update the note. The note has only so much room, so older details drop off. The comparison stops at choice, since you would choose what to write on the note. The RNN does not choose, because its trained numbers decide what stays in its memory.
+
+**Transformer** is called Tiny transformer on the card. It can look back at up to the last 64 characters and pull information directly from any of them. It does this with a method called **attention**, and the Attention lab opens that method up. The transformer has 2 layers, and you will meet them in a moment.
+
+Picture scrolling back up a group chat, where you can jump to any message and read it again. The transformer can do something like that with any of the last 64 characters. Here the comparison breaks down, because the transformer does not reread words the way you do. Attention mixes in information from earlier characters, using numbers the transformer learned in training.
+
+All three learned from the same text, but they did not get the same amount of training. Training adjusts a model's numbers over and over, so that the real next characters become less surprising. One round of adjusting is called a training step. The transformer had 8,000 training steps, and the RNN had only 240. The bigram table had no training steps at all, since its counts came from one pass over the corpus.
+
+Think of two students getting ready for the same test. One did 8,000 practice questions, and the other did 240. If the first student scores higher, you cannot tell why. Maybe they had a better study method, or maybe they only had more practice. The picture leaves out the bigram table, though. It did no practice at all and only counted which character came next.
+
+So the lab compares these three particular trained models, not the three designs in general. The **Size and training** row on the card shows each model's size next to how much training it got.
+
+### Inside the transformer, start to finish
+
+Picture a sheet of 256 numbers moving down a line of workstations, like a factory line. Each station reads the sheet and adds its own changes on top, without wiping out what is already there. The last station turns the finished sheet into a score for every character. The **Layer by layer** card draws this line as seven numbered steps:
+
+1. **Characters**: the model swaps each character for its id. The id is a number that says which of the 66 symbols it is.
+2. **Embeddings**: the id picks out the character's own list of 256 learned numbers, called its **embedding**. A second list marks where the character sits in the text. The model adds the two lists together, number by number, and the sum starts the sheet.
+3. **Layer 1**: four attention heads pull in information from the characters so far. Each head is a separate way of looking back. Then a small network, labelled MLP on the card, works on the result. "768 wide" means it spreads the 256 numbers out to 768 in its middle step. Then it brings them back to 256. The heads and the network both add their output onto the sheet.
+4. **Layer 2**: this layer has the same shape as layer 1 but its own learned numbers. It adds more onto the sheet.
+5. **Final norm + unembedding**: the final norm, a tidy-up step, rescales the 256 numbers to a standard size. Then a grid of 256 × 66 learned numbers turns them into one logit per character. This last step is called the **unembedding**.
+6. **Softmax**: the 66 logits become probabilities that add up to 100%.
+7. **Sample**: the lab draws one character and adds it to the text, and then the whole line runs again.
+
+The sheet a character carries through the network, collecting additions from every layer, is called the **residual stream**. The card tags three places along the line with "lens reads here". You will use those in the next part.
+
+The picture stops matching in two ways. First, the sheet holds 256 numbers, not words or notes. Nobody chose what each number means, since the model settled on them during training. Second, every character in the text has its own sheet. All the sheets move down the line at the same time. Only the last one decides the next character.
+
+Before the layers run, the last character's sheet holds only that character and its position. Anything the model does with earlier words happens inside the layers, through attention.
+
+### Reading the middle: the logit lens
+
+Normally, only the last station reads the sheet, and only after layer 2. That station is the final norm and unembedding. The **logit lens** borrows that same last station to read the sheet earlier. It reads the sheet after the embeddings and after layer 1. Each reading shows what the model would predict if it stopped at that point.
+
+On the default prompt, the finished model's answer is `u`. Here is where `u` ranks among the 66 characters at each reading:
+
+- **After embeddings**: 56th, with 0.1%.
+- **After layer 1**: 3rd, with 6.6%, and at this stage `o` sits on top with 19%.
+- **After layer 2**: 1st, with 99%.
+
+So the answer reaches the top only in the last layer. Treat this as a peek, not an explanation, because the last station learned to read only the finished sheet.
+
+Picture a teacher who only ever marks finished essays and is handed a half-written draft. The mark tells you something about the draft, but not what the writer was planning. An early reading works the same way. It shows what the last station can make of the sheet so far, not what a layer decided.
+
+The teacher picture has a limit too, since a teacher can tell that a draft is unfinished. The last station cannot tell, and it reads every sheet as if it were finished.
+
+## Why it’s here
+
+The big picture showed that this loop is the whole job. This section looks at the problems the loop solves and the risk it brings.
+
+### Free practice questions from any text
+
+To learn anything, a model needs practice questions with known answers, and usually someone has to write those answers. Next-token prediction gets them for free. In any real text, the right answer at each spot is the character that comes next. The text supplies its own answers, so nobody has to label anything by hand. This is called **self-supervised learning**, and you met it in What AI actually is.
+
+Picture a friend who covers a page of a novel with paper. They slide the paper right one letter at a time and guess each letter before it appears. Every slide is a new quiz question, and the book checks the answer instantly. A whole book holds as many questions as it has letters. Tiny Shakespeare holds about 1.1 million of them.
+
+The comparison stops at how the learning happens, since your friend can think about each miss. The model does not think about its misses. Training adjusts its numbers so the real letters become less surprising.
+
+### Scoring a whole text one step at a time
+
+A model that predicts only one step might seem unable to judge a whole sentence, but it can. Start with the chance of the text's first character. Multiply it by the chance of the second, given the first, and keep going to the end. The result is the chance of the whole text.
+
+It works a bit like flipping a coin twice. The chance of two heads in a row is half of a half, or 25%. The comparison stops at one point, since coin flips do not affect each other. In text, each character's chance depends on the characters before it.
+
+Bits are handy here, because multiplying chances together is the same as adding up their bits.
+
+Say the model gives one character 50% and the next character 25%. The chance of getting both is half of a quarter, or 12.5%. In bits, the two characters cost 1 bit and 2 bits, and added together that makes 3 bits. And 3 bits is exactly the surprisal of 12.5% in the list above.
+
+Training adjusts the model to shrink this total, or more exactly the average cost per character over real text. That average is the cross-entropy you met earlier. So the loop's own way of keeping score is also the goal of its training.
+
+### Keeping the odds apart from the choice
+
+This setup splits the work in two, with the model setting the odds and the sampler picking. The split is useful because you can turn the same odds into text in different ways. A program that wants the same answer every time can always take the favourite. Another program can draw more widely for variety, and neither one needs a retrained model.
+
+Taking the favourite at every step does not always give the most likely whole reply, though. That is why beam search exists, and you will meet it in Going deeper. The catch is that no setting adds anything new, since every setting reshapes odds the model already produced.
+
+Think of a sports team with a scout and a coach. The scout rates every player, and the coach picks who plays using those ratings. One coach always picks the top-rated player, and another mixes things up for variety. Neither coach needs a new scout, but no coach can play someone the scout never rated. The comparison stops at judgment, since a real coach can use their own judgment. The sampler has none and follows fixed rules, such as the four settings.
+
+### Honest words for a wrong answer
+
+The loop also gives exact words for a familiar complaint about chatbots. A confidently wrong answer is not a lie, since nothing in the loop wants anything or checks facts. The answer is a continuation with high odds that happens not to be true. Sounding right and being right can come apart whenever the training text does not settle the answer.
+
+Picture a friend who sings along to every song with total confidence. When their memory has gaps, they fill them with words that sound right and fit the beat. They are not lying, because they are singing something that fits the pattern, and it is often close. A model's confident mistakes come from the same kind of process. It produces text that fits the pattern, and nothing checks that text against the facts.
+
+The picture stops matching in one way. Your friend knows the real song exists and could look it up. They may even sense where their memory has a gap. A model has no stored copy of the facts to check. It gets no signal that it is filling a gap and has only odds for what fits.
+
+## How to play with it
+
+The lab opens on the default prompt, with **Model** on RNN and **Temperature** at 0.80. Work through these parts in order, since each one builds on the one before.
+
+### Read the context
+
+The **Prompt** box holds `O Juliet, Juliet! wherefore art thou J`. It copies Juliet's famous line "O Romeo, Romeo! wherefore art thou Romeo?" In that line, wherefore means why, and the lab's version swaps Romeo for Juliet. This version appears nowhere in Tiny Shakespeare, and the **Seen in training?** line confirms it.
+
+Now compare what each model predicts for the character after the final `J`. Read the outlined bars, since they show each model's own odds:
+
+- Set **Model** to Bigram and its favourite is a capital `U` at 33%, because it sees only the `J`.
+- Switch to RNN, and it reads the whole line and puts `o` first, at 26% on the outlined bar.
+- Switch to Transformer, and it puts `u` first at 99% on the outlined bar, far ahead of everything else.
+
+The **Three models, one context** card lists these same three favourites side by side.
+
+The bigram's answer comes straight from its counts. The corpus has 320 capital Js, and in 125 of them a U comes next. Those Js start the speaker name JULIET, printed in capitals before each of her speeches. So 125 out of 320 works out to about 39%. The table shows a little less than 39%, because it keeps back a small share for every character. That way, even a pair that never appeared in the corpus does not get a zero chance.
+
+Now edit the start of **Prompt** to change both Juliets to Jason, and keep the final `J`. It should read `O Jason, Jason! wherefore art thou J`. Editing the prompt clears anything you sampled, and **Seen in training?** now says Unknown. The lab can only recognise its two preset lines.
+
+- The bigram's bars do not move, since it still sees only the `J`.
+- The RNN's bars do not move either. Its memory of text more than about a dozen characters back has faded.
+- The transformer's favourite changes from `u` to `a`, at 87% on the outlined bar. It has spotted that the final `J` probably starts the name Jason again. In Jason, the letter after J is `a`, so the transformer is copying from the earlier names. It is not looking only at the `J`.
+
+The transformer is picky about what it uses, though. Back on the default prompt, changing a single letter inside `wherefore` barely matters to it. No character's odds move by even 2 on the percentage scale, so `u` stays above 97%. Not every part of the text matters to it equally.
+
+### Seen and unseen
+
+Press **Line from the training text** to load `O Romeo, Romeo! wherefore art thou R`. This line appears once in Tiny Shakespeare, inside the part the transformer trained on. So **Seen in training?** now says yes.
+
+With the transformer, the top row for `o` reads 100%, or 99.97% rounded. The odds are never exactly 100%, but the lab rounds any share above 10% to a whole number.
+
+That near-certainty makes it look as if the transformer knows this line by heart, since it trained on it. Two checks show that the 99.97% is weak evidence for that:
+
+- First, read the **Mean surprisal on this text** row in **Three models, one context**. That row averages the surprisal over the characters on the tape. On this line, the transformer averages 1.56 bits per character. On the unseen default line, it averages 1.82 bits. So it finds its training line only a little easier than a new one.
+- Second, try a line that is not in the corpus but repeats the name five times. Replace the prompt with `Romeo, Romeo, Romeo, Romeo, Romeo, R`. The top row for `o` reads 100% again, this time from 99.8% rounded. The transformer cannot be remembering a line that is not in the corpus. So it must be copying from earlier in the prompt.
+
+So one confident answer cannot tell you why a model is confident. Here, copying the earlier Romeo is enough to explain it. But remembering its training text can also make a model confident. That is why you should compare models on text they did not train on.
+
+Picture two classmates taking a quiz, where one of them happened to see the answer sheet the day before. A high score from that classmate tells you about their memory, not their skill. The only fair test is a fresh set of questions.
+
+The **Held-out loss** row is that fresh test. It scores each model on the last 10% of Tiny Shakespeare, and the transformer never trained on that part. The RNN's test is less strict, and Where it breaks explains why.
+
+The scoreboard shows the answer sheet at work. The transformer trained on most of the corpus, and on the whole corpus it averages 1.83 bits per character. On the held-out part, it averages 2.23 bits. Its own training text makes it look better than it is.
+
+The quiz picture stops matching in one way, because a classmate either saw the answer sheet or did not. A model's score on its training text can mix memory with prediction.
+
+### Shape the odds
+
+Press **Unseen line (default)** to get the default prompt back, and set **Model** to RNN. Keep your eyes on the bars in **Next token distribution**.
+
+**Try this:** drag **Temperature** from 0.10 to 2.00 and watch the filled bars. Down low, nearly all the weight piles onto `o`, and up high, the long shots grow toward the favourites. The order of the list never changes, because temperature divides every logit by the same number.
+
+Here is what `o` gets along the way:
+
+- At 0.10, `o` reaches 85%, and the **Sampler entropy** falls to 0.62 bits.
+- At 0.80, the starting value, `o` has 32%.
+- At 1.00, `o` has 26%, the same as its outlined bar.
+- At 2.00, `o` drops to 11%, and the **Sampler entropy** climbs to 5.12 bits.
+
+**Model entropy** stays at 3.46 bits the whole time, since it always describes the model's untouched odds. Even at 0.10 the RNN is not certain, because `a` is close behind `o`. Only **Top-k** at 1 makes every draw the favourite.
+
+Next, set **Temperature** to 1.00, **Top-k** to 3 and **Top-p** to 0.50, and read the rows marked "cut". Top-k keeps the three favourites, `o`, `a` and `u`, and they hold 26%, 22% and 10%. Top-p then treats those three as if they filled the whole 100%, making them about 45%, 38% and 18%. So `o` and `a` together already pass 0.50.
+
+That is why the `u` row reads "cut · top-p" and every row below it reads "cut · top-k". The two survivors' filled bars grow to 54% and 46%. The lab has renormalised their odds to fill 100% again.
+
+Now set **Top-k** back to "off · all 66" and leave **Top-p** at 0.50. This time, top-p adds up the odds of the whole list. Together, `o` and `a` hold 26% and 22%, still short of half. So top-p needs `u` as well and keeps three characters. Turning one setting off changed what the other one cut.
+
+Then set **Top-p** back to "off · 1.00" and raise **Min-p** to 0.10. The min-p formula row appears and shows the cut-off as `0.10 × 26% = 2.6%`, a tenth of the favourite's odds. It also reports 7 kept, meaning seven characters pass the cut-off.
+
+Move **Temperature** to 2.00, and the same Min-p setting now keeps 19 characters. More even odds leave more characters above a tenth of the favourite. Then switch **Model** to Transformer: Min-p at 0.10 keeps one character at every temperature. The transformer's favourite is so far ahead that nothing else clears the cut-off.
+
+### Run the loop
+
+Press **Sample next token**, and the character in the dashed slot joins the tape, boxed and bold. Every bar in **Next token distribution** changes too, because the model is now predicting from a longer text. Press the button a few more times, then press **Sample 10 more**.
+
+After each draw, read the readouts under the tape:
+
+- **Last draw** names the character and the u that picked it.
+- **p model → q sampler** sits next to it and compares the two probabilities for that character.
+- **Surprisal −log2 p** says how surprised the model was.
+- **Mean over draws** averages that surprisal across everything you have drawn so far.
+
+Two buttons help too: **Undo** removes the last character, and **Clear continuation** removes everything you sampled.
+
+Now press **Clear continuation** and set **Top-k** to 1, shown on the slider as "1 · greedy". Sample about 30 characters with the RNN. It writes `ore the the the` and keeps going round the same loop.
+
+Clear the continuation again, switch to Transformer and keep sampling. The transformer takes longer, but then it repeats `the said that we said`. Try the bigram too and watch it settle on newlines. Notice that nothing in the lab ends the text before 120 characters.
+
+Picture a music app that always plays the song that most often follows the current one. Say song B usually follows song A, and song A usually follows song B. Then you will hear A, B, A, B forever. If a song most often follows itself, you will hear it on repeat. That second case is exactly the bigram, since it only ever looks at the last character. So it settles on newline after newline.
+
+The music app stops matching for the RNN and the transformer. They read much more than the last character. They get stuck for a different reason. Once a phrase has repeated, the repeat becomes part of the text they read. That makes the next repeat even more likely, and Going deeper puts numbers on this.
+
+### Read the layers
+
+Press **Unseen line (default)** again and look at **Layer by layer**. It has three panels: **After embeddings**, **After layer 1** and **After layer 2**. Each panel lists the five characters that stage would predict, along with the entropy of that reading:
+
+- After embeddings, the entropy is 4.85 bits, and `u` ranks 56th.
+- After layer 1, the entropy is 4.52 bits, and `u` ranks 3rd.
+- After layer 2, the entropy is 0.09 bits, and `u` is 1st.
+
+Nearly all of the sureness arrives in layer 2, where the entropy falls from 4.52 to 0.09 bits. It is also where `u` first heads the list. The card tags that panel with "final answer first on top here". The **First on top after** readout says layer 2 too. Now change both Juliets in **Prompt** to Jason and watch layer 2 put `a` on top instead.
+
+## What to notice
+
+- **Two bars, two jobs**: the outlined p bar is the model's own odds. The filled q bar is what the sampler draws from. Your settings only ever move the filled bars, never the outlined ones.
+- **Low temperature is predictable, not correct**: say the favourite is wrong. Then a low temperature makes the model wrong in the same way almost every time.
+- **High temperature is not imagination**: it moves odds onto characters the model ranked lower. So the text becomes more surprising to the model itself, and it usually gets worse.
+- **Top-p and min-p adapt, but top-k does not**: set **Top-p** to 0.50 to see this. Keep the RNN and the starting temperature.
+  - When the text so far ends in `wherefo`, top-p keeps only one character. The next letter is nearly certain there.
+  - Now look after each of the six spaces in the default prompt. A new word could start with almost anything there. So top-p keeps between 4 and 11 characters, about six on average.
+  - The lab shows odds only for the last character. To check one of these spots, delete the prompt back to that point.
+- **Tall surprisal bars mark the unexpected**: on the default prompt, look at the RNN's bars under the capital Js. They reach the top of the scale or come close. Each J costs the RNN between 8 and 12 bits. Even 8 bits means it gave that J only about 1 chance in 256.
+- **The start of a word is the hardest part**: look at the RNN's average costs across the corpus. A word's first letter costs it about 4.4 bits. A letter that follows another letter costs it only about 3.0 bits.
+- **The scoreboard puts the transformer first**: here are the loss rows in **Three models, one context**. They are in bits per character, and lower means better prediction.
+  - Tiny transformer: 2.23 held out, and 1.83 on the whole corpus.
+  - Character RNN (GRU): 3.04 held out, and 3.06 on the whole corpus.
+  - Bigram table: 3.58 held out, and 3.54 on the whole corpus.
+- **Only one model's two scores differ much**: the transformer's whole-corpus figure is lower. It trained on 90% of the corpus, and that makes it look better than it is. The other two barely change between the rows, for different reasons:
+  - The RNN's held-out text was not truly kept out of its training. So its two rows measure nearly the same thing.
+  - The bigram table only counts pairs of characters, so it is far too basic to remember whole passages.
+- **The first panel cannot see earlier words**: that is the After embeddings panel. Its reading depends only on the last character and its position. Two prompts that end in the same character, at the same position, get the same first reading. Anything the model does with earlier words happens in the layers.
+
+## Where it breaks
+
+### Where the pictures stop matching
+
+The weather game has a designer who wrote rules for its odds. Nobody wrote rules for a model's odds, since they come from numbers the model settled on during training. So there is no rule book to look up.
+
+The game also picks among a handful of weather types, but this lab's models pick among 66 characters. A large chatbot picks among tens of thousands of tokens.
+
+The spinner has a catch of its own. A real spinner is random, but the lab's u comes from the **Seed**. So the same prompt, seed and settings always give exactly the same text.
+
+### What this lab fakes or simplifies
+
+- The models are tiny, read single characters, and trained on only about 1.1 million characters. That is why their continuations look like Shakespeare-flavoured spelling, not sense.
+- The scoreboard puts the transformer first, the RNN second and the bigram last. That order is not a verdict on the three designs. The transformer had 8,000 training steps and the RNN had 240. Part of the gap could come from the design, and part could come from the extra practice. The lab cannot tell how much comes from each.
+- Each round of the transformer's training used a batch of text snippets. About 30% of each batch was made-up practice text. It used short strings, copied over and over to fill each snippet. Some strings were random characters, and others were short bits of Shakespeare. The makers of the lab added them on purpose, so the model would see plenty of repetition. Those repeats give the Attention and Interpretability II: circuits labs something to study.
+- Only the transformer's held-out test is strict, because it never trained on the last 10% of the corpus. The RNN trained on random snippets from the whole corpus. So it may have seen parts of that last 10%, and its held-out figure is only nearly held out.
+- The lab's bigram table was counted from the whole corpus. So its held-out figure comes from a second table that counts only the first 90%.
+- **Seen in training?** recognises only its two preset lines, and the app does not include the corpus. So for your own text, that line says Unknown. A line missing from the corpus can still have familiar parts. The phrase `wherefore art thou` appears in the corpus once, and the name Juliet appears fifty times.
+- **Layer by layer** reads only three stages, and only at the last character. It never looks at single attention heads.
+- The lab has no end-of-sequence token, no stop sequence, no repetition penalty and no beam search. Going deeper explains the last two.
+
+### Where the real mechanism fails
+
+- **Mistakes pile up**: nothing in the loop goes back to fix an earlier token. An unlucky draw becomes part of the text. Every later prediction builds on it, like the 3 o'clock rain in the weather game.
+- **High odds are not truth**: a token's probability says how expected it was, not whether a claim is true. A model can be confident at every step of a completely made-up sentence.
+- **Settings do not promise the same text**: this is true even at the lowest temperature. Real computers can add up the same numbers in a slightly different order. Computers round every result to a fixed number of digits, so a different order can round differently. That can change the last few decimal places and flip a near-tie between two tokens.
+- **Real models are far bigger**: they pick among tens of thousands of tokens. They can read thousands of tokens of earlier text, not 64 characters.
+- **The logit lens can mislead**: it applies a reader built for the end of the network to earlier sheets. Training never shaped those sheets for this reader, so an early stage can look like noise.
+
+The rounding point can sound odd, so here is a picture. Imagine adding up a long list of prices on a calculator that rounds every answer to a whole dollar. Add the prices in a different order, and the total can come out different. The picture stops at size. The real change is much smaller and touches only the last few decimal places. But a near-tie can flip on a change that small.
+
+**A common mix-up:** Temperature is not a creativity dial, a knowledge dial or an intelligence dial. It reshapes a list of odds the model already produced. So it cannot add a choice the model did not score. It cannot push the fourth choice above the first, either. Dividing every score by the same number keeps their order.
+
+## Going deeper
+
+### Trimming the list in real systems
+
+Real systems usually trim the list before drawing, the same way top-k, top-p and min-p do here. Top-p has another name, nucleus sampling, and the group of favourites it keeps is called the nucleus. Min-p is a recent idea that Nguyen and colleagues presented at a research conference called ICLR in 2025. Like this lab, it keeps every token at least a set fraction as likely as the top one.
+
+### Why greedy text loops
+
+The loops you saw have a cause. Once a phrase appears twice, the likeliest next character is often the next one in the repeat. That repeat then becomes the new context, and that makes the next repeat even more likely.
+
+Take a greedy run of the full 120 characters from the default prompt. Over the first 22 characters, the transformer gives its own picks 83% on average. Over the last 22, the phrase is repeating, and that average rises above 96%. You can watch the same rise in the p model column. It sits in the table of your last five draws, under the readouts.
+
+To break the loop, real tools can lower the odds of tokens that have already appeared. This is called a **repetition penalty**, and it has a cost. It also discourages correct repeats, such as a name that has to come back later.
+
+A toolkit called Hugging Face Transformers has a setting named `repetition_penalty`, where 1.0 means off. Anything above 1.0 lowers the odds of tokens already seen, including the tokens in the prompt.
+
+Another method, called beam search, keeps several possible continuations going at once and scores each one as a whole. It is a bit like planning a trip by comparing several whole routes at once. Beam search suits translation and short, tightly limited outputs. But it tends to give flat, repetitive text when the writing is open-ended. Open-ended writing has many good ways to go on. That is where the trip picture stops matching. A route that scores well is a good route, but text that scores well can still read flat.
+
+### Practice versus the real thing
+
+During training, the model always sees the real text as its history, a method called **teacher forcing**. So the model never practises recovering from its own mistakes. When it writes text, though, it has to live with every mistake it makes.
+
+Picture learning a piano piece with a teacher beside you. Each time you hit a wrong note, the teacher plays the right one, and you carry on from there. You never practise recovering from a slip. At the concert, you play alone, and every slip stays in the music.
+
+The lab measures the surprisal bars on the tape in this teacher-forced way. One pass through the model scores every character at once, checking each against the real text before it. Here the piano picture stops matching, since a pianist plays one note at a time, even in practice.
+
+### Perplexity
+
+The **Mean over draws** readout also shows ppl, short for **perplexity**. Perplexity turns bits back into a count of equally likely choices. Each bit doubles the count, so two bits is like choosing among 2 × 2 = 4 equally likely options. Three bits is like choosing among 2 × 2 × 2 = 8.
+
+The transformer's held-out score of 2.23 bits works out to about 4.7 equally likely characters. The RNN's 3.04 bits works out to about 8.2. Perplexity measures how good the odds are, but it only weakly predicts how useful a model is. That is why the Post-training lab exists.
+
+Think of perplexity as the number of answers on a multiple-choice question. It is as if the model were guessing among that many equally likely answers. The comparison stops at whole numbers, since a real quiz question cannot have 4.7 answers. Perplexity can land between whole numbers.
+
+### Stop settings in real tools
+
+The three ways to stop also appear as settings in real tools. In Hugging Face Transformers, the end-of-sequence token's id is `eos_token_id`. The length limit there is `max_new_tokens`, and stop sequences are `stop_strings`.
+
+The Anthropic Messages API is a way for programs to use Anthropic's models. It calls the length limit `max_tokens` and the stop sequences `stop_sequences`. It reports a reply that finished naturally with the stop reason `end_turn`.
+
+### More on the logit lens
+
+A researcher who writes under the name nostalgebraist introduced the logit lens in 2020. In 2023, Belrose and colleagues built an improved version, called the tuned lens. It adds a small trained adjustment at each stage. They called it a refinement of the logit lens, and they described the plain logit lens as often brittle. Here, brittle means the lens is quick to give misleading readings.
+
+A check from outside the lab backs up the copying story. On the Jason prompt, switching off two attention heads in layer 2 puts `u` back on top, at 82%. The two are heads 2 and 3. The result is evidence, not proof, that those heads supply the copied `a`.
+
+### Where to go next
+
+The Attention and Interpretability II: circuits labs open up this same transformer. Inference & KV cache shows how real systems save work. They avoid redoing the work for the whole text at every step of this loop.

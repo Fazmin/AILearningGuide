@@ -7,7 +7,7 @@ You don't need to be an AI expert or a React developer to contribute. Some of th
 ## Ways to help
 
 - **Report a bug.** Something crashes, a control doesn't respond, or a lab looks wrong.
-- **Fix a lesson.** A fact is wrong, a sentence is hard to follow, a reference link is broken, or Plain and Standard mode say different things.
+- **Fix a lesson.** A fact is wrong, a sentence is hard to follow, a reference link is broken, or two reading modes say different things.
 - **Make it easier to use.** Keyboard support, screen readers, contrast, text sizes, and reduced motion all matter here.
 - **Improve a lab.** Make an interactive clearer, add a missing control, or fix a visual.
 - **Add a new lab.** Please open an issue first (see [Adding a new lab](#adding-a-new-lab)).
@@ -18,7 +18,7 @@ You don't need to be an AI expert or a React developer to contribute. Some of th
 [Open an issue](https://github.com/Fazmin/AILearningGuide/issues) and include:
 
 - which lab (its name or number) and which step you were on
-- whether you were reading in **Plain** or **Standard** mode
+- whether you were reading in **Simple**, **Plain** or **Standard** mode
 - what you did, what you expected, and what you saw instead
 - whether you were in the browser or the desktop app, and your operating system
 - a screenshot, if it helps show the problem
@@ -66,14 +66,15 @@ Open [http://localhost:1420](http://localhost:1420). Use `npm run tauri dev` ins
    | npm dependencies in `package.json` | `npm run gen:licenses` |
    | a Rust crate in `src-tauri/Cargo.toml` | add an entry to `src/lib/licenses.manual.json` |
 
-5. **Open a pull request.** Say what you changed and why, which labs it affects, and how you tested it. For anything you can see on screen, add a before and after screenshot. If you changed a lesson, mention whether you updated both Plain and Standard.
+5. **Open a pull request.** Say what you changed and why, which labs it affects, and how you tested it. For anything you can see on screen, add a before and after screenshot. If you changed a lesson, mention whether you updated Simple, Plain and Standard.
 
 ## Working on lessons
 
-Each lab's lessons live in `src/modules/<lab>/content/`, with one file for each reading mode: `plain.mdx` and `standard.mdx`. The full rules are in the [content style guide](docs/CONTENT_STYLE_GUIDE.md). The ones that come up most often:
+Each lab's lessons live in `src/modules/<lab>/content/`, with one file for each reading mode: `simple.mdx`, `plain.mdx` and `standard.mdx`. The full rules are in the [content style guide](docs/CONTENT_STYLE_GUIDE.md). The ones that come up most often:
 
-- **Both modes state the same facts.** Plain can leave out a detail, but it should never say something Standard contradicts.
+- **All three modes state the same facts.** Simple and Plain can leave out a detail, but they should never say something Standard contradicts.
 - **Plain is written for a curious 13 to 16 year old.** Explain a word before you use it, use everyday words, and give a concrete example for every idea. `npm run check:readability` fails if a Plain lesson falls outside a grade 8 to 10 reading level or has a sentence over 35 words.
+- **Simple is a rewrite of Plain for an 8th grader.** Short, direct sentences in active voice, everyday words, and a real-world comparison for every abstract idea, with the same facts and numbers as Plain. `npm run check:readability` fails if a Simple lesson reads above grade 7, averages outside 11 to 17 words per sentence, or has a sentence of 20 words or more.
 - **Every lesson has the same seven sections, in the same order.** The checks will tell you if one is missing.
 - **Be honest about what's real.** Most labs are demonstrations, not real models. "Where it breaks" must say which numbers are made up or calculated by a formula, and separately say where the real technique fails.
 - **Check references against the source.** Never add a reference from memory. Run `npm run check:references -- <lab-slug>` to make sure every link opens. It needs internet access, so it isn't part of `npm run check`.

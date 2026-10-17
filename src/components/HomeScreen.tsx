@@ -1,4 +1,5 @@
 import { ArrowRight, Check, MousePointer2, Route, Sparkles, Waypoints } from "lucide-react";
+import { explanationModeLabel } from "@app/module-sdk";
 import { moduleGroups } from "@app/modules/groups";
 import { modulesInGroup, type RegisteredModule } from "@app/modules/registry";
 import { useEffect } from "react";
@@ -275,7 +276,7 @@ export function HomeScreen() {
 
       <section className="home-footnote">
         <div><MousePointer2 /><span><strong>Everything responds.</strong> Every diagram is a control, not a screenshot.</span></div>
-        <div><Route /><span><strong>{mode === "plain" ? "Plain explanations are on." : "Standard explanations are on."}</strong> Switch modes without losing your place.</span></div>
+        <div><Route /><span><strong>{explanationModeLabel[mode]} explanations are on.</strong> Switch modes without losing your place.</span></div>
       </section>
     </main>
   );

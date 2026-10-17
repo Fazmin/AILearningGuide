@@ -161,12 +161,16 @@ describe("moving through the three steps", () => {
   });
 });
 
-describe("step 1: the two explanation modes", () => {
-  it("shows the real Plain and Standard paragraphs from the lab", () => {
+describe("step 1: the three explanation modes", () => {
+  it("shows the real Simple, Plain and Standard paragraphs from the lab", () => {
     mount();
     const text = dialog()!.textContent ?? "";
     // The sample paragraph is plain text up to its first mark, so its opening sentence renders verbatim.
-    expect(text).toContain(ONBOARDING_SAMPLE.plain.split(". ")[0]);
+    // Marks are stripped when rendered, so compare each sample's opening sentence without them.
+    const unmarked = (sample: string) => sample.replace(/[*`]/g, "");
+    expect(text).toContain(unmarked(ONBOARDING_SAMPLE.simple.split(". ")[0]));
+    expect(text).toContain(unmarked(ONBOARDING_SAMPLE.plain.split(". ")[0]));
+    expect(text).toContain(unmarked(ONBOARDING_SAMPLE.simple.split(". ")[3]));
     expect(text).toContain("That loop is what autoregressive means.");
     expect(text).toContain(ONBOARDING_SAMPLE.moduleTitle);
     // The lesson's own bold and code marks are rendered, not shown as raw punctuation.
@@ -182,6 +186,10 @@ describe("step 1: the two explanation modes", () => {
     expect(state().mode).toBe("standard");
     expect(buttonByText("Use Standard")!.getAttribute("aria-pressed")).toBe("true");
     expect(buttonByText("Use Plain")!.getAttribute("aria-pressed")).toBe("false");
+    press("Use Simple");
+    expect(state().mode).toBe("simple");
+    expect(buttonByText("Use Simple")!.getAttribute("aria-pressed")).toBe("true");
+    expect(buttonByText("Use Standard")!.getAttribute("aria-pressed")).toBe("false");
     press("Use Plain");
     expect(state().mode).toBe("plain");
   });
@@ -341,7 +349,7 @@ describe("keyboard focus", () => {
     const focusable = buttons();
     const first = focusable[0];
     const last = focusable[focusable.length - 1];
-    expect(first.textContent).toContain("Use Plain");
+    expect(first.textContent).toContain("Use Simple");
 
     last.focus();
     expect(document.activeElement).toBe(last);

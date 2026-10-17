@@ -177,6 +177,7 @@ State a concrete limitation.
 Connect the idea to an advanced mechanism.
 `;
 
+await writeFile(path.join(directory, "content", "simple.mdx"), content);
 await writeFile(path.join(directory, "content", "plain.mdx"), content);
 await writeFile(
   path.join(directory, "content", "standard.mdx"),
