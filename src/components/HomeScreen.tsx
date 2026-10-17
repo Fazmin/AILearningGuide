@@ -1,10 +1,11 @@
-import { ArrowRight, Check, MousePointer2, Route, Sparkles, Waypoints } from "lucide-react";
+import { ArrowRight, Check, MousePointer2, Route, Waypoints } from "lucide-react";
 import { explanationModeLabel } from "@app/module-sdk";
 import { moduleGroups } from "@app/modules/groups";
 import { modulesInGroup, type RegisteredModule } from "@app/modules/registry";
 import { useEffect } from "react";
 import { nextInSequence, pathComplete } from "@app/lib/learning-path";
 import { useAppStore } from "@app/store/app-store";
+import { HomeHero } from "./home-hero/HomeHero";
 
 const TRACK_WRAP_AFTER = 6;
 
@@ -34,66 +35,6 @@ function MapNodeButton({
       <strong>{module.title}</strong>
       <small>{module.estimatedMinutes} min</small>
     </button>
-  );
-}
-
-const signalCurve = "M 1 1 C 55 1 99 45 99 99";
-const signalAnimation = {
-  one: {
-    keyPoints: "0; 0; 1; 1; 1",
-    keyTimes: "0; 0.08; 0.42; 0.5; 1",
-    opacity: "0; 1; 1; 0; 0",
-  },
-  two: {
-    keyPoints: "0; 0; 0; 1; 1",
-    keyTimes: "0; 0.48; 0.56; 0.9; 1",
-    opacity: "0; 0; 1; 1; 0",
-  },
-  three: {
-    keyPoints: "0; 0; 1; 1; 1",
-    keyTimes: "0; 0.14; 0.48; 0.56; 1",
-    opacity: "0; 1; 1; 0; 0",
-  },
-  four: {
-    keyPoints: "0; 0; 0; 1; 1",
-    keyTimes: "0; 0.52; 0.6; 0.94; 1",
-    opacity: "0; 0; 1; 1; 0",
-  },
-} as const;
-const signalKeySplines = "0.42 0 0.58 1; 0.42 0 0.58 1; 0.42 0 0.58 1; 0.42 0 0.58 1";
-
-function SignalPath({ variant }: { variant: keyof typeof signalAnimation }) {
-  const curveId = `signal-curve-${variant}`;
-  const animation = signalAnimation[variant];
-
-  return (
-    <svg
-      aria-hidden="true"
-      className={`signal-path signal-path--${variant}`}
-      preserveAspectRatio="none"
-      viewBox="0 0 100 100"
-    >
-      <path className="signal-path__line" d={signalCurve} id={curveId} />
-      <path className="signal-path__dot" d="M 0 0 h 0.01">
-        <animateMotion
-          calcMode="spline"
-          dur="4.2s"
-          keyPoints={animation.keyPoints}
-          keySplines={signalKeySplines}
-          keyTimes={animation.keyTimes}
-          repeatCount="indefinite"
-        >
-          <mpath href={`#${curveId}`} />
-        </animateMotion>
-        <animate
-          attributeName="opacity"
-          dur="4.2s"
-          keyTimes={animation.keyTimes}
-          repeatCount="indefinite"
-          values={animation.opacity}
-        />
-      </path>
-    </svg>
   );
 }
 
@@ -169,26 +110,7 @@ export function HomeScreen() {
           )}
         </div>
 
-        <div className="signal-instrument" aria-label="Animated model signal illustration">
-          <div className="instrument-grid" />
-          <div className="signal-input"><span>the animal</span><i /></div>
-          <SignalPath variant="one" />
-          <SignalPath variant="two" />
-          <SignalPath variant="three" />
-          <SignalPath variant="four" />
-          <div className="signal-nucleus">
-            <i /><i /><i />
-            <strong>meaning</strong>
-            <span>[0.21, −0.74, 0.63]</span>
-          </div>
-          <div className="signal-output"><i /><span>crossed</span><b>42%</b></div>
-          <div className="signal-output signal-output--two"><i /><span>was</span><b>31%</b></div>
-          <div className="instrument-caption">
-            <Sparkles />
-            <span>Live model anatomy</span>
-            <b>open a lab to steer it</b>
-          </div>
-        </div>
+        <HomeHero />
       </section>
 
       {finished && (

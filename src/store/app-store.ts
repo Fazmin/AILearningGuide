@@ -77,6 +77,11 @@ interface AppState {
   onboarded: boolean;
   /** The tour was reopened from Settings > About. Not persisted. */
   onboardingReplay: boolean;
+  /**
+   * The home hero shown at the last launch, so the next launch picks a different one. Persisted,
+   * but never exported or imported: it describes this device, not a learner's data.
+   */
+  lastHomeHero: string | null;
   setView: (view: AppView) => void;
   openModule: (moduleId: string) => void;
   /** Open the connections map, selecting a lab if given and keeping the last selection if not. */
@@ -118,6 +123,7 @@ interface AppState {
   completeOnboarding: () => void;
   /** Reopen the tour (Settings > About). Leaves `onboarded` alone. */
   replayOnboarding: () => void;
+  rememberHomeHero: (variant: string) => void;
 }
 
 const fontSteps = [0.875, 1, 1.125, 1.25, 1.5, 1.75, 2];
@@ -187,6 +193,7 @@ export const useAppStore = create<AppState>()(
       localModelReady: false,
       onboarded: false,
       onboardingReplay: false,
+      lastHomeHero: null,
 
       setView: (view) => set({ view, chatOpen: false }),
       openConnections: (moduleId) =>
@@ -437,6 +444,7 @@ export const useAppStore = create<AppState>()(
       setLocalModelReady: (localModelReady) => set({ localModelReady }),
       completeOnboarding: () => set({ onboarded: true, onboardingReplay: false }),
       replayOnboarding: () => set({ onboardingReplay: true }),
+      rememberHomeHero: (lastHomeHero) => set({ lastHomeHero }),
     }),
     {
       name: "the-ai-guide",
@@ -465,6 +473,7 @@ export const useAppStore = create<AppState>()(
         providerBaseUrl: state.providerBaseUrl,
         localModelReady: state.localModelReady,
         onboarded: state.onboarded,
+        lastHomeHero: state.lastHomeHero,
       }),
     },
   ),
