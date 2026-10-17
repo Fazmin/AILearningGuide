@@ -6,7 +6,7 @@ There are 51 small hands-on labs. In each one you move a slider, click a word, o
 
 **[Try it in your browser](https://fazmin.github.io/AILearningGuide/)**. There's nothing to install.
 
-![A tour of Discover AI: the welcome tour, dragging sliders in the single neuron lab, answering checkpoint questions, marking a lab complete, stepping gradient descent and backpropagation, the glossary, searching with Cmd+K, clicking words in the attention lab, training a tiny language model, Plain and Standard modes, text size and accessibility options, AI guide settings, the connections map, and dark theme](docs/screenshots/demo.gif)
+![A tour of Discover AI: picking Simple, Plain or Standard in the welcome tour, dragging sliders in the single neuron lab, answering checkpoint questions, marking a lab complete, stepping gradient descent and backpropagation, the glossary, searching with Cmd+K, clicking words in the attention lab, training a tiny language model, switching between Simple, Plain and Standard, text size and accessibility options, AI guide settings, the connections map, and dark theme](docs/screenshots/demo.gif)
 
 [Watch the tour as a video](docs/screenshots/demo.mp4) for a sharper version.
 
