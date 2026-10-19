@@ -14,13 +14,15 @@
       // loading screen for an error if the bundle fails to load or start.
       (function () {
         var root = document.documentElement;
+        // Same defaults as the app store: light on the web, the system theme on desktop.
+        var theme = window.__TAURI_INTERNALS__ ? "system" : "light";
         try {
           var saved = JSON.parse(localStorage.getItem("the-ai-guide") || "null");
-          var theme = saved && saved.state && saved.state.theme;
-          if (theme === "light" || theme === "dark") root.dataset.theme = theme;
+          if (saved && saved.state && saved.state.theme) theme = saved.state.theme;
         } catch (error) {
-          // Storage can be blocked in private windows. The system theme is a fine fallback.
+          // Storage can be blocked in private windows. The default theme is a fine fallback.
         }
+        if (theme === "light" || theme === "dark") root.dataset.theme = theme;
         if (window.__TAURI_INTERNALS__) root.dataset.desktop = "";
 
         window.addEventListener(

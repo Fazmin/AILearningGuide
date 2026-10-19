@@ -559,6 +559,7 @@ select {
   background: transparent;
   gap: 0.72rem;
   text-align: left;
+  text-decoration: none;
 }
 
 .sidebar-home:hover,
@@ -2072,6 +2073,20 @@ select {
 
 .home-footnote strong {
   color: var(--ink);
+}
+
+.home-footnote__note {
+  grid-column: 1 / -1;
+  line-height: 1.6;
+}
+
+.home-footnote__note svg {
+  align-self: flex-start;
+  margin-top: 0.2rem;
+}
+
+.home-footnote a {
+  color: var(--forward);
 }
 
 .home-upnext {
@@ -8161,7 +8176,7 @@ input[type="range"]::-webkit-slider-thumb {
 .onboarding {
   display: flex;
   flex-direction: column;
-  width: min(48rem, 100%);
+  width: min(72rem, 100%);
   max-height: 100%;
   overflow: hidden;
   border: 1px solid var(--line-strong);
@@ -8286,7 +8301,7 @@ input[type="range"]::-webkit-slider-thumb {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-@media (max-width: 760px) {
+@media (max-width: 960px) {
   .onboarding-modes {
     grid-template-columns: 1fr;
   }

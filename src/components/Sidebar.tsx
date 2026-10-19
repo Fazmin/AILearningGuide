@@ -1,9 +1,10 @@
-import { ChevronDown, Home, Moon, Search, Settings, Sun, Waypoints } from "lucide-react";
+import { ChevronDown, Github, Home, Moon, Search, Settings, Sun, Waypoints } from "lucide-react";
 import { useState } from "react";
 import { fallbackModuleIcon, moduleIcons } from "./module-icons";
 import { moduleGroups } from "@app/modules/groups";
 import { modulesInGroup } from "@app/modules/registry";
 import { useAppStore } from "@app/store/app-store";
+import { version } from "../../package.json";
 
 function ProgressRing({ current, total }: { current: number; total: number }) {
   const percent = total ? current / total : 0;
@@ -159,10 +160,22 @@ export function Sidebar() {
           <Settings />
           {!sidebarCollapsed && <span>Settings</span>}
         </button>
+        <a
+          className="footer-action"
+          href="https://github.com/Fazmin/AILearningGuide"
+          target="_blank"
+          rel="noreferrer"
+          aria-label="View the source on GitHub"
+          data-tooltip={sidebarCollapsed ? "GitHub" : undefined}
+          data-tooltip-side="right"
+        >
+          <Github />
+          {!sidebarCollapsed && <span>GitHub</span>}
+        </a>
         <div className="model-status" title={modelReady ? "AI guide ready" : "Optional AI guide not configured"}>
           <i className={modelReady ? "is-ready" : ""} />
           {!sidebarCollapsed && <span>{modelReady ? "AI guide ready" : "Offline lessons"}</span>}
-          {!sidebarCollapsed && <small>v0.1</small>}
+          {!sidebarCollapsed && <small>v{version}</small>}
         </div>
       </div>
     </aside>

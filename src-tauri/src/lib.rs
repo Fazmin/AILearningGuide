@@ -675,6 +675,8 @@ pub fn run() {
     disable_webkit_dmabuf_renderer();
 
     tauri::Builder::default()
+        // Sends `target="_blank"` web links to the default browser instead of the app window.
+        .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
             fs::create_dir_all(&data_dir)?;

@@ -171,7 +171,8 @@ export const useAppStore = create<AppState>()(
       settingsTab: "appearance",
       searchOpen: false,
       searchFocus: null,
-      theme: "system",
+      // The web version starts in light theme; the desktop app follows the system.
+      theme: window.__TAURI_INTERNALS__ ? "system" : "light",
       typeface: "sans",
       mode: "plain",
       fontStep: 1,

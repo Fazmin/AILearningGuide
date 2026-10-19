@@ -1,4 +1,4 @@
-import { ArrowRight, Check, MousePointer2, Route, Waypoints } from "lucide-react";
+import { ArrowRight, Check, Info, MousePointer2, Route, Waypoints } from "lucide-react";
 import { explanationModeLabel } from "@app/module-sdk";
 import { moduleGroups } from "@app/modules/groups";
 import { modulesInGroup, type RegisteredModule } from "@app/modules/registry";
@@ -199,6 +199,17 @@ export function HomeScreen() {
       <section className="home-footnote">
         <div><MousePointer2 /><span><strong>Everything responds.</strong> Every diagram is a control, not a screenshot.</span></div>
         <div><Route /><span><strong>{explanationModeLabel[mode]} explanations are on.</strong> Switch modes without losing your place.</span></div>
+        <div className="home-footnote__note">
+          <Info />
+          <span>
+            <strong>A note on accuracy.</strong> This guide brings together information from many different
+            sources, and there is a lot of it. We have tried our best to organize it all and make sense of
+            it. Generative AI was used for research in some parts and to help with the writing. If you spot a
+            mistake or a discrepancy in any lab, lesson or diagram, please{" "}
+            <a href="https://github.com/Fazmin/AILearningGuide/issues" target="_blank" rel="noreferrer">open an issue on GitHub</a>{" "}
+            or let us know, and we will fix it as soon as we can.
+          </span>
+        </div>
       </section>
     </main>
   );
