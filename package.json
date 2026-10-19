@@ -1,7 +1,7 @@
 {
   "name": "the-ai-guide",
   "private": true,
-  "version": "0.1.72",
+  "version": "0.1.73",
   "type": "module",
   "scripts": {
     "dev": "vite",
