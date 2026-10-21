@@ -115,9 +115,7 @@ function tensorToWire(tensor: ort.Tensor): WireTensor {
   };
 }
 
-workerScope.onmessage = async (event: MessageEvent<TeachingModelRequest>) => {
-  const request = event.data;
-
+async function handleRequest(request: TeachingModelRequest) {
   try {
     if (request.type === "run-transformer") {
       const input = new ort.Tensor(
@@ -187,6 +185,16 @@ workerScope.onmessage = async (event: MessageEvent<TeachingModelRequest>) => {
     };
     workerScope.postMessage(response);
   }
+}
+
+// The WebGPU execution provider cannot create two sessions or run two
+// inferences at once: one overlapping call throws and the other never settles.
+// Labs send several requests together, so handle them one at a time, in order.
+let queue: Promise<void> = Promise.resolve();
+
+workerScope.onmessage = (event: MessageEvent<TeachingModelRequest>) => {
+  const request = event.data;
+  queue = queue.then(() => handleRequest(request)).catch(() => undefined);
 };
 
 export {};

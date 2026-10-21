@@ -19,9 +19,31 @@ type PendingRequest =
       reject: (error: Error) => void;
     };
 
+/** A worker with requests in flight that sends nothing for this long is treated as hung. */
+const STALL_TIMEOUT_MS = 30_000;
+
 let runtimeWorker: Worker | undefined;
 let nextRequestId = 1;
 const pendingRequests = new Map<number, PendingRequest>();
+let stallTimer: ReturnType<typeof setTimeout> | undefined;
+
+function failWorker(error: Error) {
+  clearTimeout(stallTimer);
+  pendingRequests.forEach(({ reject }) => reject(error));
+  pendingRequests.clear();
+  runtimeWorker?.terminate();
+  runtimeWorker = undefined;
+}
+
+/** Restart the stall countdown; called whenever a request is sent or a reply arrives. */
+function watchForStall() {
+  clearTimeout(stallTimer);
+  if (pendingRequests.size === 0) return;
+  stallTimer = setTimeout(
+    () => failWorker(new Error("The model runtime stopped responding.")),
+    STALL_TIMEOUT_MS,
+  );
+}
 
 function getWorker() {
   if (runtimeWorker) return runtimeWorker;
@@ -40,6 +62,7 @@ function getWorker() {
     const pending = pendingRequests.get(response.id);
     if (!pending) return;
     pendingRequests.delete(response.id);
+    watchForStall();
 
     if (!response.ok) {
       pending.reject(new Error(response.error));
@@ -62,11 +85,7 @@ function getWorker() {
     pending.reject(new Error("The model worker returned an unexpected result."));
   };
   runtimeWorker.onerror = (event) => {
-    const error = new Error(event.message || "The model worker stopped.");
-    pendingRequests.forEach(({ reject }) => reject(error));
-    pendingRequests.clear();
-    runtimeWorker?.terminate();
-    runtimeWorker = undefined;
+    failWorker(new Error(event.message || "The model worker stopped."));
   };
 
   return runtimeWorker;
@@ -92,6 +111,7 @@ export function runTeachingTransformer(
     pendingRequests.set(id, { kind: "transformer", resolve, reject });
     try {
       getWorker().postMessage(request);
+      watchForStall();
     } catch (error) {
       pendingRequests.delete(id);
       reject(error instanceof Error ? error : new Error(String(error)));
@@ -115,6 +135,7 @@ export function runTeachingModel(
     pendingRequests.set(id, { kind: "model", resolve, reject });
     try {
       getWorker().postMessage(request);
+      watchForStall();
     } catch (error) {
       pendingRequests.delete(id);
       reject(error instanceof Error ? error : new Error(String(error)));

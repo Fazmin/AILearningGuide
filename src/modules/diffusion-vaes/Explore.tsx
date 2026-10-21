@@ -281,6 +281,15 @@ export default function Explore({ state, setState, currentStep, narrate }: Modul
           ? { status: "ready", text: "Exact math · no network" }
           : { status: "loading", text: "Decoding references…" };
 
+  const errorStatus: { status: AsyncStatus; text: string; error?: string } =
+    errorRun.status === "error"
+      ? { status: "error", text: "Denoiser unavailable", error: errorRun.error }
+      : errorRun.value
+        ? { status: "ready", text: providerText(errorRun.value.provider) }
+        : errorRun.status === "idle"
+          ? { status: "idle", text: "Waiting for x₀" }
+          : { status: "loading", text: "Scoring the denoiser…" };
+
   const x0Caption =
     digit.status === "error" && !digit.value
       ? "Fallback x₀: a hand-drawn 0 (the VAE decoder did not load)"
@@ -537,7 +546,7 @@ export default function Explore({ state, setState, currentStep, narrate }: Modul
         <SurfaceHeading
           kicker="q(x_t | x₀) = N(√ᾱ_t · x₀, (1 − ᾱ_t) I)"
           title="Adding noise needs no network"
-          aside={<StatusChip status={errorRun.status === "error" ? "error" : errorRun.value ? "ready" : "loading"} text={errorRun.status === "error" ? "Denoiser unavailable" : errorRun.value ? providerText(errorRun.value.provider) : "Scoring the denoiser…"} error={errorRun.error} />}
+          aside={<StatusChip {...errorStatus} />}
         />
         <div className="dv-strip" role="list" aria-label="The same digit at six noise levels">
           <figure className="dv-figure" role="listitem">
@@ -586,7 +595,9 @@ export default function Explore({ state, setState, currentStep, narrate }: Modul
             <div className="dv-chart-empty" role="status">
               {errorRun.status === "error"
                 ? "The denoiser did not load, so its error curve cannot be measured here."
-                : "Running the denoiser on 100 noisy copies of x₀…"}
+                : errorRun.status === "idle"
+                  ? "Waiting for the VAE decoder to draw x₀…"
+                  : "Running the denoiser on 100 noisy copies of x₀…"}
             </div>
           )}
         </div>
