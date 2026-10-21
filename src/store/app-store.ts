@@ -11,6 +11,16 @@ import {
   type CheckpointResults,
 } from "./checkpoint-progress";
 import { migrateOnboardedFlag } from "./onboarding";
+import {
+  sanitizeBookmarks,
+  sanitizeReadingPositions,
+  toggleBookmarkIn,
+  type BookmarkTarget,
+  type LearnBookmark,
+  type ReadingPosition,
+} from "./bookmarks";
+
+export type { LearnBookmark, ReadingPosition } from "./bookmarks";
 
 export type ThemePreference = "light" | "dark" | "system";
 export type Typeface = "sans" | "elegant";
@@ -32,14 +42,6 @@ export interface ModuleProgress {
   checkpointResults: CheckpointResults;
   currentStep: number;
   updatedAt: string;
-}
-
-export interface Snapshot {
-  id: string;
-  moduleId: string;
-  name: string;
-  state: ModuleState;
-  createdAt: string;
 }
 
 interface AppState {
@@ -65,7 +67,10 @@ interface AppState {
   colorVision: ColorVision;
   moduleStates: Record<string, ModuleState>;
   progress: Record<string, ModuleProgress>;
-  snapshots: Snapshot[];
+  /** Learn sections the learner saved to come back to, newest first. */
+  bookmarks: LearnBookmark[];
+  /** The Learn section each lab was last read at, so the panel can offer to pick up there. */
+  readingPositions: Record<string, ReadingPosition>;
   provider: "none" | "openai" | "anthropic" | "google" | "compatible";
   providerModel: string;
   providerBaseUrl: string;
@@ -110,9 +115,10 @@ interface AppState {
   markCheckpoint: (moduleId: string, questionIndex: number, correct: boolean, total: number) => void;
   resetCheckpoint: (moduleId: string) => void;
   toggleModuleComplete: (moduleId: string) => void;
-  saveSnapshot: (moduleId: string, name: string, state: ModuleState) => Snapshot;
-  loadSnapshot: (snapshot: Snapshot) => void;
-  deleteSnapshot: (id: string) => void;
+  /** Bookmark a Learn section, or remove the bookmark if that section already has one. */
+  toggleBookmark: (target: BookmarkTarget) => void;
+  removeBookmark: (id: string) => void;
+  setReadingPosition: (moduleId: string, position: Omit<ReadingPosition, "updatedAt">) => void;
   importLearningData: (data: unknown) => boolean;
   resetLearningData: () => void;
   setProvider: (provider: AppState["provider"]) => void;
@@ -187,7 +193,8 @@ export const useAppStore = create<AppState>()(
       colorVision: "default",
       moduleStates: {},
       progress: {},
-      snapshots: [],
+      bookmarks: [],
+      readingPositions: {},
       provider: "none",
       providerModel: "",
       providerBaseUrl: "",
@@ -353,40 +360,21 @@ export const useAppStore = create<AppState>()(
         });
         syncProgress(moduleId, get().progress[moduleId]);
       },
-      saveSnapshot: (moduleId, name, moduleState) => {
-        const snapshot: Snapshot = {
-          id: crypto.randomUUID(),
-          moduleId,
-          name,
-          state: { ...moduleState },
-          createdAt: new Date().toISOString(),
-        };
-        set((state) => ({ snapshots: [snapshot, ...state.snapshots].slice(0, 50) }));
-        if (window.__TAURI_INTERNALS__) {
-          void invoke("create_snapshot", {
-            snapshot: {
-              id: snapshot.id,
-              moduleId,
-              name,
-              stateJson: JSON.stringify(moduleState),
-              stateVersion: 1,
-            },
-          }).catch(() => undefined);
-        }
-        return snapshot;
-      },
-      loadSnapshot: (snapshot) =>
+      toggleBookmark: (target) =>
         set((state) => ({
-          moduleStates: { ...state.moduleStates, [snapshot.moduleId]: { ...snapshot.state } },
-          view: "module",
-          activeModuleId: snapshot.moduleId,
+          bookmarks: toggleBookmarkIn(state.bookmarks, target, () => ({
+            id: crypto.randomUUID(),
+            createdAt: new Date().toISOString(),
+          })),
         })),
-      deleteSnapshot: (id) => {
-        set((state) => ({ snapshots: state.snapshots.filter((item) => item.id !== id) }));
-        if (window.__TAURI_INTERNALS__) {
-          void invoke("delete_snapshot", { id }).catch(() => undefined);
-        }
-      },
+      removeBookmark: (id) => set((state) => ({ bookmarks: state.bookmarks.filter((item) => item.id !== id) })),
+      setReadingPosition: (moduleId, position) =>
+        set((state) => ({
+          readingPositions: {
+            ...state.readingPositions,
+            [moduleId]: { ...position, updatedAt: new Date().toISOString() },
+          },
+        })),
       importLearningData: (data) => {
         if (!data || typeof data !== "object") return false;
         const candidate = data as Record<string, unknown>;
@@ -410,26 +398,19 @@ export const useAppStore = create<AppState>()(
           candidate.moduleStates && typeof candidate.moduleStates === "object"
             ? (candidate.moduleStates as Record<string, ModuleState>)
             : {};
-        const importedSnapshots = Array.isArray(candidate.snapshots)
-          ? (candidate.snapshots as Snapshot[]).filter(
-              (snapshot) =>
-                snapshot &&
-                typeof snapshot.id === "string" &&
-                typeof snapshot.moduleId === "string" &&
-                snapshot.state &&
-                typeof snapshot.state === "object",
-            )
-          : [];
+        // Exports written before bookmarks carry `snapshots` instead, which are no longer kept.
         set({
           progress: importedProgress,
           moduleStates: importedStates,
-          snapshots: importedSnapshots.slice(0, 50),
+          bookmarks: sanitizeBookmarks(candidate.bookmarks),
+          readingPositions: sanitizeReadingPositions(candidate.readingPositions),
         });
         return true;
       },
       // Resetting empties the history that exempts a learner from the tour, so it also records that
       // they are past it: a reset must never send someone back through first-run onboarding.
-      resetLearningData: () => set({ progress: {}, moduleStates: {}, snapshots: [], onboarded: true }),
+      resetLearningData: () =>
+        set({ progress: {}, moduleStates: {}, bookmarks: [], readingPositions: {}, onboarded: true }),
       setProvider: (provider) => {
         set({ provider });
         syncSetting("provider", provider);
@@ -468,7 +449,8 @@ export const useAppStore = create<AppState>()(
         colorVision: state.colorVision,
         moduleStates: state.moduleStates,
         progress: state.progress,
-        snapshots: state.snapshots,
+        bookmarks: state.bookmarks,
+        readingPositions: state.readingPositions,
         provider: state.provider,
         providerModel: state.providerModel,
         providerBaseUrl: state.providerBaseUrl,

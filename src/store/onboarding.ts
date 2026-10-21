@@ -2,7 +2,7 @@
  * First-run onboarding rules, kept pure so they can be tested without the store.
  *
  * The tour appears only for a learner who has not finished it AND has nothing to lose or learn
- * from skipping it: no progress, no snapshots, no saved lab state. Anyone with history, and anyone
+ * from skipping it: no progress, no bookmarks, no saved lab state. Anyone with history, and anyone
  * whose device already held persisted state from an earlier build, counts as onboarded.
  */
 
@@ -12,17 +12,17 @@ export interface OnboardingState {
   /** Not persisted. True while the learner replays the tour from Settings > About. */
   onboardingReplay: boolean;
   progress: Record<string, unknown>;
-  snapshots: unknown[];
+  bookmarks: unknown[];
   moduleStates: Record<string, unknown>;
 }
 
 /** Version of the persisted store in which `onboarded` was introduced. */
 export const ONBOARDING_PERSIST_VERSION = 3;
 
-export function hasLearningHistory(state: Pick<OnboardingState, "progress" | "snapshots" | "moduleStates">) {
+export function hasLearningHistory(state: Pick<OnboardingState, "progress" | "bookmarks" | "moduleStates">) {
   return (
     Object.keys(state.progress).length > 0 ||
-    state.snapshots.length > 0 ||
+    state.bookmarks.length > 0 ||
     Object.keys(state.moduleStates).length > 0
   );
 }

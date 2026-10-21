@@ -1,6 +1,6 @@
 # Module authoring
 
-Modules are convention-based plugins. Adding one must not require edits to the shell, sidebar, router, database, snapshots, or guide.
+Modules are convention-based plugins. Adding one must not require edits to the shell, sidebar, router, database, bookmarks, or guide.
 
 ## Scaffold
 
@@ -29,7 +29,7 @@ explanation at package time; after content edits run `npm run index:search` so
 
 ## Definition contract
 
-`module.ts` exports one default `ModuleDefinition`. IDs and order values must be unique; the slug must exactly match the folder. Keep the ID stable after release because progress, snapshots, and chat use it as their foreign identifier.
+`module.ts` exports one default `ModuleDefinition`. IDs and order values must be unique; the slug must exactly match the folder. Keep the ID stable after release because progress, bookmarks, and chat use it as their foreign identifier.
 
 Required metadata covers title, group, order, icon, prerequisite IDs, time estimate,
 steps, one concrete `stepInstructions` entry per step, objectives, glossary,
@@ -68,7 +68,7 @@ question just reads the explanation. `npm run check:modules` and `registry.test.
 the structure; the writing rules are in `CONTENT_STYLE_GUIDE.md`. Read questions in code
 through `checkpointQuestions(module)` from the SDK, never `module.checkpoint` directly.
 
-State is JSON-safe. `serializeState` produces the state placed in snapshots and guide context. `hydrateState` must merge defaults and handle malformed or older state. When changing a released state shape:
+State is JSON-safe. `serializeState` produces the state placed in share links and guide context. `hydrateState` must merge defaults and handle malformed or older state. When changing a released state shape:
 
 1. increment `stateVersion`;
 2. detect older payloads in `hydrateState`;
@@ -244,7 +244,7 @@ Paths are module-relative and cannot leave the folder. Validation fails if a dec
 - Every control works with keyboard input and has a label.
 - Every lab card has a `card-info.ts` entry that names its mechanism and its limits.
 - The visualization has a text summary or data alternative.
-- Reset, snapshot, share, and hydration work.
+- Reset, share, and hydration work.
 - The checkpoint has one unambiguous answer and explanatory feedback.
 - 200% text and reduced motion remain usable.
 - `npm run check` passes.

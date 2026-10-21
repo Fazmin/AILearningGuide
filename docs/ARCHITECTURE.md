@@ -21,7 +21,11 @@ In a normal browser, Tauri calls are skipped and Zustand persistence provides a 
 
 `src/components/ConnectionsScreen.tsx` draws every lab's prerequisites as one graph and lights up the route into and out of a selected lab. It reads only `prerequisites` and `order` from the registry, so a new or re-linked lab appears on the map with no change here. `src/lib/module-graph.ts` holds the pure parts: the transitive before/after sets for a lab, and a deterministic layered layout (rows by longest prerequisite chain, a reserved lane for each link that skips rows, crossing reduction, then straightening). The selected lab lives in the store as `connectionsFocusId` and is not persisted.
 
-`src/components/ModuleWorkspace.tsx` is the stable lesson frame. It owns step navigation, Learn content, glossary, snapshots, sharing, completion, narration, and the scoped guide drawer. Two parts of it live in their own components: `Checkpoint.tsx` renders a module's list of questions and `PrerequisiteBar.tsx` shows the labs a module builds on with the learner's progress in each. `src/lib/learning-path.ts` holds the pure helpers behind the prerequisite bar, the Home screen's "next in the sequence" hint, and its completion state.
+`src/components/ModuleWorkspace.tsx` is the stable lesson frame. It owns step navigation, sharing, completion, narration, and the scoped guide drawer. Several parts of it live in their own components: `LearnPanel.tsx` renders the lesson with its glossary and table of contents, `BookmarksPanel.tsx` lists the learner's bookmarks, `Checkpoint.tsx` renders a module's list of questions and `PrerequisiteBar.tsx` shows the labs a module builds on with the learner's progress in each. `src/lib/learning-path.ts` holds the pure helpers behind the prerequisite bar, the Home screen's "next in the sequence" hint, and its completion state.
+
+The Learn panel builds its table of contents from the rendered lesson rather than from the MDX source. `LearnPanel.tsx` passes its own `h2` and `h3` components to the lesson, which mark each heading with `data-learn-section` and put a bookmark toggle beside it (not inside it, so the heading's text and accessible name stay the title). The checkpoint and references carry the same attribute. `src/lib/learn-sections.ts` holds the pure parts: reading those targets in order, grouping subsections under the seven lesson sections, matching headings whatever their quote style, and picking the section being read from the headings' offsets. A narrow panel shows the current section in a bar that opens the contents as a drop-down; a container query turns them into a rail beside the lesson once the panel is 44rem wide. Scrolling records a reading position per lab (only after the learner scrolls, never because the panel opened at the top), and the next visit offers to pick up there.
+
+Bookmarks (`src/store/bookmarks.ts`) name a section by its heading. The seven section headings are shared by all three reading modes but subsections are not, so a bookmark also stores the mode it was made in and its top-level section. Opening one sets a `learn` search focus: the panel looks for the heading in the current mode, switches to the bookmark's mode only if it is missing, and lands on the top-level section if the heading has gone altogether. Bookmarks and reading positions are persisted and exported with progress; they replace lab snapshots, and an older export's `snapshots` are ignored on import.
 
 Checkpoints are a list of questions per module (`checkpointQuestions` in the SDK normalises the legacy single-question form). Options are shuffled at render with a seeded generator, and only a learner's first answer to each question counts. `src/store/checkpoint-progress.ts` holds the pure progress logic; the store persists a result per question and migrates version 1 progress, which stored one boolean, on load and on import. The desktop database already stores `checkpoint_score` as a real number from 0 to 1, so a fraction needs no migration there.
 
@@ -52,8 +56,8 @@ explore column.
 2. The registry verifies content imports and sorts definitions by `order`.
 3. Opening a module merges its `initialState` with persisted state.
 4. The shell passes state, a patch function, step, mode, and narration callback into `Explore`.
-5. Snapshots use the module state contract and carry a `stateVersion`.
-6. A future state migration belongs in that module's `hydrateState`; old snapshots remain readable.
+5. Share links use the module state contract and carry a `stateVersion`.
+6. A future state migration belongs in that module's `hydrateState`; old share links remain readable.
 
 Build-time validation in `scripts/check-modules.mjs` catches structural errors before Vite runs.
 
@@ -63,7 +67,7 @@ Build-time validation in `scripts/check-modules.mjs` catches structural errors b
 
 - settings
 - module progress
-- snapshots
+- snapshots (written by earlier builds; the app no longer saves lab snapshots)
 - chat sessions and messages
 - local model metadata
 - cloud provider metadata
@@ -91,7 +95,7 @@ The server binds only to `127.0.0.1`, is stopped with the application window, an
 
 `src/components/Onboarding.tsx` is a three-step overlay mounted by `App.tsx`: the three explanation modes (a Simple, a Plain and a Standard paragraph copied from the Next-token prediction lab, kept honest by `src/lib/onboarding-sample.test.ts`), the optional topic guide (local model or cloud provider, set up later or opened in Settings after the tour), and live accessibility controls. It holds no settings of its own: every control calls the same store action as Settings and the accessibility menu.
 
-The rules are pure and live in `src/store/onboarding.ts`. The tour shows when the persisted `onboarded` flag is false **and** the learner has no progress, snapshots, or saved lab state. `onboardingReplay` is a second, non-persisted switch that Settings > About sets to reopen it. The persist version is 3; `migrate` composes the checkpoint migration with `migrateOnboardedFlag`, so state written by any earlier build marks that learner onboarded and a version 1 store passes through both steps. A brand-new device has no stored state, so migration never runs for it. `resetLearningData` also sets `onboarded`, because a reset empties the history that exempts a learner and must not push them back through first-run onboarding. The flag describes the device: exports do not write it and imports do not read it. App renders the tour only after the first route is applied, so a shared link never flashes it.
+The rules are pure and live in `src/store/onboarding.ts`. The tour shows when the persisted `onboarded` flag is false **and** the learner has no progress, bookmarks, or saved lab state. `onboardingReplay` is a second, non-persisted switch that Settings > About sets to reopen it. The persist version is 3; `migrate` composes the checkpoint migration with `migrateOnboardedFlag`, so state written by any earlier build marks that learner onboarded and a version 1 store passes through both steps. A brand-new device has no stored state, so migration never runs for it. `resetLearningData` also sets `onboarded`, because a reset empties the history that exempts a learner and must not push them back through first-run onboarding. The flag describes the device: exports do not write it and imports do not read it. App renders the tour only after the first route is applied, so a shared link never flashes it.
 
 As a dialog it is `role="dialog"` with `aria-modal`, labelled by the current step heading; it moves focus to that heading on each step, traps Tab, treats Escape as skip, marks the rest of the app `inert` (except the title bar, so the frameless window can still be moved and closed), and returns focus to where it was when it closes.
 

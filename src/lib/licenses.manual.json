@@ -24,7 +24,7 @@
     "@tauri-apps/api": {
       "displayName": "Tauri JavaScript API",
       "group": "runtime",
-      "usedFor": "The bridge from the interface to the desktop shell: settings, progress, snapshots, search, and local-model commands."
+      "usedFor": "The bridge from the interface to the desktop shell: settings, progress, search, and local-model commands."
     },
     "d3-shape": {
       "displayName": "d3-shape",
@@ -68,7 +68,7 @@
     "zustand": {
       "displayName": "Zustand",
       "group": "libraries",
-      "usedFor": "Holds your settings, progress, and snapshots in memory and saves them on this device."
+      "usedFor": "Holds your settings, progress, and bookmarks in memory and saves them on this device."
     }
   },
   "npmTransitiveOverrides": {
@@ -103,7 +103,7 @@
       "kind": "C library",
       "group": "runtime",
       "delivery": "bundled",
-      "usedFor": "Stores settings, progress, snapshots, and chat history on this device, and powers the packaged lesson search. Compiled into the app by rusqlite's bundled feature.",
+      "usedFor": "Stores settings, progress, and chat history on this device, and powers the packaged lesson search. Compiled into the app by rusqlite's bundled feature.",
       "licence": "Public domain",
       "textIds": [],
       "holder": "The SQLite authors, who dedicated the code to the public domain",

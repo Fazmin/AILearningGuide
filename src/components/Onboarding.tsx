@@ -309,7 +309,7 @@ function GuideStep({
     <>
       <p className="onboarding__lead">
         Each lab has a topic guide: a chat that can answer questions about the lab you are in. It is optional. The labs,
-        both explanation modes, checkpoints, and snapshots all work without it, and you can set it up at any time in
+        both explanation modes, checkpoints, and bookmarks all work without it, and you can set it up at any time in
         Settings, under Local model or Cloud providers.
       </p>
       <div className="onboarding-options">

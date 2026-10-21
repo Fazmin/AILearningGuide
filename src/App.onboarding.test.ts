@@ -28,7 +28,7 @@ beforeEach(() => {
     onboarded: false,
     onboardingReplay: false,
     progress: {},
-    snapshots: [],
+    bookmarks: [],
     moduleStates: {},
     view: "home",
     activeModuleId: null,

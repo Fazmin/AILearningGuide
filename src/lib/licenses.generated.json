@@ -106,7 +106,7 @@
       "kind": "npm package",
       "group": "runtime",
       "delivery": "bundled",
-      "usedFor": "The bridge from the interface to the desktop shell: settings, progress, snapshots, search, and local-model commands.",
+      "usedFor": "The bridge from the interface to the desktop shell: settings, progress, search, and local-model commands.",
       "licence": "Apache-2.0 OR MIT",
       "textIds": [
         "Apache-2.0",
@@ -276,7 +276,7 @@
       "kind": "npm package",
       "group": "libraries",
       "delivery": "bundled",
-      "usedFor": "Holds your settings, progress, and snapshots in memory and saves them on this device.",
+      "usedFor": "Holds your settings, progress, and bookmarks in memory and saves them on this device.",
       "licence": "MIT",
       "textIds": [
         "MIT"

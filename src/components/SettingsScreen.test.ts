@@ -30,7 +30,7 @@ beforeEach(() => {
     onboarded: true,
     onboardingReplay: false,
     progress: {},
-    snapshots: [],
+    bookmarks: [],
     moduleStates: {},
   });
   container = document.createElement("div");
@@ -88,19 +88,31 @@ describe("Settings > Data", () => {
     mount("data");
     const data = await exported();
     expect(data).toMatchObject({ format: "the-ai-guide-export", version: 1 });
-    expect(Object.keys(data).sort()).toEqual(["exportedAt", "format", "moduleStates", "preferences", "progress", "snapshots", "version"]);
+    expect(Object.keys(data).sort()).toEqual([
+      "bookmarks",
+      "exportedAt",
+      "format",
+      "moduleStates",
+      "preferences",
+      "progress",
+      "readingPositions",
+      "version",
+    ]);
     expect(JSON.stringify(data)).not.toContain("onboard");
     expect(state().importLearningData(data)).toBe(true);
   });
 
   it("resets learning data without sending the learner back through the tour", () => {
     state().openModule("module-a");
+    state().toggleBookmark({ moduleId: "module-a", mode: "plain", section: "What it is", parent: "What it is" });
+    state().setReadingPosition("module-a", { mode: "plain", section: "What it is", parent: "What it is" });
     useAppStore.setState({ onboarded: false });
     mount("data");
     vi.spyOn(window, "confirm").mockReturnValue(true);
     click(buttonByText("Reset learning data"));
     expect(state().progress).toEqual({});
-    expect(state().snapshots).toEqual([]);
+    expect(state().bookmarks).toEqual([]);
+    expect(state().readingPositions).toEqual({});
     expect(state().onboarded).toBe(true);
     expect(shouldShowOnboarding(state())).toBe(false);
   });

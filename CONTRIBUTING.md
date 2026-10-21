@@ -84,8 +84,8 @@ Each lab's lessons live in `src/modules/<lab>/content/`, with one file for each 
 Each lab is a self-contained folder in `src/modules/<lab>/`, and the app finds it on its own. The [module authoring guide](docs/MODULE_AUTHORING.md) covers how labs work in detail. A few rules to know up front:
 
 - **A lab only changes its own folder.** Its `Explore.tsx` imports only from `@app/module-sdk`, never from the app shell or the global store. If several labs need the same visual, add it to `src/module-sdk/`.
-- **Don't rename a lab's ID once it's released.** Saved progress, snapshots, and the guide all use it.
-- **Bump `stateVersion` when you change the shape of a lab's saved state,** and teach `hydrateState` to read the old shape so people's existing snapshots still open.
+- **Don't rename a lab's ID once it's released.** Saved progress, bookmarks, and the guide all use it.
+- **Bump `stateVersion` when you change the shape of a lab's saved state,** and teach `hydrateState` to read the old shape so people's existing share links still open.
 - **Every control works with a keyboard and has a visible label.** Never use color as the only way to tell two things apart.
 - **Every card on the lab needs an explanation** in `card-info.ts`. `npm run check:modules` will tell you if one is missing.
 

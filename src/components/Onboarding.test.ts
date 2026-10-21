@@ -20,7 +20,7 @@ const freshLearner = () =>
     onboarded: false,
     onboardingReplay: false,
     progress: {},
-    snapshots: [],
+    bookmarks: [],
     moduleStates: {},
     mode: "plain",
     fontStep: 1,
@@ -99,15 +99,20 @@ describe("when it shows", () => {
     expect(label?.textContent).toContain("Choose how explanations read");
   });
 
-  it("stays away from a learner who already has progress, snapshots, or saved lab state", () => {
+  it("stays away from a learner who already has progress, bookmarks, or saved lab state", () => {
     useAppStore.setState({ progress: { a: { visited: true, completed: false, checkpointResults: [], currentStep: 0, updatedAt: "x" } } });
     mount();
     expect(dialog()).toBeNull();
 
-    act(() => useAppStore.setState({ progress: {}, snapshots: [{ id: "s", moduleId: "a", name: "n", state: {}, createdAt: "x" }] }));
+    act(() =>
+      useAppStore.setState({
+        progress: {},
+        bookmarks: [{ id: "b", moduleId: "a", mode: "plain", section: "What it is", parent: "What it is", createdAt: "x" }],
+      }),
+    );
     expect(dialog()).toBeNull();
 
-    act(() => useAppStore.setState({ snapshots: [], moduleStates: { a: { x: 1 } } }));
+    act(() => useAppStore.setState({ bookmarks: [], moduleStates: { a: { x: 1 } } }));
     expect(dialog()).toBeNull();
   });
 

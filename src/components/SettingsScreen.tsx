@@ -89,7 +89,8 @@ export function SettingsScreen() {
       version: 1,
       exportedAt: new Date().toISOString(),
       progress: store.progress,
-      snapshots: store.snapshots,
+      bookmarks: store.bookmarks,
+      readingPositions: store.readingPositions,
       moduleStates: store.moduleStates,
       preferences: {
         theme: store.theme,
@@ -111,7 +112,7 @@ export function SettingsScreen() {
   };
 
   const resetData = () => {
-    if (!window.confirm("Reset all learning progress, snapshots, and saved lab states on this device?")) return;
+    if (!window.confirm("Reset all learning progress, bookmarks, and saved lab states on this device?")) return;
     store.resetLearningData();
     setDataStatus("Learning data reset.");
   };
@@ -260,10 +261,10 @@ export function SettingsScreen() {
               <SectionHeading title="Data" description="Your progress and experiments belong to you." />
               <div className="data-summary">
                 <div><strong>{Object.values(store.progress).filter((item) => item.completed).length}</strong><span>labs complete</span></div>
-                <div><strong>{store.snapshots.length}</strong><span>snapshots</span></div>
+                <div><strong>{store.bookmarks.length}</strong><span>bookmarks</span></div>
                 <div><strong>{Object.keys(store.moduleStates).length}</strong><span>labs explored</span></div>
               </div>
-              <SettingRow title="Export learning data" description="Download progress, snapshots, and preferences as readable JSON."><button type="button" className="settings-action" onClick={exportData}><FileJson /> Export JSON</button></SettingRow>
+              <SettingRow title="Export learning data" description="Download progress, bookmarks, and preferences as readable JSON."><button type="button" className="settings-action" onClick={exportData}><FileJson /> Export JSON</button></SettingRow>
               <SettingRow title="Import learning data" description="Restore a previous Discover AI export.">
                 <>
                   <input

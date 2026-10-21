@@ -3880,6 +3880,7 @@ select {
   overflow: hidden;
   border-left: 1px solid var(--line);
   background: var(--panel-solid);
+  container: learn-panel / inline-size;
 }
 
 .learn-panel > * {
@@ -4012,12 +4013,514 @@ select {
   line-height: 1.45;
 }
 
-.learn-panel__scroll {
+/* The bar under the header names the section being read and opens the contents. */
+.learn-sectionbar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  padding: 0.3rem 0.55rem 0.3rem 0.45rem;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--module-accent) 4%, var(--panel-solid));
+  gap: 0.2rem;
+}
+
+.learn-sectionbar__toggle {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  flex: 1;
+  padding: 0.38rem 0.5rem;
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  background: transparent;
+  gap: 0.5rem;
+  text-align: left;
+}
+
+.learn-sectionbar__toggle:hover,
+.learn-sectionbar__toggle[aria-expanded="true"] {
+  background: var(--panel-muted);
+}
+
+.learn-sectionbar__toggle > svg {
+  width: 0.9rem;
+  height: 0.9rem;
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+.learn-sectionbar__chevron {
+  transition: transform 150ms ease;
+}
+
+.learn-sectionbar__toggle[aria-expanded="true"] .learn-sectionbar__chevron {
+  transform: rotate(180deg);
+}
+
+.learn-sectionbar__where {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  flex: 1;
+  gap: 0.4rem;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.learn-sectionbar__where small {
+  flex: 0 0 auto;
+  color: var(--module-accent);
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 0.6875rem;
+  font-weight: 600;
+}
+
+.learn-sectionbar__where strong {
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  font-size: 0.75rem;
+  font-weight: 650;
+  text-overflow: ellipsis;
+}
+
+.learn-sectionbar__sub {
+  min-width: 0;
+  flex: 1 1 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.75rem;
+  text-overflow: ellipsis;
+}
+
+.learn-sectionbar__sub::before {
+  margin-right: 0.4rem;
+  content: "›";
+  content: "›" / "";
+}
+
+.learn-sectionbar__bookmark,
+.learn-heading__bookmark {
+  position: relative;
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border-radius: var(--radius-xs);
+  color: var(--muted);
+  background: transparent;
+  transition: opacity 120ms ease, color 120ms ease, background-color 120ms ease;
+}
+
+.learn-sectionbar__bookmark:hover,
+.learn-heading__bookmark:hover {
+  color: var(--ink);
+  background: var(--panel-muted);
+}
+
+.learn-sectionbar__bookmark[aria-pressed="true"],
+.learn-heading__bookmark[aria-pressed="true"] {
+  color: var(--module-accent);
+}
+
+.learn-sectionbar__bookmark svg,
+.learn-heading__bookmark svg {
+  width: 0.95rem;
+  height: 0.95rem;
+  stroke-width: 1.9;
+}
+
+.learn-sectionbar__bookmark[aria-pressed="true"] svg,
+.learn-heading__bookmark[aria-pressed="true"] svg {
+  fill: color-mix(in srgb, var(--module-accent) 18%, transparent);
+}
+
+/* How far through the panel the learner has scrolled; the panel sets --learn-progress from 0 to 1. */
+.learn-progress {
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.learn-progress b {
+  display: block;
+  height: 100%;
+  background: var(--module-accent);
+  transform: scaleX(var(--learn-progress, 0));
+  transform-origin: left;
+}
+
+.learn-panel__body {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   min-height: 0;
   flex: 1;
+}
+
+.learn-panel__scroll {
+  grid-row: 1;
+  grid-column: -2 / -1;
+  min-height: 0;
   padding: 1rem 1.25rem 2rem 1rem;
   overflow: auto;
   scrollbar-gutter: stable;
+}
+
+/* Narrow panel: the contents drop down over the lesson from the section bar. */
+.learn-contents {
+  position: absolute;
+  z-index: 6;
+  top: 0;
+  right: 0;
+  left: 0;
+  display: none;
+  max-height: min(30rem, 80%);
+  padding: 0.5rem 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--line-strong);
+  background: var(--panel-solid);
+  box-shadow: 0 1rem 2rem rgba(20, 23, 45, 0.14);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.learn-contents[data-open="true"] {
+  display: block;
+  animation: learn-contents-in 140ms ease-out;
+}
+
+@keyframes learn-contents-in {
+  from { opacity: 0; transform: translateY(-0.35rem); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.learn-contents__head {
+  display: flex;
+  align-items: center;
+  padding: 0.1rem 0.1rem 0.4rem 0.5rem;
+  gap: 0.5rem;
+}
+
+.learn-contents__head strong {
+  font-size: 0.75rem;
+  font-weight: 680;
+}
+
+.learn-contents__head span {
+  flex: 1;
+  color: var(--muted);
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 0.6875rem;
+}
+
+.learn-contents__close {
+  width: 1.8rem;
+  height: 1.8rem;
+}
+
+.learn-contents > .learn-progress {
+  position: relative;
+  bottom: auto;
+  display: block;
+  margin: 0 0.5rem 0.55rem;
+  border-radius: 2px;
+  background: var(--line);
+}
+
+.learn-contents__resume {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  margin-bottom: 0.5rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid color-mix(in srgb, var(--module-accent) 35%, var(--line));
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  background: color-mix(in srgb, var(--module-accent) 7%, var(--panel));
+  gap: 0.55rem;
+  text-align: left;
+}
+
+.learn-contents__resume:hover {
+  border-color: var(--module-accent);
+}
+
+.learn-contents__resume svg {
+  width: 0.9rem;
+  height: 0.9rem;
+  flex: 0 0 auto;
+  color: var(--module-accent);
+}
+
+.learn-contents__resume span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.learn-contents__resume small {
+  color: var(--muted);
+  font-size: 0.6875rem;
+}
+
+.learn-contents__resume strong {
+  overflow: hidden;
+  font-size: 0.75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.learn-contents__list,
+.learn-contents__list ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.learn-contents__list > li:not(.is-extra) + li.is-extra {
+  margin-top: 0.35rem;
+  padding-top: 0.35rem;
+  border-top: 1px solid var(--line);
+}
+
+.learn-contents__row {
+  display: flex;
+  align-items: center;
+  gap: 0.1rem;
+}
+
+.learn-contents__section,
+.learn-contents__subsection {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  flex: 1;
+  padding: 0.38rem 0.5rem;
+  border-radius: var(--radius-xs);
+  color: var(--ink-soft);
+  background: transparent;
+  gap: 0.55rem;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  text-align: left;
+}
+
+.learn-contents__subsection {
+  width: 100%;
+  padding: 0.3rem 0.5rem;
+  color: var(--muted);
+  font-size: 0.71875rem;
+}
+
+.learn-contents__section:hover,
+.learn-contents__subsection:hover {
+  color: var(--ink);
+  background: var(--panel-muted);
+}
+
+.learn-contents__number {
+  flex: 0 0 1.05rem;
+  color: var(--muted);
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 0.6875rem;
+}
+
+.learn-contents__label {
+  min-width: 0;
+  flex: 1;
+}
+
+.learn-contents__list > li.is-active > .learn-contents__row .learn-contents__section {
+  color: var(--ink);
+  font-weight: 650;
+}
+
+.learn-contents__list > li.is-active > .learn-contents__row .learn-contents__number {
+  color: var(--module-accent);
+}
+
+.learn-contents__section[aria-current="location"],
+.learn-contents__subsection[aria-current="location"] {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--module-accent) 10%, transparent);
+}
+
+.learn-contents__section[aria-current="location"]::before,
+.learn-contents__subsection[aria-current="location"]::before {
+  position: absolute;
+  top: 0.35rem;
+  bottom: 0.35rem;
+  left: 0;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--module-accent);
+  content: "";
+}
+
+.learn-contents__saved {
+  width: 0.75rem;
+  height: 0.75rem;
+  flex: 0 0 auto;
+  align-self: center;
+  color: var(--module-accent);
+}
+
+.learn-contents__saved.is-inside {
+  opacity: 0.55;
+}
+
+.learn-contents__expand {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  padding: 0;
+  border-radius: var(--radius-xs);
+  color: var(--muted);
+  background: transparent;
+}
+
+.learn-contents__expand:hover {
+  color: var(--ink);
+  background: var(--panel-muted);
+}
+
+.learn-contents__expand svg {
+  width: 0.8rem;
+  height: 0.8rem;
+  transition: transform 150ms ease;
+}
+
+.learn-contents__expand[aria-expanded="true"] svg {
+  transform: rotate(90deg);
+}
+
+.learn-contents__list ol {
+  margin: 0.05rem 0 0.3rem 1.05rem;
+  padding-left: 0.45rem;
+  border-left: 1px solid var(--line);
+}
+
+/* Wide panel (expanded, or a wide window): the contents stay open as a rail beside the lesson. */
+@container learn-panel (min-width: 44rem) {
+  .learn-sectionbar {
+    display: none;
+  }
+
+  .learn-panel__body {
+    grid-template-columns: 14rem minmax(0, 1fr);
+  }
+
+  .learn-contents,
+  .learn-contents[data-open="true"] {
+    position: relative;
+    z-index: auto;
+    display: block;
+    grid-row: 1;
+    grid-column: 1;
+    max-height: none;
+    padding: 0.85rem 0.5rem 1.5rem;
+    border-right: 1px solid var(--line);
+    border-bottom: 0;
+    background: color-mix(in srgb, var(--module-accent) 3%, var(--panel-solid));
+    box-shadow: none;
+    animation: none;
+  }
+
+  .learn-contents__close {
+    display: none;
+  }
+}
+
+/* Laid over the bottom of the lesson, so dismissing it never moves the text. */
+.learn-resume {
+  position: absolute;
+  z-index: 5;
+  right: 0.75rem;
+  bottom: 0.75rem;
+  left: 0.75rem;
+  display: flex;
+  align-items: center;
+  grid-row: 1;
+  grid-column: -2 / -1;
+  padding: 0.55rem 0.5rem 0.55rem 0.8rem;
+  border: 1px solid color-mix(in srgb, var(--module-accent) 40%, var(--line-strong));
+  border-radius: var(--radius-md);
+  background: var(--panel-solid);
+  box-shadow: var(--shadow-float);
+  gap: 0.6rem;
+  animation: learn-resume-in 180ms ease-out;
+}
+
+@keyframes learn-resume-in {
+  from { opacity: 0; transform: translateY(0.4rem); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.learn-resume > svg {
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+  color: var(--module-accent);
+}
+
+.learn-resume > div {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.12rem;
+}
+
+.learn-resume span {
+  color: var(--muted);
+  font-size: 0.6875rem;
+}
+
+.learn-resume strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 0.78rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.learn-resume__go {
+  flex: 0 0 auto;
+  padding: 0.42rem 0.7rem;
+  border-radius: var(--radius-sm);
+  color: white;
+  background: var(--forward);
+  font-size: 0.75rem;
+  font-weight: 620;
+}
+
+.learn-resume .icon-button {
+  width: 1.8rem;
+  height: 1.8rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .learn-contents[data-open="true"],
+  .learn-resume {
+    animation: none;
+  }
+}
+
+:root[data-motion="reduced"] .learn-contents[data-open="true"],
+:root[data-motion="reduced"] .learn-resume {
+  animation: none;
 }
 
 .objectives {
@@ -4055,26 +4558,101 @@ select {
 
 .learn-copy {
   color: var(--ink-soft);
+  counter-reset: learn-section;
+}
+
+/* Each of a lesson's seven sections opens with a rule and its number, so the parts read as parts. */
+.learn-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+}
+
+.learn-heading > h2,
+.learn-heading > h3 {
+  min-width: 0;
+  flex: 1;
+}
+
+.learn-heading--h2 {
+  margin: 2.4rem 0 0.7rem;
+  padding-top: 1.15rem;
+  border-top: 1px solid var(--line);
+  counter-increment: learn-section;
+}
+
+.learn-copy > .learn-heading--h2:first-child {
+  margin-top: 0.15rem;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.learn-heading--h3 {
+  margin: 1.35rem 0 0.3rem;
 }
 
 .learn-copy h2 {
-  margin: 1.55rem 0 0.5rem;
+  margin: 0;
   color: var(--ink);
-  font-size: 0.78rem;
-  font-weight: 690;
+  font-size: 1rem;
+  font-weight: 700;
   letter-spacing: -0.02em;
+  line-height: 1.3;
 }
 
-.learn-copy h2:first-child {
-  margin-top: 0;
+.learn-copy h2::before {
+  display: block;
+  margin-bottom: 0.3rem;
+  color: var(--module-accent);
+  content: counter(learn-section, decimal-leading-zero);
+  content: counter(learn-section, decimal-leading-zero) / "";
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
 }
 
 .learn-copy h3 {
-  margin: 1.1rem 0 0.3rem;
+  margin: 0;
   color: var(--ink);
-  font-size: 0.75rem;
+  font-size: 0.875rem;
   font-weight: 660;
   letter-spacing: -0.01em;
+  line-height: 1.35;
+}
+
+/* Sits level with the title, below the section number. */
+.learn-heading--h2 .learn-heading__bookmark {
+  margin-top: 0.85rem;
+}
+
+.learn-heading--h3 .learn-heading__bookmark {
+  margin-top: -0.2rem;
+}
+
+.learn-heading .learn-heading__bookmark {
+  margin-right: -0.35rem;
+  opacity: 0;
+}
+
+.learn-heading:hover .learn-heading__bookmark,
+.learn-heading .learn-heading__bookmark:focus-visible,
+.learn-heading .learn-heading__bookmark[aria-pressed="true"] {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .learn-heading .learn-heading__bookmark {
+    opacity: 0.65;
+  }
+}
+
+[data-learn-section] {
+  scroll-margin-top: 0.9rem;
+}
+
+[data-learn-section]:focus:not([data-search-hit="true"]) {
+  outline: none;
 }
 
 .learn-copy p {
@@ -4442,44 +5020,82 @@ select {
   animation: popover-in 150ms ease-out;
 }
 
-.snapshot-panel form {
+.bookmark-panel {
   display: flex;
-  padding-bottom: 0.75rem;
-  border-bottom: 1px solid var(--line);
-  gap: 0.4rem;
+  flex-direction: column;
+  outline: none;
 }
 
-.snapshot-panel form input {
-  min-width: 0;
-  flex: 1;
-  padding: 0.55rem 0.65rem;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-sm);
-  background: var(--panel-muted);
-  font-size: 0.8125rem;
-}
-
-.snapshot-panel form button {
+.bookmark-panel__current {
   display: flex;
   align-items: center;
-  padding: 0.5rem 0.65rem;
+  width: 100%;
+  flex: 0 0 auto;
+  padding: 0.6rem 0.7rem;
+  border: 1px dashed var(--line-strong);
   border-radius: var(--radius-sm);
-  color: white;
-  background: var(--forward);
-  gap: 0.35rem;
+  color: var(--ink);
+  background: var(--panel-muted);
+  gap: 0.6rem;
+  text-align: left;
+}
+
+.bookmark-panel__current:hover {
+  border-color: var(--module-accent);
+}
+
+.bookmark-panel__current[aria-pressed="true"] {
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--module-accent) 45%, var(--line));
+  background: color-mix(in srgb, var(--module-accent) 8%, var(--panel));
+}
+
+.bookmark-panel__current svg {
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+  color: var(--module-accent);
+}
+
+.bookmark-panel__current span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.12rem;
+}
+
+.bookmark-panel__current small {
+  color: var(--muted);
+  font-size: 0.6875rem;
+}
+
+.bookmark-panel__current strong {
+  overflow: hidden;
+  font-size: 0.8125rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bookmark-panel__hint {
+  margin: 0;
+  padding: 0.6rem 0.7rem;
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  background: var(--panel-muted);
   font-size: 0.75rem;
+  line-height: 1.45;
 }
 
-.snapshot-panel form svg {
-  width: 0.75rem;
-}
-
-.snapshot-list {
-  max-height: 18rem;
+.bookmark-list {
+  min-height: 0;
+  flex: 1 1 auto;
+  margin-top: 0.6rem;
   overflow: auto;
+  overscroll-behavior: contain;
 }
 
-.snapshot-list > p {
+.bookmark-list__empty {
+  margin: 0;
   padding: 1rem;
   color: var(--muted);
   font-size: 0.8125rem;
@@ -4487,14 +5103,41 @@ select {
   text-align: center;
 }
 
-.snapshot-list > div {
+.bookmark-list section + section {
+  margin-top: 0.75rem;
+}
+
+.bookmark-list h3 {
+  margin: 0 0 0.2rem;
+  padding: 0 0.5rem;
+  color: var(--ink-soft);
+  font-size: 0.6875rem;
+  font-weight: 650;
+}
+
+.bookmark-list h3 span {
+  color: var(--muted);
+  font-family: "JetBrains Mono Variable", monospace;
+  font-weight: 500;
+}
+
+.bookmark-list ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bookmark-list li {
   display: flex;
   align-items: center;
-  padding: 0.3rem 0;
   border-bottom: 1px solid var(--line);
 }
 
-.snapshot-list > div > button:first-child {
+.bookmark-list li:last-child {
+  border-bottom: 0;
+}
+
+.bookmark-list li > button:first-child {
   display: flex;
   min-width: 0;
   flex: 1;
@@ -4506,15 +5149,16 @@ select {
   text-align: left;
 }
 
-.snapshot-list > div > button:first-child:hover {
+.bookmark-list li > button:first-child:hover {
   background: var(--panel-muted);
 }
 
-.snapshot-list strong {
+.bookmark-list li strong {
+  color: var(--ink);
   font-size: 0.8125rem;
 }
 
-.snapshot-list span {
+.bookmark-list li span {
   color: var(--muted);
   font-size: 0.6875rem;
 }

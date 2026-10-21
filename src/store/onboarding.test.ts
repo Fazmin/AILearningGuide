@@ -13,7 +13,7 @@ const fresh = (overrides: Partial<OnboardingState> = {}): OnboardingState => ({
   onboarded: false,
   onboardingReplay: false,
   progress: {},
-  snapshots: [],
+  bookmarks: [],
   moduleStates: {},
   ...overrides,
 });
@@ -27,7 +27,8 @@ const freshDevice = () => {
     onboarded: false,
     onboardingReplay: false,
     progress: {},
-    snapshots: [],
+    bookmarks: [],
+    readingPositions: {},
     moduleStates: {},
     theme: "system",
   });
@@ -41,9 +42,9 @@ describe("hasLearningHistory", () => {
     expect(hasLearningHistory(fresh())).toBe(false);
   });
 
-  it("is true for any progress, snapshot, or saved lab state", () => {
+  it("is true for any progress, bookmark, or saved lab state", () => {
     expect(hasLearningHistory(fresh({ progress: { a: {} } }))).toBe(true);
-    expect(hasLearningHistory(fresh({ snapshots: [{}] }))).toBe(true);
+    expect(hasLearningHistory(fresh({ bookmarks: [{}] }))).toBe(true);
     expect(hasLearningHistory(fresh({ moduleStates: { a: { x: 1 } } }))).toBe(true);
   });
 });
@@ -55,7 +56,7 @@ describe("shouldShowOnboarding", () => {
 
   it("never shows to a learner who already has history, even if the flag is unset", () => {
     expect(shouldShowOnboarding(fresh({ progress: { a: {} } }))).toBe(false);
-    expect(shouldShowOnboarding(fresh({ snapshots: [{}] }))).toBe(false);
+    expect(shouldShowOnboarding(fresh({ bookmarks: [{}] }))).toBe(false);
     expect(shouldShowOnboarding(fresh({ moduleStates: { a: {} } }))).toBe(false);
   });
 
@@ -179,7 +180,7 @@ describe("onboarding actions", () => {
 
 describe("import and export", () => {
   it("does not read the flag from an import, old or new", () => {
-    const base = { format: "the-ai-guide-export", version: 1, progress: {}, moduleStates: {}, snapshots: [] };
+    const base = { format: "the-ai-guide-export", version: 1, progress: {}, moduleStates: {}, bookmarks: [] };
     expect(state().importLearningData({ ...base, onboarded: true })).toBe(true);
     expect(state().onboarded).toBe(false);
     state().completeOnboarding();

@@ -59,7 +59,7 @@ The 51 labs are split into six groups. You can go in order or jump to whatever y
 - **Three ways to read.** Simple mode uses short sentences an 8th grader can follow. Plain mode uses everyday words. Standard mode uses the proper technical terms. Switch at any time from the top bar.
 - **Real models where it matters.** The attention lab runs a small trained transformer in the app. The training labs train a tiny language model live while you watch.
 - **Checkpoints.** Short quizzes at the end of each lab to check what stuck.
-- **Progress and snapshots.** Your progress is saved. You can save the state of any lab as a snapshot and come back to it later, or copy a link that opens the lab exactly as you left it.
+- **Progress and bookmarks.** Your progress is saved, and the Learn panel remembers where you stopped reading in each lab. Bookmark any section to come back to it later, or copy a link that opens the lab exactly as you left it.
 - **Search everything.** Press `Cmd+K` on Mac or `Ctrl+K` on Windows and Linux to search labs, lessons, glossary terms, and settings.
 - **Optional AI guide.** Ask questions about the lab you're on. Use a small model that runs on your computer, or connect your own OpenAI, Anthropic, or Google key. This is completely optional. Everything else works without it.
 - **Built to be easy on everyone.** Light and dark themes, seven text sizes, high contrast, color-blind friendly palettes, reduced motion, keyboard support, and read-aloud.
@@ -120,7 +120,7 @@ You'll find the result in `src-tauri/target/release/bundle/`.
 1. **Pick a reading mode.** The welcome tour asks if you want Simple, Plain or Standard. You can change it any time with the switch at the top.
 2. **Open a lab.** Start at lab 1 from the home screen, or pick any lab from the sidebar.
 3. **Follow the steps.** Each lab has a few steps at the bottom. Read the "Try this" hint, play with the controls, and see what happens.
-4. **Read along.** The Learn panel on the right explains what you're seeing. Open the Glossary to look up key words, or use "Read out loud" to listen instead.
+4. **Read along.** The Learn panel on the right explains what you're seeing. Use the contents bar at its top to jump between sections, bookmark the ones you want to come back to, and open the Glossary to look up key words, or use "Read out loud" to listen instead.
 5. **Check yourself.** Take the checkpoint at the end, then click "Mark complete".
 6. **See the big picture.** Open "Connections" in the sidebar to see how the labs fit together and what to learn next.
 
@@ -143,7 +143,7 @@ src/
   modules/<lab>/   one folder per lab: the interactive, lessons, and checkpoint
   module-sdk/      shared building blocks the labs use (charts, the tiny trainable model)
   model-runtime/   runs the small ONNX models in a background worker
-  store/           saved settings, progress, and snapshots
+  store/           saved settings, progress, and bookmarks
 src-tauri/         the desktop side (Rust): database, keychain, local AI setup
 models/            Python scripts that train and export the small teaching models
 scripts/           checks, search index builder, and the new lab generator

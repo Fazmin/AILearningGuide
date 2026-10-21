@@ -24,7 +24,7 @@ const SETTINGS_TABS = [
   ["explanations", "Explanation mode", "Switch between plain-language and standard technical writing."],
   ["local", "Local model", "Private offline topic chat through a llama.cpp sidecar."],
   ["cloud", "Cloud providers", "Choose a provider and model, store an API key in the operating system keychain, and test the connection for optional topic chat."],
-  ["data", "Data", "Export, import, or reset progress, snapshots, and saved lab states."],
+  ["data", "Data", "Export, import, or reset progress, bookmarks, and saved lab states."],
   ["about", "About", "Version, architecture, and what Discover AI is. Replay the welcome tour. Licences and attributions for every library, font, model, and dataset: open-source licences (MIT, Apache, SIL Open Font), copyright notices, Tauri, ONNX Runtime, llama.cpp, Qwen, GloVe, MNIST, Tiny Shakespeare."],
 ];
 

@@ -48,7 +48,11 @@ export interface SearchIndexFile {
 
 export type SearchFocus =
   | { kind: "module"; moduleId: string }
-  | { kind: "learn"; moduleId: string; mode: ExplanationMode; section: string }
+  /**
+   * A Learn section. Search sets `mode` before navigating; a bookmark leaves the current mode alone
+   * unless it has no such heading, and falls back to the top-level `parent` section.
+   */
+  | { kind: "learn"; moduleId: string; mode: ExplanationMode; section: string; parent?: string }
   | { kind: "glossary"; moduleId: string; term: string }
   | { kind: "checkpoint"; moduleId: string }
   | { kind: "step"; moduleId: string; stepIndex: number }

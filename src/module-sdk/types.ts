@@ -1,3 +1,4 @@
+import type { MDXContent } from "mdx/types";
 import type { ComponentType } from "react";
 
 export type ExplanationMode = "simple" | "plain" | "standard";
@@ -72,5 +73,5 @@ export interface ModuleDefinition {
 }
 
 export interface MdxModule {
-  default: ComponentType;
+  default: MDXContent;
 }

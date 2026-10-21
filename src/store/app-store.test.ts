@@ -35,7 +35,7 @@ describe("importLearningData", () => {
     version: 1,
     progress,
     moduleStates: {},
-    snapshots: [],
+    bookmarks: [],
   });
 
   it("reads an export written before multi-question checkpoints", () => {
@@ -65,8 +65,45 @@ describe("importLearningData", () => {
     expect(state().progress["module-a"]).toMatchObject({ visited: false, completed: false, checkpointResults: [], currentStep: 0 });
   });
 
+  it("reads bookmarks and reading positions, and leaves out an old export's snapshots", () => {
+    const ok = state().importLearningData({
+      ...exported({}),
+      snapshots: [{ id: "s", moduleId: "module-a", name: "Experiment 1", state: {}, createdAt: "x" }],
+      bookmarks: [{ id: "b", moduleId: "module-a", mode: "plain", section: "What it is", parent: "What it is", createdAt: "x" }],
+      readingPositions: { "module-a": { mode: "plain", section: "Where it breaks", parent: "Where it breaks", updatedAt: "x" } },
+    });
+    expect(ok).toBe(true);
+    expect(state().bookmarks.map((bookmark) => bookmark.id)).toEqual(["b"]);
+    expect(state().readingPositions["module-a"].section).toBe("Where it breaks");
+    expect(state()).not.toHaveProperty("snapshots");
+  });
+
   it("rejects data that is not an export", () => {
     expect(state().importLearningData({ format: "other", version: 1 })).toBe(false);
     expect(state().importLearningData(null)).toBe(false);
+  });
+});
+
+describe("bookmarks", () => {
+  const section = { moduleId: "module-a", mode: "plain" as const, section: "Why divide by 8?", parent: "What it is" };
+
+  it("toggles a section on and off", () => {
+    state().toggleBookmark(section);
+    expect(state().bookmarks).toMatchObject([section]);
+    state().toggleBookmark({ ...section, mode: "standard" });
+    expect(state().bookmarks).toEqual([]);
+  });
+
+  it("removes one bookmark by id", () => {
+    state().toggleBookmark(section);
+    state().toggleBookmark({ ...section, section: "The one-way rule" });
+    state().removeBookmark(state().bookmarks[1].id);
+    expect(state().bookmarks.map((bookmark) => bookmark.section)).toEqual(["The one-way rule"]);
+  });
+
+  it("remembers the last section read in each lab", () => {
+    state().setReadingPosition("module-a", { mode: "plain", section: "What it is", parent: "What it is" });
+    state().setReadingPosition("module-a", section);
+    expect(state().readingPositions["module-a"]).toMatchObject({ section: "Why divide by 8?", parent: "What it is" });
   });
 });

@@ -1,4 +1,3 @@
-import type { ComponentType } from "react";
 import type {
   MdxModule,
   ModuleCardInfo,
@@ -20,9 +19,9 @@ const cardInfoFiles = import.meta.glob<{ default: ModuleCardInfo }>("./*/card-in
 
 export interface RegisteredModule extends ModuleDefinition {
   content: {
-    simple: ComponentType;
-    plain: ComponentType;
-    standard: ComponentType;
+    simple: MdxModule["default"];
+    plain: MdxModule["default"];
+    standard: MdxModule["default"];
   };
   /** Per-surface explanations, keyed by `LabSurface` label. */
   cardInfo: ModuleCardInfo;

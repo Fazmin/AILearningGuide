@@ -1,9 +1,9 @@
 import {
   ArrowLeft,
   ArrowRight,
-  BookmarkPlus,
+  Bookmark,
+  BookmarkCheck,
   Check,
-  CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Copy,
@@ -15,9 +15,6 @@ import {
   RotateCcw,
   Send,
   Sparkles,
-  Square,
-  Trash2,
-  Volume2,
   Waypoints,
   X,
 } from "lucide-react";
@@ -26,221 +23,19 @@ import { listen } from "@tauri-apps/api/event";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import type { LocalChatChunk } from "@app/lib/local-ai";
-import type { ExplanationMode, ModuleState } from "@app/module-sdk";
+import type { ModuleState } from "@app/module-sdk";
 import { CardInfoProvider, checkpointQuestions } from "@app/module-sdk";
 import type { RegisteredModule } from "@app/modules/registry";
-import { modules, modulesById } from "@app/modules/registry";
+import { modules } from "@app/modules/registry";
+import type { LearnEntry } from "@app/lib/learn-sections";
 import { encodeState } from "@app/lib/math";
-import { canUseSpeech, speakLesson, stopSpeaking, textFromLearnRoot } from "@app/lib/speech";
-import { useAppStore, type Snapshot } from "@app/store/app-store";
+import { useAppStore } from "@app/store/app-store";
 import { checkpointTally } from "@app/store/checkpoint-progress";
-import { Checkpoint } from "./Checkpoint";
+import { BookmarksPanel } from "./BookmarksPanel";
+import { LearnPanel } from "./LearnPanel";
 import { PrerequisiteBar } from "./PrerequisiteBar";
 import { GuideMarkdown } from "./GuideMarkdown";
 import { IconButton } from "./IconButton";
-
-function normalizeHeading(value: string) {
-  return value.replace(/[’‘ʻʼ`']/g, "'").replace(/\s+/g, " ").trim().toLowerCase();
-}
-
-const learnModeLabel: Record<ExplanationMode, string> = {
-  simple: "simple language",
-  plain: "plain language",
-  standard: "standard",
-};
-
-function LearnPanel({ module }: { module: RegisteredModule }) {
-  const mode = useAppStore((state) => state.mode);
-  const searchFocus = useAppStore((state) => state.searchFocus);
-  const setSearchFocus = useAppStore((state) => state.setSearchFocus);
-  const setView = useAppStore((state) => state.setView);
-  const isLastModule = modules[modules.length - 1]?.id === module.id;
-  const reducedMotion = useAppStore((state) => state.reducedMotion);
-  const Content = module.content[mode];
-  const [showGlossary, setShowGlossary] = useState(false);
-  const [speaking, setSpeaking] = useState(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const speechSupported = canUseSpeech();
-
-  useEffect(() => () => stopSpeaking(), []);
-
-  useEffect(() => {
-    stopSpeaking();
-    setSpeaking(false);
-  }, [mode, module.id]);
-
-  useEffect(() => {
-    if (!searchFocus || !("moduleId" in searchFocus) || searchFocus.moduleId !== module.id) return;
-    if (searchFocus.kind === "glossary") setShowGlossary(true);
-    if (searchFocus.kind === "learn" || searchFocus.kind === "checkpoint") setShowGlossary(false);
-  }, [module.id, searchFocus]);
-
-  useEffect(() => {
-    if (!searchFocus || !("moduleId" in searchFocus) || searchFocus.moduleId !== module.id) return;
-    if (!["learn", "glossary", "checkpoint"].includes(searchFocus.kind)) return;
-    const root = scrollRef.current;
-    if (!root) return;
-
-    const frame = window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => {
-        let target: HTMLElement | null = null;
-        if (searchFocus.kind === "glossary") {
-          target = root.querySelector(`[data-glossary-term="${CSS.escape(searchFocus.term)}"]`);
-        } else if (searchFocus.kind === "checkpoint") {
-          target = root.querySelector("[data-search-target=checkpoint]");
-        } else if (searchFocus.kind === "learn") {
-          target =
-            [...root.querySelectorAll<HTMLElement>("h2, h3")].find(
-              (heading) => normalizeHeading(heading.textContent ?? "") === normalizeHeading(searchFocus.section),
-            ) ?? null;
-        }
-        if (!target) return;
-        target.dataset.searchHit = "true";
-        target.scrollIntoView({
-          behavior: reducedMotion ? "auto" : "smooth",
-          block: "start",
-          inline: "nearest",
-        });
-        window.setTimeout(() => {
-          delete target.dataset.searchHit;
-        }, 1600);
-        setSearchFocus(null);
-      });
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [mode, module.id, reducedMotion, searchFocus, setSearchFocus, showGlossary]);
-
-  return (
-    <aside className="learn-panel" aria-label={`Learn about ${module.title}`}>
-      <div className="learn-panel__header">
-        <div>
-          <span>Learn / {learnModeLabel[mode]}</span>
-          <strong>Keep the idea beside the experiment.</strong>
-        </div>
-        <div className="learn-panel__actions">
-          <button
-            type="button"
-            className="learn-speak"
-            aria-pressed={speaking}
-            aria-label={speaking ? "Stop reading" : "Read out loud"}
-            disabled={!speechSupported}
-            title={speechSupported ? undefined : "Speech is not available in this window."}
-            onClick={() => {
-              if (speaking) {
-                stopSpeaking();
-                setSpeaking(false);
-                return;
-              }
-              const text = scrollRef.current ? textFromLearnRoot(scrollRef.current) : "";
-              if (!text) return;
-              setSpeaking(true);
-              void speakLesson(text)
-                .catch(() => undefined)
-                .finally(() => setSpeaking(false));
-            }}
-          >
-            {speaking ? <Square /> : <Volume2 />}
-            <span>{speaking ? "Stop reading" : "Read out loud"}</span>
-          </button>
-          <button type="button" className="glossary-toggle" aria-expanded={showGlossary} onClick={() => setShowGlossary(!showGlossary)}>
-            <span>Glossary</span>
-            <small>{module.glossary.length}</small>
-          </button>
-        </div>
-      </div>
-      {showGlossary && (
-        <div className="glossary-panel">
-          {module.glossary.map((item) => (
-            <div key={item.term} data-glossary-term={item.term}><strong>{item.term}</strong><span>{item.definition}</span></div>
-          ))}
-        </div>
-      )}
-      <div className="learn-panel__scroll" ref={scrollRef}>
-        <div className="objectives">
-          <span>After this lab, you can</span>
-          {module.objectives.map((objective) => <p key={objective}><CheckCircle2 />{objective}</p>)}
-        </div>
-        <article className="learn-copy">
-          <Content />
-        </article>
-        <div data-search-target="checkpoint">
-          <Checkpoint key={module.id} module={module} />
-        </div>
-        {module.references && module.references.length > 0 && (
-          <section className="references" aria-labelledby={`references-${module.id}`}>
-            <h2 id={`references-${module.id}`}>References</h2>
-            <ol>
-              {module.references.map((reference) => (
-                <li key={reference.url}>
-                  <a href={reference.url} target="_blank" rel="noreferrer">{reference.title}</a>
-                  <span>{reference.authors} ({reference.year}). {reference.source}.</span>
-                  <p>{reference.note}</p>
-                </li>
-              ))}
-            </ol>
-          </section>
-        )}
-        {isLastModule && (
-          <section className="end-of-path" aria-labelledby={`end-of-path-${module.id}`}>
-            <strong id={`end-of-path-${module.id}`}>That was the last lab.</strong>
-            <p>
-              You’ve reached the end of the learning path. Open any lab from the learning map to retake its
-              checkpoint or try a different experiment, or export your progress from Settings.
-            </p>
-            <button type="button" onClick={() => setView("home")}>Back to the learning map</button>
-          </section>
-        )}
-      </div>
-    </aside>
-  );
-}
-
-function SnapshotPanel({
-  module,
-  currentState,
-  onClose,
-}: {
-  module: RegisteredModule;
-  currentState: Record<string, string | number | boolean | string[]>;
-  onClose: () => void;
-}) {
-  const snapshots = useAppStore((state) => state.snapshots.filter((snapshot) => snapshot.moduleId === module.id));
-  const saveSnapshot = useAppStore((state) => state.saveSnapshot);
-  const loadSnapshot = useAppStore((state) => state.loadSnapshot);
-  const deleteSnapshot = useAppStore((state) => state.deleteSnapshot);
-  const [name, setName] = useState(`Experiment ${snapshots.length + 1}`);
-
-  return (
-    <div className="floating-panel snapshot-panel" role="dialog" aria-modal="true" aria-label="Snapshots">
-      <div className="floating-panel__heading">
-        <div><strong>Snapshots</strong><span>Return to any interesting state.</span></div>
-        <IconButton label="Close snapshots" onClick={onClose}><X /></IconButton>
-      </div>
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          saveSnapshot(module.id, name.trim() || `Experiment ${snapshots.length + 1}`, currentState);
-          setName(`Experiment ${snapshots.length + 2}`);
-        }}
-      >
-        <input aria-label="Snapshot name" value={name} onChange={(event) => setName(event.target.value)} />
-        <button type="submit"><BookmarkPlus /> Save state</button>
-      </form>
-      <div className="snapshot-list">
-        {snapshots.length === 0 && <p>No saved states yet. Change a control, then capture it here.</p>}
-        {snapshots.map((snapshot) => (
-          <div key={snapshot.id}>
-            <button type="button" onClick={() => { loadSnapshot(snapshot); onClose(); }}>
-              <strong>{snapshot.name}</strong>
-              <span>{new Date(snapshot.createdAt).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}</span>
-            </button>
-            <IconButton label={`Delete ${snapshot.name}`} onClick={() => deleteSnapshot(snapshot.id)}><Trash2 /></IconButton>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 interface GuideMessage {
   id: string;
@@ -506,7 +301,11 @@ export function ModuleWorkspace({ module }: { module: RegisteredModule }) {
     () => ({ ...module.initialState, ...(store.moduleStates[module.id] ?? {}) }),
     [module, store.moduleStates],
   );
-  const [snapshotsOpen, setSnapshotsOpen] = useState(false);
+  const [bookmarksOpen, setBookmarksOpen] = useState(false);
+  // The section the Learn panel is showing, so the bookmarks panel can offer to save it.
+  const [learnSection, setLearnSection] = useState<LearnEntry | null>(null);
+  const bookmarksButtonRef = useRef<HTMLButtonElement>(null);
+  const hasBookmarks = store.bookmarks.some((bookmark) => bookmark.moduleId === module.id);
   const [toast, setToast] = useState("");
   const [announcement, setAnnouncement] = useState("");
   const exploreScrollRef = useRef<HTMLDivElement>(null);
@@ -666,7 +465,7 @@ export function ModuleWorkspace({ module }: { module: RegisteredModule }) {
           </div>
         </section>
 
-        {store.learnOpen && <LearnPanel module={module} />}
+        {store.learnOpen && <LearnPanel module={module} onSectionChange={setLearnSection} />}
         {store.chatOpen && <GuidePanel module={module} currentStep={currentStep} currentState={currentState} />}
       </div>
 
@@ -702,7 +501,16 @@ export function ModuleWorkspace({ module }: { module: RegisteredModule }) {
             store.resetModuleState(module.id, module.initialState);
             setToast("Interactive reset");
           }}><RotateCcw /></IconButton>
-          <IconButton label="Save or load snapshot" tooltipSide="top" className={snapshotsOpen ? "is-active" : ""} onClick={() => setSnapshotsOpen(!snapshotsOpen)}><BookmarkPlus /></IconButton>
+          <IconButton
+            ref={bookmarksButtonRef}
+            label="Bookmarks"
+            tooltipSide="top"
+            className={bookmarksOpen ? "is-active" : ""}
+            aria-expanded={bookmarksOpen}
+            onClick={() => setBookmarksOpen(!bookmarksOpen)}
+          >
+            {hasBookmarks ? <BookmarkCheck /> : <Bookmark />}
+          </IconButton>
           <IconButton label="Copy a link to this state" tooltipSide="top" onClick={() => void share()}><Copy /></IconButton>
           <button type="button" className="open-guide" onClick={() => store.setChatOpen(!store.chatOpen)}>
             <MessageCircle /><span>{store.chatOpen ? "Close guide" : "Ask the guide"}</span>
@@ -718,7 +526,16 @@ export function ModuleWorkspace({ module }: { module: RegisteredModule }) {
         </div>
       </footer>
 
-      {snapshotsOpen && <SnapshotPanel module={module} currentState={currentState} onClose={() => setSnapshotsOpen(false)} />}
+      {bookmarksOpen && (
+        <BookmarksPanel
+          module={module}
+          section={store.learnOpen ? learnSection : null}
+          onClose={() => {
+            setBookmarksOpen(false);
+            bookmarksButtonRef.current?.focus();
+          }}
+        />
+      )}
       {toast && <ShareToast text={toast} />}
       <div className="sr-only" aria-live="polite">{announcement}</div>
 

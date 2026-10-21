@@ -1,8 +1,9 @@
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import type { ButtonHTMLAttributes, ReactNode, Ref } from "react";
 
 interface IconButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "aria-label"> {
   label: string;
   children: ReactNode;
+  ref?: Ref<HTMLButtonElement>;
   tooltipSide?: "top" | "right" | "bottom" | "left";
 }
 
