@@ -8,6 +8,7 @@ const settingsTabs: SettingsTab[] = [
   "explanations",
   "local",
   "cloud",
+  "cloud-model",
   "data",
   "about",
 ];

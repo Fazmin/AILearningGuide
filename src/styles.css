@@ -2313,6 +2313,20 @@ select {
   font-weight: 620;
 }
 
+.settings-tabs .settings-tabs-parent svg:last-child {
+  margin-left: auto;
+  transition: transform 160ms ease;
+}
+
+.settings-tabs .settings-tabs-parent svg.is-open {
+  transform: rotate(180deg);
+}
+
+.settings-tabs button.is-nested {
+  margin-left: 1.1rem;
+  width: calc(100% - 1.1rem);
+}
+
 .settings-content {
   min-width: 0;
   padding: 0 0 3rem;
@@ -3261,6 +3275,20 @@ select {
   background: transparent;
   font-family: "JetBrains Mono Variable", monospace;
   font-size: 0.8125rem;
+}
+
+.provider-form textarea {
+  width: 100%;
+  min-height: 5.5rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  background: var(--panel-muted);
+  font-family: inherit;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  resize: vertical;
 }
 
 .provider-actions {
@@ -6583,6 +6611,15 @@ input[type="range"]::-webkit-slider-thumb {
     flex: 0 0 2.4rem;
     padding-inline: 0.55rem;
     white-space: nowrap;
+  }
+
+  .settings-tabs button.is-nested {
+    margin-left: 0;
+    width: auto;
+  }
+
+  .settings-tabs .settings-tabs-parent svg:last-child {
+    display: none;
   }
 
   .settings-tabs span {

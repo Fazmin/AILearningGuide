@@ -2,6 +2,28 @@ export type CloudProviderId = "openai" | "anthropic" | "google" | "compatible";
 
 export const CUSTOM_MODEL_ID = "custom";
 
+/** Mirrors `DEFAULT_MAX_REPLY_TOKENS` and the clamp range in src-tauri/src/cloud_providers.rs. */
+export const DEFAULT_MAX_REPLY_TOKENS = 800;
+export const MIN_MAX_REPLY_TOKENS = 64;
+export const MAX_MAX_REPLY_TOKENS = 4_000;
+export const MAX_SYSTEM_PROMPT_CHARS = 4_000;
+
+/**
+ * The guide's system prompt template, shown in Settings > Cloud providers. Mirrors
+ * `DEFAULT_SYSTEM_PROMPT` in src-tauri/src/cloud_providers.rs: keep the two texts identical.
+ * The `{...}` placeholders are filled per module when a question is sent.
+ */
+export const DEFAULT_SYSTEM_PROMPT_TEMPLATE = [
+  'You are the topic guide for the learning module "{module_title}".',
+  "Stay within this module. If the learner asks about another subject, briefly redirect them.",
+  "{explanation_style} Be concise, accurate, and distinguish the toy visualization from real models.",
+  "Learning objectives:",
+  "{objectives}",
+  "Current step: {current_step}",
+  "Current live interactive state: {state_json}",
+  "Refer to the live state when it helps. Do not reveal hidden chain-of-thought; provide only the useful answer.",
+].join("\n");
+
 export interface CloudModelOption {
   id: string;
   name: string;

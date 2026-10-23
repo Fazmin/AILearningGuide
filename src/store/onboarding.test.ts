@@ -144,7 +144,7 @@ describe("the persisted store", () => {
     state().completeOnboarding();
     state().replayOnboarding();
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}");
-    expect(stored.version).toBe(3);
+    expect(stored.version).toBe(4);
     expect(stored.state.onboarded).toBe(true);
     expect(stored.state).not.toHaveProperty("onboardingReplay");
   });

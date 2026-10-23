@@ -19,6 +19,12 @@ import {
   type LearnBookmark,
   type ReadingPosition,
 } from "./bookmarks";
+import {
+  DEFAULT_MAX_REPLY_TOKENS,
+  MAX_MAX_REPLY_TOKENS,
+  MAX_SYSTEM_PROMPT_CHARS,
+  MIN_MAX_REPLY_TOKENS,
+} from "@app/lib/cloud-providers";
 
 export type { LearnBookmark, ReadingPosition } from "./bookmarks";
 
@@ -32,6 +38,7 @@ export type SettingsTab =
   | "explanations"
   | "local"
   | "cloud"
+  | "cloud-model"
   | "data"
   | "about";
 
@@ -74,6 +81,10 @@ interface AppState {
   provider: "none" | "openai" | "anthropic" | "google" | "compatible";
   providerModel: string;
   providerBaseUrl: string;
+  /** Upper bound on a cloud reply, in tokens (`MAX_TOKENS`). */
+  maxReplyTokens: number;
+  /** Extra instructions added after the built-in guide prompt (`SYS_PROMPT`). */
+  systemPrompt: string;
   localModelReady: boolean;
   /**
    * The first-run tour was finished, skipped, or the learner predates it. Persisted, but never
@@ -124,6 +135,8 @@ interface AppState {
   setProvider: (provider: AppState["provider"]) => void;
   setProviderModel: (model: string) => void;
   setProviderBaseUrl: (baseUrl: string) => void;
+  setMaxReplyTokens: (tokens: number) => void;
+  setSystemPrompt: (prompt: string) => void;
   setLocalModelReady: (ready: boolean) => void;
   /** Mark the tour done and close it, whether it ran for the first time or as a replay. */
   completeOnboarding: () => void;
@@ -143,6 +156,11 @@ function syncSetting(key: string, value: unknown) {
   void invoke("set_setting", { key, value: JSON.stringify(value) }).catch(() => {
     // Local persistence remains the offline fallback if the desktop database is unavailable.
   });
+}
+
+function clearAdditionalSystemPrompt(persisted: unknown, version: number) {
+  if (version >= 4 || !persisted || typeof persisted !== "object") return persisted;
+  return { ...(persisted as Record<string, unknown>), systemPrompt: "" };
 }
 
 function syncProgress(moduleId: string, progress: ModuleProgress) {
@@ -198,6 +216,8 @@ export const useAppStore = create<AppState>()(
       provider: "none",
       providerModel: "",
       providerBaseUrl: "",
+      maxReplyTokens: DEFAULT_MAX_REPLY_TOKENS,
+      systemPrompt: "",
       localModelReady: false,
       onboarded: false,
       onboardingReplay: false,
@@ -423,6 +443,16 @@ export const useAppStore = create<AppState>()(
         set({ providerBaseUrl });
         syncSetting("provider_base_url", providerBaseUrl);
       },
+      setMaxReplyTokens: (maxReplyTokens) => {
+        const next = Math.max(MIN_MAX_REPLY_TOKENS, Math.min(MAX_MAX_REPLY_TOKENS, Math.round(maxReplyTokens)));
+        set({ maxReplyTokens: next });
+        syncSetting("MAX_TOKENS", next);
+      },
+      setSystemPrompt: (systemPrompt) => {
+        const next = systemPrompt.slice(0, MAX_SYSTEM_PROMPT_CHARS);
+        set({ systemPrompt: next });
+        syncSetting("SYS_PROMPT", next);
+      },
       setLocalModelReady: (localModelReady) => set({ localModelReady }),
       completeOnboarding: () => set({ onboarded: true, onboardingReplay: false }),
       replayOnboarding: () => set({ onboardingReplay: true }),
@@ -433,9 +463,14 @@ export const useAppStore = create<AppState>()(
       // Version 2: `checkpointCorrect` (one boolean) became `checkpointResults` (one entry per question).
       // Version 3: added `onboarded`; state from any earlier version marks the learner as onboarded.
       // The steps compose, oldest first, so a version 1 store passes through both.
-      version: 3,
+      // Version 4: `systemPrompt` holds the whole guide template, not an addition to it. Text saved
+      // under version 3 was an addition, so it is cleared rather than read as a replacement.
+      version: 4,
       migrate: (persisted, version) =>
-        migrateOnboardedFlag(migratePersistedState(persisted, version), version) as AppState,
+        migrateOnboardedFlag(
+          migratePersistedState(clearAdditionalSystemPrompt(persisted, version), version),
+          version,
+        ) as AppState,
       partialize: (state) => ({
         theme: state.theme,
         typeface: state.typeface,
@@ -454,6 +489,8 @@ export const useAppStore = create<AppState>()(
         provider: state.provider,
         providerModel: state.providerModel,
         providerBaseUrl: state.providerBaseUrl,
+        maxReplyTokens: state.maxReplyTokens,
+        systemPrompt: state.systemPrompt,
         localModelReady: state.localModelReady,
         onboarded: state.onboarded,
         lastHomeHero: state.lastHomeHero,

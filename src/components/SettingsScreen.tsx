@@ -11,13 +11,16 @@ import {
   Palette,
   Play,
   RotateCcw,
+  ChevronDown,
   ShieldCheck,
+  SlidersHorizontal,
   Sun,
   Type,
   Upload,
 } from "lucide-react";
-import { useRef, useState } from "react";
+import { Fragment, useRef, useState } from "react";
 import { fontScaleForStep, useAppStore } from "@app/store/app-store";
+import { CloudModelSettings } from "./CloudModelSettings";
 import { CloudProviderSettings } from "./CloudProviderSettings";
 import { LicencesPanel } from "./LicencesPanel";
 import { LocalModelSettings } from "./LocalModelSettings";
@@ -29,10 +32,14 @@ const tabs = [
   ["accessibility", "Accessibility", Accessibility],
   ["explanations", "Explanation mode", Type],
   ["local", "Local model", Laptop],
-  ["cloud", "Cloud providers", Cloud],
+  ["cloud", "Connection", Cloud],
+  ["cloud-model", "Model settings", SlidersHorizontal],
   ["data", "Data", Database],
   ["about", "About", Info],
 ] as const;
+
+/** Sub-sections listed under the "Cloud providers" heading in the menu. */
+const cloudTabs = new Set<string>(["cloud", "cloud-model"]);
 
 function SettingRow({
   title,
@@ -81,6 +88,9 @@ export function SettingsScreen() {
   const tab = store.settingsTab;
   const setTab = store.setSettingsTab;
   const [dataStatus, setDataStatus] = useState("");
+  const [cloudOpen, setCloudOpen] = useState(false);
+  // The cloud sub-sections stay visible while one of them is the open page.
+  const cloudExpanded = cloudOpen || cloudTabs.has(tab);
   const importRef = useRef<HTMLInputElement>(null);
 
   const exportData = () => {
@@ -126,17 +136,45 @@ export function SettingsScreen() {
 
       <div className="settings-layout">
         <nav className="settings-tabs" aria-label="Settings sections">
-          {tabs.map(([id, label, Icon]) => (
-            <button
-              type="button"
-              key={id}
-              className={tab === id ? "is-active" : ""}
-              aria-current={tab === id ? "page" : undefined}
-              onClick={() => setTab(id)}
-            >
-              <Icon /><span>{label}</span>
-            </button>
-          ))}
+          {tabs.map(([id, label, Icon]) => {
+            if (id === "cloud") {
+              return (
+                <Fragment key={id}>
+                  <button
+                    type="button"
+                    className="settings-tabs-parent"
+                    aria-expanded={cloudExpanded}
+                    onClick={() => setCloudOpen(!cloudExpanded)}
+                  >
+                    <Cloud /><span>Cloud providers</span>
+                    <ChevronDown className={cloudExpanded ? "is-open" : ""} aria-hidden="true" />
+                  </button>
+                  {cloudExpanded && (
+                    <button
+                      type="button"
+                      className={["is-nested", tab === id ? "is-active" : ""].join(" ").trim()}
+                      aria-current={tab === id ? "page" : undefined}
+                      onClick={() => setTab(id)}
+                    >
+                      <Icon /><span>{label}</span>
+                    </button>
+                  )}
+                </Fragment>
+              );
+            }
+            if (cloudTabs.has(id) && !cloudExpanded) return null;
+            return (
+              <button
+                key={id}
+                type="button"
+                className={[cloudTabs.has(id) ? "is-nested" : "", tab === id ? "is-active" : ""].join(" ").trim()}
+                aria-current={tab === id ? "page" : undefined}
+                onClick={() => setTab(id)}
+              >
+                <Icon /><span>{label}</span>
+              </button>
+            );
+          })}
         </nav>
 
         <section className="settings-content">
@@ -250,9 +288,16 @@ export function SettingsScreen() {
 
           {tab === "cloud" && (
             <>
-              <SectionHeading title="Cloud providers" description="Choose a provider and model, then test your key before it goes in the OS keychain." />
+              <SectionHeading title="Connection" description="Choose a provider and model, then test your key before it goes in the OS keychain." />
               <CloudProviderSettings />
               <p className="privacy-note"><ShieldCheck /> Keys never enter SQLite, local exports, logs, or frontend persistence.</p>
+            </>
+          )}
+
+          {tab === "cloud-model" && (
+            <>
+              <SectionHeading title="Model settings" description="How long a cloud reply may be, and the instructions the topic guide follows." />
+              <CloudModelSettings />
             </>
           )}
 
