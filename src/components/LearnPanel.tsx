@@ -1,9 +1,12 @@
 import {
+  ArrowLeft,
   Bookmark,
   BookmarkCheck,
+  Check,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  FlaskConical,
   History,
   ListTree,
   Square,
@@ -22,9 +25,10 @@ import {
   useState,
 } from "react";
 import type { ComponentPropsWithoutRef, KeyboardEvent, ReactNode } from "react";
-import type { ExplanationMode } from "@app/module-sdk";
+import type { ExplanationMode, LabScene } from "@app/module-sdk";
 import type { RegisteredModule } from "@app/modules/registry";
 import { modules } from "@app/modules/registry";
+import { placeScenes } from "@app/lib/lab-scenes";
 import {
   LEARN_SECTION_SELECTOR,
   activeLearnIndex,
@@ -53,36 +57,75 @@ const sectionNumber = (value: number) => String(value).padStart(2, "0");
 interface LearnHeadingContextValue {
   isBookmarked: (section: string) => boolean;
   toggle: (section: string) => void;
+  /** The lab scene whose card sits under this heading, if any. */
+  sceneAt: (section: string) => LabScene | undefined;
+  activeSceneId: string | null;
+  showScene: (scene: LabScene, section: string) => void;
 }
 
 const LearnHeadingContext = createContext<LearnHeadingContextValue | null>(null);
 
+/** Opens the lab on what the section above it describes. Speech skips it: it is a control, not lesson text. */
+function LabSceneCard({ scene, active, onShow }: { scene: LabScene; active: boolean; onShow: () => void }) {
+  const lookId = useId();
+  return (
+    <button
+      type="button"
+      className="learn-scene"
+      data-active={active || undefined}
+      data-speech-skip=""
+      aria-label={`${active ? "Showing in the lab" : "See it in the lab"}: ${scene.title}`}
+      aria-describedby={lookId}
+      onClick={onShow}
+    >
+      <FlaskConical className="learn-scene__icon" />
+      <span className="learn-scene__text">
+        <small>{active ? "Showing in the lab" : "See it in the lab"}</small>
+        <strong>{scene.title}</strong>
+        <span id={lookId}>{scene.look}</span>
+      </span>
+      {active ? <Check className="learn-scene__go" /> : <ArrowLeft className="learn-scene__go" />}
+    </button>
+  );
+}
+
 /**
  * A lesson heading with its bookmark toggle beside it, not inside it, so the heading's text (which
  * search, speech and the table of contents read) and its accessible name stay exactly the title.
+ * A lab scene's card, when this section has one, follows the heading.
  */
 function LearnHeading({ level, children, ...props }: ComponentPropsWithoutRef<"h2"> & { level: 2 | 3 }) {
   const context = useContext(LearnHeadingContext);
   const text = headingText(children);
   const Heading = level === 2 ? "h2" : "h3";
   const saved = context?.isBookmarked(text) ?? false;
+  const scene = text ? context?.sceneAt(text) : undefined;
   return (
-    <div className={`learn-heading learn-heading--h${level}`}>
-      <Heading {...props} data-learn-section={text} data-learn-level={level}>{children}</Heading>
-      {context && text && (
-        <button
-          type="button"
-          className="learn-heading__bookmark"
-          aria-pressed={saved}
-          aria-label={`Bookmark “${text}”`}
-          data-tooltip={saved ? "Remove bookmark" : "Bookmark this section"}
-          data-tooltip-side="left"
-          onClick={() => context.toggle(text)}
-        >
-          {saved ? <BookmarkCheck /> : <Bookmark />}
-        </button>
+    <>
+      <div className={`learn-heading learn-heading--h${level}`}>
+        <Heading {...props} data-learn-section={text} data-learn-level={level}>{children}</Heading>
+        {context && text && (
+          <button
+            type="button"
+            className="learn-heading__bookmark"
+            aria-pressed={saved}
+            aria-label={`Bookmark “${text}”`}
+            data-tooltip={saved ? "Remove bookmark" : "Bookmark this section"}
+            data-tooltip-side="left"
+            onClick={() => context.toggle(text)}
+          >
+            {saved ? <BookmarkCheck /> : <Bookmark />}
+          </button>
+        )}
+      </div>
+      {context && scene && (
+        <LabSceneCard
+          scene={scene}
+          active={context.activeSceneId === scene.id}
+          onShow={() => context.showScene(scene, text)}
+        />
       )}
-    </div>
+    </>
   );
 }
 
@@ -240,10 +283,16 @@ function LearnContents({
 export function LearnPanel({
   module,
   onSectionChange,
+  activeSceneId = null,
+  onShowScene,
 }: {
   module: RegisteredModule;
   /** Reports the section being read, and null when the panel closes. */
   onSectionChange?: (entry: LearnEntry | null) => void;
+  /** The lab scene the lab is showing, so its card can say so. */
+  activeSceneId?: string | null;
+  /** Called when a "See it in the lab" card is pressed, with the heading it sits under. */
+  onShowScene?: (scene: LabScene, section: string) => void;
 }) {
   const mode = useAppStore((state) => state.mode);
   const setMode = useAppStore((state) => state.setMode);
@@ -296,9 +345,21 @@ export function LearnPanel({
     [entries, mode, module.id, toggleBookmark],
   );
 
+  // Placed from the headings this mode's lesson actually has, once they are collected.
+  const scenes = useMemo(
+    () => (onShowScene ? placeScenes(module.scenes, entries.map((entry) => entry.text)) : new Map<string, LabScene>()),
+    [entries, module.scenes, onShowScene],
+  );
+
   const headingContext = useMemo<LearnHeadingContextValue>(
-    () => ({ isBookmarked: (section) => bookmarked.has(normalizeHeading(section)), toggle: toggleSection }),
-    [bookmarked, toggleSection],
+    () => ({
+      isBookmarked: (section) => bookmarked.has(normalizeHeading(section)),
+      toggle: toggleSection,
+      sceneAt: (section) => scenes.get(normalizeHeading(section)),
+      activeSceneId,
+      showScene: (scene, section) => onShowScene?.(scene, section),
+    }),
+    [activeSceneId, bookmarked, onShowScene, scenes, toggleSection],
   );
 
   // Rendered once per mode: scrolling and bookmarking reach the headings through context instead.

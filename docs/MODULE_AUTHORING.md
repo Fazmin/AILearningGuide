@@ -160,6 +160,48 @@ Surface labels must be string literals so both checks can read them statically. 
 scaffolded module renders the `PlannedLab` placeholder and inherits its single
 `Planned interactive` surface until its own lab replaces it.
 
+## Lab scenes
+
+A lab scene connects a lesson section to the lab beside it. The Learn panel shows a "See it in
+the lab" card under the section's heading. Pressing it moves the lab to a step, applies the
+scene's settings, and scrolls to the card the section is about. A banner in the lab names the
+section and offers **Back to my lab**, which restores the setup the reader had before. Scenes
+are optional. They live in `scenes.ts`, which `registry.ts` globs like `card-info.ts`:
+
+```ts
+import type { LabScene } from "@app/module-sdk";
+
+const scenes: LabScene[] = [
+  {
+    id: "mask-lifted",
+    sections: ["Lift the one-way rule", "Lift the mask"],
+    title: "Mask lifted",
+    look: "Shares appear above the diagonal, and the strip under the arcs adds on later characters.",
+    step: 4,
+    state: { mask: "bidirectional", layer: 1, head: 3 },
+    focus: "Attention matrix",
+  },
+];
+
+export default scenes;
+```
+
+- `sections` lists headings in order of preference. The reading modes don't share every `###`
+  subsection, so the card goes under the first heading the current mode has. Put the specific
+  subsection first, then the broader heading Standard uses for the same idea. A heading holds
+  one card.
+- `state` is laid over `initialState`, not over whatever the reader had. The lab therefore
+  shows the numbers the lesson quotes. Use only keys `initialState` has, with values the
+  module's own `hydrateState` keeps as they are.
+- `step` is optional. Labs that reset their own stage when the step changes still get the
+  scene's `state`, because the shell applies it a frame after the step.
+- `focus` is the exact `LabSurface` label to reveal.
+- `look` is one plain sentence saying where to look and what changes. All three modes share
+  it, so write it at the Simple level.
+
+`src/modules/scenes.test.ts` checks every scene against the lessons, the step count, the state
+round trip, and the rendered cards. `src/modules/attention/scenes.ts` is the worked example.
+
 ## Content
 
 Both MDX files share `objectives` and `terms` frontmatter and contain exactly these seven `##`

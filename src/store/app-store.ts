@@ -112,6 +112,7 @@ interface AppState {
   setFontStep: (fontStep: number) => void;
   toggleSidebar: () => void;
   setLearnOpen: (open: boolean) => void;
+  setLearnExpanded: (expanded: boolean) => void;
   /** Learn toggle: closed -> open -> expanded -> closed. */
   cycleLearnPanel: () => void;
   setChatOpen: (open: boolean) => void;
@@ -270,6 +271,7 @@ export const useAppStore = create<AppState>()(
       },
       toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
       setLearnOpen: (learnOpen) => set(learnOpen ? { learnOpen } : { learnOpen, learnExpanded: false }),
+      setLearnExpanded: (learnExpanded) => set({ learnExpanded }),
       cycleLearnPanel: () =>
         set((state) => {
           if (!state.learnOpen) return { learnOpen: true, learnExpanded: false };

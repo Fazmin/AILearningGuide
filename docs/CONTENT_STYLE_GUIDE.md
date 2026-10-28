@@ -58,6 +58,13 @@ likely place for a learner to mistake a demonstration for inference. Name the sy
 parts there, not only in the lesson: which readouts are closed-form, which strings are
 fixed, and whether a value was measured or predicted.
 
+## Lab scenes
+
+A scene's `look` sentence (in `scenes.ts`) appears under a lesson heading in every mode, so
+write it at the Simple level. Name the control or readout as the interface labels it, and say
+what to watch change. Leave the numbers to the lesson: it states them right above the card,
+and a second copy is one more place to fall out of date.
+
 ## Standard mode
 
 Use the accepted technical vocabulary, compact equations where useful, and precise qualifiers. Define specialized terms near first use. Standard does not mean academic or needlessly formal.

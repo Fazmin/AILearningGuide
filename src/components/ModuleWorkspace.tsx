@@ -20,18 +20,20 @@ import {
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import type { LocalChatChunk } from "@app/lib/local-ai";
-import type { ModuleState } from "@app/module-sdk";
+import type { LabScene, ModuleState } from "@app/module-sdk";
 import { CardInfoProvider, checkpointQuestions } from "@app/module-sdk";
 import type { RegisteredModule } from "@app/modules/registry";
 import { modules } from "@app/modules/registry";
+import { sceneState } from "@app/lib/lab-scenes";
 import type { LearnEntry } from "@app/lib/learn-sections";
 import { encodeState } from "@app/lib/math";
 import { useAppStore } from "@app/store/app-store";
 import { checkpointTally } from "@app/store/checkpoint-progress";
 import { BookmarksPanel } from "./BookmarksPanel";
+import { LabSceneBanner } from "./LabSceneBanner";
 import { LearnPanel } from "./LearnPanel";
 import { PrerequisiteBar } from "./PrerequisiteBar";
 import { GuideMarkdown } from "./GuideMarkdown";
@@ -43,6 +45,16 @@ interface GuideMessage {
   text: string;
   pending?: boolean;
 }
+
+/** A lab scene on show, with the reader's own setup from before the first one. */
+interface ShownScene {
+  scene: LabScene;
+  section: string;
+  before: { state: ModuleState; step: number };
+}
+
+/** Below this width the Learn panel is laid over the lab instead of beside it (styles.css). */
+const LEARN_OVERLAY_QUERY = "(max-width: 1050px)";
 
 function builtInReply(module: RegisteredModule, message: string, currentStep: number) {
   const normalized = message.toLowerCase();
@@ -313,6 +325,9 @@ export function ModuleWorkspace({ module }: { module: RegisteredModule }) {
   const [toast, setToast] = useState("");
   const [announcement, setAnnouncement] = useState("");
   const exploreScrollRef = useRef<HTMLDivElement>(null);
+  const [shownScene, setShownScene] = useState<ShownScene | null>(null);
+  const sceneBannerRef = useRef<HTMLDivElement>(null);
+  const pendingLabFrame = useRef(0);
   const moduleIndex = modules.findIndex((item) => item.id === module.id);
   const checkpointTotal = checkpointQuestions(module).length;
   const checkpointTallyNow = checkpointTally(progress?.checkpointResults, checkpointTotal);
@@ -360,28 +375,83 @@ export function ModuleWorkspace({ module }: { module: RegisteredModule }) {
     return () => window.cancelAnimationFrame(frame);
   }, [currentStep, module.id, store.reducedMotion]);
 
+  /** Scroll a lab card into view and flash it; false when the lab is not showing that card. */
+  const revealSurface = useCallback((label: string, block: ScrollLogicalPosition) => {
+    const target = exploreScrollRef.current?.querySelector<HTMLElement>(`[data-lab-surface="${CSS.escape(label)}"]`);
+    if (!target) return false;
+    target.dataset.searchHit = "true";
+    target.scrollIntoView({
+      behavior: useAppStore.getState().reducedMotion ? "auto" : "smooth",
+      block,
+      inline: "nearest",
+    });
+    window.setTimeout(() => {
+      delete target.dataset.searchHit;
+    }, 1600);
+    return true;
+  }, []);
+
   useEffect(() => {
     if (store.searchFocus?.kind !== "card" || store.searchFocus.moduleId !== module.id) return;
-    const root = exploreScrollRef.current;
-    if (!root) return;
+    const label = store.searchFocus.label;
     const frame = window.requestAnimationFrame(() => {
-      const target = root.querySelector<HTMLElement>(
-        `[data-lab-surface="${CSS.escape(store.searchFocus && store.searchFocus.kind === "card" ? store.searchFocus.label : "")}"]`,
-      );
-      if (!target) return;
-      target.dataset.searchHit = "true";
-      target.scrollIntoView({
-        behavior: store.reducedMotion ? "auto" : "smooth",
-        block: "center",
-        inline: "nearest",
-      });
-      window.setTimeout(() => {
-        delete target.dataset.searchHit;
-      }, 1600);
-      store.setSearchFocus(null);
+      if (revealSurface(label, "center")) store.setSearchFocus(null);
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [module.id, store.reducedMotion, store.searchFocus, store.setSearchFocus]);
+  }, [module.id, revealSurface, store.searchFocus, store.setSearchFocus]);
+
+  /**
+   * Move the lab to a step and a state. Labs that follow the step reset their own stage when it changes
+   * (attention, backpropagation), so the state goes in a frame after that has happened, and the card is
+   * revealed a frame after the lab has drawn it.
+   */
+  const applyLab = useCallback(
+    (step: number | undefined, state: ModuleState, focus?: string) => {
+      const { setCurrentStep, setModuleState } = useAppStore.getState();
+      window.cancelAnimationFrame(pendingLabFrame.current);
+      if (step !== undefined) setCurrentStep(module.id, Math.min(Math.max(0, step), module.steps.length - 1));
+      pendingLabFrame.current = window.requestAnimationFrame(() => {
+        pendingLabFrame.current = window.requestAnimationFrame(() => {
+          setModuleState(module.id, state);
+          if (!focus) return;
+          pendingLabFrame.current = window.requestAnimationFrame(() => revealSurface(focus, "start"));
+        });
+      });
+    },
+    [module.id, module.steps.length, revealSurface],
+  );
+
+  useEffect(() => () => window.cancelAnimationFrame(pendingLabFrame.current), []);
+
+  const showScene = useCallback(
+    (scene: LabScene, section: string) => {
+      const app = useAppStore.getState();
+      const before = {
+        state: { ...module.initialState, ...(app.moduleStates[module.id] ?? {}) },
+        step: Math.min(app.progress[module.id]?.currentStep ?? 0, module.steps.length - 1),
+      };
+      // Keep the setup from before the first scene, so a chain of scenes still leads back to it.
+      setShownScene((shown) => ({ scene, section, before: shown?.before ?? before }));
+      // The lab has to be visible: leave the wide reading view, and over a narrow window step aside.
+      const overlaid = window.matchMedia(LEARN_OVERLAY_QUERY).matches;
+      if (overlaid) app.setLearnOpen(false);
+      else if (app.learnExpanded) app.setLearnExpanded(false);
+      applyLab(scene.step, sceneState(module.initialState, scene), scene.focus);
+      if (overlaid) window.requestAnimationFrame(() => sceneBannerRef.current?.focus());
+    },
+    [applyLab, module],
+  );
+
+  const restoreLab = () => {
+    if (shownScene) applyLab(shownScene.before.step, shownScene.before.state);
+    setShownScene(null);
+  };
+
+  const returnToReading = () => {
+    if (!shownScene) return;
+    store.setSearchFocus({ kind: "learn", moduleId: module.id, mode: store.mode, section: shownScene.section });
+    store.setLearnOpen(true);
+  };
 
   const share = async () => {
     const encoded = encodeState({
@@ -467,9 +537,27 @@ export function ModuleWorkspace({ module }: { module: RegisteredModule }) {
               />
             </CardInfoProvider>
           </div>
+          {shownScene && (
+            <LabSceneBanner
+              ref={sceneBannerRef}
+              scene={shownScene.scene}
+              section={shownScene.section}
+              learnClosed={!store.learnOpen}
+              onRestore={restoreLab}
+              onReturnToReading={returnToReading}
+              onDismiss={() => setShownScene(null)}
+            />
+          )}
         </section>
 
-        {store.learnOpen && <LearnPanel module={module} onSectionChange={setLearnSection} />}
+        {store.learnOpen && (
+          <LearnPanel
+            module={module}
+            onSectionChange={setLearnSection}
+            activeSceneId={shownScene?.scene.id ?? null}
+            onShowScene={showScene}
+          />
+        )}
         {store.chatOpen && <GuidePanel module={module} currentStep={currentStep} currentState={currentState} />}
       </div>
 
@@ -502,6 +590,8 @@ export function ModuleWorkspace({ module }: { module: RegisteredModule }) {
         </div>
         <div className="dock-actions">
           <IconButton label="Reset interactive" tooltipSide="top" onClick={() => {
+            window.cancelAnimationFrame(pendingLabFrame.current);
+            setShownScene(null);
             store.resetModuleState(module.id, module.initialState);
             setToast("Interactive reset");
           }}><RotateCcw /></IconButton>

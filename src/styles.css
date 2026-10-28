@@ -3707,6 +3707,7 @@ select {
 }
 
 .explore-region {
+  position: relative;
   display: grid;
   grid-template-rows: 2.35rem auto minmax(0, 1fr);
   min-width: 0;
@@ -3784,6 +3785,133 @@ select {
   min-height: 0;
   padding: clamp(0.8rem, 2vw, 1.5rem);
   overflow: auto;
+}
+
+/* A lesson scene scrolls its card to the top; keep a little air above it. */
+.explore-scroll [data-lab-surface] {
+  scroll-margin-top: 0.75rem;
+}
+
+/* Which lesson section set the lab up. Laid over the bottom so the card it points at stays clear. */
+.lab-scene-banner {
+  position: absolute;
+  z-index: 6;
+  right: 0.75rem;
+  bottom: 0.75rem;
+  left: 0.75rem;
+  display: flex;
+  align-items: center;
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: 0.6rem 0.5rem 0.6rem 0.8rem;
+  border: 1px solid color-mix(in srgb, var(--module-accent) 40%, var(--line-strong));
+  border-left: 0.2rem solid var(--module-accent);
+  border-radius: var(--radius-md);
+  background: var(--panel-solid);
+  box-shadow: var(--shadow-float);
+  gap: 0.7rem;
+  animation: learn-resume-in 180ms ease-out;
+}
+
+.lab-scene-banner:focus {
+  outline: none;
+}
+
+/* Room to scroll the lab's last card out from under the banner. */
+.explore-region:has(.lab-scene-banner) .explore-scroll {
+  padding-bottom: 7.5rem;
+}
+
+.lab-scene-banner__icon {
+  width: 1.05rem;
+  height: 1.05rem;
+  flex: 0 0 auto;
+  color: var(--module-accent);
+}
+
+.lab-scene-banner__text {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.lab-scene-banner__text span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.6875rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lab-scene-banner__text strong {
+  color: var(--ink);
+  font-size: 0.8rem;
+  font-weight: 650;
+}
+
+.lab-scene-banner__text p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.75rem;
+  line-height: 1.42;
+}
+
+.lab-scene-banner__actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.lab-scene-banner__action {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.42rem 0.65rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  background: var(--panel-solid);
+  font-size: 0.75rem;
+  font-weight: 600;
+  gap: 0.35rem;
+  white-space: nowrap;
+}
+
+.lab-scene-banner__action:hover {
+  border-color: var(--module-accent);
+}
+
+.lab-scene-banner__action svg {
+  width: 0.85rem;
+  height: 0.85rem;
+}
+
+.lab-scene-banner .icon-button {
+  width: 1.8rem;
+  height: 1.8rem;
+}
+
+@media (max-width: 680px) {
+  .lab-scene-banner {
+    flex-wrap: wrap;
+  }
+
+  .lab-scene-banner__actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lab-scene-banner {
+    animation: none;
+  }
+}
+
+:root[data-motion="reduced"] .lab-scene-banner {
+  animation: none;
 }
 
 /*
@@ -4681,6 +4809,97 @@ select {
 
 [data-learn-section]:focus:not([data-search-hit="true"]) {
   outline: none;
+}
+
+/* "See it in the lab": sets the lab beside the lesson up the way the section above it describes. */
+.learn-scene {
+  display: flex;
+  align-items: flex-start;
+  width: 100%;
+  margin: 0.35rem 0 0.6rem;
+  padding: 0.6rem 0.65rem;
+  border: 1px solid color-mix(in srgb, var(--module-accent) 28%, var(--line));
+  border-left: 0.2rem solid var(--module-accent);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  background: color-mix(in srgb, var(--module-accent) 6%, var(--panel-solid));
+  text-align: left;
+  gap: 0.55rem;
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+
+.learn-scene:hover {
+  border-color: color-mix(in srgb, var(--module-accent) 55%, var(--line));
+  background: color-mix(in srgb, var(--module-accent) 11%, var(--panel-solid));
+}
+
+.learn-scene[data-active] {
+  border-color: var(--module-accent);
+  background: color-mix(in srgb, var(--module-accent) 13%, var(--panel-solid));
+}
+
+.learn-scene__icon,
+.learn-scene__go {
+  width: 0.95rem;
+  height: 0.95rem;
+  flex: 0 0 auto;
+  margin-top: 0.1rem;
+  color: var(--module-accent);
+}
+
+.learn-scene__go {
+  align-self: center;
+  margin-top: 0;
+  transition: transform 120ms ease;
+}
+
+.learn-scene:hover .learn-scene__go {
+  transform: translateX(-0.15rem);
+}
+
+.learn-scene[data-active] .learn-scene__go {
+  transform: none;
+}
+
+.learn-scene__text {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.12rem;
+}
+
+.learn-scene__text small {
+  color: var(--module-accent);
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.learn-scene__text strong {
+  font-size: 0.8125rem;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.learn-scene__text span {
+  color: var(--ink-soft);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .learn-scene,
+  .learn-scene__go {
+    transition: none;
+  }
+}
+
+:root[data-motion="reduced"] .learn-scene,
+:root[data-motion="reduced"] .learn-scene__go {
+  transition: none;
 }
 
 .learn-copy p {

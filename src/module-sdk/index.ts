@@ -110,6 +110,7 @@ export type {
   Checkpoint,
   ExplanationMode,
   GlossaryTerm,
+  LabScene,
   Reference,
   MdxModule,
   ModuleContext,

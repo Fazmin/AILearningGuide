@@ -16,9 +16,17 @@ export function normalizeSpeechText(text: string) {
     .trim();
 }
 
+/** The text of `element` without its `[data-speech-skip]` parts, such as the lab scene cards. */
+function speakableText(element: Element | null) {
+  if (!element) return "";
+  const copy = element.cloneNode(true) as Element;
+  copy.querySelectorAll("[data-speech-skip]").forEach((skipped) => skipped.remove());
+  return copy.textContent ?? "";
+}
+
 export function textFromLearnRoot(root: ParentNode) {
   return [".objectives", ".learn-copy"]
-    .map((selector) => normalizeSpeechText(root.querySelector(selector)?.textContent ?? ""))
+    .map((selector) => normalizeSpeechText(speakableText(root.querySelector(selector))))
     .filter(Boolean)
     .join("\n\n");
 }

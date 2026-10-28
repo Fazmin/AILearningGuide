@@ -16,6 +16,21 @@ describe("learn panel speech", () => {
     expect(text).not.toContain("nonlinear activation");
   });
 
+  it("skips the lab scene cards inside the lesson", () => {
+    const root = document.createElement("div");
+    root.innerHTML = `
+      <article class="learn-copy">
+        <h3>Lift the one-way rule</h3>
+        <button data-speech-skip="">See it in the lab Mask lifted</button>
+        <p>Set Mask to Bidirectional.</p>
+      </article>
+    `;
+    const text = textFromLearnRoot(root);
+    expect(text).toContain("Lift the one-way rule");
+    expect(text).toContain("Set Mask to Bidirectional.");
+    expect(text).not.toContain("See it in the lab");
+  });
+
   it("collapses extra whitespace", () => {
     expect(normalizeSpeechText("  Hello   \n\n\n  world\t ")).toBe("Hello\n\nworld");
   });

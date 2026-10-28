@@ -1,4 +1,5 @@
 import type {
+  LabScene,
   MdxModule,
   ModuleCardInfo,
   ModuleDefinition,
@@ -17,6 +18,10 @@ const cardInfoFiles = import.meta.glob<{ default: ModuleCardInfo }>("./*/card-in
   eager: true,
 });
 
+const sceneFiles = import.meta.glob<{ default: LabScene[] }>("./*/scenes.ts", {
+  eager: true,
+});
+
 export interface RegisteredModule extends ModuleDefinition {
   content: {
     simple: MdxModule["default"];
@@ -25,6 +30,8 @@ export interface RegisteredModule extends ModuleDefinition {
   };
   /** Per-surface explanations, keyed by `LabSurface` label. */
   cardInfo: ModuleCardInfo;
+  /** Lab setups the lesson's sections can open; empty for a module without a scenes.ts. */
+  scenes: LabScene[];
 }
 
 export const modules: RegisteredModule[] = Object.values(moduleFiles)
@@ -50,6 +57,7 @@ export const modules: RegisteredModule[] = Object.values(moduleFiles)
       ...definition,
       content: { simple, plain, standard },
       cardInfo: cardInfoFiles[`./${definition.slug}/card-info.ts`]?.default ?? {},
+      scenes: sceneFiles[`./${definition.slug}/scenes.ts`]?.default ?? [],
     };
   })
   .sort((a, b) => a.order - b.order);

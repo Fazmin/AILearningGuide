@@ -38,6 +38,26 @@ export interface Checkpoint {
   objective?: number;
 }
 
+/**
+ * A setup of the lab that a lesson section can open, so the reader sees what the text describes.
+ * The Learn panel shows it as a "See it in the lab" card under the section's heading.
+ */
+export interface LabScene {
+  id: string;
+  /** Lesson headings in order of preference. The card goes under the first one the current reading mode has. */
+  sections: string[];
+  /** Short name on the card and the lab banner. */
+  title: string;
+  /** One plain sentence: where to look and what changes. */
+  look: string;
+  /** Shell step to move to first, so that step's highlight and "Try this" come with the scene. */
+  step?: number;
+  /** Settings applied over the module's `initialState`, so the scene looks the same whatever the reader did before. */
+  state?: Partial<ModuleState>;
+  /** The `LabSurface` label to scroll to and flash. */
+  focus?: string;
+}
+
 export interface ModuleContext {
   state: ModuleState;
   setState: (patch: Partial<ModuleState>) => void;
