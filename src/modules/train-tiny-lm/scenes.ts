@@ -1,0 +1,137 @@
+import type { LabScene } from "@app/module-sdk";
+
+/**
+ * Lab setups the lesson opens from its sections. Every scene starts from the lab's defaults (Harbor
+ * weather notes, rank 8, 20 epochs, rate 0.5 on Constant, batch 16, clip off, cleaned scrape), so the
+ * readouts show the lesson's own numbers. `wizard` is the 0-based `Choice N of 4` marker; scenes set
+ * it to the stage the shell step is about, as the lab's own controls would.
+ */
+const scenes: LabScene[] = [
+  {
+    id: "three-texts",
+    sections: ["Compare the three texts", "How to play with it"],
+    title: "Three small texts",
+    look: "Press each corpus button and read its character count, then see how the Model card splits that text.",
+    step: 0,
+    focus: "Build a model in four choices",
+  },
+  {
+    id: "model-size",
+    sections: ["What Model size does", "What Model size changes"],
+    title: "Rank sets the weight count",
+    look: "Drag Model size and watch its readout give the rank and the number of weights.",
+    step: 1,
+    state: { wizard: 1 },
+    focus: "Size and epochs",
+  },
+  {
+    id: "walk-size",
+    sections: ["Walk Model size up"],
+    title: "Walk Model size up",
+    look: "Move Model size up from rank 1, and read Training loss and Held-out loss here at each stop.",
+    step: 1,
+    state: { wizard: 1, rank: 1 },
+    focus: "Model card",
+  },
+  {
+    id: "rank-one-wall",
+    sections: ["Hit the wall at rank 1"],
+    title: "The wall at rank 1",
+    look: "The callout under the sliders says how far ahead the full table is, and the solid curve goes nearly flat.",
+    step: 1,
+    state: { wizard: 1, rank: 1, epochs: 30 },
+    focus: "Size and epochs",
+  },
+  {
+    id: "read-samples",
+    sections: ["Read the samples"],
+    title: "Samples A, B and C",
+    look: "Read samples A, B and C under the chart, and find the same letters marked on the solid curve.",
+    step: 2,
+    state: { wizard: 2 },
+    focus: "Training progress and samples",
+  },
+  {
+    id: "proverbs-overfit",
+    sections: ["Watch overfitting happen"],
+    title: "Overfitting on Proverbs",
+    look: "The dashed held-out line falls, bottoms out and turns back up, while the solid training line keeps going down.",
+    step: 2,
+    state: { wizard: 2, corpusId: "proverbs", rank: 12, epochs: 30 },
+    focus: "Training progress and samples",
+  },
+  {
+    id: "honest-loss",
+    sections: ["The flattering loss and the honest one", "Why it’s here"],
+    title: "Training and held-out loss",
+    look: "The solid line is training loss, the dashed line is held-out loss, and the shaded band between them is the gap.",
+    step: 4,
+    state: { wizard: 3 },
+    focus: "Training progress and samples",
+  },
+  {
+    id: "sharing-wins",
+    sections: ["The smaller model wins, and sharing is the reason", "What to notice"],
+    title: "The smaller model wins",
+    look: "The callout under the sliders says your model fits better than the full table, and counts the weights one example moves.",
+    step: 1,
+    state: { wizard: 1 },
+    focus: "Size and epochs",
+  },
+  {
+    id: "training-text",
+    sections: ["The training text", "What the recipe changes"],
+    title: "What cleaning removes",
+    look: "The note under Training text counts the lines in the scrape and how many each cleaning stage throws out.",
+    step: 3,
+    state: { wizard: 2 },
+    focus: "Training recipe",
+  },
+  {
+    id: "set-recipe",
+    sections: ["Set the recipe"],
+    title: "Rate and schedule together",
+    look: "Raise Learning rate to 4, then switch Schedule to Cosine decay, and read Held out after each change.",
+    step: 3,
+    state: { wizard: 2 },
+    focus: "Training recipe",
+  },
+  {
+    id: "break-run",
+    sections: ["Break the run, then rescue it"],
+    title: "A run that diverges",
+    look: "The warning says the run diverged, so turn Gradient clip up to 0.50 and watch Clipped steps count the shrunk steps.",
+    step: 3,
+    state: { wizard: 2, learningRate: 8 },
+    focus: "Training recipe",
+  },
+  {
+    id: "batch-size",
+    sections: ["Change the batch size"],
+    title: "Batch size against steps",
+    look: "Move Batch size from 8 to 16 and then 64, and watch Steps fall while Held out changes.",
+    step: 3,
+    state: { wizard: 2, batchSize: 8 },
+    focus: "Training recipe",
+  },
+  {
+    id: "feed-junk",
+    sections: ["Feed it junk"],
+    title: "Raw scrape or cleaned",
+    look: "Note Held out and Footer lines, then switch Training text to Raw scrape and see which one really moves.",
+    step: 3,
+    state: { wizard: 2 },
+    focus: "Training recipe",
+  },
+  {
+    id: "factored-blow-up",
+    sections: ["Why only the factored model can blow up"],
+    title: "A factored run blows up",
+    look: "Read Peak gradient norm and Held out with the clip off, then turn Gradient clip up to 0.50 and read them again.",
+    step: 3,
+    state: { wizard: 2, learningRate: 8, schedule: "cosine" },
+    focus: "Training recipe",
+  },
+];
+
+export default scenes;

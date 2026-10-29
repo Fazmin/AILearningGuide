@@ -122,6 +122,8 @@ interface AppState {
   setVerboseNarration: (enabled: boolean) => void;
   setColorVision: (colorVision: ColorVision) => void;
   setModuleState: (moduleId: string, patch: Partial<ModuleState>) => void;
+  /** Swap in a whole lab state, dropping keys the new one lacks; the step and progress stay as they are. */
+  replaceModuleState: (moduleId: string, state: ModuleState) => void;
   resetModuleState: (moduleId: string, initialState: ModuleState) => void;
   setCurrentStep: (moduleId: string, step: number) => void;
   markCheckpoint: (moduleId: string, questionIndex: number, correct: boolean, total: number) => void;
@@ -309,6 +311,8 @@ export const useAppStore = create<AppState>()(
             },
           };
         }),
+      replaceModuleState: (moduleId, moduleState) =>
+        set((state) => ({ moduleStates: { ...state.moduleStates, [moduleId]: { ...moduleState } } })),
       resetModuleState: (moduleId, initialState) =>
         set((state) => ({
           moduleStates: { ...state.moduleStates, [moduleId]: { ...initialState } },

@@ -403,16 +403,18 @@ export function ModuleWorkspace({ module }: { module: RegisteredModule }) {
   /**
    * Move the lab to a step and a state. Labs that follow the step reset their own stage when it changes
    * (attention, backpropagation), so the state goes in a frame after that has happened, and the card is
-   * revealed a frame after the lab has drawn it.
+   * revealed a frame after the lab has drawn it. The state replaces the stored one rather than merging
+   * into it, so keys outside `initialState` (diffusion's chosen model, attention's edits) cannot carry
+   * a reader's old setting into a scene.
    */
   const applyLab = useCallback(
     (step: number | undefined, state: ModuleState, focus?: string) => {
-      const { setCurrentStep, setModuleState } = useAppStore.getState();
+      const { setCurrentStep, replaceModuleState } = useAppStore.getState();
       window.cancelAnimationFrame(pendingLabFrame.current);
       if (step !== undefined) setCurrentStep(module.id, Math.min(Math.max(0, step), module.steps.length - 1));
       pendingLabFrame.current = window.requestAnimationFrame(() => {
         pendingLabFrame.current = window.requestAnimationFrame(() => {
-          setModuleState(module.id, state);
+          replaceModuleState(module.id, state);
           if (!focus) return;
           pendingLabFrame.current = window.requestAnimationFrame(() => revealSurface(focus, "start"));
         });

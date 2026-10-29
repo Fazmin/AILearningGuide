@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createElement } from "react";
@@ -13,14 +13,29 @@ const withScenes = modules.filter((module) => module.scenes.length > 0);
 // Joined by hand: Vite turns `new URL("./x.mdx", import.meta.url)` into an import of the lesson itself.
 const modulesRoot = path.dirname(fileURLToPath(import.meta.url));
 
-/** The `##` and `###` headings of one reading mode's lesson, normalized. */
+/**
+ * The `##` and `###` headings of one reading mode's lesson, normalized, as the Learn panel reads
+ * them: rendered text, so inline code and emphasis lose their markers.
+ */
 const headingsOf = (slug: string, mode: string) => {
   const source = readFileSync(path.join(modulesRoot, slug, "content", `${mode}.mdx`), "utf8");
-  return [...source.matchAll(/^#{2,3} (.+)$/gm)].map((match) => normalizeHeading(match[1]));
+  return [...source.matchAll(/^#{2,3} (.+)$/gm)].map((match) =>
+    normalizeHeading(match[1].replace(/`([^`]+)`/g, "$1").replace(/(\*{1,2}|_{1,2})(\S(?:.*?\S)?)\1/g, "$2")),
+  );
 };
 
 const escapeAttribute = (value: string) =>
   value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+// Vitest's file-system module cache keys registry.ts by its own text, so a cached copy can miss
+// scenes.ts files added since, and every check below would pass without seeing them.
+it("loads every scenes.ts in the modules folder", () => {
+  const onDisk = readdirSync(modulesRoot).filter((slug) => existsSync(path.join(modulesRoot, slug, "scenes.ts")));
+  expect(
+    withScenes.map((module) => module.slug).sort(),
+    "registry.ts is stale in the test cache: run `pnpm vitest --clearCache`",
+  ).toEqual(onDisk.sort());
+});
 
 describe.each(withScenes.map((module) => [module.slug, module] as const))("%s lab scenes", (slug, module) => {
   const lessons = explanationModes.map((mode) => ({ mode, headings: headingsOf(slug, mode) }));

@@ -1,0 +1,118 @@
+import type { LabScene } from "@app/module-sdk";
+
+/**
+ * Lab setups the lesson opens from its sections. `task` is a task id from loop.ts (hours, recover,
+ * loop, repair). `tick` is the Replay step, 0-based, and 99 means the end of the run, which is where
+ * the lab starts. The Reliability controls start at 95% per step over 20 steps with no gate.
+ */
+const scenes: LabScene[] = [
+  {
+    id: "agent-loop",
+    sections: ["The agent loop", "What it is"],
+    title: "Two calls, one answer",
+    look: "Trace lists the run in order: call 1 writes the tool call, the host adds the result, and call 2 writes the answer.",
+    step: 0,
+    state: { task: "hours" },
+    focus: "Trace",
+  },
+  {
+    id: "observation",
+    sections: ["Observations: the model's only news"],
+    title: "An observation",
+    look: "The highlighted row is the error the host wrote into the transcript, and the next call can learn of the timeout only by reading it.",
+    step: 2,
+    state: { task: "recover", tick: 1 },
+    focus: "Trace",
+  },
+  {
+    id: "rereads",
+    sections: ["Every call re-reads everything"],
+    title: "Each call reads more",
+    look: "Each bar is one call’s input: the faded base stays the same, while the solid part for earlier turns grows from bar to bar.",
+    step: 3,
+    state: { task: "loop", stepCap: 4 },
+    focus: "Context growth",
+  },
+  {
+    id: "compounding",
+    sections: ["Small mistakes multiply"],
+    title: "Twenty steps at 95%",
+    look: "Read Completes end to end, then the No gate column of the table, where the chance shrinks as the run gets longer.",
+    step: 6,
+    focus: "Reliability",
+  },
+  {
+    id: "approval-gate",
+    sections: ["A check partway through: the approval gate"],
+    title: "A gate after step 10",
+    look: "The dashed line is the run with the gate: compare With the gate with Completes end to end, and see Expected steps run rise.",
+    step: 6,
+    state: { gateAfter: 10, catchRate: 100 },
+    focus: "Reliability",
+  },
+  {
+    id: "walk-loop",
+    sections: ["Walk a successful loop"],
+    title: "Walk a successful loop",
+    look: "Move Replay step forward one event at a time and watch the lit boxes go from Model call to Host runs the tool and back, then out through Stop · answer.",
+    step: 0,
+    state: { task: "hours", tick: 0 },
+    focus: "Agent loop",
+  },
+  {
+    id: "cap-one",
+    sections: ["Cap the horizon"],
+    title: "A step cap of one",
+    look: "The tool still runs, but Host check allows no second call, so the run leaves through Stop · step cap with no answer.",
+    step: 1,
+    state: { task: "hours", stepCap: 1 },
+    focus: "Agent loop",
+  },
+  {
+    id: "recover",
+    sections: ["Recover from an error"],
+    title: "A timeout, then a retry",
+    look: "The outlined row is the timeout, the same call follows and works, and the third call answers.",
+    step: 2,
+    state: { task: "recover" },
+    focus: "Trace",
+  },
+  {
+    id: "no-stop-rule",
+    sections: ["Loop without a stop rule"],
+    title: "Retry forever",
+    look: "Every allowed bar is filled, each taller than the last, and the heading adds them all into the tokens read in total.",
+    step: 3,
+    state: { task: "loop", stepCap: 10 },
+    focus: "Context growth",
+  },
+  {
+    id: "stop-rule",
+    sections: ["Add a stop rule"],
+    title: "Stop after two identical failures",
+    look: "The run now leaves through Stop · host rule long before the step cap, and Stop reason in Budgets reads host stop rule.",
+    step: 4,
+    state: { task: "loop", stepCap: 10, guard: "on" },
+    focus: "Agent loop",
+  },
+  {
+    id: "repair",
+    sections: ["Repair an argument"],
+    title: "A repaired argument",
+    look: "Compare call 1 and call 2 in Trace: they differ only in the capital W, and the error row between them names /day.",
+    step: 5,
+    state: { task: "repair", guard: "on" },
+    focus: "Trace",
+  },
+  {
+    id: "per-step-99",
+    sections: ["Compound the error"],
+    title: "From 95% to 99% per step",
+    look: "Per-step success is at 99%: read Completes end to end and the half-the-time readout, then set it back to 95% and compare.",
+    step: 6,
+    state: { stepSuccess: 99 },
+    focus: "Reliability",
+  },
+];
+
+export default scenes;

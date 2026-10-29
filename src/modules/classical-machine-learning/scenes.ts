@@ -1,0 +1,118 @@
+import type { LabScene } from "@app/module-sdk";
+
+/**
+ * Lab setups the lesson opens from its sections. Every scene keeps the probe at its default (0.50, 0.50),
+ * where the lesson works each method's formula row by hand. `k` is read by knn and kmeans, and `depth`
+ * by tree and forest; the other methods ignore both.
+ */
+const scenes: LabScene[] = [
+  {
+    id: "dots-on-the-map",
+    sections: ["The map and the dots", "What it is"],
+    title: "Eighteen dots, an uneven XOR",
+    look: "The class-0 dots sit along the diagonal, and the class-1 dots fill the other two corners of the map.",
+    step: 0,
+    state: { algorithm: "linear" },
+    focus: "Decision surface",
+  },
+  {
+    id: "straight-line",
+    sections: ["Straight-line methods: linear and logistic"],
+    title: "One straight line",
+    look: "The solid line keeps the top-left corner and the two bottom-right dots wear crosses; then switch to logistic.",
+    step: 0,
+    state: { algorithm: "linear" },
+    focus: "Decision surface",
+  },
+  {
+    id: "widest-street",
+    sections: ["SVM: the widest street"],
+    title: "The widest street",
+    look: "The dashed lines are the curbs, and a ring marks each support vector on or inside the street.",
+    step: 2,
+    state: { algorithm: "svm" },
+    focus: "Decision surface",
+  },
+  {
+    id: "nearest-neighbors",
+    sections: ["k-nearest neighbors: ask the closest dots"],
+    title: "Ask the closest dots",
+    look: "Thin lines join the probe to its nearest dots, and raising k makes the bottom-right corner flip.",
+    step: 1,
+    state: { algorithm: "knn", k: 3 },
+    focus: "Decision surface",
+  },
+  {
+    id: "tree-rectangles",
+    sections: ["Decision trees: yes-or-no questions"],
+    title: "Cuts that make rectangles",
+    look: "Green dashes are the tree’s cuts, so raise Tree depth and watch new rectangles appear inside the old ones.",
+    step: 1,
+    state: { algorithm: "tree", depth: 2 },
+    focus: "Decision surface",
+  },
+  {
+    id: "root-cut",
+    sections: ["Decision tree: how a cut is chosen"],
+    title: "The first cut, scored",
+    look: "The formula row names the root cut and prints its Gini before, its Gini after, and the gain.",
+    step: 2,
+    state: { algorithm: "tree", depth: 1 },
+    focus: "Probe and inductive bias",
+  },
+  {
+    id: "forest-vote",
+    sections: ["Random forests: many trees vote"],
+    title: "Many trees vote",
+    look: "The shading is the vote of all the trees, but the green dashes show only the first tree’s cuts.",
+    step: 1,
+    state: { algorithm: "forest", depth: 2 },
+    focus: "Decision surface",
+  },
+  {
+    id: "naive-product",
+    sections: ["Naive Bayes: one chance per feature, multiplied", "Naive Bayes: a product of per-feature likelihoods"],
+    title: "One curve per feature",
+    look: "The Naive Bayes posterior row multiplies each class’s prior by its two curve heights at the probe.",
+    step: 2,
+    state: { algorithm: "naivebayes" },
+    focus: "Probe and inductive bias",
+  },
+  {
+    id: "k-means-groups",
+    sections: ["k-means: grouping without labels"],
+    title: "Groups without labels",
+    look: "The shading shows cluster numbers, and the dots keep their true colors only so you can compare.",
+    state: { algorithm: "kmeans", k: 4 },
+    focus: "Decision surface",
+  },
+  {
+    id: "what-it-keeps",
+    sections: ["What each method keeps"],
+    title: "Weights or the whole dataset",
+    look: "Switch Algorithm and compare Keeps and Numbers stored, from a few weights up to every dot.",
+    step: 3,
+    state: { algorithm: "linear" },
+    focus: "What it stored",
+  },
+  {
+    id: "eight-shapes",
+    sections: ["Eight methods, eight shapes"],
+    title: "Eight methods, eight shapes",
+    look: "Step through the Algorithm names and watch the border change from lines to patches, rectangles, curves and cells.",
+    step: 0,
+    state: { algorithm: "linear" },
+    focus: "Decision surface",
+  },
+  {
+    id: "switch-algorithm",
+    sections: ["How to play with it"],
+    title: "Linear, then knn",
+    look: "Find the two crossed dots on linear, then switch Algorithm to knn and watch the crosses disappear.",
+    step: 0,
+    state: { algorithm: "linear", k: 3, depth: 2 },
+    focus: "Decision surface",
+  },
+];
+
+export default scenes;

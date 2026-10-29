@@ -1,0 +1,131 @@
+import type { LabScene } from "@app/module-sdk";
+
+/**
+ * Lab setups the lesson opens from its sections. Every scene starts from the lab's defaults (`8B` at `Q4_K_M`, 8 users,
+ * 4,096 tokens, continuous batching, `Lab default` hardware, every lever off), so the readouts show the lesson's own
+ * numbers. Hardware is the four numbers a preset sets: `RTX 4090` is 24 GiB, 1008 GB/s, 165.2 TFLOP/s and $0.74 an
+ * hour. The Memory budget and Throughput and latency cards always use `Lab default`, whatever those numbers say.
+ */
+const scenes: LabScene[] = [
+  {
+    id: "token-notes",
+    sections: ["How big one token’s notes are", "Memory: a fixed cost and a per-stream cost"],
+    title: "One token’s notes",
+    look: "Switch Model between 8B, 3B and 1.5B and watch Per token, per stream change with each model’s shape.",
+    focus: "Memory budget",
+  },
+  {
+    id: "waiting-on-memory",
+    sections: ["Writing speed: why the chip waits on memory", "Speed: two ceilings"],
+    title: "One user, waiting on memory",
+    look: "With one user, Total and Per user match, the badge reads bandwidth bound, and the note below names a compute ceiling far above the chart.",
+    state: { users: 1 },
+    focus: "Throughput and latency",
+  },
+  {
+    id: "one-at-a-time",
+    sections: ["One at a time"],
+    title: "One stream per step",
+    look: "With One at a time, Total no longer grows with users, so Per user is that same total split eight ways.",
+    state: { batching: false },
+    focus: "Throughput and latency",
+  },
+  {
+    id: "hybrid-model",
+    sections: ["The model this app runs: hybrid attention", "A hybrid model: the one this app runs"],
+    title: "The model this app runs",
+    look: "With the app’s own model, Per token, per stream is small, a Fixed state per stream readout appears, and Streams that fit jumps.",
+    step: 2,
+    state: { modelId: "local" },
+    focus: "Memory budget",
+  },
+  {
+    id: "million-tokens",
+    sections: ["The machine, and what a million tokens cost"],
+    title: "What a million tokens cost",
+    look: "Read Cost per million tokens, then lower Concurrent users or Busy share of each hour and watch each token get dearer.",
+    step: 3,
+    focus: "Hardware, levers, and cost",
+  },
+  {
+    id: "launch-day",
+    sections: ["Why it’s here"],
+    title: "Forty users at once",
+    look: "With forty users the bar runs past the 24 GiB line, and the warning under it says how many streams would have fit.",
+    step: 0,
+    state: { users: 40 },
+    focus: "Memory budget",
+  },
+  {
+    id: "add-users",
+    sections: ["Add users", "How to play with it"],
+    title: "Add users",
+    look: "Drag Concurrent users up and watch Total climb while Per user sinks, until the dot crosses into the shaded part where the cache no longer fits.",
+    step: 0,
+    state: { users: 1 },
+    focus: "Throughput and latency",
+  },
+  {
+    id: "extend-context",
+    sections: ["Extend the context"],
+    title: "One long conversation",
+    look: "Drag Context length all the way up and watch the cache segment grow toward the weights while Streams that fit falls.",
+    step: 1,
+    state: { users: 1 },
+    focus: "Memory budget",
+  },
+  {
+    id: "long-documents",
+    sections: ["Balance the budget"],
+    title: "Eight long documents",
+    look: "Read Streams that fit and Headroom for eight long documents, then switch Weight format to F16 and watch the plan go over budget.",
+    step: 2,
+    state: { context: 16384 },
+    focus: "Memory budget",
+  },
+  {
+    id: "change-hardware",
+    sections: ["Change the hardware"],
+    title: "One stream on two GPUs",
+    look: "Switch Hardware between RTX 4090 and H100 SXM, comparing Per user and Streams that fit on this card.",
+    step: 3,
+    state: { users: 1, memoryGiB: 24, bandwidthGBs: 1008, computeTflops: 165.2, pricePerHour: 0.74 },
+    focus: "Hardware, levers, and cost",
+  },
+  {
+    id: "pull-levers",
+    sections: ["Pull the levers"],
+    title: "Pull the levers",
+    look: "Turn on Paged attention, set KV cache type to q8_0, or turn on Speculative decoding, and compare each row of the bar list with No levers.",
+    step: 4,
+    focus: "Hardware, levers, and cost",
+  },
+  {
+    id: "export-it",
+    sections: ["Export it", "The export path"],
+    title: "Export the toy model",
+    look: "Read the badge and the Quantize step, then switch Weight format to F16 and watch both change.",
+    step: 5,
+    focus: "Export the model you trained",
+  },
+  {
+    id: "speculative",
+    sections: ["Speculative decoding, counted out", "Speculative decoding"],
+    title: "Speculative decoding on",
+    look: "Drag Acceptance rate and Draft cost and watch Per user, while the note under the bar list counts the tokens each check yields.",
+    step: 4,
+    state: { speculative: true },
+    focus: "Hardware, levers, and cost",
+  },
+  {
+    id: "kv-shorthand",
+    sections: ["Why q8_0 is not exactly half", "KV-cache quantization"],
+    title: "The cache in fewer bits",
+    look: "Compare the q8_0 KV cache alone row with No levers in the bar list, then try q4_0 and watch Streams that fit climb again.",
+    step: 4,
+    state: { kvType: "q8_0" },
+    focus: "Hardware, levers, and cost",
+  },
+];
+
+export default scenes;

@@ -189,10 +189,12 @@ export default scenes;
 - `sections` lists headings in order of preference. The reading modes don't share every `###`
   subsection, so the card goes under the first heading the current mode has. Put the specific
   subsection first, then the broader heading Standard uses for the same idea. A heading holds
-  one card.
-- `state` is laid over `initialState`, not over whatever the reader had. The lab therefore
-  shows the numbers the lesson quotes. Use only keys `initialState` has, with values the
-  module's own `hydrateState` keeps as they are.
+  one card. Write headings as they read on screen, without markdown: ``Why `q8_0` is not exactly
+  half`` is `"Why q8_0 is not exactly half"`.
+- `state` is laid over `initialState`, and the result replaces whatever the lab had stored.
+  Keys outside `initialState`, such as a model the reader picked by hand, are dropped too. The
+  lab therefore shows the numbers the lesson quotes. Use only keys `initialState` has, with
+  values the module's own `hydrateState` keeps as they are.
 - `step` is optional. Labs that reset their own stage when the step changes still get the
   scene's `state`, because the shell applies it a frame after the step.
 - `focus` is the exact `LabSurface` label to reveal.
@@ -201,6 +203,9 @@ export default scenes;
 
 `src/modules/scenes.test.ts` checks every scene against the lessons, the step count, the state
 round trip, and the rendered cards. `src/modules/attention/scenes.ts` is the worked example.
+Vitest caches transformed files on disk, and a cached `registry.ts` does not see a newly added
+`scenes.ts` (or a new module). If the test reports that `registry.ts` is stale, run
+`pnpm vitest --clearCache` once.
 
 ## Content
 
