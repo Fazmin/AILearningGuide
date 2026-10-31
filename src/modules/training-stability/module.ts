@@ -10,7 +10,7 @@ const definition: ModuleDefinition = {
   order: 44,
   icon: "Siren",
   accent: "#1f7a8c",
-  prerequisites: ["module-20-train-tiny-lm"],
+  prerequisites: ["module-53-optimizers", "module-20-train-tiny-lm"],
   estimatedMinutes: 16,
   steps: [
     "Read a healthy dashboard",
