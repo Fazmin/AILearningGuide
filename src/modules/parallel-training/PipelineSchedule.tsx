@@ -49,7 +49,7 @@ export function PipelineSchedule({
   bubbleFraction: number;
 }) {
   const [figureRef, measured] = useMeasuredWidth(640);
-  const hatch = `pt-idle-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
+  const hatch = `par-idle-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
   const ops = useMemo(() => oneForwardOneBackward(stages, microbatches), [stages, microbatches]);
   const viewWidth = Math.max(320, measured || 640);
   const right = viewWidth - 12;
@@ -69,7 +69,7 @@ export function PipelineSchedule({
   const idlePerStage = 3 * (stages - 1);
 
   return (
-    <figure className="pt-schedule" ref={figureRef}>
+    <figure className="par-schedule" ref={figureRef}>
       <svg
         viewBox={`0 0 ${viewWidth} ${height}`}
         role="img"
@@ -77,8 +77,8 @@ export function PipelineSchedule({
       >
         <defs>
           <pattern id={hatch} width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-            <rect className="pt-schedule__idle-fill" width="6" height="6" />
-            <line className="pt-schedule__idle-line" x1="0" y1="0" x2="0" y2="6" />
+            <rect className="par-schedule__idle-fill" width="6" height="6" />
+            <line className="par-schedule__idle-line" x1="0" y1="0" x2="0" y2="6" />
           </pattern>
         </defs>
         {Array.from({ length: stages }, (_, stage) => {
@@ -86,7 +86,7 @@ export function PipelineSchedule({
           return (
             <g key={stage}>
               <rect
-                className="pt-schedule__row"
+                className="par-schedule__row"
                 x={xAt(0)}
                 y={y + 1}
                 width={Math.max(0, xAt(pipelineSeconds) - xAt(0))}
@@ -94,7 +94,7 @@ export function PipelineSchedule({
                 fill={`url(#${hatch})`}
               />
               {(stages <= 8 || stage % 2 === 0 || stage === stages - 1) && (
-                <text className="pt-schedule__stage" x={LEFT - 6} y={y + rowHeight / 2 + 3.5} textAnchor="end">
+                <text className="par-schedule__stage" x={LEFT - 6} y={y + rowHeight / 2 + 3.5} textAnchor="end">
                   stage {stage + 1}
                 </text>
               )}
@@ -107,7 +107,7 @@ export function PipelineSchedule({
           const y = TOP + op.stage * rowHeight + 1;
           const showLabel = width >= 15 && rowHeight >= 13;
           return (
-            <g key={`${op.kind}-${op.stage}-${op.microbatch}`} className={`pt-schedule__op pt-schedule__op--${op.kind}`}>
+            <g key={`${op.kind}-${op.stage}-${op.microbatch}`} className={`par-schedule__op par-schedule__op--${op.kind}`}>
               <rect x={x} y={y} width={width} height={rowHeight - 2} rx={1.5} />
               {showLabel && (
                 <text x={x + width / 2} y={y + rowHeight / 2 + 2.5} textAnchor="middle">
@@ -119,7 +119,7 @@ export function PipelineSchedule({
           );
         })}
         {exposed > 0 && (
-          <g className="pt-schedule__sync">
+          <g className="par-schedule__sync">
             <rect
               x={xAt(pipelineSeconds) + 0.6}
               y={TOP + 1}
@@ -138,28 +138,28 @@ export function PipelineSchedule({
             )}
           </g>
         )}
-        <line className="pt-schedule__axis" x1={LEFT} x2={right} y1={plotBottom + 2} y2={plotBottom + 2} />
+        <line className="par-schedule__axis" x1={LEFT} x2={right} y1={plotBottom + 2} y2={plotBottom + 2} />
         {ticks.map((value) => (
           <g key={value}>
-            <line className="pt-schedule__tick-mark" x1={xAt(value)} x2={xAt(value)} y1={plotBottom + 2} y2={plotBottom + 6} />
-            <text className="pt-schedule__tick" x={xAt(value)} y={plotBottom + 17} textAnchor="middle">
+            <line className="par-schedule__tick-mark" x1={xAt(value)} x2={xAt(value)} y1={plotBottom + 2} y2={plotBottom + 6} />
+            <text className="par-schedule__tick" x={xAt(value)} y={plotBottom + 17} textAnchor="middle">
               {formatSeconds(value)}
             </text>
           </g>
         ))}
       </svg>
-      <figcaption className="pt-schedule__legend">
+      <figcaption className="par-schedule__legend">
         <span>
-          <i className="pt-key pt-key--forward" /> F: forward pass of a microbatch (one unit)
+          <i className="par-key par-key--forward" /> F: forward pass of a microbatch (one unit)
         </span>
         <span>
-          <i className="pt-key pt-key--backward" /> B: backward pass (two units)
+          <i className="par-key par-key--backward" /> B: backward pass (two units)
         </span>
         <span>
-          <i className="pt-key pt-key--idle" /> Hatched: waiting, the pipeline bubble
+          <i className="par-key par-key--idle" /> Hatched: waiting, the pipeline bubble
         </span>
         <span>
-          <i className="pt-key pt-key--sync" /> DP sync left exposed after the last backward
+          <i className="par-key par-key--sync" /> DP sync left exposed after the last backward
         </span>
       </figcaption>
     </figure>

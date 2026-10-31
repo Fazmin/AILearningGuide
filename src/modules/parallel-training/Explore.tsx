@@ -91,14 +91,14 @@ function MemoryBar({ memory }: { memory: MemoryPerGpu }) {
   for (let bytes = 0; bytes <= scale && ticks.length < 12; bytes += tickStep) ticks.push(bytes);
   return (
     <svg
-      className="pt-plot pt-memory-bar"
+      className="par-plot par-memory-bar"
       viewBox="0 0 720 96"
       role="img"
       aria-label={`Memory on one GPU: weights ${formatBytes(memory.weights)}, gradients ${formatBytes(memory.gradients)}, optimizer state ${formatBytes(memory.optimizer)}, activations ${formatBytes(memory.activations)}; ${formatBytes(memory.total)} in all against ${MEMORY_LABEL}. ${memory.fits ? "It fits." : "It does not fit."}`}
     >
       {ticks.map((bytes) => (
         <g key={bytes}>
-          <line className="pt-grid" x1={xAt(bytes)} x2={xAt(bytes)} y1={top - 4} y2={top + barHeight + 4} />
+          <line className="par-grid" x1={xAt(bytes)} x2={xAt(bytes)} y1={top - 4} y2={top + barHeight + 4} />
           <text x={xAt(bytes)} y={top + barHeight + 16} textAnchor="middle">
             {Math.round(bytes / 1e9)}
           </text>
@@ -107,7 +107,7 @@ function MemoryBar({ memory }: { memory: MemoryPerGpu }) {
       {placed.map((segment) => (
         <rect
           key={segment.id}
-          className={`pt-seg is-${segment.id}`}
+          className={`par-seg is-${segment.id}`}
           x={xAt(segment.start)}
           y={top}
           width={Math.max(0, xAt(segment.start + segment.bytes) - xAt(segment.start))}
@@ -115,12 +115,12 @@ function MemoryBar({ memory }: { memory: MemoryPerGpu }) {
         />
       ))}
       {!memory.fits && (
-        <rect className="pt-over" x={xAt(limit)} y={top - 6} width={Math.max(0, xAt(memory.total) - xAt(limit))} height={barHeight + 12} />
+        <rect className="par-over" x={xAt(limit)} y={top - 6} width={Math.max(0, xAt(memory.total) - xAt(limit))} height={barHeight + 12} />
       )}
-      <line className="pt-limit" x1={xAt(limit)} x2={xAt(limit)} y1={top - 12} y2={top + barHeight + 6} />
+      <line className="par-limit" x1={xAt(limit)} x2={xAt(limit)} y1={top - 12} y2={top + barHeight + 6} />
       {/* The limit's label sits on whichever side of its line has room; the axis note takes the other end. */}
       <text
-        className="pt-limit-label"
+        className="par-limit-label"
         x={xAt(limit) + (limitOnRight ? -4 : 4)}
         y={top - 16}
         textAnchor={limitOnRight ? "end" : "start"}
@@ -171,14 +171,14 @@ function LostPlot({
   const currentLost = lost(intervalMinutes);
   return (
     <svg
-      className="pt-plot pt-lost-plot"
+      className="par-plot par-lost-plot"
       viewBox="0 0 720 214"
       role="img"
       aria-label={`Share of time lost against the checkpoint interval from ${min} to ${max} minutes. At ${intervalMinutes} minutes it is ${formatPercent(Math.min(currentLost, 1))}${currentLost >= 1 ? " or more" : ""}. Young's optimum is ${formatMinutes(youngSeconds)} and Daly's is ${formatMinutes(dalySeconds)}.`}
     >
       {yTicks.map((fraction) => (
         <g key={fraction}>
-          <line className="pt-grid" x1={left} x2={right} y1={yAt(fraction)} y2={yAt(fraction)} />
+          <line className="par-grid" x1={left} x2={right} y1={yAt(fraction)} y2={yAt(fraction)} />
           <text x={left - 6} y={yAt(fraction) + 3} textAnchor="end">
             {Math.round(fraction * 100)}%
           </text>
@@ -192,20 +192,20 @@ function LostPlot({
       <text x={(left + right) / 2} y={bottom + 31} textAnchor="middle">
         checkpoint every … minutes
       </text>
-      <path className="pt-lost-curve" d={path} />
+      <path className="par-lost-curve" d={path} />
       {markers.map((marker, index) => {
         const minutes = marker.seconds / 60;
         const inside = minutes >= min && minutes <= max;
         const labelY = top + 10 + index * 13;
         if (!inside) {
           return (
-            <text key={marker.id} className={`pt-optimum-label is-${marker.id}`} x={minutes > max ? right : left + 4} y={labelY} textAnchor={minutes > max ? "end" : "start"}>
+            <text key={marker.id} className={`par-optimum-label is-${marker.id}`} x={minutes > max ? right : left + 4} y={labelY} textAnchor={minutes > max ? "end" : "start"}>
               {marker.label}: {formatMinutes(marker.seconds)} {minutes > max ? "→" : "←"}
             </text>
           );
         }
         return (
-          <g key={marker.id} className={`pt-optimum is-${marker.id}`}>
+          <g key={marker.id} className={`par-optimum is-${marker.id}`}>
             <line x1={xAt(minutes)} x2={xAt(minutes)} y1={top} y2={bottom} />
             <text x={xAt(minutes) + (index === 0 ? 5 : -5)} y={labelY} textAnchor={index === 0 ? "start" : "end"}>
               {marker.label} {formatMinutes(marker.seconds)}
@@ -214,7 +214,7 @@ function LostPlot({
         );
       })}
       <line className="marker-guide" x1={xAt(intervalMinutes)} x2={xAt(intervalMinutes)} y1={top} y2={bottom} />
-      <circle className="pt-lost-dot" cx={xAt(intervalMinutes)} cy={yAt(currentLost)} r={5} />
+      <circle className="par-lost-dot" cx={xAt(intervalMinutes)} cy={yAt(currentLost)} r={5} />
     </svg>
   );
 }
@@ -379,14 +379,14 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
   ];
 
   return (
-    <div className="tg-lab pt-lab">
-      <LabSurface label="Parallel layout" className="pt-layout-card">
+    <div className="tg-lab par-lab">
+      <LabSurface label="Parallel layout" className="par-layout-card">
         <SurfaceHeading
           kicker={`${model.label} · ${formatCount(counts.total)} parameters${moe ? `, ${formatCount(counts.active)} active` : ""} · ${SEQUENCE.toLocaleString("en-US")}-token sequences · ${HARDWARE.name}`}
           title="Split one training step across GPUs"
           aside={<span className="tg-badge">{plural(gpus, "GPU")}</span>}
         />
-        <div className="pt-model-row">
+        <div className="par-model-row">
           <SegmentedControl
             label="Model"
             value={model.id}
@@ -395,13 +395,13 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           />
           <button
             type="button"
-            className="quiet-action pt-preset"
+            className="quiet-action par-preset"
             onClick={() => update({ ...LLAMA3_LAYOUT }, "16,384-GPU layout: Llama 3.1 405B on tensor 8, pipeline 16, data 128.")}
           >
             16,384-GPU layout
           </button>
         </div>
-        <div className="pt-controls">
+        <div className="par-controls">
           <RangeControl
             label="Tensor parallel"
             min={0}
@@ -471,7 +471,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           <Metric label="Tokens per step" value={formatCount(timing.tokensPerStep)} />
           <Metric label="Parameters per GPU" value={formatCount(memory.sliceParameters)} />
         </div>
-        <ul className="pt-groups" aria-label="What each parallel degree splits and sends">
+        <ul className="par-groups" aria-label="What each parallel degree splits and sends">
           <li>
             <strong>Tensor parallel · {config.tensor}</strong>
             <span>
@@ -516,7 +516,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
         </p>
       </LabSurface>
 
-      <LabSurface label="Memory per GPU" className="pt-memory-card">
+      <LabSurface label="Memory per GPU" className="par-memory-card">
         <SurfaceHeading
           kicker={`ZeRO stage ${config.zero} · ${RECOMPUTE_LABELS[config.recompute]} recompute · ${plural(config.microBatch, "sequence")} per microbatch`}
           title="What one GPU has to hold"
@@ -526,8 +526,8 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             </span>
           }
         />
-        <div className="pt-memory-controls">
-          <div className="pt-zero-control">
+        <div className="par-memory-controls">
+          <div className="par-zero-control">
             <SegmentedControl
               label="ZeRO stage"
               value={`${config.zero}`}
@@ -535,7 +535,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
               onChange={(value) => update({ zero: Number(value) as ZeroStage }, `ZeRO stage ${value}.`)}
             />
           </div>
-          <div className="pt-recompute-control">
+          <div className="par-recompute-control">
             <SegmentedControl
               label="Recompute"
               value={config.recompute}
@@ -547,9 +547,9 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             />
           </div>
         </div>
-        <div className="pt-budget">
+        <div className="par-budget">
           <MemoryBar memory={memory} />
-          <div className="pt-legend" aria-hidden="true">
+          <div className="par-legend" aria-hidden="true">
             <span className="is-weights">weights</span>
             <span className="is-gradients">gradients</span>
             <span className="is-optimizer">optimizer state</span>
@@ -609,7 +609,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
         </p>
       </LabSurface>
 
-      <LabSurface label="Pipeline schedule" className="pt-schedule-card">
+      <LabSurface label="Pipeline schedule" className="par-schedule-card">
         <SurfaceHeading
           kicker={`${plural(config.pipeline, "stage")} × ${plural(config.microbatches, "microbatch", "microbatches")} · one forward, one backward (1F1B)`}
           title="Idle time while the pipeline fills and drains"
@@ -637,13 +637,13 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
         </p>
       </LabSurface>
 
-      <LabSurface label="Communication per step" className="pt-comm-card">
+      <LabSurface label="Communication per step" className="par-comm-card">
         <SurfaceHeading
           kicker={`NVLink ${HARDWARE.nvlinkBytesPerSecond / 1e9} GB/s inside a node · InfiniBand ${HARDWARE.networkBytesPerSecond / 1e9} GB/s per GPU between nodes`}
           title="What crosses the wires in one step"
           aside={<span className="tg-badge">{formatSeconds(timing.exposedDataSync)} exposed</span>}
         />
-        <div className="tg-switch-list pt-overlap-switch">
+        <div className="tg-switch-list par-overlap-switch">
           <button
             type="button"
             className="tg-switch"
@@ -676,14 +676,14 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
         </p>
       </LabSurface>
 
-      <LabSurface label="Step time and MFU" className="pt-step-card">
+      <LabSurface label="Step time and MFU" className="par-step-card">
         <SurfaceHeading
           kicker={`${formatCount(timing.tokensPerStep)} tokens per step on ${plural(gpus, "GPU")} · kernel efficiency η = ${HARDWARE.efficiency} of ${HARDWARE.peakFlops / 1e12} TFLOP/s`}
           title="Compute, exposed communication, and idle time"
           aside={<span className="tg-badge">MFU {formatPercent(timing.mfu)}</span>}
         />
         <div
-          className="pt-step-strip"
+          className="par-step-strip"
           role="img"
           aria-label={`Step of ${formatSeconds(timing.step)}: ${stepParts
             .filter((part) => part.value > 0)
@@ -725,13 +725,13 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
         </p>
       </LabSurface>
 
-      <LabSurface label="Failures and checkpoints" className="pt-failure-card">
+      <LabSurface label="Failures and checkpoints" className="par-failure-card">
         <SurfaceHeading
           kicker={`${plural(gpus, "GPU")} · one interruption every ${formatHours(plan.mtbfHours)} on average · ${formatBytes(plan.checkpointBytes)} per checkpoint`}
           title="How often to save"
           aside={<span className={`tg-badge ${lostBadly ? "is-warning" : ""}`.trim()}>{plan.lost >= 1 ? "100%+" : formatPercent(lostCapped)} lost</span>}
         />
-        <div className="pt-controls pt-failure-controls">
+        <div className="par-controls par-failure-controls">
           <RangeControl
             label="Checkpoint every"
             min={CHECKPOINT_MINUTES.min}
