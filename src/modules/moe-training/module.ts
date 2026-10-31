@@ -10,7 +10,7 @@ const definition: ModuleDefinition = {
   order: 45,
   icon: "Route",
   accent: "#2f7a45",
-  prerequisites: ["module-20-train-tiny-lm", "module-35-architecture-zoo"],
+  prerequisites: ["module-20-train-tiny-lm", "module-35-architecture-zoo", "module-52-parallel-training"],
   estimatedMinutes: 16,
   steps: ["Watch it collapse", "Add a balancing loss", "Nudge with a bias", "Cap each expert", "Read the specialists", "Count what runs"],
   stepInstructions: [
