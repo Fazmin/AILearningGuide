@@ -8,6 +8,7 @@ export type ModuleGroupId =
   | "inside-models"
   | "building-with-models"
   | "frontiers"
+  | "pretraining"
   | "training-adapting";
 export type ModuleState = Record<string, string | number | boolean | string[]>;
 

@@ -90,7 +90,7 @@ const scenes: LabScene[] = [
   {
     id: "compress",
     sections: ["4. Compress"],
-    title: "Round, then prune",
+    title: "Try each format, then prune",
     look: "Step Weight format from F16 down to Q4_0, then drag Prune toward 90% and watch Recipe loss, as shipped climb.",
     step: 3,
     state: { replay: 4, format: "F16" },

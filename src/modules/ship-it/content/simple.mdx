@@ -124,6 +124,8 @@ With 16 bits a number can be stored very precisely. But 4 bits can only be set i
 
 **Pruning** is a second kind of squeezing. It sets the smallest weights, the ones closest to zero, to exactly zero. The **Prune** slider picks what share of all the weights to remove, from 0% up to 90%. The hope is that a table full of zeros takes less space or runs faster. That needs software and chips built to skip over the zeros. In this lab it does not make the file any smaller, as Where it breaks explains. So here you only see what it costs.
 
+The pipeline prunes first and rounds last. Rounding works best on weights that will not change again. The Distillation & pruning lab teaches the same order.
+
 The result of both steps is the row called **As shipped**. This is the version that would actually go out. That finished version is called the **artifact**. The first line of the **Release report** describes it. At the start it reads `Q4_K_M, not pruned, merged adapter of rank 4`. That names its format, its pruning and its adapter.
 
 #### Stage 5: serve
@@ -173,7 +175,7 @@ So the gate also reads a **control set**. This is held-out text from a job that 
 
 ### Test the version you ship, not the one you trained
 
-Compression comes after training, and it changes the numbers. So a gate that read the **After aligning** row would grade a model that never goes out. Take four replayed sentences and **Prune** at 90%, for example. **After aligning** would pass both checks with room to spare. **As shipped** fails both. That is why the gate always reads the last row, the artifact itself. It never reads the model as it left training.
+Compression comes after training, and it changes the numbers. So a gate that read the **After aligning** row would grade a model that never goes out. Take four replayed sentences and **Prune** at 90%, for example. **After aligning** would pass both checks with room to spare. **As shipped** keeps less than a quarter of its recipe gain. It also fails the harbor check. That is why the gate always reads the last row, the artifact itself. It never reads the model as it left training.
 
 ### A six-question quiz cannot settle a close call
 
@@ -223,7 +225,7 @@ Keep going until the slider reads `4 of 6 harbor sentences`, and watch both loss
 
 Leave **Replay sentences** at 4, then step **Weight format** through every option from `F16` down to `Q4_0`. While you do, watch **Recipe loss, as shipped** and **Harbor loss, as shipped**. They sit in the first row of numbers on **Compress and serve**. Across all five formats, neither one moves by as much as 0.02 nats. Meanwhile **Toy bits per weight** falls from 16.04 to about 5.
 
-Then set **Weight format** back to `Q4_K_M`, the starting format, and drag **Prune** to 50%. **Recipe loss, as shipped** moves only from 2.367 to 2.372. So cutting half the weights costs almost nothing here, and the model still ships. Now drag **Prune** all the way to 90%. Recipe loss jumps back to 2.530, which is nearly the base model’s 2.540. Almost all of the recipe training is undone, and the gate fails on both of its checks.
+Then set **Weight format** back to `Q4_K_M`, the starting format, and drag **Prune** to 50%. **Recipe loss, as shipped** stays at 2.367. So cutting half the weights costs nothing you can see here, and the model still ships. Now drag **Prune** all the way to 90%. Recipe loss climbs to 2.495. The base model scored 2.540, so only 0.045 of the 0.190 gain is left. Harbor loss climbs too, to 2.271. That is past the allowance, so the gate holds the release.
 
 ### 5. Budget and decide
 
@@ -244,7 +246,7 @@ Now set **Concurrent users** to 64 and **Context length** to 32,768, then read t
 - **Aligning has a price:** use four replayed sentences. Going from **After adapting** to **After aligning** then raises recipe loss by 0.030 and harbor loss by 0.040. Meanwhile **Preference pairs ordered** reads 100%. In all three pairs the preferred ending has gained on the rejected one. Ability lost to preference training like this is called the **alignment tax**. It shows up here because DPO edits the same 900 numbers that both held-out texts rely on. DPO only cares about the gap inside each pair, not about making real recipe text likelier. The rejected endings, such as “onions onions onions onions.”, are built from everyday letter pairs. Pushing them down can make ordinary text a little less likely too.
 - **The report keeps every cost on the record:** those two rises are regressions. The **Release report** lists them under **Cost of getting here** even though the model ships. The recipe text still improved overall. Listing each stage stops a loss from hiding inside an overall gain.
 - **The quiz barely notices:** use four replayed sentences. The recipe quiz then reads 1 of 6 before and 1 of 6 after. Yet recipe loss fell by 0.173. The ranges overlap, so the quiz is not decisive. Held-out loss shows a clear gain because it counts every character.
-- **Shrinking is nearly free, but pruning is not:** these numbers use four replayed sentences. The shipped model is 0.022 worse on recipe text than **After aligning** at 50% pruning. It is 0.180 worse at 90%. Rounding to `Q4_K_M` causes 0.017 of that first rise on its own. So pruning half the weights adds only about 0.005. Pruning 90% adds about 0.163. Removing a little under twice as much does about thirty times the damage. The harm grows much faster than the amount removed.
+- **Light squeezing is nearly free, but heavy pruning is not:** these numbers use four replayed sentences. Rounding to `Q4_K_M` leaves the shipped model 0.017 worse on recipe text than **After aligning**. Pruning half the weights before rounding adds nothing you can see. Pruning 90% leaves it 0.145 worse on recipe text. It is 0.187 worse on harbor text. Going from half the weights to nine tenths takes the damage from nothing to most of the gain. The harm grows much faster than the amount removed.
 - **Memory fails in a different place:** look at the heaviest load the sliders allow. The imagined 8B-class budget is 261.58 GiB at `Q4_K_M`. At `F16` it is 271.96 GiB. Switching formats saves only about 10 GiB, because the notes alone take 256 GiB. So the KV cache, not the weights, is what runs out of room.
 
 **A common mix-up:** “The recipe count went from 1 to 4, so the model clearly got better at recipes.” At the starting settings the count did jump from 1 to 4, while recipe loss fell by only 0.043. With four replayed sentences the count stayed at 1, while recipe loss fell about four times as far. Six questions move in jumps that can point the wrong way. That is exactly what “not decisive” warns you about.
@@ -275,6 +277,7 @@ Putting it all together, here is what each stage of the journey costs the model 
 - **The memory numbers are arithmetic, not measurements:** the quality numbers come from the toy. The budget describes an imagined 8B-class model that is not in the lab. The arithmetic treats every conversation’s notes as full length from the start. It adds a flat 1 GiB of working space. It also works out speed only from how fast memory can be read.
 - **Pruning saves nothing here:** pruning that removes weights wherever they sit is called unstructured pruning. It keeps the table the same size. So in this lab **Prune** does not change **Toy file at this format**, which is the toy’s file size. It does not change the memory budget either. It only adds damage.
 - **The toy is not a chatbot model:** it reads single characters, not words. It looks back only one character. It was also never trained to follow instructions. Eight sentences per text stand in for what would really be a huge collection of training data.
+- **Two real steps are missing:** the preference step here runs straight on the adapted model. Real preference training starts from a model first taught to follow instructions. That step is called supervised fine-tuning. The Instruction tuning and Preference optimization labs explain it. The pruning step also skips a short round of retraining. Real pipelines use it to repair a pruned model before rounding.
 
 Nothing in this lab is measured on a real model or real hardware, even where the numbers look precise.
 
@@ -321,3 +324,5 @@ Four research papers cover most of what the labs touched. Two of them describe s
 - *Training Compute-Optimal Large Language Models*, by Hoffmann and colleagues in 2022, works out how big a model should be. The answer depends on how much training you can afford.
 
 A good first project is to repeat this lab’s loop on a small real model of your own choosing. Pick one job and hold out a control set. Adapt the model, and write your gate down before you run anything.
+
+Two open problems sit just past this lab. The first is **continual learning**. It asks how a model in use can keep learning without forgetting the old. Here, **Replay sentences** patches that by hand. Kirkpatrick and colleagues described a well-known approach in 2017. The second is **test-time training**. It changes some weights while the model reads its input. Sun and colleagues introduced that idea in 2020. Both are still being researched. Most assistants today still learn new facts by looking them up, not by changing their weights.

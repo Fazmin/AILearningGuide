@@ -53,7 +53,7 @@ const definition: ModuleDefinition = {
   slug: "distillation-pruning",
   title: "Distillation & pruning",
   group: "training-adapting",
-  order: 49,
+  order: 56,
   icon: "Scissors",
   accent: "#b04f77",
   prerequisites: ["module-26-quantization", "module-16-interpretability-circuits"],

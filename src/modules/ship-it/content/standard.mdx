@@ -12,9 +12,10 @@ is the file that would go out, after the training and compression stages have ch
 
 The module builds on the earlier labs rather than reteaching them. The model is the 900-weight
 character table from *Train one from scratch*. *LoRA & adapters* supplies the low-rank adapter, *Preference
-optimization in practice* the DPO (direct preference optimization) step, *Quantization* and
-*Distillation & pruning* the compression, *Evaluation* the intervals around a small benchmark, and
-*Deployment & serving* the memory arithmetic.
+optimization in practice* the DPO (direct preference optimization) step, the pruning half of
+*Distillation & pruning* and then *Quantization* the compression, *Evaluation* the intervals around a
+small benchmark, and *Deployment & serving* the memory arithmetic. *Fine-tuning & transfer* supplies
+the forgetting and the replay fix that the key experiment turns on.
 
 ### Where it shows up
 
@@ -66,28 +67,28 @@ character, and the benchmark counts from **Base model** to **As shipped**. **Eva
 two thresholds you choose, **Required recipe-loss gain** and **Allowed harbor-loss rise**, to the
 shipped model.
 
-In **Compress and serve**, **Weight format** sets both how the toy's weights are rounded and how
-much memory the budget's weights take. **Prune** zeroes a fraction of the toy's weights only, and
-the toy's losses are measured again. **Concurrent users** and **Context length** size the budget,
+In **Compress and serve**, **Prune** first zeroes a fraction of the toy's weights, and **Weight
+format** then rounds the whole table to its grid and sets how much memory the budget's weights take.
+Pruning acts on the toy only, and the toy's losses are measured again. **Concurrent users** and **Context length** size the budget,
 which is closed-form arithmetic for an imagined 8B-class model on one 24 GiB accelerator. That
 model is never run, and its per-user speed is computed, not timed.
 
 **Release report** joins gate and budget into `Verdict: ship` or `Verdict: hold`. The key
 experiment: at the defaults the harbor check fails. Raise **Replay sentences**, which mixes harbor
 sentences back into the adapter's training data, until the harbor check passes, then drag
-**Prune** to 90% and watch both checks fail.
+**Prune** to 90% and watch the harbor check fail again.
 
 ## What it is
 
 This lab carries one small model along the path the previous labs taught one piece at a time:
-pretrain a base table, adapt it with a low-rank adapter, align it with DPO, quantize and prune it,
+pretrain a base table, adapt it with a low-rank adapter, align it with DPO, prune and quantize it,
 then decide whether it ships. The decision is a **release gate**: two pass-or-fail checks on
 held-out loss, plus a memory budget, all read from the artifact that would actually go out.
 
 The model is the 900-weight character table from the training labs. Stage 1 trains it on harbor
 sentences. Stage 2 trains a rank-`r` adapter on recipe sentences and folds it in as a **merged
-adapter**. Stage 3 runs DPO on three preference pairs. Stage 4 **quantizes** and **prunes** the
-result. The last two sentences of each corpus are held out of every stage, and every loss in the
+adapter**. Stage 3 runs DPO on three preference pairs. Stage 4 **prunes** the result and then
+**quantizes** it, in that order, because rounding assumes the weights are final. The last two sentences of each corpus are held out of every stage, and every loss in the
 lab is read from them.
 
 ## Why it’s here
@@ -112,8 +113,9 @@ harbor check fails: the shipped model is 0.194 nats worse than the base against 
 pass; four leaves harbor loss at 2.086, slightly better than the base, with recipe loss at 2.367.
 
 Then compress, with replay at 4. Step **Weight format** from `F16` to `Q4_0` and the losses barely
-move. Drag **Prune** to 90% and they jump: recipe loss returns to 2.530, almost the base model's
-2.540, and the gate fails on both checks. Finally set **Concurrent users** to 64 and **Context length** to 32,768
+move. Drag **Prune** to 50% and they still barely move. Drag it to 90% and they jump: recipe loss
+climbs to 2.495, keeping only 0.045 of its 0.190 gain over the base model's 2.540, and harbor loss
+rises to 2.271, past the allowance, so the gate holds the release. Finally set **Concurrent users** to 64 and **Context length** to 32,768
 and read the **Release report**.
 
 ## What to notice
@@ -128,8 +130,10 @@ and read the **Release report**.
 - **The benchmark barely sees it.** With four replay sentences the recipe benchmark reads 1 of 6 before
   and after, though recipe loss fell by 0.173. The intervals overlap, so the difference is **not
   decisive**. That is why the gate reads **held-out loss**: it averages over every character.
-- **Quantization is nearly free; pruning is not.** Against After aligning, 50% pruning raises recipe
-  loss by 0.022 and 90% by 0.180. The harm is not proportional to the amount removed.
+- **Quantization is nearly free, and so is light pruning; heavy pruning is not.** Against After
+  aligning, rounding to `Q4_K_M` raises recipe loss by 0.017, and pruning half the weights first adds
+  nothing measurable on top. Pruning 90% raises recipe loss by 0.145 and harbor loss by 0.187. The
+  harm is not proportional to the amount removed.
 - **The budget has a different failure.** At 64 users and 32,768 tokens the imagined 8B-class budget
   is 261.58 GiB at `Q4_K_M` and 271.96 GiB at `F16`. The cache, not the weights, overflows.
 
@@ -140,6 +144,12 @@ forgetting and the alignment tax are exaggerated by the architecture. Twelve ben
 two held-out sentences per text cannot separate close models. The thresholds are sliders, which
 lets you loosen the gate until a bad model passes: drag **Allowed harbor-loss rise** to its
 maximum and the defaults ship. A real gate fixes its bars before the run.
+
+The pipeline also skips a stage. DPO here runs straight on the merged adapter, with no supervised
+fine-tuning first; production DPO starts from an SFT checkpoint, as *Instruction tuning & templates*
+and *Preference optimization in practice* explain. And the compression stage prunes once with no
+recovery training, where a real pipeline would distill or fine-tune the pruned model before rounding
+it.
 
 The quality columns come from the toy; the budget is arithmetic about an imagined 8B-class model.
 No figure is measured on a real model or real hardware.
@@ -179,3 +189,11 @@ You Need*; Hu et al., 2021, *LoRA*; Rafailov et al., 2023, *Direct Preference Op
 Hoffmann et al., 2022, *Training Compute-Optimal Large Language Models*. A good first project is to
 repeat this lab's loop on a small real model: pick one task, hold out a control, adapt, and write down
 the gate before you run it.
+
+Two open problems sit just past this lab. **Continual learning** asks how a deployed model can keep
+learning from new data without the forgetting that **Replay sentences** patches by hand; Kirkpatrick
+et al., 2017, *Overcoming catastrophic forgetting in neural networks*, is the usual starting point.
+**Test-time training** goes further and updates some weights while the model reads its input; Sun et
+al., 2020, *Test-Time Training with Self-Supervision for Generalization under Distribution Shifts*,
+introduced the idea. Both are active research, and most deployed assistants still add new knowledge
+through retrieval and context rather than by changing their weights.

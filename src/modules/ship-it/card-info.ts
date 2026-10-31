@@ -64,7 +64,7 @@ const cardInfo: ModuleCardInfo = {
     howItWorks: [
       "Target check: `base recipe loss − shipped recipe loss ≥ Required recipe-loss gain`. Control check: `shipped harbor loss − base harbor loss ≤ Allowed harbor-loss rise`. The gate passes only if both do.",
       "The intervals are Wilson 95% intervals for the item counts, from the same helper the Evaluation lab uses. They are advisory because six items cannot settle a close call.",
-      "The gate reads the last stage, after quantizing and pruning, not the model you trained.",
+      "The gate reads the last stage, after pruning and quantizing, not the model you trained.",
     ],
     controls: [
       "Comparison worth running: with the default thresholds, find the smallest `Replay sentences` that passes the harbor check, then drag `Allowed harbor-loss rise` to its maximum and notice that a gate loosened until it passes decides nothing.",
@@ -82,7 +82,7 @@ const cardInfo: ModuleCardInfo = {
   "Compress and serve": {
     title: "Shrink the weights, then fit the load",
     summary:
-      "Quantize the aligned table to a named format and optionally prune it, which changes the model the gate reads; then size an imagined 8B-class deployment for the format, user count, and context length chosen.",
+      "Optionally prune the aligned table, then quantize it to a named format, which changes the model the gate reads; then size an imagined 8B-class deployment for the format, user count, and context length chosen.",
     whatYouSee: [
       "A segmented control for `Weight format` (F16, Q8_0, Q5_K_M, Q4_K_M, Q4_0), and sliders for `Prune`, `Concurrent users`, and `Context length`.",
       "A first row of metrics from the toy: its file size and bits per weight at that format, and the recipe and harbor loss as shipped, coloured by whether they moved more than 0.02 nats from After aligning.",
@@ -90,7 +90,7 @@ const cardInfo: ModuleCardInfo = {
       "A callout stating the headroom or the overshoot against a 24 GiB accelerator.",
     ],
     howItWorks: [
-      "The toy is quantized with the format's block layout (bits, scope, group size) and its error is the rounding to that grid; pruning then zeroes the smallest-magnitude weights, a fraction of all 900.",
+      "Pruning first zeroes the smallest-magnitude weights, a fraction of all 900; the toy is then quantized with the format's block layout (bits, scope, group size), and its error is the rounding to that grid.",
       "The deployment arithmetic is the serving lab's: weights = parameters × bits per weight ÷ 8, using the published whole-file size for each format; KV cache = 2 × layers × KV heads × head dimension × 2 bytes × context × users; per-user speed = 1 ÷ ((weights + cache) ÷ memory bandwidth) for a batched step.",
     ],
     controls: [

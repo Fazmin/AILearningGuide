@@ -7,10 +7,10 @@ const definition: ModuleDefinition = {
   slug: "fine-tuning-transfer",
   title: "Fine-tuning & transfer",
   group: "training-adapting",
-  order: 41,
+  order: 47,
   icon: "Snowflake",
   accent: "#2b8ba8",
-  prerequisites: ["module-20-train-tiny-lm"],
+  prerequisites: ["module-20-train-tiny-lm", "module-25-evaluation"],
   estimatedMinutes: 19,
   steps: [
     "Compare the head start",

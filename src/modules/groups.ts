@@ -33,8 +33,13 @@ export const moduleGroups: ModuleGroup[] = [
     description: "Alignment, reasoning, generation, and interpretability",
   },
   {
+    id: "pretraining",
+    title: "Pretrain a model",
+    description: "Training runs, parallelism, data, optimizers, stability, evaluation, and mid-training",
+  },
+  {
     id: "training-adapting",
-    title: "Train and adapt a model",
-    description: "Data, training runs, fine-tuning, evaluation, and shipping",
+    title: "Adapt and ship a model",
+    description: "Fine-tuning, adapters, embeddings, alignment, RL environments, compression, and shipping",
   },
 ];

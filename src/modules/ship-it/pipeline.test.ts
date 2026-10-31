@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { GGUF_FORMATS, pruneTinyWeights, quantizeTinyWeights } from "@app/module-sdk";
 import {
   CONTROL_BENCHMARK,
   DEFAULT_RECIPE,
@@ -60,10 +61,24 @@ describe("runPipeline", () => {
   });
 
   it("measures the gate on the artifact it would ship, not the one it trained", () => {
-    const release = run({ replay: 4, prune: 0.9 });
-    const [, , aligned, shipped] = release.stages;
+    const recipe = { ...DEFAULT_RECIPE, replay: 4, prune: 0.9 };
+    const release = runPipeline(recipe);
+    const [base, , aligned, shipped] = release.stages;
     expect(shipped.metrics.targetLoss).toBeGreaterThan(aligned.metrics.targetLoss + 0.1);
-    expect(release.gate.checks.map((check) => check.passed)).toEqual([false, false]);
+    // The trained model would pass both checks; the artifact fails the harbor one.
+    expect(evaluateGate(base.metrics, aligned.metrics, recipe).passed).toBe(true);
+    expect(release.gate.checks.map((check) => check.passed)).toEqual([true, false]);
+  });
+
+  it("prunes before it quantizes, as Distillation & pruning teaches", () => {
+    const release = run({ replay: 4, prune: 0.5, format: "Q4_0" });
+    const aligned = release.stages[2].weights;
+    const format = GGUF_FORMATS.find((entry) => entry.name === "Q4_0")!;
+    const grid = { bits: format.bits, scope: format.scope, groupSize: format.groupSize };
+    const pruneThenRound = quantizeTinyWeights(pruneTinyWeights(aligned, { fraction: 0.5, mode: "unstructured" }).weights, grid).weights;
+    const roundThenPrune = pruneTinyWeights(quantizeTinyWeights(aligned, grid).weights, { fraction: 0.5, mode: "unstructured" }).weights;
+    expect(Array.from(release.stages[3].weights)).toEqual(Array.from(pruneThenRound));
+    expect(Array.from(release.stages[3].weights)).not.toEqual(Array.from(roundThenPrune));
   });
 
   it("holds the default recipe because the harbor check fails, and says so", () => {

@@ -266,7 +266,7 @@ export async function extractSearchDocuments(root) {
       kind: "screen",
       title: "Learning map",
       subtitle: "Home",
-      body: "Learn AI. Browse every lab by group. Continue exploring. Start with the groundwork, build the foundations, look inside models, build with a trained model, explore the frontier, train and adapt a model.",
+      body: "Learn AI. Browse every lab by group. Continue exploring. Start with the groundwork, build the foundations, look inside models, build with a trained model, explore the frontier, pretrain a model, adapt and ship a model.",
       screen: "home",
       rankBoost: 1.6,
     }),

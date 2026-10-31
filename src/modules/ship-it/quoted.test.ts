@@ -125,22 +125,38 @@ describe("compression figures", () => {
     expect(Math.abs(q4.controlLoss - f16.controlLoss)).toBeLessThan(0.02);
   });
 
-  it("raises recipe loss by 0.022 at 50% pruning and 0.180 at 90%, against After aligning", () => {
-    const rise = (prune: number) => {
+  it("raises recipe loss by 0.017 from rounding alone, no more at 50% pruning, and 0.145 at 90%, against After aligning", () => {
+    const rise = (prune: number, loss: "targetLoss" | "controlLoss" = "targetLoss") => {
       const [, , aligned, shipped] = run({ replay: 4, prune }).stages;
-      return round(shipped.metrics.targetLoss - aligned.metrics.targetLoss);
+      return round(shipped.metrics[loss] - aligned.metrics[loss]);
     };
-    expect(rise(0.5)).toBe(0.022);
-    expect(rise(0.9)).toBe(0.18);
+    expect(rise(0)).toBe(0.017);
+    expect(rise(0.5)).toBe(0.017);
+    expect(rise(0.9)).toBe(0.145);
+    expect(rise(0.9, "controlLoss")).toBe(0.187);
   });
 
-  it("returns recipe loss to 2.530 at 90% pruning, nearly the base model's 2.540, and fails both checks", () => {
+  it("keeps recipe loss at 2.367 at 50% pruning and lets it climb to 2.495 at 90%", () => {
+    // plain.mdx and simple.mdx "4. Compress": "stays at 2.367", "climbs to 2.495".
+    expect(round(run({ replay: 4, prune: 0 }).stages[3].metrics.targetLoss)).toBe(2.367);
+    expect(round(run({ replay: 4, prune: 0.5 }).stages[3].metrics.targetLoss)).toBe(2.367);
+    expect(run({ replay: 4, prune: 0.5 }).verdict).toBe("ship");
+  });
+
+  it("holds the release at 90% pruning: 0.045 of the 0.190 recipe gain survives and the harbor check fails", () => {
     const release = run({ replay: 4, prune: 0.9 });
-    expect(round(release.stages[3].metrics.targetLoss)).toBe(2.53);
-    expect(round(release.stages[0].metrics.targetLoss)).toBe(2.54);
-    expect(release.gate.checks.map((check) => check.passed)).toEqual([false, false]);
-    // checkpoint explanation: "the recipe gain nearly disappears".
-    expect(release.stages[0].metrics.targetLoss - release.stages[3].metrics.targetLoss).toBeLessThan(0.03);
+    const [base, , aligned, shipped] = release.stages;
+    expect(round(shipped.metrics.targetLoss)).toBe(2.495);
+    expect(round(base.metrics.targetLoss)).toBe(2.54);
+    expect(round(base.metrics.targetLoss - aligned.metrics.targetLoss)).toBe(0.19);
+    expect(round(base.metrics.targetLoss - shipped.metrics.targetLoss)).toBe(0.045);
+    // "less than a quarter of its recipe gain".
+    expect((base.metrics.targetLoss - shipped.metrics.targetLoss) / (base.metrics.targetLoss - aligned.metrics.targetLoss)).toBeLessThan(0.25);
+    // "harbor loss rises to 2.271, past the allowance"; checkpoint: "0.172 above the base, past the 0.100 allowance".
+    expect(round(shipped.metrics.controlLoss)).toBe(2.271);
+    expect(round(shipped.metrics.controlLoss - base.metrics.controlLoss)).toBe(0.172);
+    expect(release.gate.checks.map((check) => check.passed)).toEqual([true, false]);
+    expect(release.verdict).toBe("hold");
   });
 
   it("makes harbor loss grow faster than pruning does, so the harm is not proportional", () => {

@@ -22,10 +22,10 @@ const definition: ModuleDefinition = {
   slug: "deployment-serving",
   title: "Deployment & serving",
   group: "training-adapting",
-  order: 50,
+  order: 57,
   icon: "Server",
   accent: "#1f8f86",
-  prerequisites: ["module-26-quantization", "module-11-inference-kv-cache"],
+  prerequisites: ["module-26-quantization", "module-11-inference-kv-cache", "module-22-lora-adapters"],
   estimatedMinutes: 16,
   steps: ["Add users", "Extend the context", "Balance the budget", "Change the hardware", "Pull the levers", "Export it"],
   stepInstructions: [

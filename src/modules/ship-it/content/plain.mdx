@@ -239,6 +239,9 @@ from 0% up to 90%. The hope is that a table full of zeros can be stored in less 
 on software and chips built to skip over the zeros. In this lab it does not make the file any
 smaller, as Where it breaks explains, so here you only see what it costs.
 
+The pipeline prunes first and rounds last. Rounding works best on weights that will not change again,
+which is the order the Distillation & pruning lab teaches too.
+
 The result of both steps is the row called **As shipped**, which is the version that would actually
 go out. That finished version, after every stage has changed it, is called the **artifact**, and the
 first line of the **Release report** describes it. At the start it reads
@@ -336,8 +339,8 @@ says to re-test the old levels before the update goes out.
 
 Compression comes after training, and it changes the numbers, so a gate that read the **After
 aligning** row would be grading a model that never goes out. With four replayed sentences and
-**Prune** at 90%, for example, **After aligning** would pass both checks with room to spare, while
-**As shipped** fails both. That is why the gate always reads the last row, the artifact itself, and
+**Prune** at 90%, for example, **After aligning** would pass both checks with room to spare. **As
+shipped** keeps less than a quarter of its recipe gain and fails the harbor check. That is why the gate always reads the last row, the artifact itself, and
 never the model as it left training.
 
 ### A six-question quiz cannot settle a close call
@@ -438,10 +441,10 @@ row of numbers on **Compress and serve**. Across all five formats, neither one m
 0.02 nats, while **Toy bits per weight** falls from 16.04 to about 5.
 
 Then set **Weight format** back to `Q4_K_M`, the starting format, and drag **Prune** to 50%.
-**Recipe loss, as shipped** moves only from 2.367 to 2.372, so cutting half the weights costs almost
-nothing here, and the model still ships. Now drag **Prune** all the way to 90%, and recipe loss
-jumps back to 2.530, nearly the base model’s 2.540. Almost all of the recipe training is undone, and
-the gate fails on both of its checks.
+**Recipe loss, as shipped** stays at 2.367, so cutting half the weights costs nothing you can see
+here, and the model still ships. Now drag **Prune** all the way to 90%, and recipe loss climbs to
+2.495. The base model scored 2.540, so only 0.045 of the 0.190 gain is left. Harbor loss climbs too,
+to 2.271, which is past the allowance, so the gate holds the release.
 
 ### 5. Budget and decide
 
@@ -490,12 +493,12 @@ until the budget fits again, and read the verdict and its reasons once more.
 - **The quiz barely notices:** with four replayed sentences, the recipe quiz reads 1 of 6 before and
   1 of 6 after, though recipe loss fell by 0.173. The ranges overlap, so the quiz is not decisive,
   while held-out loss shows a clear gain because it counts every character.
-- **Shrinking is nearly free, but pruning is not:** these numbers use four replayed sentences. The
-  shipped model is 0.022 worse on recipe text than **After aligning** at 50% pruning, and 0.180 worse
-  at 90%. Rounding to `Q4_K_M` causes
-  0.017 of that first rise on its own, so pruning half the weights adds only about 0.005. Pruning
-  90% adds about 0.163, so removing a little under twice as much does about thirty times the
-  damage. The harm grows much faster than the amount removed.
+- **Light squeezing is nearly free, but heavy pruning is not:** these numbers use four replayed
+  sentences. Rounding to `Q4_K_M` leaves the shipped model 0.017 worse on recipe text
+  than **After aligning**, and pruning half the weights before rounding adds nothing you can see.
+  Pruning 90% leaves it 0.145 worse on recipe text and 0.187 worse on harbor text. Going from half
+  the weights to nine tenths takes the damage from nothing to most of the recipe gain, so the harm
+  grows much faster than the amount removed.
 - **Memory fails in a different place:** at the heaviest load the sliders allow, the imagined
   8B-class budget is 261.58 GiB at `Q4_K_M` and 271.96 GiB at `F16`. Switching formats saves only
   about 10 GiB, because the notes alone take 256 GiB, so the KV cache, not the weights, is what runs
@@ -557,6 +560,11 @@ Putting it all together, here is what each stage of the journey costs the model 
 - **The toy is not a chatbot model:** it reads one character at a time rather than words or pieces
   of words, and it looks back only one character. It was also never trained to follow instructions,
   and eight sentences per text stand in for what would really be a huge collection of training data.
+- **Two real steps are missing:** the preference step here runs straight on the adapted model. Real
+  preference training starts from a model first taught to follow instructions, a step called
+  supervised fine-tuning, as the Instruction tuning and Preference optimization labs explain. And the
+  pruning step skips the short retraining that real pipelines use to repair a pruned model before
+  rounding it.
 
 Nothing in this lab is measured on a real model or on real hardware, even where the numbers look
 precise.
@@ -637,3 +645,10 @@ lab directly:
 
 A good first project is to repeat this lab’s loop on a small real model of your own choosing. Pick
 one job, hold out a control set, adapt the model, and write your gate down before you run anything.
+
+Two open problems sit just past this lab. **Continual learning** asks how a model already in use can
+keep learning from new data without forgetting the old, which **Replay sentences** patches here by
+hand. Kirkpatrick and colleagues described a well-known approach in 2017. **Test-time training** goes
+a step further and changes some weights while the model reads its input, an idea Sun and colleagues
+introduced in 2020. Both are still being researched, and most assistants in use today still learn new
+facts by looking them up and reading them, not by changing their weights.

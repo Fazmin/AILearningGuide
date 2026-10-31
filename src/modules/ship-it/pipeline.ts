@@ -274,12 +274,13 @@ export function runPipeline(recipe: ShipRecipe): Release {
     : null;
   const aligned = dpo ? dpo.weights : adapted;
 
+  // Prune first and quantize last, as Distillation & pruning teaches: rounding assumes the
+  // weights are final, so it should see the table pruning leaves behind.
+  const pruned =
+    recipe.prune > 0 ? pruneTinyWeights(aligned, { fraction: recipe.prune, mode: "unstructured" }).weights : aligned;
   const format = GGUF_FORMATS.find((entry) => entry.name === recipe.format) ?? GGUF_FORMATS[3];
-  const quantized = quantizeTinyWeights(aligned, { bits: format.bits, scope: format.scope, groupSize: format.groupSize });
-  const shippedWeights =
-    recipe.prune > 0
-      ? pruneTinyWeights(quantized.weights, { fraction: recipe.prune, mode: "unstructured" }).weights
-      : quantized.weights;
+  const quantized = quantizeTinyWeights(pruned, { bits: format.bits, scope: format.scope, groupSize: format.groupSize });
+  const shippedWeights = quantized.weights;
 
   const stages: Stage[] = [
     { id: "base", weights: base, metrics: measure(base) },

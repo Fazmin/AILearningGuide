@@ -8157,7 +8157,7 @@ input[type="range"]::-webkit-slider-thumb {
   color: var(--positive);
 }
 
-/* train and adapt a model */
+/* pretrain, adapt and ship a model (the training labs) */
 
 .tg-lab {
   display: grid;

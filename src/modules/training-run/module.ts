@@ -6,7 +6,7 @@ const definition: ModuleDefinition = {
   id: "module-17-training-run",
   slug: "training-run",
   title: "Anatomy of a training run",
-  group: "training-adapting",
+  group: "pretraining",
   order: 36,
   icon: "Repeat",
   accent: "#4a6fd0",

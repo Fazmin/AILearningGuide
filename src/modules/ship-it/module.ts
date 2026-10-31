@@ -10,11 +10,12 @@ const definition: ModuleDefinition = {
   slug: "ship-it",
   title: "Ship it",
   group: "training-adapting",
-  order: 51,
+  order: 58,
   icon: "Workflow",
   accent: "#c2562f",
   prerequisites: [
     "module-20-train-tiny-lm",
+    "module-21-fine-tuning-transfer",
     "module-22-lora-adapters",
     "module-24-preference-optimization",
     "module-25-evaluation",
@@ -265,15 +266,15 @@ const definition: ModuleDefinition = {
     },
     {
       prompt:
-        "You raise the Prune slider to 90% and the gate fails on both checks. Which explanation matches what the lab shows?",
+        "With four replayed sentences you raise the Prune slider to 90%, and the gate holds the release. Which explanation matches what the lab shows?",
       options: [
         "Pruning only changes file size, so the gate failed because the control set was small",
-        "Both losses rise, and recipe loss ends up nearly back at the base model's",
+        "Both losses rise, and harbor loss climbs past what the gate allows",
         "Pruning deletes the adapter first, which resets the model to the base exactly",
       ],
       answer: 1,
       explanation:
-        "Magnitude pruning zeroes the smallest weights without regard to which text they serve. At 90% both losses rise, and the recipe gain nearly disappears. Pruning acts on the merged table, so it does not remove the adapter as a unit.",
+        "Magnitude pruning zeroes the smallest weights without regard to which text they serve. At 90% both losses rise: harbor loss ends 0.172 above the base, past the 0.100 allowance, and only 0.045 of the 0.190 recipe gain survives. Pruning acts on the merged table, so it does not remove the adapter as a unit.",
       objective: 0,
     },
   ],
