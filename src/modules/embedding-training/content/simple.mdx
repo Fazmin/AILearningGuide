@@ -1,0 +1,220 @@
+---
+objectives: ["Describe how a bi-encoder is trained with InfoNCE and in-batch negatives, where every query is scored against every passage in its batch","Predict what batch size and temperature do to the starting loss, to held-out recall and to how spread out the vectors end up","Explain why mined hard negatives help with confusable passages, and how a false negative pushes two true answers apart","Evaluate a trained retriever with held-out Recall@k and MRR against BM25 and against its untrained start","Compare a bi-encoder with a cross-encoder reranker on accuracy and on the work each query costs"]
+terms: ["Bi-encoder","InfoNCE","In-batch negatives","Temperature","Hard negative","False negative","Character trigrams","Mean pooling","L2 normalisation","Recall@k","MRR","Anisotropy","Cross-encoder reranker","Matryoshka embedding"]
+---
+
+## The big picture
+
+In the lab *Embeddings for search and retrieval*, a search box turned each question into a list of numbers. It then found the notices whose lists pointed the same way. A person wrote every one of those numbers by hand. Real search systems cannot work like that, because there are far too many words.
+
+This module shows how those numbers get learned instead. The computer gets pairs of a question and the notice that answers it. It changes its numbers again and again. It stops when each question sits closer to its own answer than to any other notice.
+
+The program that turns text into numbers is called an **encoder**. The kind trained here is a **bi-encoder**, where "bi" means two. The question and the notice go through the encoder one at a time. Only their finished lists get compared.
+
+### Where you have met it
+
+Some chatbots look things up before they answer. That search step often uses a trained encoder like this one. The lab *Retrieval-augmented generation* is built on that step.
+
+Help pages and search boxes inside apps use trained encoders too. They let a search for “dog on the boat” find a rule about pets on the ferry. The words differ, but the meaning matches.
+
+### Why it matters
+
+- The encoder only learns what its practice rounds ask of it. Easy rounds never teach it to tell look-alike notices apart.
+- Two settings, the batch size and the temperature, change what training pays attention to. You can watch both in the lab.
+- Real data is messy, and two notices sometimes say the same thing. If only one is marked right, training punishes the other.
+- A computer can memorize its practice questions and still fail new ones. So the only fair test uses questions it has never seen.
+
+### What you will be able to explain
+
+By the end of this lesson, you should be able to explain each of these in your own words:
+
+- How a bi-encoder learns with **InfoNCE**, a scoring rule that checks each question against every notice in its round.
+- How the batch size and the **temperature** change the first score, new results, and the spread of the lists.
+- Why **hard negatives** help, and how a **false negative** pushes two true answers apart.
+- How to grade an encoder with **Recall@k** and **MRR**, against keyword search and its own start.
+- What a **cross-encoder reranker** adds, how much extra work it costs, and why it only reads a short list.
+
+### What the lab lets you do
+
+The training in this lab is real. It runs inside the page from a fixed starting point every time you change a setting. Each run takes 300 small steps, and every number in the four cards comes from that run.
+
+Some parts were written by hand. There are 41 short notices from a made-up harbor, 90 practice questions and 30 test questions. Three pairs of notices say the same thing in different words. The starting numbers were made up on purpose, so every list points almost the same way at first. The reranker is a small stand-in for a much bigger real one.
+
+- **Batch similarity:** This card shows one practice round as a table. It has four settings: **Batch size**, **Temperature τ**, **Negatives** and **Skip known duplicates**.
+- **Held-out retrieval:** This card draws how well the encoder does on the 30 test questions as training goes on. Keyword search sits beside it.
+- **Embedding map:** This card squashes every list of numbers onto a flat picture. You can see if the lists are bunched up or spread out.
+- **Query inspector:** This card follows one test question and shows where its answers rank.
+
+## What it is
+
+### An analogy: training a new helper at the harbor office
+
+Picture a new helper at a harbor office. Their job is to match each visitor's question to the right notice on the wall. A coach trains them with practice rounds. In each round, the coach mixes a few questions with the notices that answer them. The helper must match every question to its own notice.
+
+Easy rounds teach little. If one question is about dogs and the other notices are about prices, anyone could match it. A round with the north dock's hours next to the south dock's hours teaches careful reading. Now suppose two notices say the same thing, but the answer sheet lists only one. Then the helper gets marked wrong for picking the other, even though it was right.
+
+The lab trains its encoder in almost the same way. The comparison stops matching in one spot. The helper here is a big table of numbers. It gives each notice a share instead of picking just one.
+
+### How text becomes a list of numbers
+
+The encoder works in five steps. It uses the same five steps for questions and for notices.
+
+1. It makes every letter lowercase, splits the text into words, and drops small words like “the” and “on”.
+2. It cuts each word into **character trigrams**, which are pieces three letters long. A # marks each end, so “dock” becomes `#do`, `doc`, `ock` and `ck#`.
+3. A fixed scrambling formula, called a hash, turns each piece into a row number from 0 to 511.
+4. Each row holds a short list of numbers, and the encoder averages the rows of all the pieces. This averaging is called **mean pooling**.
+5. It stretches or shrinks the result so its length is exactly 1. This step is called **L2 normalisation**.
+
+After the last step, comparing two lists only depends on the way they point. A list of numbers like this is called a **vector**. Training only changes the big table, which holds 512 rows of 16 numbers.
+
+Shared pieces help with spelling mistakes. The typo “norht” still shares `#no` and `nor` with “north”. The plural “docks” shares three of the four pieces of “dock”.
+
+### How a practice round is scored
+
+A practice round is called a **batch**, and the number of questions in it is the batch size. Each question has one notice marked as its answer. The encoder scores every question against every answer in the batch. That score is called the cosine.
+
+So each question has to beat the other questions' answers. Those other answers are called **in-batch negatives**, where “negative” means a wrong choice. They come for free, because the batch had to handle them anyway.
+
+Next, the scores in each row become shares that add up to 100%. A bigger score gives a bigger share. First, though, the lab divides each score by a number called the **temperature**, written τ. A small τ makes small score gaps count for a lot. A large τ makes the shares more even.
+
+The penalty for a question grows when its right answer gets a smaller share. The batch's average penalty is called the **loss**. This way of scoring a batch is called **InfoNCE**, a name from the researchers who made it.
+
+### A worked example of the starting loss
+
+Suppose a batch has 8 questions, and the encoder cannot tell any notices apart yet. Then all 8 answers score the same, and each gets one eighth of the share, 12.5%. The loss is then the natural log of 8, written ln 8, which is about 2.08.
+
+That is why the card shows **Starting loss (ln B)** next to the loss it measures. Here B stands for the batch size. A batch of 2 starts at ln 2, about 0.69. A batch of 32 starts at ln 32, about 3.47, because picking one out of 32 is harder.
+
+### How training changes the numbers
+
+After each batch, training nudges the numbers in the table. The right answer gets pulled toward its question by the share it was missing. Each wrong notice gets pushed away by the share it took. So the table in **Batch similarity** also shows where the pushes land.
+
+Every list must keep a length of exactly 1. So training can only turn a list to point somewhere new. It can never make a list longer.
+
+### Harder practice rounds
+
+The **Negatives** setting can add one extra wrong notice for each question:
+
+- **BM25-mined:** Keyword search finds the wrong notice that shares the most words with the question. It picks these once, before training starts.
+- **Nearest wrong:** The encoder itself finds the wrong notice it thinks is closest right now. It looks again every 10 steps, because the encoder keeps changing.
+
+Either way, the extra notice is a **hard negative**. That is a wrong answer that looks a lot like the right one.
+
+### Twins and false negatives
+
+Three facts in the notices are written twice in different words. For example, **Sunday hours** and **Sunday notice** both say the north dock closes at 4 on Sunday afternoons. Each practice question marks only one of the pair as its answer.
+
+Sometimes both twins land in the same batch. Then training treats the unmarked twin as wrong and pushes it away, even though it answers the question. That twin is a **false negative**: a right answer treated as wrong. The **Skip known duplicates** setting leaves the twin out of that question's shares.
+
+### Grading the encoder
+
+The lab grades the encoder on 30 test questions it never trains on. Twenty say things in new ways, and five have typos or words run together. The last five use words that never appear anywhere in the training. If an answer has a twin, either notice counts as right.
+
+- **Recall@k:** This is the share of test questions with a right notice somewhere in the top k results. So Recall@1 asks how often the very first result is right.
+- **MRR:** This is short for mean reciprocal rank. Each question earns 1 divided by the place of its first right notice, and then the lab averages. First place earns 1, second place earns 0.5, and a miss earns 0.
+- **BM25:** This is a standard keyword search, used for comparison. It can only find a notice that shares at least one word with the question.
+
+### A second opinion: the reranker
+
+A bi-encoder never lets the question and the notice see each other. It only compares their finished lists. A **cross-encoder reranker** reads the question and one notice together and gives the pair a score. That is more careful, but each notice it reads costs a whole extra pass. So it only reads a short list.
+
+In this lab, a small stand-in plays that part. A real cross-encoder is far too big to run here. It checks five things about each pair, such as whether both name the same dock. It reorders only the encoder's top 5.
+
+## Why it’s here
+
+A chatbot that looks things up can only use what its search step finds. That search step depends on a trained encoder. The earlier lab, *Embeddings for search and retrieval*, showed how a finished encoder ranks notices. This lab shows where a learned encoder comes from. Three small-looking choices matter: the size of each round, the wrong notices in it, and the answer sheet.
+
+## How to play with it
+
+### 1. Read the untrained space
+
+Set **Training step** to 0, which shows the encoder before any training. It puts a right notice first for only 7% of the test questions. So its **Recall@1** is 7%, and its **MRR** is 0.16. Keyword search already reaches 43% and 0.51 on the same questions.
+
+**Mean cosine between passages** is 0.94, so almost every notice's list points the same way. That lean was built in on purpose. It copies a real problem called **anisotropy**, where untrained lists crowd together. Drag the slider forward, and Recall@1 climbs to 43% by step 10 and 53% by step 20.
+
+### 2. Train with in-batch negatives
+
+Drag Training step to 300. Now Recall@1 is 63%, **Recall@5** is 83%, and MRR is 0.72. Next, switch **Batch size** between 2 and 32 and compare three readouts.
+
+- Starting loss (ln B) goes from 0.69 to 3.47, because each question has more notices to beat.
+- The measured **Loss at step 0** is a bit lower, 0.47 and 3.10. The untrained encoder already favours some right answers.
+- MRR hardly moves: it reads 0.69 at batch 2 and 0.71 at batch 32.
+- **Duplicate-pair cosine** shows how close the twin notices stay. It falls from 0.73 to 0.27.
+
+With 32 questions per batch, twins land in the same batch far more often. Each time, one twin gets pushed away from a question it really answers.
+
+### 3. Turn the temperature
+
+At step 300, move **Temperature τ** from 0.10 to 0.03. Mean cosine between passages rises from −0.01 to 0.52. The dots in **Embedding map** squeeze together, even though Recall@1 rises to 70%.
+
+With such a small τ, a small lead for the right answer already becomes a huge share. The loss drops to 0.001, almost nothing. So training stops pushing the notices apart before they spread out.
+
+Now set τ to 1.00, the largest value on the slider. Mean cosine falls back to −0.02. But **Loss at this step** stays high at 1.28, and the right answer's share averages only 23%. With a large τ, the shares stay fairly even, so every wrong notice keeps getting a small push.
+
+### 4. Mine hard negatives
+
+Set Batch size to 2 and switch **Negatives** from *In-batch only* to *Nearest wrong*. **Closest wrong cosine, run average** rises from 0.39 to 0.68. So each round now holds a wrong notice the encoder really mixes up with the right one.
+
+The right answer's average share drops from 89% to 74%, so there is more left to learn. Recall@1 rises from 63% to 77%. Now try the same switch at Batch size 8. Recall@1 stays at 63% either way, because a batch of 8 already holds plenty of near misses.
+
+### 5. Spot a false negative
+
+Keep *Nearest wrong* at Batch size 8. Look at the default test question, “When does the north jetty shut on Sundays?” **Query inspector** now ranks *North dock hours* first, though it only gives weekday times. *Sunday notice*, a right answer, sits at #3, and Duplicate-pair cosine is 0.33.
+
+The four Sunday practice questions had a problem. Their closest wrong notice was the other Sunday twin in 81 of 124 checks. So training kept pushing the two twins apart.
+
+Switch **Skip known duplicates** on. Duplicate-pair cosine returns to 0.59, and Sunday notice climbs back to #1. Recall@1 moves from 63% to 60%, just one question. That is smaller than the change from a different starting seed.
+
+### 6. Rerank the shortlist
+
+Set Negatives back to *In-batch only* and switch **Rerank top 5** on. Recall@1 goes from 63% to 67%, and MRR goes from 0.72 to 0.75. But **Scoring passes per query** goes from 1 to 6. The reranker reads 5 more pairs for every question.
+
+The reranker fixes “How late can I use the east berth?” The encoder had put *Crab pots* first, but East dock hours repeats the word “east”. The reranker also breaks “Can a cat come on the crossing?” There the word “crossing” lifts *Crossing time* above *Pets on board*.
+
+**Try this:** set Training step to 20 and look at the table in Batch similarity. The shares are still spread across several notices in each row. You can see pushes landing on wrong notices before the encoder memorizes its practice questions.
+
+## What to notice
+
+- Compare **Loss at step 0** with Starting loss (ln B). A lower measured loss means the untrained encoder already leans toward some right answers.
+- At step 300, every row gives its right answer about 99% of the share. The 90 practice questions are memorized, so only the test questions show what was learned.
+- Training takes Mean cosine from 0.94 down to −0.01. The notices end up spread around instead of bunched together.
+- Read the table in Held-out retrieval by kind of question. Training lifts reworded questions from keyword search's 12 of 20 to 16.
+- Typo questions go from 1 of 5 with keyword search to 3 of 5 after training. At these settings, neither method finds the five questions with unseen words.
+- Change **Seed**, the number that sets the random starting point. Seeds 1 to 20 end between 63% and 87% Recall@1, and seed 1 is the lowest.
+
+**A common mix-up:** a training loss near zero does not mean the encoder is good. At step 300 the loss is 0.008, because the encoder memorized its 90 practice questions. Yet it still gets 37% of the new test questions wrong at Recall@1.
+
+## Where it breaks
+
+### Where this lab is limited
+
+- The whole world is tiny: 41 notices, 90 practice questions and 30 test questions. One person wrote them all with the same habits, like saying “jetty” for “dock”.
+- Those shared habits make the test easier than a real one.
+- The encoder is tiny too, with 8,192 numbers and no sense of word order.
+- It can only learn that “jetty” means “dock” because practice questions connected the two words.
+- The starting lean of the lists was made up on purpose. It copies the idea of anisotropy, but nobody measured it from a real model.
+- The reranker is a stand-in with only five features. A person wrote its list of place and day words.
+- One result here disagrees with published research. Researchers found that a small temperature spreads the lists out more.
+- Here τ = 0.03 leaves them bunched instead, with a mean cosine of 0.52. The encoder learns its few practice questions fast, and then the loss stops pushing.
+
+### Where the real method is limited
+
+- An encoder trained on one kind of text can lose to keyword search on another kind.
+- A large test called BEIR used 18 collections. Keyword search was hard to beat there, and trained encoders often fell behind when the topic changed.
+- Pieces of spelling are not the same as meaning. “Hound”, “vessel” and “tempest” never appeared next to “dog”, “ferry” or “wind” in training.
+- So at the default settings, nothing in the lab finds those questions first.
+- Across seeds 1 to 20, one of them lands first only 4 times in 100 tries. A random guess would do about as well.
+- Real answer sheets miss things. Researchers checked unmarked top results for 100 questions, and about 70% were real answers or very close.
+- The closest notice can still be wrong, as *North dock hours* is for the Sunday question.
+- Reading every pair costs far more than comparing finished lists. One study needed about 65 hours to compare 10,000 sentences this way.
+- With separate lists, the same job took about 5 seconds.
+
+## Going deeper
+
+Real encoders are large transformer networks, often started from a pretrained language model. They are trained with the same kind of scoring as here. One well-known recipe, E5, uses a temperature of 0.01 and batches of 32,768 pairs. It also puts the label “query:” or “passage:” in front of each text. Bigger batches help, because they bring more wrong notices to beat.
+
+Two ideas describe the shape that training makes, and the Embedding map card measures both. **Alignment** asks whether matching pairs sit close together. **Uniformity** asks whether everything is spread around evenly.
+
+A **Matryoshka embedding** is named after nesting Russian dolls. It is trained so the first few numbers of its list work alone as a smaller list. This lab's encoder was not trained that way. Keeping only the first 4 of its 16 numbers drops Recall@1 from 63% to 33%.
+
+The lab *Retrieval-augmented generation* uses an encoder like this as its first step. *Multimodal models* uses the same scoring rule to match pictures with captions. *Fine-tuning & transfer* shows how to adapt numbers to new data. *Evaluation* explains how far to trust a test score.

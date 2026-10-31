@@ -1,0 +1,173 @@
+---
+objectives: ["Describe how a bi-encoder is trained with InfoNCE and in-batch negatives, where every query is scored against every passage in its batch","Predict what batch size and temperature do to the starting loss, to held-out recall and to how spread out the vectors end up","Explain why mined hard negatives help with confusable passages, and how a false negative pushes two true answers apart","Evaluate a trained retriever with held-out Recall@k and MRR against BM25 and against its untrained start","Compare a bi-encoder with a cross-encoder reranker on accuracy and on the work each query costs"]
+terms: ["Bi-encoder","InfoNCE","In-batch negatives","Temperature","Hard negative","False negative","Character trigrams","Mean pooling","L2 normalisation","Recall@k","MRR","Anisotropy","Cross-encoder reranker","Matryoshka embedding"]
+---
+
+## The big picture
+
+*Embeddings for search and retrieval* ranked passages with an encoder whose numbers were written by hand. This module trains one. A **bi-encoder** maps a query and a passage to vectors separately, with the same function, and scores the pair by cosine similarity. Training adjusts that function until each query's vector lands nearer its own answer than any other passage's vector. The question here is what the training objective rewards, what it accidentally punishes, and how to tell whether the result retrieves better than plain keyword search.
+
+It builds on *Embeddings for search and retrieval*, for cosine ranking and Recall@k, and on *Fine-tuning & transfer*, for the idea that adapting weights is ordinary training on new data.
+
+### Where it shows up
+
+- **Dense passage retrieval.** DPR (Karpukhin et al., 2020) trains a question encoder and a passage encoder with **in-batch negatives**, adding one BM25 negative per question, and feeds open-domain question answering.
+- **Sentence embedding models.** Sentence-BERT (Reimers and Gurevych, 2019) pools a transformer's outputs into one vector per sentence; E5 (Wang et al., 2022) trains with the same loss as this lab at a temperature of 0.01 and batches of 32,768.
+- **Hard-negative mining.** ANCE (Xiong et al., 2021) draws negatives from a nearest-neighbour index of the model being trained and refreshes it as training runs. RocketQA (Qu et al., 2021) shows that many unlabelled top results are real answers.
+- **Two-stage search.** A **cross-encoder reranker** reads the query and each shortlisted passage together (Nogueira and Cho, 2019), after a fast first stage.
+- **Older roots.** DSSM (Huang et al., 2013) already trained two towers on click data, from words cut into **character trigrams**, as this lab's encoder is.
+
+### Why it matters
+
+- **The negatives define the task.** The loss only asks each answer to beat the candidates it is shown. Easy candidates teach little; confusable ones teach the distinctions that matter.
+- **Two knobs change different things.** Batch size sets how many candidates each query must beat and how often a mislabelled one turns up; temperature sets how hard the softmax leans on the closest ones and when the loss stops pushing.
+- **Labels are incomplete.** When two passages state the same fact and only one is labelled, the other is trained as wrong: a **false negative**.
+- **A training loss of zero proves little.** Only held-out queries, scored against a baseline such as BM25, say whether the encoder learned anything that transfers.
+
+### What you will be able to explain
+
+- How a bi-encoder is trained with **InfoNCE** and in-batch negatives, where every query is scored against every passage in its batch.
+- What batch size and **temperature** do to the starting loss, to held-out recall and to how spread out the vectors end up.
+- Why mined **hard negatives** help with confusable passages, and how a false negative pushes two true answers apart.
+- How to evaluate a trained retriever with held-out **Recall@k** and **MRR**, against BM25 and against its untrained start.
+- How a bi-encoder and a cross-encoder reranker compare on accuracy and on the work each query costs.
+
+### What the lab shows
+
+The training is real and runs in the page: a table of 512 × 16 weights (or 512 × 8) learns for 300 steps of plain gradient descent from a fixed seed, and every number in the four cards is measured on that run. What is authored: 41 Gull Harbor notices in ten topics, 90 training queries, 30 held-out queries, three pairs of notices that state the same fact, and the slot words the reranker compares. What is constructed: the starting weights, which share an offset so that every vector leans the same way, a stand-in for **anisotropy**. What is a stand-in: the reranker, a five-feature logistic model.
+
+**Batch similarity** shows the batch the trainer draws at the chosen step, as a table of softmax shares, with **Batch size**, **Temperature τ**, **Negatives** and **Skip known duplicates**. **Held-out retrieval** charts Recall@1, Recall@5 and MRR over training against BM25, with **Training step**, **Width**, **Seed** and **Rerank top 5**. **Embedding map** draws a two-direction projection of every vector. **Query inspector** follows one held-out **Query**.
+
+With the defaults (batch 8, τ = 0.10, seed 1), held-out Recall@1 goes from 7% at step 0 to 63% at step 300, against 43% for BM25, while the mean cosine between passages falls from 0.94 to −0.01. The experiments below change one setting at a time.
+
+## What it is
+
+### The encoder
+
+One function encodes both queries and passages:
+
+1. Lowercase the text, split it into words, and drop a short list of function words such as *the* and *on*.
+2. Pad each word with boundary marks and cut it into **character trigrams**: `dock` becomes `#do`, `doc`, `ock`, `ck#`.
+3. Hash each trigram with FNV-1a into one of 512 buckets. Each bucket owns one row of a weight table W.
+4. Average the rows of all the text's trigrams. This is **mean pooling**.
+5. Divide by the length, **L2 normalisation**, so every vector has length 1 and cosine similarity is a dot product.
+
+Training changes only W. Because the pieces are shared, a typo such as `norht` still shares `#no` and `nor`, two of the five trigrams of `north`, and the plural `docks` shares three of the four trigrams of `dock`.
+
+### The loss: InfoNCE over a batch
+
+Draw a batch of B training pairs (query, answer). The candidates are the batch's answers, each counted once, so every query is scored against every other query's answer. For query i with labelled answer a:
+
+```
+share(i, j) = exp(cos(q_i, p_j) / τ) / Σ_k exp(cos(q_i, p_k) / τ)
+loss_i      = −log share(i, a)
+```
+
+This is **InfoNCE** (van den Oord et al., 2018): a cross-entropy for picking the one positive out of a set of negatives. The other answers in the batch are the **in-batch negatives**, free because they were encoded anyway. If every cosine is equal, every share is 1 / B and the loss is ln B, which is why **Starting loss (ln B)** sits beside the measured loss.
+
+### What the gradient does
+
+The derivative of the loss with respect to a cosine is (share − 1) / τ for the answer and share / τ for each wrong candidate, averaged over the B rows. So the answer is pulled up by whatever share it is missing, and each wrong candidate is pushed down in proportion to its share. The table in **Batch similarity** is therefore also a map of where the push lands.
+
+The gradient then passes through the normalisation. Its component along the vector itself is removed, so training can only rotate a vector on the unit sphere, never lengthen it. Each trigram row receives an equal part of the vector's gradient, once per occurrence, and plain SGD takes a step with a learning rate of 8.
+
+### Mined negatives
+
+**Negatives** adds one extra candidate per query, shared with the rest of the batch as DPR shares its BM25 negatives.
+
+- **BM25-mined** takes the wrong passage with the highest BM25 score, once, before training. 22 of the 90 training queries share no word with any wrong passage and get no mined negative.
+- **Nearest wrong** takes the wrong passage nearest the query under the current encoder, from an index rebuilt every 10 steps. ANCE refreshes its index in the same spirit, asynchronously, while training continues.
+
+Neither miner ever returns the labelled answer.
+
+### Duplicates and false negatives
+
+Three facts are written twice: *Sunday hours* and *Sunday notice*, *Ferry fares* and *Ticket desk*, *Lost property* and *Found items*. Each training query labels only one member of a pair. When a query's batch also holds its answer's twin, as another query's answer or as a mined negative, the loss treats the twin as wrong and pushes it away. **Skip known duplicates** leaves the twin out of that query's softmax and keeps the miners from picking it.
+
+### Measuring it
+
+Evaluation uses the 30 held-out queries: 20 paraphrases that reuse training words in new combinations, 5 typos or run-together words, and 5 queries built on words that appear in no training query or notice. A query's relevant passages are its labelled answer and, if it has one, the answer's twin.
+
+- **Recall@k** in this lab is the hit rate: the share of queries with at least one relevant passage in the top k. DPR calls it top-k retrieval accuracy. Another common definition, the share of all relevant passages found, differs when a query has two.
+- **MRR**, mean reciprocal rank, averages 1 / rank of the first relevant passage, so second place still earns 0.5.
+- **BM25** (k1 = 1.2, b = 0.75) ranks the same queries on shared keywords, with a plural *s* stripped. A query that shares no word with a passage cannot retrieve it.
+
+### Reranking
+
+A bi-encoder never lets the query and passage see each other: they meet only as two vectors. A **cross-encoder reranker** reads them together and scores the pair. Here a logistic regression stands in for one, over five features: the bi-encoder's cosine, BM25, an exact slot-word match (north against south, Sunday against weekday, and so on), the share of query words found in the passage, and the overlap of trigram sets. It is trained on the training queries at the chosen step and reorders the top 5.
+
+## Why it’s here
+
+Retrieval-augmented generation can only use what the retriever finds, and the retriever is only as good as the encoder behind it. *Embeddings for search and retrieval* showed how a fixed encoder ranks; this lab shows where a learned one comes from, and why its quality depends on choices that look like housekeeping: how big the batch is, which negatives it holds, and whether the labels admit that two passages can both be right.
+
+## How to play with it
+
+### 1. Read the untrained space
+
+Set **Training step** to 0. Held-out **Recall@1** is 7% and **MRR** 0.16, while BM25 already scores 43% and 0.51. **Mean cosine between passages** is 0.94: every vector leans the same way because of the shared starting offset, so the differences that decide rankings are small next to that common direction. Drag **Training step** forward: Recall@1 reaches 43% by step 10 and 53% by step 20.
+
+### 2. Train with in-batch negatives
+
+Drag Training step to 300: Recall@1 is 63%, **Recall@5** 83% and MRR 0.72. Now switch **Batch size** between 2 and 32.
+
+- **Starting loss (ln B)** moves from 0.69 to 3.47: more candidates make the same untrained guess harder. **Loss at step 0** measures 0.47 and 3.10, a little below, because the untrained encoder already gives answers slightly more than an even share, and the first batch of 32 holds only 25 distinct answers.
+- MRR barely moves, 0.69 against 0.71.
+- **Duplicate-pair cosine** falls from 0.73 to 0.27. Across the 31 batches the card can show, no row at batch 2 met its answer's twin; at batch 32, 89 rows did, and each one pushed a true answer away.
+
+### 3. Turn the temperature
+
+At step 300, move **Temperature τ** from 0.10 to 0.03. Mean cosine between passages rises from −0.01 to 0.52 and the points in **Embedding map** close up, while Recall@1 rises to 70%. At τ = 0.03 a cosine lead of 0.2 is a logit lead of almost 7, so the training loss drops to 0.001 and stops pushing before the passages spread out.
+
+Set τ to 1.00. Mean cosine is −0.02 again, but **Loss at this step** stays at 1.28 and the answer's share averages 23% over the run: logits can now differ by at most 2, so the softmax never concentrates and every wrong candidate keeps a share of the push.
+
+### 4. Mine hard negatives
+
+Set Batch size to 2 and switch **Negatives** from *In-batch only* to *Nearest wrong*. **Closest wrong cosine, run average** rises from 0.39 to 0.68 and the **Answer's share** average drops from 89% to 74%: each row now holds a passage the model actually confuses, so the loss has more to correct. Held-out Recall@1 rises from 63% to 77%.
+
+Repeat at Batch size 8. Recall@1 stays at 63% either way and the closest wrong cosine only moves from 0.39 to 0.46: with eight answers per batch from 41 passages, the batch already supplies near misses.
+
+### 5. Spot a false negative
+
+Keep *Nearest wrong* at Batch size 8. For the default query, “When does the north jetty shut on Sundays?”, **Query inspector** ranks *North dock hours*, which gives weekday times, first; *Sunday notice*, a correct answer, sits at #3, and Duplicate-pair cosine is 0.33. In 81 of 124 index refreshes for the four Sunday training queries, the nearest wrong passage was the other Sunday passage, so training pushed the two apart.
+
+Switch **Skip known duplicates** on. Duplicate-pair cosine returns to 0.59 and Sunday notice to #1. Recall@1 moves from 63% to 60%, one query, inside the spread between seeds.
+
+### 6. Rerank the shortlist
+
+Return Negatives to *In-batch only* and turn **Rerank top 5** on. Recall@1 goes from 63% to 67% and MRR from 0.72 to 0.75, while **Scoring passes per query** goes from 1 to 6. The reranker fixes “How late can I use the east berth?”, where the bi-encoder put *Crab pots* first: *East dock hours* repeats the query's *east*, which lifts its BM25, slot-match and coverage features. It breaks “Can a cat come on the crossing?”, sending *Crossing time* above *Pets on board* on the shared word *crossing*.
+
+## What to notice
+
+- **Loss at step 0 against ln B.** Equal scores give ln B; anything lower means the untrained encoder already prefers the answers.
+- **The shares at step 300.** Every row gives its answer about 99% of the share, and all 90 training queries rank a relevant passage first: the training pairs are memorized, which is why held-out recall, not training loss, is the measurement.
+- **Mean cosine and uniformity.** Training at τ = 0.10 takes the mean cosine from 0.94 to −0.01 and uniformity from −0.24 to −3.59. Alignment rises from 0.16 to 0.88 at the same time: the queries were closest to their answers when everything was close to everything.
+- **Which queries move.** The table in Held-out retrieval splits hits at rank 1 by kind. Training lifts paraphrases from BM25's 12 of 20 to 16 and typos from 1 of 5 to 3. At the defaults no ranker finds an unseen-word query first.
+- **Seeds.** At the defaults, seeds 1 to 20 end between 63% and 87% Recall@1. Seed 1 is the low end; one query is 3.3 points.
+
+## Where it breaks
+
+### In this lab
+
+- **A tiny world.** 41 passages, 90 training queries and 30 held-out queries, all written by one author with the same habits, such as *jetty* and *berth* for *dock*. Held-out recall here flatters the encoder.
+- **A tiny model.** 8,192 weights, no word order, no attention. The trigram rows can learn that *jetty* sits near *dock* only because training pairs connected them.
+- **A constructed start.** The shared offset imitates anisotropy so the untrained space is visibly bunched; it is not a measured property of any pretrained model.
+- **One stand-in.** The reranker has five features and five weights, and its slot words are a hand-written list.
+- **Where the toy disagrees.** Wang and Liu (2021) find that a small temperature concentrates the penalty on the hardest negatives and makes embeddings more uniform. Here τ = 0.03 leaves the passages bunched (mean cosine 0.52): the 90 training answers soon lead their rows by margins that, divided by 0.03, already drive the loss near zero, so the push stops before the passages spread. Their experiments use far larger datasets. SimCLR's temperature table peaks at 0.1 (Chen et al., 2020); here Recall@1 at τ = 0.03 is higher on seed 1, by two queries.
+
+### In the real mechanism
+
+- **Recall does not transfer for free.** A retriever trained on one domain can lose to BM25 on another: BEIR (Thakur et al., 2021) finds BM25 a robust baseline across 18 datasets and dense retrievers often behind it under large domain shift.
+- **Unseen words carry no meaning.** Trigrams match spelling, not sense. *hound*, *vessel* and *tempest* never met *dog*, *ferry* or *wind* in training. At the defaults none of those five queries is found first; over seeds 1 to 20 one comes first 4 times in 100 tries, about as often as a random pick would.
+- **Labels are sparse.** RocketQA (Qu et al., 2021) checked unlabelled top results for 100 questions and found about 70% were actually answers or highly relevant. Mining harder makes false negatives more likely, not less.
+- **Near is still not right.** A trained encoder can still rank a fluent, confident wrong passage first, as *North dock hours* ranks for the Sunday question in step 5.
+- **Cost moves, it does not vanish.** Sentence-BERT reports about 65 hours to find the most similar pair among 10,000 sentences with BERT as a cross-encoder and about 5 seconds with separately encoded vectors (Reimers and Gurevych, 2019). A reranker spends that cost only on a shortlist, so it cannot rescue an answer the first stage missed.
+
+## Going deeper
+
+Production bi-encoders are transformers, usually fine-tuned from a pretrained language model, with the same loss as here. E5 (Wang et al., 2022) trains with InfoNCE, in-batch negatives, τ = 0.01, batches of 32,768 and `query:` and `passage:` prefixes, then fine-tunes with mined hard negatives. SimCLR (Chen et al., 2020) found that larger batches help because they bring more negatives. RocketQA shares passages across GPUs for the same reason, and filters likely false negatives with a cross-encoder before training on them.
+
+Two geometric ideas explain what the loss does to the space. Wang and Isola (2020) split it into **alignment**, positive pairs close together, and **uniformity**, everything spread over the sphere, and prove that the contrastive loss optimizes both as negatives grow. Pretrained language models start far from uniform: Ethayarajh (2019) found contextual representations crowded into a narrow cone, and SimCSE (Gao et al., 2021) shows contrastive training spreading them out.
+
+A **Matryoshka embedding** (Kusupati et al., 2022) adds the loss at several nested prefix lengths, so the first numbers of one vector work as a smaller embedding. Without that, cutting a vector short throws recall away: at the defaults, the first 4 of 16 numbers give 33% Recall@1 against 63% for all 16.
+
+*Retrieval-augmented generation* uses a retriever like this one as its first stage. *Multimodal models* uses the same contrastive loss to pair images with captions. *Fine-tuning & transfer* covers the general case of adapting pretrained weights, and *Evaluation* the general case of trusting a held-out score.
