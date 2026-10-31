@@ -6,7 +6,7 @@ There are 58 small hands-on labs. In each one you move a slider, click a word, o
 
 **[Try it in your browser](https://fazmin.github.io/AILearningGuide/)**. There's nothing to install.
 
-![A tour of Discover AI: picking Simple, Plain or Standard in the welcome tour, dragging sliders in the single neuron lab, answering checkpoint questions, marking a lab complete, stepping gradient descent and backpropagation, the glossary, searching with Cmd+K, clicking words in the attention lab, training a tiny language model, switching between Simple, Plain and Standard, text size and accessibility options, AI guide settings, the connections map, and dark theme](docs/screenshots/demo.gif)
+![A tour of Discover AI: picking Simple, Plain or Standard in the welcome tour, scrolling the learning map of 58 labs, dragging sliders in the single neuron lab, answering checkpoint questions, marking a lab complete, stepping gradient descent and backpropagation, the glossary, searching with Cmd+K, clicking words in the attention lab, training a tiny language model, splitting a training run across GPUs, switching between Simple, Plain and Standard, accessibility options and text size, AI guide settings, the connections map, and dark theme](docs/screenshots/demo.gif)
 
 [Watch the tour as a video](docs/screenshots/demo.mp4) for a sharper version.
 
@@ -45,6 +45,10 @@ The 58 labs are split into seven groups. You can go in order or jump to whatever
 **Train one from scratch.** Pick some text, a model size, and a training recipe. The model retrains on every change, so you can watch the loss fall and the samples get better.
 
 ![The train-from-scratch lab](docs/screenshots/train-tiny-lm.jpg)
+
+**Optimizers lab.** Train the same tiny model with SGD, momentum, AdamW and Muon on the same batches, then compare how far each one brings the loss down.
+
+![The optimizers lab](docs/screenshots/optimizers.jpg)
 
 **Connections map.** See how all 58 labs link together. Pick one to see what it builds on and what it leads to.
 

@@ -455,8 +455,8 @@ describe("deployment-serving: checkpoint claims for the new questions", () => {
     // The app checks a known SHA-256 for both downloads before running them, and serves on loopback.
     expect(rust).toContain("MODEL_SHA256");
     expect(rust).toContain("const MODEL_SHA256: &str =");
-    expect(readText("ARCHITECTURE.md")).toContain("random loopback-only port");
-    expect(readText("ARCHITECTURE.md")).toContain("Both downloads require known SHA-256 hashes before execution");
+    expect(readText("docs/ARCHITECTURE.md")).toContain("random loopback-only port");
+    expect(readText("docs/ARCHITECTURE.md")).toContain("Both downloads require known SHA-256 hashes before execution");
   });
 });
 

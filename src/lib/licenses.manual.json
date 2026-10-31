@@ -395,6 +395,23 @@
       "basis": "Cargo.toml and LICENSE-MIT of the crate"
     },
     {
+      "id": "crate:tauri-plugin-opener",
+      "crate": "tauri-plugin-opener",
+      "name": "tauri-plugin-opener",
+      "kind": "Rust crate",
+      "group": "runtime",
+      "secondary": true,
+      "delivery": "bundled",
+      "usedFor": "Opens outside links, such as lesson references, in your default browser instead of inside the app window.",
+      "licence": "Apache-2.0 OR MIT",
+      "textIds": ["Apache-2.0", "MIT"],
+      "copyright": ["Copyright (c) 2017 - Present Tauri Apps Contributors"],
+      "holder": "Tauri Apps Contributors",
+      "url": "https://github.com/tauri-apps/plugins-workspace",
+      "status": "verified",
+      "basis": "Cargo.toml and LICENSE_MIT of the crate as locked in src-tauri/Cargo.lock"
+    },
+    {
       "id": "crate:tokio",
       "crate": "tokio",
       "name": "tokio",
