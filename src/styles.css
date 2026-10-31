@@ -27132,3 +27132,399 @@ path.sl-reference {
     display: none;
   }
 }
+
+/* parallel-training */
+
+.explore-scroll[data-module="parallel-training"][data-current-step="0"] .pt-zero-control,
+.explore-scroll[data-module="parallel-training"][data-current-step="1"] .range-control:has(input[aria-label="Micro-batch size"]),
+.explore-scroll[data-module="parallel-training"][data-current-step="1"] .pt-recompute-control,
+.explore-scroll[data-module="parallel-training"][data-current-step="2"] .range-control:has(input[aria-label="Tensor parallel"]),
+.explore-scroll[data-module="parallel-training"][data-current-step="3"] .range-control:has(input[aria-label="Microbatches"]),
+.explore-scroll[data-module="parallel-training"][data-current-step="4"] .range-control:has(input[aria-label="Data parallel"]),
+.explore-scroll[data-module="parallel-training"][data-current-step="4"] .pt-overlap-switch,
+.explore-scroll[data-module="parallel-training"][data-current-step="5"] .range-control:has(input[aria-label="Checkpoint every"]) {
+  --lesson-step-target: 1;
+  position: relative;
+  z-index: 1;
+  border-radius: var(--radius-sm);
+  background-color: color-mix(in srgb, var(--module-accent) 12%, var(--panel-solid));
+  animation: step-target-in 300ms ease-out;
+}
+
+.pt-lab {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.pt-model-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 0.6rem 1rem;
+}
+
+.pt-model-row .segmented > div {
+  flex-wrap: wrap;
+}
+
+.pt-model-row .pt-preset {
+  width: auto;
+  margin-top: 0;
+  white-space: nowrap;
+}
+
+.pt-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 0.15rem 1.2rem;
+  align-items: end;
+  margin-top: 0.4rem;
+}
+
+.pt-groups {
+  display: grid;
+  margin: 0.8rem 0 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  list-style: none;
+}
+
+.pt-groups > li {
+  display: grid;
+  grid-template-columns: minmax(8.5rem, 11rem) minmax(0, 1fr);
+  gap: 0.6rem;
+  padding: 0.45rem 0.7rem;
+  border-top: 1px solid var(--line);
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+.pt-groups > li:first-child {
+  border-top: 0;
+}
+
+.pt-groups > li > strong {
+  color: var(--ink-soft);
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+
+.pt-groups > li > span {
+  color: var(--muted);
+}
+
+.pt-memory-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 0.4rem 1.2rem;
+  align-items: start;
+}
+
+.pt-budget {
+  margin-top: 0.7rem;
+  padding: 0.35rem 0.5rem 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel-muted);
+}
+
+.pt-plot {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin-top: 0.6rem;
+  overflow: visible;
+}
+
+.pt-plot text {
+  fill: var(--muted);
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 10px;
+}
+
+.pt-grid {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.pt-seg {
+  stroke: var(--panel-solid);
+  stroke-width: 1;
+}
+
+.pt-seg.is-weights {
+  fill: color-mix(in srgb, var(--forward) 58%, var(--panel));
+}
+
+.pt-seg.is-gradients {
+  fill: color-mix(in srgb, var(--attention) 52%, var(--panel));
+}
+
+.pt-seg.is-optimizer {
+  fill: color-mix(in srgb, var(--gradient) 52%, var(--panel));
+}
+
+.pt-seg.is-activations {
+  fill: color-mix(in srgb, var(--loss) 50%, var(--panel));
+}
+
+.pt-over {
+  fill: none;
+  stroke: var(--loss);
+  stroke-dasharray: 4 3;
+  stroke-width: 1.4;
+}
+
+.pt-limit {
+  stroke: var(--ink);
+  stroke-width: 2;
+}
+
+.pt-plot .pt-limit-label {
+  fill: var(--ink);
+}
+
+.pt-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 1rem;
+  margin-top: 0.2rem;
+  color: var(--ink-soft);
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 0.64rem;
+}
+
+.pt-legend > span::before {
+  display: inline-block;
+  width: 0.8rem;
+  height: 0.6rem;
+  margin-right: 0.35rem;
+  border-radius: 0.12rem;
+  vertical-align: middle;
+  content: "";
+}
+
+.pt-legend > .is-weights::before {
+  background: color-mix(in srgb, var(--forward) 58%, var(--panel));
+}
+
+.pt-legend > .is-gradients::before {
+  background: color-mix(in srgb, var(--attention) 52%, var(--panel));
+}
+
+.pt-legend > .is-optimizer::before {
+  background: color-mix(in srgb, var(--gradient) 52%, var(--panel));
+}
+
+.pt-legend > .is-activations::before {
+  background: color-mix(in srgb, var(--loss) 50%, var(--panel));
+}
+
+.pt-schedule {
+  margin: 0.4rem 0 0;
+}
+
+.pt-schedule svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.pt-schedule__idle-fill {
+  fill: var(--panel-muted);
+}
+
+.pt-schedule__idle-line {
+  stroke: var(--line-strong);
+  stroke-width: 1.4;
+}
+
+.pt-schedule__row {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.pt-schedule__op--forward rect {
+  fill: color-mix(in srgb, var(--forward) 62%, var(--panel));
+}
+
+.pt-schedule__op--backward rect {
+  fill: color-mix(in srgb, var(--gradient) 58%, var(--panel));
+}
+
+.pt-schedule__op text,
+.pt-schedule__sync text {
+  fill: var(--ink);
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 9px;
+  pointer-events: none;
+}
+
+.pt-schedule__sync rect {
+  fill: color-mix(in srgb, var(--loss) 22%, var(--panel));
+  stroke: var(--loss);
+  stroke-dasharray: 3 2;
+  stroke-width: 1.2;
+}
+
+.pt-schedule__stage,
+.pt-schedule__tick {
+  fill: var(--muted);
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 10px;
+}
+
+.pt-schedule__axis,
+.pt-schedule__tick-mark {
+  stroke: var(--line-strong);
+  stroke-width: 1.2;
+}
+
+.pt-schedule__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 1rem;
+  margin-top: 0.35rem;
+  color: var(--muted);
+  font-size: 0.6875rem;
+}
+
+.pt-schedule__legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.pt-key {
+  display: inline-block;
+  flex: none;
+  width: 0.8rem;
+  height: 0.7rem;
+  border-radius: 0.12rem;
+}
+
+.pt-key--forward {
+  background: color-mix(in srgb, var(--forward) 62%, var(--panel));
+}
+
+.pt-key--backward {
+  width: 1.2rem;
+  background: color-mix(in srgb, var(--gradient) 58%, var(--panel));
+}
+
+.pt-key--idle {
+  border: 1px solid var(--line-strong);
+  background: repeating-linear-gradient(45deg, var(--panel-muted) 0 3px, var(--line-strong) 3px 4.4px);
+}
+
+.pt-key--sync {
+  border: 1px dashed var(--loss);
+  background: color-mix(in srgb, var(--loss) 22%, var(--panel));
+}
+
+.pt-overlap-switch {
+  margin-bottom: 0.2rem;
+}
+
+.pt-step-strip {
+  display: flex;
+  height: 1.9rem;
+  margin-top: 0.2rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.pt-step-strip > i {
+  display: flex;
+  min-width: 2px;
+  align-items: center;
+  justify-content: center;
+  flex-basis: 0;
+  overflow: hidden;
+  border-right: 1px solid var(--panel-solid);
+  font-style: normal;
+}
+
+.pt-step-strip > i:last-child {
+  border-right: 0;
+}
+
+.pt-step-strip > i > span {
+  overflow: hidden;
+  color: var(--ink);
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 0.6rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pt-step-strip > i.is-compute {
+  background: color-mix(in srgb, var(--forward) 40%, var(--panel));
+}
+
+.pt-step-strip > i.is-recompute {
+  background: color-mix(in srgb, var(--gradient) 40%, var(--panel));
+}
+
+.pt-step-strip > i.is-communication {
+  background: color-mix(in srgb, var(--attention) 36%, var(--panel));
+}
+
+.pt-step-strip > i.is-bubble {
+  background: repeating-linear-gradient(45deg, var(--panel-muted) 0 5px, var(--line-strong) 5px 6.5px);
+}
+
+.pt-step-strip > i.is-sync {
+  background: color-mix(in srgb, var(--loss) 34%, var(--panel));
+}
+
+.pt-lost-curve {
+  fill: none;
+  stroke: var(--module-accent);
+  stroke-width: 2.4;
+  stroke-linejoin: round;
+}
+
+.pt-optimum line {
+  stroke: var(--ink-soft);
+  stroke-width: 1.2;
+  stroke-dasharray: 5 3;
+}
+
+.pt-optimum.is-daly line {
+  stroke-dasharray: 2 3;
+}
+
+.pt-plot .pt-optimum text,
+.pt-plot .pt-optimum-label {
+  fill: var(--ink-soft);
+  font-weight: 600;
+}
+
+.pt-lost-dot {
+  fill: var(--loss);
+  stroke: var(--panel-solid);
+  stroke-width: 1.4;
+}
+
+.pt-failure-controls {
+  margin-bottom: 0.2rem;
+}
+
+@media (max-width: 760px) {
+  .pt-model-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pt-model-row .pt-preset {
+    width: 100%;
+  }
+
+  .pt-groups > li {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.15rem;
+  }
+}

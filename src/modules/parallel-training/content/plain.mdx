@@ -1,0 +1,463 @@
+---
+objectives: ["Split the memory one GPU holds into weights, gradients, optimizer state, and activations, and predict what each ZeRO stage and each parallel degree divides", "Say what data, tensor, pipeline, and expert parallelism each split and send, and why tensor parallelism stays inside a node", "Compute the pipeline bubble from stages and microbatches, and explain how more microbatches shrink it", "Read step time, MFU, and tokens per second as compute plus exposed communication plus idle time, and explain why MFU leaves recomputation out", "Choose a checkpoint interval with Young's and Daly's formulas, and explain why failures become routine at scale"]
+terms: ["Data parallelism", "Tensor parallelism", "Pipeline parallelism", "Expert parallelism", "ZeRO stage", "All-reduce", "Reduce-scatter and all-gather", "Interconnect", "Gradient accumulation", "Pipeline bubble", "Activation recomputation", "MFU", "Mean time between failures", "Checkpoint interval"]
+---
+
+## The big picture
+
+A large language model is trained by repeating one step millions of times. In each step the model
+reads a batch of text, checks its guesses about the next word, works out how to change its numbers,
+and then changes them. For a big model, that one step is far too large for a single computer chip, so
+it is shared out across thousands of chips that have to work together.
+
+This module is about how that sharing works, and it asks four questions about any way of splitting the
+work. What does each chip have to hold in its memory, and what has to travel along the wires between
+chips? How long do chips sit waiting with nothing to do? And how often does a job that big get
+interrupted because one of its chips breaks?
+
+The chips are called **GPUs**, short for graphics processing units, because they were first built to
+draw pictures for games. A GPU does a huge number of multiplications at once, which is exactly what
+training needs. The lab pictures one popular data-centre GPU, NVIDIA's H100, which has 80 GB of memory.
+A gigabyte, or GB, is a billion bytes, and one byte is about the space a single letter of text takes.
+
+### Where you have met it
+
+Every chatbot built on a large model came out of a training run split across many GPUs. Meta's
+Llama 3 405B, a model with 405 billion numbers inside it, was trained on up to 16,384 H100 GPUs at
+once, eight to a server. The company's paper says it split each layer over 8 GPUs, split the stack of
+layers into 16 groups, and ran 128 copies of that arrangement side by side. The lab's **16,384-GPU
+layout** button copies that layout, which kept 41% of the GPUs' top speed doing useful work.
+
+Other teams report numbers like these, because every big training run has to measure how well it uses
+its GPUs. A team at NVIDIA ran a model with a trillion numbers on 3,072 GPUs at 52% of their top speed.
+The MegaScale system reached 55.2% on 12,288 GPUs, and its paper says that for training like this,
+"failures and stragglers are the norm rather than the exception". In 54 days of training, the Llama 3
+job stopped 466 times, and 419 of those stops were unexpected, mostly because of broken hardware.
+
+Splitting also shows up in the tools that engineers use every day. PyTorch, a popular program for
+training models, has a feature called Fully Sharded Data Parallel that spreads the model's numbers
+across many GPUs, so no single GPU holds all of them. It was built on an idea from a paper called
+ZeRO, and that idea is the first thing this lab lets you try.
+
+### Why it matters
+
+A training layout that does not fit in memory simply does not run, so the first job is to make it fit.
+A layout that fits can still waste most of the machine, because GPUs often sit idle while they wait for
+data to arrive from other GPUs. In this lab, one small change to how a big model is split doubles its
+number of GPUs and still makes each training step more than twice as slow.
+
+Breakdowns matter too, because with 16,384 GPUs one of them breaks every few hours on average, and
+every breakdown stops the whole job. A team that saves its progress at the wrong rate can lose a large
+share of a very expensive run. All of these costs can be worked out with arithmetic before anyone rents
+a single GPU, and that is what this lab does.
+
+### What you will be able to explain
+
+By the end of this lesson, you should be able to explain each of these ideas in your own words:
+
+- how the memory on one GPU splits into four parts, called weights, gradients, optimizer state and
+  activations, and which part each setting divides;
+- what the four ways of splitting the work, called data, tensor, pipeline and expert parallelism, each
+  split and send, and why one of them has to stay inside a single box of GPUs;
+- why a pipeline of GPUs has idle time at the start and end of each step, and how feeding it more
+  pieces of work shrinks that idle time;
+- how the time of one step breaks down into useful work, waiting for data and sitting idle, and what
+  the measure called MFU counts and leaves out;
+- how to choose how often to save progress, and why breakdowns become routine as a job grows.
+
+### What the lab lets you do
+
+Every number in this lab is worked out with arithmetic from stated assumptions, so nothing runs on a
+real GPU and nothing is timed. The four models are real, and their sizes come from what their makers
+published. The GPU's speed, memory and wires come from NVIDIA's figures and the Llama 3 paper, and the
+lab writes each one down so you can see where it came from.
+
+NVIDIA lists the H100's top speed for a special mode that skips zeros, so the lab uses half of that
+figure, 989.5 trillion operations per second, for ordinary math. One number is a plain assumption: the
+lab supposes that a GPU does useful math at 75% of that top speed. Every piece of text in the lab is
+8,192 tokens long.
+
+The lab has six cards. **Parallel layout** is where you choose a model and how to split it, and
+**Memory per GPU** shows what one GPU holds and whether it fits. **Pipeline schedule** draws when each
+GPU is busy, while **Communication per step** prices the data sent along the wires. **Step time and
+MFU** shows where each second of a step goes, and **Failures and checkpoints** works out how often to
+save.
+
+The key experiment is the third step, Split each layer. Take the 70-billion-number model and split
+each of its layers over 8 GPUs, then over 16. Watch what happens to memory, to the time spent on
+the wires, and to the share of the GPUs doing useful work.
+
+## What it is
+
+### A few words you need first
+
+A model is a long list of numbers called **parameters**, sometimes called weights. Llama 3.1 8B has
+about 8 billion of them, Llama 3.1 405B has about 405 billion, and training adjusts every one of them a
+tiny bit in each step.
+
+A **node** is one server, a box that holds 8 GPUs, and inside a node the GPUs are joined by very fast
+wires called NVLink. Between nodes, data travels over a network called InfiniBand, which in this lab is
+nine times slower. These links are called the **interconnect**, and the gap between the two speeds
+shapes almost every choice in this lesson.
+
+The text a model reads is cut into **tokens**, which are pieces of words or whole short words. Each
+piece of text in the lab is 8,192 tokens long, and the lab calls it a sequence. A **microbatch** is a
+small group of sequences that one GPU works on at a time. A step usually runs several microbatches and
+adds up what they learn before changing the model, which is called **gradient accumulation**.
+
+### What one GPU has to hold
+
+Training needs much more memory than the model's own numbers. For every parameter, the most common
+recipe keeps 16 bytes: 2 bytes for the weight itself, 2 for its **gradient**, and 12 for the
+optimizer. The gradient says which way to nudge the weight, and the optimizer is the rule that makes
+each change, keeping a spare high-precision copy of each weight plus two running averages.
+
+Those three parts together are called the model state. For the 8-billion-parameter model the model
+state comes to 128.5 GB, which is already more than an H100's 80 GB. The **Anatomy of a training run**
+lab counted the same 16 bytes per parameter.
+
+The fourth part is **activations**, the in-between results of every layer that are saved during the
+forward pass because the backward pass needs them later. Activations depend on how much text a GPU is
+working on at once, not on how many parameters the model has. A longer piece of text or a bigger microbatch means more of them.
+
+### ZeRO: keeping only a slice
+
+When many GPUs each run a full copy of the model, every one of them holds the same 16 bytes per
+parameter, which wastes a lot of memory. ZeRO fixes this in stages, and each **ZeRO stage** shares one
+more part of the model state out among the copies, so each GPU keeps only its own slice:
+
+- Stage 0 shares nothing, so every GPU keeps a full copy of all three parts of the model state.
+- Stage 1 shares out the optimizer's 12 bytes, which is the largest part of the model state.
+- Stage 2 also shares out the 2 bytes of gradients, so each GPU keeps only the slice it updates.
+- Stage 3 also shares out the 2 bytes of weights, and each GPU gathers the rest when it needs them.
+
+With 64 copies, stage 1 cuts the 8-billion-parameter model's state from 128.5 GB to 33.6 GB per GPU,
+and stage 3 cuts it to 2.0 GB. The ZeRO paper's own example, 7.5 billion parameters on 64 GPUs, gives
+120, 31.4, 16.6 and 1.9 GB for the four stages, and the lab's arithmetic gives the same numbers.
+
+Here is the math for stage 1. Each GPU still keeps its own 2 bytes of weights and 2 bytes of gradients
+for all 8.03 billion parameters, which is 32.1 GB. It keeps only one sixty-fourth of the 12 bytes of
+optimizer state, which is 1.5 GB, so the two parts add up to 33.6 GB.
+
+To share out the gradients, the GPUs use two moves. A **reduce-scatter** adds up everyone's gradients
+but leaves each GPU with only its own slice of the total, and an **all-gather** then hands every slice
+to every GPU. Together the two moves do the same job as an **all-reduce**, which leaves every GPU with
+the full total.
+
+### Activations and recomputation
+
+The lab counts activations with a formula from a paper by Korthikanti and colleagues at NVIDIA. For
+each layer and each token, it charges 34 bytes for every number in the layer's width. On top of that
+comes a second term for the attention scores, a table of how much each token looks at every other
+token. That second term grows with the square of the text length, so at 8,192 tokens it is huge: for
+the 8B model it is 320 against the 34.
+
+**Activation recomputation** saves memory by throwing results away and working them out again later,
+and the lab has three settings for it. None keeps everything, attention scores included. Selective
+throws away only the attention scores and recalculates them, which most modern training code does
+anyway. Full keeps only each layer's input, 2 bytes per number, and reruns the whole forward pass
+during the backward pass, which adds a third more arithmetic.
+
+### Four ways to split the work
+
+There are four ways to split one training step, and big runs combine them:
+
+- **Data parallelism** runs several copies of the model, and each copy reads its own share of the
+  text. At the end of each step the copies add up their gradients with an all-reduce, so every copy
+  makes the same change.
+- **Tensor parallelism** splits every layer's big tables of numbers across several GPUs. Each GPU does
+  part of each multiplication, and the GPUs combine their parts with four all-reduces in every layer.
+- **Pipeline parallelism** gives different layers to different GPUs, like stations on an assembly
+  line. Each station passes its results on to the next station and later passes the gradients back.
+- **Expert parallelism** is for models built from many expert parts, like Mixtral 8x7B, where each
+  layer has 8 experts and each token uses only 2 of them. Different GPUs hold different experts, and
+  each token is sent to its two experts with four exchanges called all-to-alls in each layer.
+
+The number of GPUs is tensor times pipeline times data. With tensor 8, pipeline 16 and data 128, that
+is 8 × 16 × 128 = 16,384 GPUs, which is the Llama 3 layout.
+
+### The kitchen picture
+
+Picture a restaurant that has to cook a gigantic banquet. Data parallelism is opening several
+identical kitchens, each cooking for its own share of the guests, and at closing time they all agree
+on the same changes to the recipe. Tensor parallelism is several cooks working on one dish at the same
+moment and passing bowls back and forth constantly, which only works if they share one counter.
+
+Pipeline parallelism is an assembly line, where one station chops, the next cooks and the last plates.
+At the start of service the later stations stand idle, and at the end the first ones do. Expert
+parallelism is a row of specialist stations, so each order goes only to the grill or the pastry chef it
+needs. ZeRO is each kitchen keeping just a few chapters of the giant recipe binder and borrowing the
+rest when it needs them.
+
+The picture stops matching in one important way. Real cooks can improvise and work at different
+speeds, but GPUs have to stay in exact step, because every copy must make exactly the same change to
+the model. So the slowest GPU and the slowest wire set the pace for everyone.
+
+### Wires inside and between nodes
+
+Every split sends data, and the lab works out how long each send takes from its size and the speed of
+the wire. Inside a node, NVLink moves 450 GB per second in each direction, while between nodes,
+InfiniBand moves 50 GB per second for each GPU. A group of GPUs that fits inside one node can use the
+fast wires, but a group that spans two nodes is held back by the slow ones.
+
+Tensor parallelism sends the most often, four times in every layer for every microbatch, so it has to
+stay inside a node. Data parallelism sends only once per step, so it can cross the network. That is
+why the Llama 3 layout puts tensor 8 inside each node and spreads everything else between nodes.
+
+Here is one send worked out. Each all-reduce in the 70B model moves a block of 134 MB, where a
+megabyte is a million bytes. With 8 GPUs in the group, each GPU sends and receives 2 × 7 ÷ 8 of that
+block, about 235 MB, which takes about half a thousandth of a second. A stage of 20 layers does 80 of
+these for every microbatch, which adds up to the lab's 0.042 seconds.
+
+With 16 GPUs the group spans two nodes, so each all-reduce moves 2 × 15 ÷ 16 of the block at 50 GB per
+second instead of 450. Each one now takes about 5 thousandths of a second, and 80 of them take 0.403
+seconds.
+
+### Where the time goes
+
+One step's time is made of three kinds of pieces. There is useful work, the multiplications the model needs; there is waiting for data on the wires; and there is idle time, when a GPU has nothing to do. The lab adds them
+up, and the **Step time and MFU** card shows each piece.
+
+Idle time comes mostly from the pipeline, because a stage cannot start on a microbatch until the stage
+before it has finished that microbatch. So at the start of a step the later stages wait, and at the end
+the earlier stages wait, which is called the **pipeline bubble**. With p stages and m microbatches, its
+share of the pipeline's time is (p − 1) ÷ (m + p − 1). With 8 stages and 1 microbatch that is 7 ÷ 8,
+or 87.5% idle, and with 32 microbatches it is 7 ÷ 39, about 17.9%.
+
+The data-parallel sync of the gradients comes only once per step. If **Overlap gradient sync** is on,
+it starts while the last microbatch is still running its backward pass. Most of it is then hidden behind that work, and only the part that is left over adds to the step.
+
+**MFU**, short for model FLOPs utilization, measures how much of the GPUs' top speed goes into the
+model's own math. FLOPs are floating-point operations, the multiplications and additions a GPU does. The lab counts the model's own math the way Google's PaLM paper does: 6 FLOPs for every parameter
+for every token, plus a part for the attention scores.
+
+Recomputed work does not count toward MFU, because rerunning the forward pass is extra work rather
+than progress on the model. A second measure, hardware FLOPs utilization or HFU, does count it, so with
+Full recompute HFU is a third higher than MFU.
+
+### Why big jobs break more often
+
+A training job stops whenever any one of its GPUs breaks, so the more GPUs a job uses, the more often
+it stops. The lab works out how often from Meta's Llama 3 paper: in a 54-day stretch on up to 16,384
+GPUs, the job stopped unexpectedly 419 times. If every GPU ran the whole time, that is about one stop
+for every 50,677 GPU-hours, where a GPU-hour is one GPU running for one hour.
+
+The math is 16,384 GPUs × 54 days × 24 hours, which is 21,233,664 GPU-hours, divided by 419 stops. The
+**mean time between failures** of a job is that 50,677 divided by its number of GPUs, which is about
+3.09 hours for 16,384 GPUs and 99.0 hours for 512 GPUs.
+
+To recover, a job saves its whole state now and then in a checkpoint, and after a breakdown it
+restarts from the latest one. A checkpoint that can restart training holds 14 bytes per parameter: the
+2-byte weights and the optimizer's 12 bytes. The gradients are left out because the next step makes new
+ones, so the 405B model's checkpoint is about 5.7 TB, where a terabyte is a thousand gigabytes.
+
+The time between saves is the **checkpoint interval**. Saving too often wastes time writing, while
+saving too rarely means more work is lost and redone after each breakdown. In 1974 John Young worked
+out the best balance: the interval should be about the square root of 2 × the save time × the mean
+time between failures.
+
+With a 60-second save and 3.09 hours between failures, which is about 11,135 seconds, the product is
+2 × 60 × 11,135, about 1,336,000. Its square root is about 1,156 seconds, or 19.3 minutes. In 2006 a researcher
+named Daly worked out a more exact version, which subtracts the save time and adds small corrections, and
+it gives 18.6 minutes here.
+
+The lab adds up what is lost at each interval. At 19 minutes, saving takes 60 seconds out of every
+1,140, about 5.3% of the time. Each breakdown throws away half an interval of work, 9.5 minutes, plus a
+10-minute restart, and since breakdowns come every 185.6 minutes, that costs another 10.5%, for 15.8% in
+all.
+
+## Why it’s here
+
+The **Anatomy of a training run** lab counted the 16 bytes per parameter that training needs and noted
+that big runs split them across devices. The **Why GPUs** lab showed what limits one GPU's speed.
+This lab joins those two ideas: it spreads the bytes and the math across thousands of GPUs, joined by
+wires that are much slower than the memory inside each one.
+
+Every team that trains a big model makes the same choices, such as how many GPUs share each layer and
+how many stages the pipeline has. They also choose how many microbatches to run, which ZeRO stage to
+use, and how often to save. Each choice trades memory against wire time, idle time and breakdowns, and
+each can be priced with the arithmetic in this lab before any GPU is rented.
+
+## How to play with it
+
+Each part below matches one step of the lab, and every number assumes you start from the setup that
+the part describes.
+
+### Shard the state
+
+The lab starts with Llama 3.1 8B on 64 copies, one per GPU, with ZeRO stage 0, one sequence per
+microbatch, 8 microbatches, and Selective recompute. **Memory per GPU** shows 16.1 GB of weights, 16.1
+GB of gradients and 96.4 GB of optimizer state, which is 128.5 GB of model state. Add 36.5 GB of
+activations and each GPU needs 165 GB, more than twice the 80 GB it has.
+
+**Try this:** move **ZeRO stage** from 0 to 3, one stage at a time, and watch the bars. At stage 1 the
+optimizer state drops to 1.5 GB, the model state to 33.6 GB, and the total to 70.1 GB, so **Fits in 80
+GB** turns to yes. Stage 2 shrinks the gradients to 250.9 MB, and stage 3 shrinks the weights too,
+leaving 2.0 GB of model state and 38.5 GB in all, while the activations bar never moves.
+
+### Count the activations
+
+Stay at ZeRO stage 3 and raise **Micro-batch size** from 1 to 4. Each GPU now works on four sequences
+at once, so the activations grow from 36.5 GB to 146 GB, and the total of 148 GB no longer fits.
+
+Now switch **Recompute** to None, and the activations jump to 1.5 TB because None keeps the attention
+scores. Switch to Full and they fall to 8.6 GB, so the total of 10.6 GB fits easily.
+
+Then look at **Step time and MFU**, where the Compute row stays at 21.6 seconds and a Recompute row of
+7.19 seconds appears. MFU falls from 75.0% to 56.3%, while HFU stays at 75.0%. The GPUs work just as
+hard as before, but a quarter of their math now redoes the forward pass.
+
+### Split each layer
+
+Switch **Model** to Llama 3.1 70B, then set **Pipeline** to 4, **Data parallel** to 16, **Microbatches**
+to 16, one sequence per microbatch, ZeRO stage 1, and Selective recompute. With **Tensor parallel** at
+1, each GPU would need 266.3 GB, so this layout cannot run.
+
+Raise Tensor parallel to 8, and memory per GPU drops to 33.3 GB. The **TP all-reduce** row in
+**Communication per step** costs 0.042 seconds per microbatch over NVLink, against 0.168 seconds of
+math, and MFU is 49.8%.
+
+Now raise it to 16. The group of 16 GPUs no longer fits in one node of 8, so every all-reduce has to
+cross the slow network. Memory falls to 16.6 GB, but the all-reduce now takes 0.403 seconds per
+microbatch, 9.6 times as long, and MFU drops to 10.9%.
+
+### Fill the pipeline
+
+Set Tensor parallel back to 8, Pipeline to 8, and Microbatches to 1. **Pipeline schedule** shows a
+thin diagonal line of work with hatched idle time almost everywhere else, so the bubble is 87.5% and
+MFU is only 7.2%.
+
+Raise Microbatches step by step, and the bubble shrinks to 77.8% at 2, 46.7% at 8, 17.9% at 32, and
+5.2% at 128. At 32 microbatches MFU is 48.7%, and each step works through 4.2 million tokens.
+
+### Pay for the sync
+
+Keep the 70B model at tensor 8, pipeline 8, 32 microbatches and ZeRO stage 1, with overlap on. The
+**DP gradient sync** takes 0.083 seconds once per step, and **Exposed DP time** shows that only 0.027
+seconds of it adds to the step.
+
+Raise **Data parallel** from 16 to 256, so the job now uses 16,384 GPUs. **Tokens/s** grows from 1.0
+million to 16.2 million, while MFU moves only from 48.7% to 48.6%, because the sync grows only to 0.088
+seconds.
+
+Switch **Overlap gradient sync** off, and the whole 0.088 seconds is exposed, with MFU at 48.0%. Then
+set ZeRO stage 3, which sends one and a half times as much data, so the sync grows to 0.132 seconds,
+all of it exposed, and MFU reads 47.5%.
+
+### Plan for failure
+
+Press **16,384-GPU layout**, which loads Llama 3.1 405B with tensor 8, pipeline 16 and data 128, 16
+microbatches of one sequence each, ZeRO stage 2 and Selective recompute. It fits, using 79.7 GB of the
+80 GB. **Failures and checkpoints** shows a **Job MTBF** of 3.09 hours, a Young optimum of 19.3
+minutes, and a Daly optimum of 18.6 minutes, with a 60-second save and a 10-minute restart.
+
+Move **Checkpoint every** from 5 to 120 minutes. **Time lost** is 26.7% at 5 minutes, falls to its
+lowest point of 15.8% near 19 minutes, and climbs back to 38.6% at 120 minutes. With the same save on
+512 GPUs, where the job breaks every 99.0 hours, Young's best interval stretches to 109 minutes.
+
+## What to notice
+
+- ZeRO and data parallelism never shrink the activations, while recomputation, a smaller microbatch,
+  and tensor or pipeline parallelism all do.
+- Splitting each layer over more GPUs shrinks the memory and the math on each GPU, but not the size of
+  each all-reduce. So the wire time takes a bigger share even inside a node: on the 70B setup above,
+  MFU is 56.0% at tensor 4 and 49.8% at tensor 8.
+- The pipeline's p − 1 idle slots never go away, because more microbatches only add work around them,
+  and each extra microbatch also makes the batch bigger.
+- An all-reduce costs each GPU almost the same with 16 copies as with 256, so data parallelism grows
+  the tokens per second almost in step with the GPU count. Leaving the node is what costs. On the
+  8B model at ZeRO stage 2 with one microbatch, syncing 8 copies takes 0.062 seconds on NVLink and hides
+  completely. Syncing 16 copies takes 0.602 seconds on InfiniBand, with 0.153 seconds exposed, and MFU
+  falls from 75.0% to 61.1%.
+- Mixtral 8x7B has 46.70 billion parameters but uses only 12.88 billion for each token. With **Expert
+  parallel** at 1 and ZeRO stage 1, every GPU holds all 8 experts, 195.6 GB of model state. At 8, each
+  GPU holds one expert per layer, 37.7 GB, and the **EP all-to-all** costs 0.033 seconds per microbatch
+  on NVLink. At Tensor parallel 2 the expert group spans two nodes, and the same exchange costs 0.301
+  seconds.
+- MFU never passes 75%, the lab's assumed share of top speed, and every point below that is wire time,
+  bubble or exposed sync, which the Step time strip shows.
+- The time between breakdowns shrinks in step with the number of GPUs, but the best checkpoint interval
+  shrinks only with its square root: 109 minutes at 512 GPUs and 19.3 minutes at 16,384.
+
+## Where it breaks
+
+### What this lab simplifies
+
+Every number here is arithmetic, not a measurement, and the share of top speed is fixed at 75% for
+every model and layout. The time on the wires counts only how many bytes move and how fast they move. It leaves out the small delay on every message, crowded wires, and slow GPUs that hold back the
+rest. Tensor, pipeline and expert traffic never overlaps with the math, and the rule for hiding the
+gradient sync, two thirds of one microbatch's math, is a rough guess.
+
+Every pipeline stage gets an equal share of the layers, even though the first and last stages also hold
+the model's input and output layers. The activation formula was worked out for an older style of model
+and is used here unchanged for these newer ones. The lab also leaves out the optimizer's own time, the
+splitting of very long texts, and the cleverer pipeline schedules.
+
+Breakdowns are treated as independent and steady, at one rate taken from one 54-day stretch. The save
+time is a number you choose, not one worked out from the 5.7 TB checkpoint. Memory leaves out scratch
+space, buffers for sending data, the model's final output scores, and the gaps that open up in memory
+over time. That is why a layout that fits with only 0.3 GB to spare on paper, like the 16,384-GPU
+layout, would not be accepted by any real team.
+
+### Where real training runs differ
+
+The lab gives that layout an MFU of 33.2%, while the Llama 3 team reported 41%. Most of the gap is the bubble, because the lab's plain schedule leaves 15 slots idle out of 31. The Llama 3 team used a cleverer
+schedule that gives each GPU several smaller stages, and it took one layer off the first and last stages
+to balance the work.
+
+The Llama 3 team also reports training on 8,192-token texts without recomputing whole layers. The
+preset uses Selective anyway, because modern attention code already recalculates the attention scores,
+and None would charge 760 GB of activations per GPU. Real breakdowns also bunch together, since a faulty
+server tends to fail again and one network problem can stop many jobs at once.
+
+**A common mix-up:** "more data-parallel copies should make each GPU's memory smaller." Without ZeRO
+they do not shrink anything, because every copy holds the whole model state. Data parallelism makes the
+batch bigger and the job faster, and only ZeRO shares the memory out among the copies.
+
+## Going deeper
+
+### Interleaved schedules
+
+A team at NVIDIA led by Deepak Narayanan showed how to give each GPU several smaller pipeline stages
+instead of one big stage. With v stages per GPU, the bubble shrinks by a factor of v, but the stages have
+to pass data v times as often. Their paper writes the bubble as (p − 1) ÷ m, measuring idle time against
+the useful time, while the lab measures it against the whole pipeline time, and both describe the same
+idle slots. An earlier pipeline system from Google, GPipe, found the bubble small enough to ignore once
+there were at least four microbatches per stage.
+
+### Long sequences
+
+To train on texts of 131,072 tokens, the Llama 3 team added another split, called context parallelism,
+that spreads each text across 16 GPUs. They lowered data parallelism to 8 to keep the same 16,384 GPUs,
+and they reported an MFU of 38%. The activations in this lab grow in step with the text length and the
+attention scores with its square, which is why very long texts need a split of their own.
+
+### Two counts of activation memory
+
+The **Anatomy of a training run** lab quotes the ZeRO paper: a 1.5-billion-parameter model reading 32
+texts of 1,024 tokens needs about 60 GB of activations, or about 8 GB with recomputation. The ZeRO paper
+counts about 12 numbers for each token and each number in a layer's width, which is 24 bytes at 2 bytes
+each.
+
+Korthikanti and colleagues count 34 bytes before the attention scores, because they also count small
+masks and the inputs to more of the layer's parts. Scaled by 34 ÷ 24, the same model needs about 85 GB
+even with Selective, and Full recomputation, at 2 bytes instead of 24, needs about 5 GB. Both are rough
+counts that draw the line around what is stored in different places, and neither is a measurement. This
+lab uses Korthikanti's count because it separates the three recomputation settings.
+
+### Counting MFU
+
+Google's PaLM paper defined MFU so that recomputed work does not count, and its largest model reached
+46.2% MFU, or 57.8% when recomputed work was counted too. The NVIDIA team reached 54.2% MFU on a
+530-billion-parameter model with Selective, against 42.1% when it recomputed whole layers. Published
+MFUs also differ in what math they count and which top speed they use, so compare them with care.
+
+### Keeping a big job alive
+
+The Llama 3 team kept its GPUs doing useful training more than 90% of the time, through 466
+interruptions in 54 days. Its storage system writes 2 TB per second steadily and up to 7 TB per second
+in bursts, and the paper names those bursts of checkpoint writing as a major challenge. The team worked
+to pause the GPUs as briefly as possible and to save more often, so that less work would be lost.
+
+MegaScale finds and recovers from most breakdowns on its own. Both teams treat breakdowns as a steady
+cost to plan for, which is exactly what Young's and Daly's formulas do.
