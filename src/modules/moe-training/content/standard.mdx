@@ -1,0 +1,166 @@
+---
+objectives: ["Explain top-k routing: how router scores pick k experts and how gate values weight their outputs","Recognise expert collapse as a rich-get-richer loop, and spot it in the load readouts","Compare an auxiliary balancing loss with bias-update balancing, including what each costs in loss","Predict the share of tokens a capacity factor drops, and why a cap does not balance the router","Read what the experts specialise in, and what the router's input lets it tell apart","Count total against active parameters, and connect them to memory and expert parallelism"]
+terms: ["Mixture of experts","Router","Top-k routing","Gate value","Expert load","Expert collapse","Effective experts","Auxiliary load-balancing loss","Auxiliary-loss-free balancing","Capacity factor","Dropped token","Active parameters","Expert parallelism","Specialisation"]
+---
+
+## The big picture
+
+A **mixture of experts** replaces one block of a network with several copies, the experts, and a small **router** that sends each token to only a few of them. The model stores every expert but runs only the chosen ones, so it can hold far more weights than it spends compute on per token.
+
+This module trains one and shows what goes wrong. Left alone, the router hands every token to a single expert, and the fixes for that each have a price.
+
+### Where it shows up
+
+- Mixtral 8x7B routes each token to 2 of 8 experts in every layer: 46.7B parameters stored, 12.9B used per token (Mistral AI, 2023; Jiang et al., 2024).
+- DeepSeek-V3 has 256 routed experts and 1 shared expert in each MoE layer and runs 8 routed experts per token: 671B parameters in total, 37B active (DeepSeek-AI, 2024).
+- OLMoE-1B-7B, a fully open model, runs 8 of 64 experts: 7B parameters in total, about 1B per token (Muennighoff et al., 2024).
+- Switch Transformer routes each token to a single expert (Fedus et al., 2022). The idea goes back to a gating network that learns which expert handles each training case (Jacobs et al., 1991).
+
+### Why it matters
+
+A router trained only on the language-model loss tends to settle on the same few experts. Shazeer et al. (2017) call that imbalance self-reinforcing: favoured experts train faster and are chosen even more. Idle experts still cost memory.
+
+Every fix has a price. An auxiliary loss competes with the main loss, a capacity cap throws tokens away, and spreading experts over GPUs turns uneven load into idle hardware.
+
+### What you will be able to explain
+
+- How top-k routing works: router scores pick k experts, and gate values weight their outputs.
+- Why expert collapse is a rich-get-richer loop, and how to spot it in the load readouts.
+- How an auxiliary balancing loss and bias-update balancing differ, and what each costs in loss.
+- What share of tokens a capacity factor drops, and why a cap does not balance the router.
+- What the experts specialise in here, and what the router's input lets it tell apart.
+- How total and active parameters differ, why memory follows the total, and how that leads to expert parallelism.
+
+### What the lab shows
+
+Every loss, load share and drop rate is measured from real training runs; the parameter counts come from formulas, and the Mixtral row is a published figure. The lab trains a small mixture-of-experts layer on all 1,181 character pairs of the three tiny corpora, predicting each character from the one before. It uses plain SGD with learning rate 0.5 and batches of 16; the default 30 epochs are 2,220 steps. Starting weights come from **Seed**.
+
+- **Router and experts** holds **Experts**, **Top-k**, **Epochs** and **Seed**, and shows the trained router on one **Example character**: scores, biases, gates and which experts run.
+- **Expert load over training** plots each expert's share of the router's choices at every epoch, with **Effective experts**, **Loss** and **Dense baseline**, the same recipe with one expert.
+- **Balancing** switches between None, Auxiliary loss and Bias update, sets **Aux weight** or **Bias step**, and compares the run with an unbalanced copy.
+- **Capacity and dropped tokens** caps every expert with **Capacity factor** and counts **Dropped tokens**.
+- **Specialisation** grids where each character, or each corpus, sends its tokens.
+- **Total vs active parameters** counts weights from formulas. Its Mixtral 8x7B row is a published figure, not a measurement.
+
+Three runs train on every change: the current settings, the same settings with no balancing, and the dense baseline.
+
+## What it is
+
+### The router and its gates
+
+The model reads one previous character `x` and predicts the next. Its input is `h = [E[x], 1]`: four learned numbers for the character plus the constant 1.
+
+- The **router** gives every expert a score, `z = h · R`, with `R` a 5 × N matrix.
+- The **gate values** are `p = softmax(z)`.
+- **Top-k routing** runs only the `k` experts with the highest `z + b`, where `b` is a balancing bias that stays 0 unless you switch it on.
+- Each expert `W_e` is a 5 × 30 map from `h` to 30 next-character scores. The output is the sum over the chosen experts of `p_e · (h · W_e)`.
+
+The bias decides which experts run but never changes a gate. Here the gates are a softmax over all N scores, as in Switch Transformer. Mixtral renormalises the softmax over its two chosen experts, and DeepSeek-V3 uses sigmoid scores.
+
+### Why one expert wins
+
+The constant 1 gives each expert a next-character bias that all of its tokens train, and gives the router a bias for each expert. Together they make a loop. An expert that wins a few more tokens trains its bias on them and predicts better whenever it is chosen, so the gate gradient raises its router score for every character.
+
+At seed 1 the starting split is 12, 23, 42 and 23 percent: 3.66 **effective experts**. One epoch later E3 has 100%. That is **expert collapse**.
+
+**Expert load** is an expert's share of the router's choices. **Effective experts** is `exp(−Σ s ln s)` over those shares: 1.00 for one expert, N for an even split.
+
+## Why it’s here
+
+A dense model pays for every weight on every token. A mixture of experts breaks that link: total parameters grow with the number of experts, while compute per token grows only with `k`. Clark et al. (2022) treat parameter count and compute as two separate axes and fit scaling laws over both, for routed models with up to hundreds of experts.
+
+Training a mixture adds a problem a dense model never has: the router decides which weights learn. If it collapses, the extra experts are memory that does nothing.
+
+Balancing fixes the router, capacity bounds the work each expert does, and the experts must then be spread over GPUs, which turns load imbalance into idle hardware. This lab is the trained sequel to the untrained router on Sparse experts in The architecture zoo.
+
+## How to play with it
+
+### 1. Watch it collapse
+
+Leave **Balancing** on None, **Experts** at 4 and **Top-k** at 1. On **Expert load over training**, E3's line jumps to 100% after the first epoch and stays there. **Effective experts** reads 1.00, and **Loss** is 2.197 beside a **Dense baseline** of 2.199.
+
+The layer has become a dense model with three idle experts. Collapse costs memory, not fit. In all six seeds the run collapses onto one expert with 2, 4 or 8 experts, and its loss stays within 0.04 of the dense baseline.
+
+### 2. Add a balancing loss
+
+Switch **Balancing** to Auxiliary loss. This **auxiliary load-balancing loss** adds `α · N · Σ f_e · P_e` to each batch's loss, where `f_e` is expert e's share of the batch's first choices, held fixed, and `P_e` is its mean gate (Fedus et al., 2022). The term is 1 for an even split and N when one expert takes everything. Its gradient reaches the router through `P`.
+
+- At **Aux weight** 0.01, the value Switch Transformer used, the router still collapses: 1.00 effective experts, loss 2.196. It collapses fully in five of six seeds.
+- At 0.1 it reaches 3.89 effective experts and a loss of 2.131, below dense. In all six seeds it ends between 3.59 and 3.96 effective experts and below its dense baseline.
+- At 1 the split stays even, 3.84, but **Loss** rises to 2.216, above dense, and **Mean gate** falls from 0.84 to 0.57. The balancing pull now outweighs the language-model loss and spreads the gates, shrinking each expert's output. Weight 1 ends worse than 0.1 in all six seeds.
+
+### 3. Nudge with a bias
+
+Switch **Balancing** to Bias update, which is **auxiliary-loss-free balancing** (Wang et al., 2024; DeepSeek-AI, 2024). After each batch every expert's bias moves by **Bias step** γ: up if it got fewer than its even share of `16 · k / N` choices, down if it got more. The bias is added to the scores only to pick experts.
+
+- At 0.001, DeepSeek-V3's value, the bias is far too slow for 2,220 steps. The run sits on one expert from epoch 1 to epoch 21 and ends at 1.63 effective experts with a loss of 2.275, worse than dense: the expert it finally hands tokens to has had little time to learn them.
+- At 0.03 it reaches 4.00 effective experts and a loss of 2.131. The bars end at +3.30, +1.59, +2.52 and +3.87. Only their differences matter, since adding the same amount to every expert changes no choice.
+- **Mean gate** stays at 0.89, because the bias never enters a gate.
+
+### 4. Cap each expert
+
+Set **Capacity factor** to 1.25. Each expert now has `⌈1.25 × 16 × k ÷ N⌉ = 5` seats in a batch of 16 (Fedus et al., 2022). First choices are seated before second choices, each in batch order, as in GShard (Lepikhin et al., 2021). A choice that finds its expert full is a **dropped token**.
+
+- With **Balancing** on None, 40% of choices are dropped at seed 1 and **Loss** is 2.651. A fully collapsed router would drop 11 of every 16, 69%, and seed 4 does exactly that. Across six seeds the share runs from 40% to 69%.
+- With Auxiliary loss at 0.1, 11% are dropped and Loss is 2.306. Bias update at 0.03 drops 6%, with a loss of 2.210.
+
+A cap never sends a token to another expert. It bounds the work, which limits the damage from imbalance, but it teaches the router nothing.
+
+### 5. Read the specialists
+
+With **Balancing** on Auxiliary loss at 0.1, open **Specialisation**. With **Grid** on By previous character, every row is one dark cell. At seed 1, E2 takes a, e, o and u, plus w and z; E4 takes space alone; E1 takes b, c, d, f, h, m, p, s, t, v, y and the full stop; E3 takes g, i, k, l, n, q and r.
+
+Switch **Grid** to By corpus, and each corpus splits within ±0.01 of the overall split. Neither result is a discovery about the experts. The router sees only the previous character, so every occurrence of a character must take the same route, and a corpus can only inherit the mix of its characters.
+
+### 6. Count what runs
+
+Raise **Experts** from 1 to 8 at **Top-k** 1, then set **Top-k** to 2. **Total parameters** goes from 275 to 1,360, while **Active per token**, the **active parameters** one token runs, goes from 275 to 310, then 460 at top-2. With **Balancing** on Auxiliary loss at 0.1, **Loss** is 2.170 at 8 experts and 2.123 at top-2, against 2.131 at 4 experts.
+
+The **Mixtral 8x7B** row is the same split at scale: 46.7B stored, 12.9B used per token, an active share of 28%.
+
+## What to notice
+
+- Collapse is fast: one epoch, 74 steps, at seed 1.
+- A collapsed layer fits the text about as well as the dense model. The waste is the idle experts' memory.
+- **Balance term N·Σ f·P** reads 3.75 when collapsed at seed 1 and 1.04 at Aux weight 0.1.
+- The auxiliary weight has a window: 0.01 collapses, 0.1 balances and helps, 1 balances and hurts. Here the window starts about 10 times above Switch's 0.01.
+- The bias method balances without touching the gates. Over seeds 1 to 6 it averages a loss of 2.138 at Bias step 0.03 against 2.129 at Aux weight 0.1, a gap smaller than the spread between seeds.
+- More experts is not automatically better. At Aux weight 0.1, 8 experts end worse than 4 in five of six seeds, and with Bias step 0.03 in all six, because each expert now sees about an eighth of the pairs. Shazeer et al. (2017) call this the shrinking batch problem.
+- At seed 1, top-2 over 8 experts edges out top-1 over 4, at the price of running twice the expert weights per token.
+
+## Where it breaks
+
+### In this lab
+
+- Each expert is one 5 × 30 linear map, a rank-4 pattern plus a bias, not a feed-forward network, in a single layer with no attention and no residual stream. A dropped token therefore predicts uniformly, a loss of ln 30 = 3.401, where a real model would pass it on unchanged.
+- The router sees only the previous character. Clean character rows on **Specialisation** are guaranteed, and the even corpus split is forced by the design, not found.
+- **Loss** is measured on the same 1,181 pairs the run trained on, so it shows fit, not generalisation.
+- The gates are a softmax over all experts; DeepSeek-V3 uses sigmoid scores normalised over the chosen experts.
+- The toy needs an aux weight 10 to 30 times Switch's 0.01, and a bias step 30 times DeepSeek-V3's 0.001, because a run here is 2,220 steps rather than hundreds of thousands.
+- How completely the toy collapses depends on its starting scale. Start the embeddings twice as large and no balancing leaves 1.5 to 1.9 effective experts in five of six seeds.
+- The bias method does not beat the auxiliary loss here: 2.138 against 2.129 averaged over six seeds, winning in two of them. Wang et al. (2024) report the opposite at 1B parameters, a validation perplexity of 9.50 against 9.56, with far better balance.
+- The Mixtral row is an authored constant from Mistral AI's announcement, not a measurement.
+
+### In the real mechanism
+
+- A real router reads a contextual hidden state, so it can specialise in ways this one cannot. Mixtral's routing analysis finds no obvious specialisation by topic, with choices that follow syntax more than domain (Jiang et al., 2024). ST-MoE finds encoder experts for punctuation, verbs and proper names, but not in the decoder (Zoph et al., 2022). OLMoE finds an expert that takes nearly all arXiv tokens (Muennighoff et al., 2024).
+- Memory follows the total. Switch-Base, at 7.4B parameters, needs 8 to 10 GPUs just to hold the model for training, where the 0.74B T5-Large fits on one (Rajbhandari et al., 2022).
+- **Expert parallelism** puts different experts on different GPUs and sends each token to the device that holds its experts and back. Uneven load then leaves some GPUs idle while others queue (Lepikhin et al., 2021; Jiang et al., 2024).
+- Large routers can be numerically unstable; ST-MoE adds a router z-loss to keep their scores small (Zoph et al., 2022).
+
+## Going deeper
+
+### Many small experts
+
+DeepSeekMoE splits each expert into several smaller ones, routes to more of them, and sets a few shared experts aside that every token uses, so the routed experts can specialise (Dai et al., 2024). DeepSeek-V3 runs 8 of 256 routed experts plus one shared expert in every MoE layer, balances with a bias step of 0.001 for its first 14.3T tokens, and drops no tokens (DeepSeek-AI, 2024).
+
+### Dropless training
+
+Capacity exists because fixed-size expert batches suit the hardware. MegaBlocks rewrites the expert computation as block-sparse matrix products, so experts can take uneven batches without padding or dropping (Gale et al., 2023). OLMoE trains dropless with an auxiliary loss weight of 0.01 (Muennighoff et al., 2024).
+
+### Where to go next
+
+- **Splitting training across GPUs** places these experts on different devices: expert parallelism, and the all-to-all communication it needs.
+- **The architecture zoo** has the untrained version of this router on Sparse experts.
+- **Train one from scratch** fits the same character pairs with a single dense model.
+- **Scaling laws** covers the compute side of the trade.

@@ -27132,3 +27132,180 @@ path.sl-reference {
     display: none;
   }
 }
+
+/* moe-training */
+
+.explore-scroll[data-module="moe-training"][data-current-step="0"] .moe-load-card .viz-line-chart,
+.explore-scroll[data-module="moe-training"][data-current-step="1"] .moe-balancing-controls,
+.explore-scroll[data-module="moe-training"][data-current-step="2"] .moe-bias-bars,
+.explore-scroll[data-module="moe-training"][data-current-step="3"] .range-control:has(input[aria-label="Capacity factor"]),
+.explore-scroll[data-module="moe-training"][data-current-step="4"] .moe-special-card .segmented,
+.explore-scroll[data-module="moe-training"][data-current-step="5"] .moe-params-table {
+  --lesson-step-target: 1;
+  position: relative;
+  z-index: 1;
+  border-radius: var(--radius-sm);
+  background-color: color-mix(in srgb, var(--module-accent) 12%, var(--panel-solid));
+  animation: step-target-in 300ms ease-out;
+}
+
+.tg-lab.moe-lab {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+}
+
+.moe-lab > .moe-router-card,
+.moe-lab > .moe-params-card {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 1180px) {
+  .tg-lab.moe-lab {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+:root[data-text-size="large"] .tg-lab.moe-lab {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.moe-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.3rem 1rem;
+}
+
+.moe-example {
+  display: grid;
+  margin-top: 0.85rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
+  gap: 0.6rem;
+}
+
+.moe-table-wrap {
+  margin-top: 0.7rem;
+  overflow-x: auto;
+}
+
+.moe-example .moe-table-wrap {
+  margin-top: 0;
+}
+
+.moe-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.72rem;
+}
+
+.moe-table caption {
+  padding-bottom: 0.4rem;
+  color: var(--muted);
+  font-size: 0.6875rem;
+  line-height: 1.5;
+  text-align: left;
+}
+
+.moe-table th,
+.moe-table td {
+  padding: 0.34rem 0.45rem;
+  border-bottom: 1px solid var(--line);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.moe-table th[scope="row"],
+.moe-table thead th:first-child {
+  text-align: left;
+}
+
+.moe-table thead th {
+  color: var(--muted);
+  font-size: 0.64rem;
+  font-weight: 600;
+  white-space: normal;
+}
+
+.moe-table td {
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 0.68rem;
+}
+
+.moe-table tr.is-selected {
+  background: color-mix(in srgb, var(--module-accent) 10%, transparent);
+}
+
+.moe-table tr.is-selected th[scope="row"] {
+  color: var(--module-accent);
+}
+
+.moe-balancing-controls {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.moe-bias-bars {
+  margin-top: 0.4rem;
+}
+
+.moe-bias-bars .tg-subhead {
+  margin-bottom: 0.45rem;
+}
+
+.moe-heatmap {
+  margin-top: 0.75rem;
+}
+
+.moe-heatmap .viz-heatmap {
+  grid-template-columns: minmax(3.2rem, auto) repeat(var(--heatmap-columns), minmax(1.5rem, 1fr));
+  gap: 0.14rem;
+}
+
+.moe-heatmap .viz-heatmap__column {
+  max-width: none;
+  writing-mode: horizontal-tb;
+  transform: none;
+}
+
+.moe-heatmap .viz-heatmap button {
+  min-width: 1.5rem;
+}
+
+.moe-heatmap--chars .viz-heatmap button {
+  min-height: 1.45rem;
+}
+
+.moe-lab .metric span {
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.moe-groups {
+  display: grid;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  gap: 0.25rem;
+  list-style: none;
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 0.68rem;
+}
+
+.moe-groups li {
+  padding: 0.3rem 0.45rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+  color: var(--ink-soft);
+  background: var(--panel-muted);
+}
+
+.moe-groups b {
+  margin-right: 0.4rem;
+  color: var(--module-accent);
+}
+
+.moe-formulas {
+  display: grid;
+  margin-top: 0.75rem;
+  gap: 0.5rem;
+}
