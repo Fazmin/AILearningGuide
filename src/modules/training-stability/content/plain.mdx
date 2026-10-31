@@ -1,0 +1,530 @@
+---
+objectives: ["Read a training dashboard's four signals, loss, gradient norm, max logit and update-to-weight ratio, against their normal range", "Explain why the two-matrix model diverges at a high learning rate, and what gradient clipping and warmup each change", "Explain fp16's narrow range, why gradients are multiplied by a loss scale, and how dynamic scaling survives an overflow", "Recognize a loss spike and recover from it by rolling back to a checkpoint and skipping the batches that caused it", "Explain how logits grow without bound, and what z-loss can and cannot do about it"]
+terms: ["Loss spike", "Divergence", "Gradient norm", "Gradient clipping", "Update-to-weight ratio", "Max logit", "Log-partition", "z-loss", "Mixed precision", "fp16 and bf16", "Loss scaling", "Dynamic loss scaling", "Checkpoint rollback", "Batch skipping"]
+---
+## The big picture
+
+Training a large AI model means running one loop millions of times. In each round the model makes
+guesses, a score says how wrong they were, and the model's numbers are nudged so that the next
+guesses come out a little better.
+
+A run like that can take weeks on thousands of computer chips, and it can break in the middle. The
+score for how wrong the model is, called the **loss**, can suddenly jump up in a **loss spike**,
+and the run may or may not recover.
+
+The numbers can also grow until the computer can no longer store them and the run stops for good,
+which is called **divergence**. And sometimes nothing stops at all, while the model quietly gets
+worse and every number on the screen still looks ordinary.
+
+This module is about catching those problems early and fixing each one with the right tool. The
+teams behind well-known models have written about this, and PaLM, a large model from Google, hit
+about 20 loss spikes while it trained.
+
+Each time, the PaLM team went back to an earlier saved copy of the model and left out some
+training data, a fix you will try here.
+
+By the end of this module, you will be able to explain:
+
+- how to read a training dashboard, which is a screen of four live signals, and how to tell when
+  one of them has left its normal range;
+- why the small model in this lab blows up when its steps are too big, and what capping each step
+  or starting with small steps changes about that;
+- why 16-bit numbers hold only a narrow range of sizes, why training multiplies its numbers by a
+  big factor to fit them in, and how that factor adjusts itself;
+- how to spot a loss spike and recover from it by going back to a saved copy of the model and
+  skipping the data that caused the spike;
+- how the model's raw scores can grow without any limit, and what a small extra penalty, called
+  z-loss, can and cannot do about it.
+
+The lab gives you four cards to work with, and each one shows a different part of the story:
+
+- **Fault and fixes** lets you break the same tiny model in one of four ways, and then try the
+  fixes that belong to that problem.
+- **Run monitor** is the dashboard itself, with four charts of signals measured at every single
+  step of the real training run.
+- **Run report** prints how the run ended in numbers, along with a sentence explaining what
+  happened and what to try next.
+- **Number formats** is a picture of how big and how small three kinds of computer numbers can get,
+  worked out from their definitions rather than measured.
+
+Every run is real training on your own computer, so every number on the dashboard was measured as
+it happened. Only two things are staged: the 16-bit numbers enter at just one point of each step,
+and the bad data in one fault is junk text the lab adds.
+
+## What it is
+
+### The model in this lab
+
+The model in this lab is the same one you trained in **Train one from scratch**. It reads six
+sentences about a harbor and learns to guess each character from the one before it, which gives it
+378 pairs of neighbouring characters to learn from.
+
+Everything the model knows sits in two small tables of numbers, called **weights**, and it scores
+the next character by multiplying the two tables together. One table has 30 rows of 8 numbers and
+the other has 8 rows of 30 numbers, so together they hold 480 weights.
+
+Training looks at a group of 16 pairs at a time, called a **batch**, and it nudges the weights once
+after each batch, which is called a **step**. The 378 pairs make 24 batches, and the run goes
+through all of them 20 times, so a full run is 480 steps long.
+
+At each step, training works out which way to push every weight to lower the loss, and how hard,
+and that list of pushes is called the **gradient**. The weights then move by the gradient times one
+number, the **learning rate**, which sets how big each step is.
+
+### Why two tables can blow up
+
+Picture a microphone held too close to a loudspeaker, so that a sound going into the microphone
+comes out of the speaker a little louder. Then it goes back into the microphone and comes out louder
+again, until the whole room hears a squeal.
+
+That is called a **feedback loop**, because each trip around makes the next trip bigger. The two
+tables in this model form one, since the push on each table is multiplied by the other table.
+
+So a step that makes one table bigger also makes the next push on the other table bigger. With small
+steps the loop stays quiet, the way a microphone held far from the speaker never squeals.
+
+With a learning rate that is too big, each oversized step feeds an even bigger one, until some
+number grows too large for the computer to store.
+
+Here the picture stops matching, because a microphone squeals almost at once, while this model's
+loop grows step by step over about 150 steps. The single-table model in **Hyperparameters &
+schedules** cannot do this at all, because its pushes have a fixed upper size.
+
+### Four signals on the dashboard
+
+The **Run monitor** card draws four signals for every step of the run, and together they make the
+dashboard:
+
+- **Loss** shows how wrong the model is, with a thin line for each batch's loss and a thick line for
+  the loss on all 378 pairs, every 4 steps.
+- A dotted line on that chart sits at 3.401, which marks a model that knows nothing and spreads its
+  guesses evenly across all 30 characters.
+- **Gradient norm** is the overall size of the gradient, which you find by squaring every push,
+  adding the squares together and taking the square root of the total.
+- **Max logit** is the model's largest raw score for any next character, and these raw scores,
+  called **logits**, are what the model turns into chances for each character.
+- A huge logit means the model is almost completely sure of one character, so a wrong answer that it
+  was sure about costs an enormous loss.
+- **Update ÷ weight** compares how far one step moved the weights with how big they are, and this
+  **update-to-weight ratio** is the only signal that measures the step itself.
+
+Here is a worked example of the update ratio. If all the weights together have a length of 2, and one
+step moves them by a length of 0.05, the ratio is 0.05 ÷ 2 = 0.025. That is close to the ratio of
+this lab's healthy runs.
+
+Three of the charts use a **log scale**, where each label up the side is a power of ten, such as 10,
+100 and 1,000. On a log scale, a number that keeps getting multiplied by the same amount draws a
+straight line.
+
+Each chart also shades a band called the **normal range**, which runs from the 5th to the 95th
+percentile of a clean run. That means 90 percent of the clean run's values fall inside it, so a
+signal that leaves its band is the warning sign to look for.
+
+### Four ways to break it
+
+The **Fault** control picks how the run breaks, and each choice changes one thing about the healthy
+run:
+
+- **None** is the healthy run, which takes its steps at a learning rate of 0.5 for the whole run.
+- **Learning rate too high** is the same run with a learning rate of 8, which is sixteen times
+  bigger than the healthy one.
+- **fp16 overflow** is the healthy run, except that each gradient is squeezed into a 16-bit number
+  after being multiplied by a big number called a **loss scale**.
+- **Garbage batch** swaps five real batches, at steps 400 to 404, for junk text that reads
+  `qqqq zzzz xxxx jjjj` instead of real sentences.
+- **Logit growth** uses a learning rate of 1 together with a different stepping rule, which the next
+  paragraph explains.
+
+The first three faults use the plain stepping rule from earlier labs, which moves each weight by its
+push times the learning rate. The last two use **Adam**, from **Optimizers in practice**, which
+sizes each weight's step using an average of how big that weight's recent pushes have been.
+
+This Adam has no weight decay, the small pull toward zero that AdamW adds, so it behaves exactly
+like AdamW with that pull switched off.
+
+### Clipping and warmup
+
+**Gradient clipping** puts a cap on the size of the gradient. When the gradient norm is bigger than
+the cap, every push shrinks by the same factor until the norm equals the cap. That way the
+direction of the step stays the same and only its length changes.
+
+Picture a gradient with just two pushes, 3 and 4, whose squares, 9 and 16, add up to 25. The square
+root of 25 is 5, so the norm is 5, and with a cap of 1 both pushes are divided by 5, giving 0.6 and
+0.8.
+
+**Warmup + cosine** changes the learning rate as the run goes on, starting at a tenth of its top
+value and reaching the top after 15 percent of the steps. Then it slides down along a
+smooth curve until it reaches 2 percent of the top at the very end.
+
+That gives small steps while the weights are fresh, big steps while there is a lot left to learn,
+and small steps again while the weights settle.
+
+### Loss scaling
+
+Computers store numbers using a fixed number of bits, the 0s and 1s in memory. A normal number here
+uses 32 bits, but training often uses 16-bit numbers to go faster, and mixing the two sizes is called
+**mixed precision**.
+
+The catch is that 16 bits cannot hold every size of number, and the two common 16-bit formats,
+which the glossary calls **fp16 and bf16**, make different trade-offs.
+
+The fp16 format can only hold numbers up to 65,504, and very tiny numbers round down to zero. The
+bf16 format reaches as far as a 32-bit number in both directions, but it rounds every number more
+roughly.
+
+**Loss scaling** helps fp16 by multiplying every gradient by a big number, the loss scale, before
+squeezing it into 16 bits, and then dividing the same number back out. That lifts tiny pushes above
+the point where they would round to zero, so they are not lost from the update.
+
+For example, a push of 0.00000004 sits just above fp16's round-to-zero point. Multiplied by 2²⁰,
+which is about a million, it becomes about 0.042, a size that fp16 stores easily.
+
+The danger is that a scale that is too big pushes a large value past 65,504. That is called an
+**overflow**, and it turns the number into infinity, which then spreads into every weight it
+touches.
+
+With that same scale of 2²⁰, a push of just 0.1 becomes about 105,000, which is far past 65,504, so
+it overflows.
+
+A static scale stays the same for the whole run, while **dynamic loss scaling** watches for
+overflows and skips any step where one happens. Each time it skips a step it halves the scale, and
+after 200 clean steps in a row it doubles the scale again.
+
+### Roll back and skip
+
+Training saves a copy of the weights every so often, and each copy is called a **checkpoint**. This
+lab assumes that one is saved every 50 steps, so there is always a recent copy to go back to.
+
+**Checkpoint rollback** means going back to a copy saved before a problem and training forward again
+from there. **Batch skipping** means leaving out the batches that were in use around the problem
+when training starts again.
+
+### z-loss
+
+The model turns its logits into chances by raising a special number, about 2.718, to the power of
+each logit and dividing by the total. The log of that total is called the **log-partition**, written
+log Z, and it grows whenever all the logits grow together.
+
+Adding the same amount to every logit leaves the chances exactly the same, but it moves log Z. So
+nothing in the ordinary loss stops all the logits from drifting upward together.
+
+A **z-loss** adds a small penalty to every example's loss, equal to a small number times log Z
+squared. That penalty pulls log Z back toward zero, which keeps the logits from drifting as a group.
+
+For example, with log Z at 20 and a coefficient of 0.01, the penalty is 0.01 × 20 × 20 = 4, which
+is bigger than the loss of a healthy model. With log Z at 2, the same penalty is only 0.04.
+
+## Why it’s here
+
+Every earlier training lab assumed that the run would finish, but large runs often do not, so the
+people running them spend much of their time keeping them on track. They log signals, save
+checkpoints, and decide within hours whether a bump in the loss is noise, a spike that will recover,
+or the start of a divergence.
+
+A crash is expensive, because if a run breaks at step 154 of 480, every step since the last
+checkpoint is wasted. A run that drifts quietly can waste the rest of its time before anyone notices,
+and for the largest models that can mean weeks of work on thousands of chips.
+
+That is why teams build these checks in from the start instead of adding them after a failure has
+already cost them time.
+
+Each fix in this lab answers one problem, and none of them can stand in for another. A clip does
+nothing for an fp16 overflow, and a loss scale does nothing for steps that are too big.
+
+In the same way, z-loss cannot rescue a run whose steps are too large, which is why you read the
+dashboard first and then choose the fix that matches.
+
+## How to play with it
+
+### Read a healthy dashboard
+
+Start with **Fault** on None, where the run ends with a loss of 2.039, well below the 3.401 of a
+model that knows nothing.
+
+Read the shaded band on each chart, which comes from this run itself, so it shows what normal looks
+like for this model:
+
+- **Loss** runs from 1.79 to 3.38 for single batches, while the thick line falls steadily toward 2.
+- **Gradient norm** runs from 0.114 to 0.700, and its highest value in the whole run is 0.955.
+- **Max logit** runs from 0.118 to 6.23, and its highest value in the whole run is 6.707.
+- **Update ÷ weight** runs from 0.021 to 0.040, with a middle value of 0.026 across the run.
+
+A dashed line on **Update ÷ weight** marks 0.001, written 10⁻³, a rule of thumb for big networks from
+a Stanford course. This healthy run sits about 26 times above it.
+
+That rule is a starting point for large models, not a test that this tiny model has to pass, so the
+band matters more than the line.
+
+### Push the learning rate
+
+Set **Fault** to Learning rate too high and look at step 1, where the loss, the gradient norm and the
+max logit match the healthy run exactly. They match because all three are measured
+before the first step moves any weight.
+
+Only **Update ÷ weight** is different on step 1, reading 0.310 against 0.021 for the healthy run,
+because the step itself is sixteen times longer.
+
+The gradient norm does not rise above its band until step 6, and it passes 10 at step 36. After that
+it climbs in a straight line on its log scale, getting multiplied by about the same amount every
+step.
+
+By step 153 the gradient norm is 1.1 × 10¹⁹, which means 11 followed by 18 zeros. The max logit is
+3.1 × 10³⁸, which is close to the largest number that a 32-bit float can hold.
+
+On step 154 a number finally overflows, so the run halts, and a red line marks the step where every
+chart stops.
+
+**Try this:** set **Gradient clip** to 0.50 and watch the run survive, with the cap shrinking 459 of
+the 480 steps. The run ends at 3.172, which is only a little better than a model that knows nothing.
+
+Now set **Schedule** to Warmup + cosine while keeping the clip, and the run ends at 1.904. That beats
+the healthy run's 2.039, even though its top learning rate is sixteen times higher.
+
+### Overflow in fp16
+
+Set **Fault** to fp16 overflow, with **Loss scale** at 2²⁰ and **Scaling** on Static, where 2²⁰
+means 2 multiplied by itself 20 times, or 1,048,576.
+
+At that scale, any push of 0.062 or more overflows once it is multiplied. On step 33 one does, and a
+red triangle marks it at the top of **Gradient norm**.
+
+The infinite push goes straight into the weights, so the run halts on that same step, with the red
+halt line falling exactly where the triangle is.
+
+Now switch **Scaling** to Dynamic, so that each step that overflows is skipped and the scale is
+halved. The run skips steps 33, 62, 184 and 430, and its scale ends at 2¹⁷.
+
+It finishes at 2.040, against 2.039 for the run with no 16-bit numbers at all, so skipping four steps
+out of 480 cost almost nothing.
+
+### Survive a bad batch
+
+Set **Fault** to Garbage batch, and keep in mind that the same Adam run without the junk text ends
+at 1.991.
+
+With the junk, the first bad batch scores a loss of 6.636 on step 400 and pushes the gradient norm
+to 2.806, far above its band of 0.483 to 0.851.
+
+The **Spike** readout shows the loss on all the pairs rising by 1.395, from 2.051 to 3.447 at step
+404. That is above the dotted line, so for a moment the model is worse than knowing nothing.
+
+Set **Gradient clip** to 1.00 and read **Spike** again, and the spike shrinks to 0.734 and peaks at
+step 408, but the junk still went into the weights.
+
+Set the clip back to off and press **Roll back and skip**, and the run goes back to the checkpoint
+saved after step 350. It replays steps 351 to 399 exactly and never uses steps 400 to 404.
+
+It ends at 1.993, against 2.022 without the rollback, which is almost as good as never seeing the
+junk at all.
+
+### Tame logit growth
+
+Set **Fault** to Logit growth, where Adam moves each weight by about the learning rate on its first
+step. Here that rate is 1, so on step 1 **Update ÷ weight** reads 0.989.
+
+By step 4 the loss on all the pairs is already above the dotted line, and the run ends at 11.515,
+which is far worse than knowing nothing.
+
+**Max logit** has a middle value of 66 and peaks at 395, yet nothing halts, because numbers that size
+are still ordinary numbers that the computer can store.
+
+Raise **z-loss** to 0.01, and the middle value of log Z falls from 19.7 to 2.2 while the peak max
+logit falls from 395 to 179. Even so, the loss still ends at 3.277, which is close to the 3.401 of
+knowing nothing.
+
+Now lower **Learning rate** to 0.1, and the run ends at 1.985, a healthy result, because the steps
+themselves are finally small enough.
+
+## What to notice
+
+### On the dashboard
+
+- **The step shows trouble first:** at a learning rate of 8, the update ratio is out of range on
+  step 1, and the others only on step 6.
+- **A straight climb on a log scale is an explosion,** because it means each step multiplies the
+  value by about the same amount.
+- **A run can finish and still be ruined:** Warmup + cosine with no clip never halts, but it ends at
+  19.152, and its max logit peaks at 1.2 × 10²⁸.
+- **The ratio's rule of thumb can mislead:** over the last 50 steps of that ruined run, the update
+  ratio has a middle value of 0.0026, near the 10⁻³ line.
+- **The batch loss jumps first:** in Garbage batch it jumps on step 400, the first junk step, but
+  the loss on all the pairs peaks on step 404.
+
+### On the fixes
+
+- **Neither fix for the high rate works alone:** Warmup + cosine without a clip ends at 19.152, and
+  a clip of 0.50 without a schedule ends at 3.172.
+- **A looser cap can be worse:** a clip of 1.00 on its own ends at 4.050, worse than knowing
+  nothing, while clip and schedule together reach 1.904.
+- **Dynamic scaling is cheap,** because its four skipped steps move the final loss only from 2.039
+  to 2.040.
+- **The stepping rule decides how much damage junk does:** with the plain rule at 0.5, the same five
+  junk batches raise the loss by only 0.044, against 1.395 under Adam.
+- Under the plain rule, the junk's gradient norm, 0.608 on the first bad step, stays inside the
+  healthy band, so the dashboard barely notices it at all.
+- **A clip helps less under Adam:** a clip of 1.00 roughly halves the Adam spike, because Adam
+  divides each weight's step by the size of that weight's recent pushes.
+- The weights for j and x never get a push in the clean text, since those letters never start a pair
+  there, so the junk moves them a full step.
+
+### On the rollback
+
+- **The replay is exact:** the dotted amber line of the old run lies under the new one until step
+  400, because the same weights meet the same batches.
+- **Skipping costs little:** leaving out five batches ends at 1.993, close to the 1.991 of the run
+  that never saw junk and better than 2.022 with it.
+- **The checkpoint sets the price:** going back to step 350 means redoing the 49 steps from 351 to
+  399, and saving less often means redoing more.
+
+### On z-loss
+
+- **It treats a symptom:** at every learning rate on the control, a z-loss of 0.01 lowers log Z, but
+  at a rate of 1 the loss still ends at 3.277.
+- **It barely matters in a healthy run:** at a rate of 0.1 the run ends at 1.985 with it and 1.991
+  without it, though the peak max logit halves.
+
+### On the number formats
+
+- **The fp16 window moves but does not grow:** each doubling of **Loss scale** moves both ends of the
+  green bar down by the same factor.
+- From 2¹⁷ to 2¹⁸ the top of that bar falls from about 0.5 to 0.25, and the static run goes from
+  finishing to halting at step 184.
+- **The bf16 format reaches as far as fp32,** which is why bf16 runs usually need no loss scale,
+  though it keeps only 7 bits of detail against 23 for fp32.
+
+## Where it breaks
+
+### What this lab simplifies
+
+The blow-up is real, because at a learning rate of 8 a weight grows past the largest number a 32-bit
+float can hold, halting the run at step 154.
+
+Everything else about this model is small, with 480 weights, no attention, one short text and one
+seed, so each number here comes from a single run.
+
+The 16-bit numbers are copied in at only one point, where the gradient is squeezed into fp16. The
+guesses and the weights stay in 32 bits, so the lab cannot show any other number overflowing.
+
+The lab cannot show the other fp16 problem either. Across the whole healthy run, none of the 153,008
+pushes that were not already zero rounds down to zero, even with no scaling.
+
+The smallest of those pushes, 3.6 × 10⁻⁸, sits just above fp16's round-to-zero point of 3.0 × 10⁻⁸.
+With no scaling, 949 of them do land in fp16's less exact range near zero.
+
+So this lab shows only the overflow side of loss scaling, and never the side that loss scaling was
+invented for in the first place.
+
+**A common mix-up:** a run that never halts is not necessarily healthy, because Logit growth never
+produces a number the computer cannot store. Even so, that run ends at 11.515, which is far worse than
+knowing nothing at all.
+
+A halt is only the loudest kind of failure, and the dashboard's quieter signals are there to catch the
+rest of them.
+
+The junk batch has a known cause, because the lab puts it in on purpose. The lab also never stores a
+checkpoint, since **Roll back and skip** trains again from step 1 with the five junk batches skipped.
+
+That gives exactly what restarting from step 350 would, because the first 399 steps replay exactly the
+same way both times.
+
+The **Max logit** chart shows only the model's final scores. With no attention in this model, the
+growth that real models see inside attention can only be described here.
+
+The Adam runs have no weight decay, and with a decay of 0.1 at a rate of 1, the peak max logit stays at
+only 17.8. The loss still ends at 3.136, close to knowing nothing, so decay alone reins in these logits
+without fixing the run.
+
+A research team saw the same calming effect of weight decay on the output logits of larger models.
+
+Each pair's loss is capped at about 27.6, because the lab never lets a chance fall below one in a
+trillion. In the Logit growth run, 63 of the 378 pairs sit at that cap, so 11.515 is the lowest the
+true loss could be.
+
+The update ratio's rule of thumb does not fit this toy either, since its healthy runs sit between 0.021
+and 0.040, which is twenty to forty times the 10⁻³ line.
+
+### Where the real mechanism fails
+
+Real spikes rarely announce their cause, and when PaLM's team replayed the batches from around a spike,
+starting from a different and earlier checkpoint, no spike appeared.
+
+They concluded that spikes come from particular batches meeting particular weights, and not from bad
+data alone.
+
+Adam itself can be part of the cause. One research team argues that Adam can reach a state where its
+steps are large and point in a direction unrelated to lowering the loss.
+
+They say that state leads to divergence, and that it shows up most often in deep models trained on
+large batches.
+
+Not every problem is a sudden spike, and another team studied slow divergence instead, finding that
+growing logits appear in small models trained with high learning rates.
+
+That finding lets small models stand in for big ones when people study these problems, which saves a
+great deal of computer time.
+
+Training with 16-bit numbers has its own failures, and OPT, a model from Meta, linked its divergences
+to its dynamic loss scale crashing toward zero.
+
+Teams also keep a 32-bit copy of the weights, because 16-bit numbers can round a small update to a big
+weight away entirely, and bf16 rounds more roughly still.
+
+## Going deeper
+
+### Attention logits and QK-norm
+
+Bigger language models use **attention**, where each piece of the input scores how much to look at
+every other piece. Those scores are logits too, and they can grow in the same way.
+
+A Google team training an image model with 22 billion weights saw its loss blow up after a few
+thousand steps. The attention scores had grown so large that attention locked onto single patches of
+the image.
+
+They fixed it by normalizing two of the numbers inside attention before multiplying them together,
+which is called **QK-norm**. The OLMo 2 team does the same, and **Modern attention at scale** shows
+where these scores come from.
+
+### z-loss in practice
+
+PaLM adds a z-loss with a coefficient of 0.0001 to keep log Z close to 0, and its team found that it
+made training more stable. The small-model study described above uses that very same coefficient.
+
+ST-MoE, a mixture-of-experts model that sends each word to a few specialist parts, uses a z-loss of
+0.001 on the scores that pick those parts.
+
+OLMo 2 uses z-loss too, but its paper gives two different coefficients, 0.0001 in its text and 0.00001
+in its table, so it is worth checking before copying either one.
+
+### Prevention: architecture, initialization and data
+
+Most stability work happens before a run even starts, and one research team traced spikes to sudden
+growth in the gradient norm and found model shapes that prevent it.
+
+They checked those shapes by scaling or normalizing the numbers that feed into the model, and the
+spikes went away.
+
+The OLMo 2 team changed how its weights start out and stopped pulling some of its weights toward zero.
+It also removed documents that repeat the same phrase 32 or more times, because it found that such
+data caused spikes.
+
+That is cleaning data as a stability fix, which is the subject of **Building a dataset**.
+
+### Toy versus real
+
+- **Clipping:** PaLM caps its gradient norm at 1.0, and OPT lowered its cap from 1.0 to 0.3 to keep
+  its run stable, while this lab needs a cap of 0.50.
+- **Loss scale:** PyTorch, a popular training tool, starts its scale at 2¹⁶, or 65,536, and its
+  default settings list a shrink factor of 0.5 and a growth factor of 2.
+- PyTorch waits 2,000 clean steps before growing the scale, while this lab waits only 200, because
+  its whole run is just 480 steps long.
+- **Rollback:** PaLM went back about 100 steps and skipped about 200 to 500 batches for each spike.
+  This lab skips only 5, because it knows exactly which batches are bad.
+- PaLM could replay any stretch of its run exactly from a checkpoint, which is what this lab's replay
+  of steps 351 to 399 shows on a tiny scale.
+- **Practice:** Hugging Face's Smol Training Playbook calls going back to before the spike and skipping
+  the bad batches the most common fix for spikes.
+- That playbook also lists a tighter clip, z-loss and QK-norm among the other fixes that training
+  teams reach for.
+
+The real-world facts come from the papers listed under References, including PaLM by Chowdhery and
+colleagues, OPT by Zhang and colleagues, and OLMo 2 by the OLMo team.

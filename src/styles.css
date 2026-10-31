@@ -28351,3 +28351,377 @@ path.sl-reference {
     grid-column: 1 / -1;
   }
 }
+
+/* training-stability */
+
+.explore-scroll[data-module="training-stability"][data-current-step="0"] .ts-panels,
+.explore-scroll[data-module="training-stability"][data-current-step="1"] .ts-fault,
+.explore-scroll[data-module="training-stability"][data-current-step="1"] .ts-remedies[data-fault="rate"],
+.explore-scroll[data-module="training-stability"][data-current-step="2"] .ts-fault,
+.explore-scroll[data-module="training-stability"][data-current-step="2"] .ts-remedies[data-fault="fp16"],
+.explore-scroll[data-module="training-stability"][data-current-step="3"] .ts-fault,
+.explore-scroll[data-module="training-stability"][data-current-step="3"] .ts-remedies[data-fault="bad-batch"],
+.explore-scroll[data-module="training-stability"][data-current-step="4"] .ts-fault,
+.explore-scroll[data-module="training-stability"][data-current-step="4"] .ts-remedies[data-fault="logits"] {
+  --lesson-step-target: 1;
+  position: relative;
+  z-index: 1;
+  border-radius: var(--radius-sm);
+  background-color: color-mix(in srgb, var(--module-accent) 12%, var(--panel-solid));
+  animation: step-target-in 300ms ease-out;
+}
+
+.ts-fault {
+  margin-top: 0.4rem;
+  padding: 0.1rem 0.3rem 0.3rem;
+}
+
+.ts-fault .segmented > div {
+  flex-wrap: wrap;
+  gap: 0.15rem;
+}
+
+.ts-fault .segmented button {
+  flex: 1 1 auto;
+  white-space: nowrap;
+}
+
+.ts-fault .lab-note {
+  margin-top: 0;
+}
+
+.ts-remedies {
+  display: grid;
+  margin-top: 0.4rem;
+  padding: 0 0.3rem 0.4rem;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  align-items: start;
+  gap: 0 1.2rem;
+}
+
+.ts-remedies > .lab-note {
+  grid-column: 1 / -1;
+  margin-top: 0.6rem;
+}
+
+.ts-remedies > .segmented {
+  margin-top: 0.95rem;
+}
+
+.ts-remedies .ts-remedies__empty {
+  margin-top: 0.2rem;
+}
+
+.ts-rollback .primary-action,
+.ts-rollback .quiet-action {
+  margin-top: 0.95rem;
+}
+
+.ts-rollback .lab-note {
+  margin-top: 0.6rem;
+}
+
+.ts-panels {
+  display: grid;
+  margin-top: 0.6rem;
+  padding: 0.2rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem 1rem;
+}
+
+@media (max-width: 52rem) {
+  .ts-panels {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.ts-panel {
+  min-width: 0;
+  margin: 0;
+}
+
+.ts-panel__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.ts-panel__head h4 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.75rem;
+  font-weight: 650;
+}
+
+.ts-panel__head span {
+  overflow: hidden;
+  color: currentcolor;
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 0.65rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ts-panel svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin-top: 0.25rem;
+}
+
+.ts-panel figcaption {
+  color: var(--muted);
+  font-size: 0.65rem;
+  line-height: 1.5;
+}
+
+.ts-tone--loss {
+  color: var(--loss);
+}
+
+.ts-tone--gradient {
+  color: var(--gradient);
+}
+
+.ts-tone--logit {
+  color: var(--attention);
+}
+
+.ts-tone--ratio {
+  color: var(--forward);
+}
+
+.ts-grid {
+  stroke: var(--grid-line);
+  stroke-width: 1;
+}
+
+.ts-tick {
+  fill: var(--muted);
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 9px;
+}
+
+.ts-band {
+  fill: currentcolor;
+  fill-opacity: 0.09;
+}
+
+.ts-line {
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.ts-line--batch {
+  stroke-width: 0.8;
+  opacity: 0.45;
+}
+
+.ts-line--corpus {
+  stroke-width: 2.2;
+}
+
+.ts-line--signal {
+  stroke-width: 1.1;
+}
+
+.ts-line--reference {
+  stroke: var(--ink-soft);
+  stroke-dasharray: 5 3;
+  stroke-width: 1.3;
+  opacity: 0.7;
+}
+
+.ts-line--original {
+  stroke: var(--warning);
+  stroke-dasharray: 1.5 2.5;
+  stroke-width: 1.8;
+}
+
+.ts-chance {
+  stroke: var(--faint);
+  stroke-dasharray: 1.6 3.4;
+  stroke-width: 1.2;
+}
+
+.ts-guide {
+  stroke-width: 1.2;
+}
+
+.ts-guide--clip {
+  stroke: var(--positive);
+  stroke-dasharray: 5 3;
+}
+
+.ts-guide--rule {
+  stroke: var(--ink-soft);
+  stroke-dasharray: 2 3;
+}
+
+.ts-guide-label {
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 8.5px;
+}
+
+.ts-guide-label--clip {
+  fill: var(--positive);
+}
+
+.ts-guide-label--rule {
+  fill: var(--ink-soft);
+}
+
+.ts-dots {
+  fill: none;
+  stroke-linecap: round;
+}
+
+.ts-dots--clipped {
+  stroke: currentcolor;
+  stroke-width: 2.6;
+}
+
+.ts-overflow {
+  fill: var(--loss);
+}
+
+.ts-skip {
+  fill: var(--faint);
+  fill-opacity: 0.45;
+}
+
+.ts-garbage {
+  fill: var(--warning);
+  fill-opacity: 0.22;
+}
+
+.ts-rollback-line {
+  stroke: var(--positive);
+  stroke-dasharray: 4 3;
+  stroke-width: 1.3;
+}
+
+.ts-halted {
+  stroke: var(--loss);
+  stroke-width: 1.6;
+}
+
+.ts-halted-zone {
+  fill: var(--loss);
+  fill-opacity: 0.06;
+}
+
+.ts-marker-label {
+  fill: var(--ink-soft);
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 8.5px;
+}
+
+.ts-marker-label--halted {
+  fill: var(--loss);
+  font-weight: 600;
+}
+
+.ts-legend {
+  display: flex;
+  margin-top: 0.7rem;
+  flex-wrap: wrap;
+  gap: 0.3rem 1rem;
+  color: var(--muted);
+  font-size: 0.65rem;
+}
+
+.ts-legend__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.ts-key {
+  display: inline-block;
+  width: 1.2rem;
+  height: 0.55rem;
+  border-radius: 2px;
+}
+
+.ts-key--band {
+  background: color-mix(in srgb, var(--ink-soft) 16%, transparent);
+}
+
+.ts-key--reference {
+  height: 0;
+  border-top: 1.5px dashed var(--ink-soft);
+  border-radius: 0;
+}
+
+.ts-key--original {
+  height: 0;
+  border-top: 2px dotted var(--warning);
+  border-radius: 0;
+}
+
+.ts-key--garbage {
+  background: color-mix(in srgb, var(--warning) 30%, transparent);
+}
+
+.ts-key--skip {
+  background: color-mix(in srgb, var(--faint) 50%, transparent);
+}
+
+.ts-key--overflow {
+  width: 0;
+  height: 0;
+  border-top: 0.5rem solid var(--loss);
+  border-right: 0.32rem solid transparent;
+  border-left: 0.32rem solid transparent;
+  border-radius: 0;
+}
+
+.ts-key--halted {
+  width: 0.18rem;
+  background: var(--loss);
+}
+
+.ts-report .metric span {
+  white-space: normal;
+}
+
+.ts-format-line {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin-top: 0.5rem;
+}
+
+.ts-format-label {
+  fill: var(--ink-soft);
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.ts-format-bar {
+  fill: color-mix(in srgb, var(--module-accent) 72%, transparent);
+}
+
+.ts-format-bar--fp16 {
+  fill: var(--gradient);
+}
+
+.ts-format-sub {
+  fill: color-mix(in srgb, var(--module-accent) 26%, transparent);
+}
+
+.ts-format-window {
+  fill: var(--positive);
+  fill-opacity: 0.75;
+}
+
+.ts-format-norms {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1.2;
+}
