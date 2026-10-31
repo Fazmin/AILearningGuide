@@ -1,0 +1,317 @@
+---
+objectives: ["Split the memory one GPU holds into weights, gradients, optimizer state, and activations, and predict what each ZeRO stage and each parallel degree divides", "Say what data, tensor, pipeline, and expert parallelism each split and send, and why tensor parallelism stays inside a node", "Compute the pipeline bubble from stages and microbatches, and explain how more microbatches shrink it", "Read step time, MFU, and tokens per second as compute plus exposed communication plus idle time, and explain why MFU leaves recomputation out", "Choose a checkpoint interval with Young's and Daly's formulas, and explain why failures become routine at scale"]
+terms: ["Data parallelism", "Tensor parallelism", "Pipeline parallelism", "Expert parallelism", "ZeRO stage", "All-reduce", "Reduce-scatter and all-gather", "Interconnect", "Gradient accumulation", "Pipeline bubble", "Activation recomputation", "MFU", "Mean time between failures", "Checkpoint interval"]
+---
+
+## The big picture
+
+A large model is trained by repeating one step millions of times: a forward pass and a backward pass
+over a batch of tokens, then an optimizer update. No single GPU can hold that step for a frontier
+model. Under mixed-precision Adam, a 405-billion-parameter model needs 6.5 TB for its weights,
+gradients, and optimizer state alone, and one H100 has 80 GB. So the step is split across thousands of
+GPUs, and the split decides what each GPU holds, what crosses the wires between GPUs, how long GPUs
+sit idle, and how often the whole job is interrupted.
+
+Four splits are combined. **Data parallelism** gives copies of the model different parts of the
+batch. **Tensor parallelism** splits every layer's matrices. **Pipeline parallelism** gives different
+layers to different GPUs. **Expert parallelism** places a mixture-of-experts model's experts on
+different GPUs. ZeRO then shards the model state across the data-parallel copies, and **activation
+recomputation** trades stored memory for extra arithmetic.
+
+### Where it shows up
+
+- **Llama 3 405B** was trained on up to 16,384 H100 GPUs, eight to a server joined by NVLink, with
+  400 Gbps links between GPUs in different servers. Its main layout combined tensor parallelism 8,
+  pipeline parallelism 16, and data parallelism 128, and reached 400 TFLOP/s per GPU, 41% BF16 model
+  FLOPs utilization (MFU), on 16,384 GPUs (Llama 3 paper, Table 4).
+- **Megatron-LM** composes tensor, pipeline, and data parallelism to run a trillion-parameter model at
+  502 petaFLOP/s on 3,072 GPUs, 52% of peak (Narayanan et al., 2021).
+- **ZeRO and FSDP** shard the optimizer state, gradients, and weights across data-parallel GPUs.
+  PyTorch's Fully Sharded Data Parallel was motivated by ZeRO (Zhao et al., 2023).
+- **Failures** are routine at this scale. Llama 3 reports 466 job interruptions in a 54-day snapshot,
+  419 of them unexpected and about 78% of those attributed to hardware. MegaScale, which reached 55.2%
+  MFU on 12,288 GPUs, calls failures and stragglers "the norm rather than the exception".
+
+### Why it matters
+
+A layout that does not fit in memory does not run. A layout that fits but keeps GPUs waiting wastes
+the cluster: in this lab, raising the 70B model's tensor parallelism from 8 to 16 halves its memory per
+GPU and drops MFU from 49.8% to 10.9%, because the tensor group leaves the node. The pipeline bubble,
+the gradient sync, and recomputation each take their own share of every step, and failures take a share
+of the whole run. Each share can be computed before a cluster is rented.
+
+### What you will be able to explain
+
+- How the memory on one GPU splits into weights, gradients, optimizer state, and activations, and
+  which part each ZeRO stage and each parallel degree divides.
+- What data, tensor, pipeline, and expert parallelism each split and send, and why tensor parallelism
+  stays inside a node.
+- How the pipeline bubble follows from stages and microbatches, and why more microbatches shrink it.
+- How step time, MFU, and tokens per second break down into compute, exposed communication, and idle
+  time, and why MFU leaves recomputation out.
+- How Young's and Daly's formulas choose a checkpoint interval, and why failures become routine as a
+  job grows.
+
+### What the lab shows
+
+Every readout is closed-form arithmetic on stated assumptions: nothing runs on a GPU and nothing is
+timed. The model shapes are published: Llama 3.1 8B, 70B, and 405B, and Mixtral 8x7B. The hardware is
+an H100 SXM as stated assumptions: 989.5 TFLOP/s of dense BF16 (half the 1,979 teraFLOPS with
+sparsity on NVIDIA's H100 page), 80 GB, NVLink at 450 GB/s each way (half the 900 GB/s total),
+InfiniBand at 50 GB/s per GPU (one 400 Gb/s link per GPU), eight GPUs per node, and a fixed kernel
+efficiency η = 0.75. Every sequence is 8,192 tokens.
+
+**Parallel layout** sets **Model**, **Tensor parallel**, **Pipeline**, **Data parallel**, **Expert
+parallel** (Mixtral only), **Micro-batch size**, and **Microbatches**, and has a **16,384-GPU
+layout** button. **Memory per GPU** adds **ZeRO stage** and **Recompute** and reports **Fits in 80
+GB**. **Pipeline schedule** simulates the one-forward-one-backward (1F1B) schedule and its **Bubble**.
+**Communication per step** prices each kind of traffic, with an **Overlap gradient sync** switch.
+**Step time and MFU** splits a step into compute, recomputation, traffic, bubble, and exposed sync.
+**Failures and checkpoints** sets **Checkpoint every**, **Save time**, and **Restart time** and marks
+the Young and Daly optima. Its failure rate is derived from Llama 3's snapshot: 16,384 GPUs × 54 days ÷
+419 unexpected interruptions, about 50,677 GPU-hours per interruption, assuming every GPU ran throughout.
+
+The key experiment: take the 70B model at pipeline 4 and move **Tensor parallel** from 8 to 16, then
+compare **Memory per GPU**, the **TP all-reduce** row, and **MFU**.
+
+## What it is
+
+### Memory: four parts per GPU
+
+Mixed-precision Adam keeps 16 bytes per parameter: 2 for the bf16 weights, 2 for the gradients, and 12
+for the optimizer's fp32 master copy, momentum, and variance, the ZeRO paper's accounting and the one
+**Anatomy of a training run** uses. With `Ψg` parameters on one GPU and `d` data-parallel copies:
+
+```text
+Ψg = Ψdense / (t·p) + Ψexperts / (t·p·e)
+ZeRO 0: 16Ψg            ZeRO 1: 4Ψg + 12Ψg/d
+ZeRO 2: 2Ψg + 14Ψg/d    ZeRO 3: 16Ψg/d
+```
+
+Each **ZeRO stage** shards one more part across the data-parallel GPUs: stage 1 the optimizer state,
+stage 2 the gradients, stage 3 the weights. For 7.5 billion parameters on 64 GPUs the four totals are
+120, 31.4, 16.6, and 1.9 GB, the ZeRO paper's Figure 1, which the lab reproduces. Mixtral's experts
+are copied only `d/e` times, so ZeRO and the gradient sync split them over those `d/e` GPUs.
+
+Activations are the fourth part. Korthikanti et al. count the bytes one transformer layer stores for a
+microbatch of `b` sequences of length `s` at width `h` with `a` attention heads: `sbh(34 + 5as/h)`,
+where `5as/h` is the attention scores. With sequence parallelism, tensor parallelism divides the count
+by `t`. Selective recomputation drops the scores and recomputes them, leaving `34sbh/t`. Full
+recomputation keeps only each layer's input, `2sbh`. Under 1F1B the first pipeline stage holds its
+`⌈L/p⌉` layers for `min(m, p)` microbatches at once.
+
+### Four ways to split
+
+- **Data parallel `d`** runs `d` copies of the model, or of its tensor-and-pipeline slice, on different
+  shares of the batch, then averages gradients once per step with an **all-reduce**.
+- **Tensor parallel `t`** splits each weight matrix across `t` GPUs. Each layer needs two all-reduces in
+  the forward pass and two in the backward pass (Shoeybi et al., 2019), each of a `2bsh`-byte
+  activation, and two more when full recomputation reruns the forward pass.
+- **Pipeline `p`** gives each stage `L/p` layers and sends a `2bsh/t`-byte activation forward and a
+  gradient of the same size back for every microbatch.
+- **Expert parallel `e`** spreads Mixtral's 8 experts per layer over `e` of the data-parallel GPUs, and
+  routes each token to its 2 experts with four all-to-alls per MoE layer.
+
+GPUs = `t × p × d`. A ring all-reduce over `n` GPUs moves `2(n − 1)/n` of the buffer per GPU; a
+**reduce-scatter and all-gather** each move `(n − 1)/n`, as does an all-to-all. The lab numbers ranks
+tensor-first and packs eight to a node, so a group stays on NVLink only while it fits in one node. The
+**interconnect** between nodes is nine times slower.
+
+### Time: compute, traffic, and waiting
+
+```text
+t_c    = (6·Ψactive + 12·L·h·s) · b·s · r / (t·p·η·F)      r = 4/3 for full recompute
+step   = (m + p − 1) · (t_c + t_TP + t_PP + t_EP) + exposed DP sync
+bubble = (p − 1) / (m + p − 1)
+MFU    = (6·Ψactive + 12·L·h·s) · tokens per second / (N·F)
+```
+
+`6·Ψactive` per token is the forward and backward matrix arithmetic and `12·L·h·s` the attention
+scores, PaLM's count (Chowdhery et al., Appendix B). The `m` microbatches are **gradient
+accumulation** steps; the `p − 1` extra slots are the **pipeline bubble**. **MFU** counts only model
+work against the peak `F`; hardware FLOPs utilization (HFU) also counts recomputation, so HFU = `r` ×
+MFU. The DP sync moves `2(d − 1)/d × 2Ψg` bytes, 1.5 times that at ZeRO stage 3, and with overlap on it
+hides under the last microbatch's backward pass, two thirds of `t_c`. Only the excess is exposed.
+
+### Failures: a rate that grows with the job
+
+A synchronous job stops whenever any one of its GPUs fails. If failures are independent, the job's
+**mean time between failures** is the per-GPU figure divided by the GPU count. The lab uses 50,677
+GPU-hours per unexpected interruption, derived from Llama 3's snapshot.
+
+Saving a checkpoint every `τ` seconds, with a save time `δ`, a restart time `R`, and a job MTBF `M`,
+loses `δ/τ + (τ/2 + R)/M` of the run to first order. Young's **checkpoint interval** `√(2δM)` minimizes
+that sum. Daly's higher-order estimate adds correction terms and subtracts the save time, so it comes
+out slightly shorter. A checkpoint that can resume the run holds 14 bytes per parameter: the bf16
+weights and the 12 bytes of optimizer state. The gradients are not saved, because the next step
+rebuilds them.
+
+## Why it’s here
+
+**Anatomy of a training run** counted 16 bytes per parameter and stopped at "large runs split it
+across devices". **Why GPUs** priced one GPU's roofline. This lab joins them: thousands of rooflines,
+linked by wires far slower than the memory inside each GPU.
+
+Every frontier run makes the same choices. How many ways to split each layer, how deep a pipeline, how
+many microbatches, which ZeRO stage, how often to save. Each is a trade between memory, traffic, idle
+time, and failures, and each can be priced with the arithmetic here before a single GPU is rented.
+
+## How to play with it
+
+### Shard the state
+
+Start at the defaults: Llama 3.1 8B on 64 data-parallel GPUs, ZeRO stage 0, one sequence per
+microbatch, 8 microbatches, Selective recompute. **Memory per GPU** shows 16.1 GB of weights, 16.1 GB
+of gradients, and 96.4 GB of optimizer state, 128.5 GB of model state on every GPU, plus 36.5 GB of
+activations: 165 GB against 80.
+
+Move **ZeRO stage** to 1: the optimizer state shrinks to 1.5 GB, model state to 33.6 GB, the total to
+70.1 GB, and **Fits in 80 GB** turns to yes. Stage 2 shrinks the gradients to 250.9 MB (17.8 GB of
+model state). Stage 3 shrinks the weights too: 2.0 GB of model state, 38.5 GB in all. The Activations
+bar never moves.
+
+### Count the activations
+
+Stay at ZeRO stage 3 and raise **Micro-batch size** from 1 to 4. Activations grows from 36.5 GB to 146
+GB and the total, 148 GB, no longer fits. Switch **Recompute** to None and the bar reaches 1.5 TB: for
+the 8B model at 8,192 tokens, the attention-score term `5as/h` is 320 against 34 for everything else.
+Switch to Full and it falls to 8.6 GB, 10.6 GB in all.
+
+Now read **Step time and MFU**. Compute stays at 21.6 s, a Recompute row of 7.19 s appears, MFU falls
+from 75.0% to 56.3%, and HFU stays at 75.0%: the GPUs work as hard as before, but a quarter of their
+arithmetic redoes the forward pass.
+
+### Split each layer
+
+Switch **Model** to Llama 3.1 70B and set Pipeline 4, Data parallel 16, Microbatches 16, one sequence
+per microbatch, ZeRO stage 1, and Selective recompute. At **Tensor parallel** 1 each GPU would need
+266.3 GB. At 8 it needs 33.3 GB, and the **TP all-reduce** row costs 0.042 s per microbatch over
+NVLink, against 0.168 s of compute. MFU is 49.8%.
+
+At 16 the tensor group spans two nodes. Memory falls to 16.6 GB, but each all-reduce now crosses
+InfiniBand: 0.403 s per microbatch, 9.6 times more, and MFU falls to 10.9%.
+
+### Fill the pipeline
+
+Set Tensor parallel back to 8, Pipeline to 8, and **Microbatches** to 1. **Pipeline schedule** shows a
+single diagonal of work and hatched idle time almost everywhere else: Bubble 87.5% and MFU 7.2%.
+
+Raise Microbatches: the bubble is 77.8% at 2, 46.7% at 8, 17.9% at 32, and 5.2% at 128. At 32, MFU is
+48.7% and each step processes 4.2 million tokens.
+
+### Pay for the sync
+
+From there (70B, tensor 8, pipeline 8, 32 microbatches, ZeRO stage 1, overlap on), **DP gradient sync**
+takes 0.083 s once per step and **Exposed DP time** reads 0.027 s. Raise **Data parallel** from 16 to
+256: the job grows to 16,384 GPUs, **Tokens/s** from 1.0 million to 16.2 million, and MFU moves only
+from 48.7% to 48.6%, because the sync grows only to 0.088 s.
+
+Switch **Overlap gradient sync** off: Exposed DP time becomes the whole 0.088 s and MFU 48.0%. Set ZeRO
+stage 3: the sync grows 1.5 times, to 0.132 s, all of it exposed, and MFU reads 47.5%.
+
+### Plan for failure
+
+Press **16,384-GPU layout**: Llama 3.1 405B on tensor 8, pipeline 16, data 128, with 16 microbatches of
+one sequence, ZeRO stage 2, and Selective recompute. It fits, at 79.7 GB. **Failures and checkpoints**
+reads a **Job MTBF** of 3.09 h, a Young optimum of 19.3 min, and a Daly optimum of 18.6 min, with a
+60-second save and a 10-minute restart.
+
+Move **Checkpoint every** from 5 to 120 min. **Time lost** is 26.7% at 5 minutes, bottoms out at 15.8%
+near 19 minutes, and climbs to 38.6% at 120. The same save on 512 GPUs, an MTBF of 99.0 h, moves Young's
+optimum to 109 min.
+
+## What to notice
+
+- ZeRO and data parallelism never shrink activations. Recomputation, a smaller micro-batch, and tensor
+  or pipeline parallelism do.
+- Tensor parallelism shrinks memory and per-GPU work but not its all-reduce buffer, so traffic's share
+  grows with `t` even inside a node: on the 70B layout above MFU is 56.0% at tensor 4 and 49.8% at 8,
+  before the jump at 16.
+- The bubble's `p − 1` idle slots never go away. More microbatches only add work around them, and every
+  microbatch also grows the batch.
+- A ring all-reduce costs each GPU almost the same at 16 replicas as at 256, so data parallelism
+  scales tokens per second almost in proportion. Leaving the node is what costs: on the 8B model at
+  ZeRO stage 2 with one microbatch, the sync over 8 replicas takes 0.062 s on NVLink and hides
+  completely, while over 16 it takes 0.602 s on InfiniBand, 0.153 s of it exposed, and MFU falls from
+  75.0% to 61.1%.
+- Mixtral 8x7B has 46.70 billion parameters but uses 12.88 billion per token. With **Expert parallel**
+  1 at ZeRO stage 1, every GPU holds all 8 experts, 195.6 GB of model state. At 8 it holds one expert
+  per layer, 37.7 GB, and the **EP all-to-all** costs 0.033 s per microbatch on NVLink. At Tensor
+  parallel 2 the expert group spans two nodes and the same exchange costs 0.301 s.
+- MFU never passes 75%, the stated kernel efficiency. Every point below that is traffic, bubble, or
+  exposed sync, and the Step time strip shows which.
+- The job's MTBF falls in proportion to its GPU count, while Young's interval falls only with the square
+  root: 109 minutes at 512 GPUs and 19.3 at 16,384.
+
+## Where it breaks
+
+**In this lab.** Every number is arithmetic, not a measurement. The kernel efficiency is fixed at 0.75
+for every shape. Collectives are priced by bandwidth alone, with no latency, congestion, stragglers, or
+hierarchical algorithms, and tensor, pipeline, and expert traffic is never overlapped with compute. The
+overlap rule for the gradient sync, two thirds of one microbatch's compute, is a heuristic.
+
+Every pipeline stage gets an equal share of the layers, ignoring the embedding and output layers.
+Korthikanti et al.'s coefficients were derived for GPT-style layers and are applied unchanged to
+SwiGLU, grouped-query, and mixture-of-experts layers. There is no optimizer-step time, no context
+parallelism, and no interleaved schedule. Failures are independent and memoryless at one rate taken
+from one snapshot, and the save time is an input, not derived from the 5.7 TB checkpoint.
+
+Memory leaves out temporary buffers, communication buffers, the output logits, fragmentation, and the
+layer ZeRO stage 3 gathers. The 16,384-GPU layout fits with 0.3 GB to spare on paper, which no real run
+would accept.
+
+**In real systems.** The lab gives that layout 33.2% MFU against the 41% Llama 3 reported, mostly
+because it charges the plain 1F1B bubble: 15 idle slots in 31. Llama 3 used an interleaved schedule
+with several virtual stages per GPU, and removed a layer from the first and last stages to balance the
+pipeline. Llama 3 also reports training at 8,192 tokens without activation checkpointing; the preset
+uses Selective because FlashAttention-style kernels already recompute the attention scores (the
+Ultra-Scale Playbook makes this point). None would charge 760 GB of activations per GPU, mostly
+attention scores that no such kernel stores.
+
+Real failures cluster: a faulty node fails again, and one network event can stop many jobs. Real
+collectives also slow down to the speed of their slowest GPU. Treat every readout as a first estimate to
+check against a profiler.
+
+## Going deeper
+
+### Interleaved schedules
+
+Narayanan et al. split each GPU's layers into `v` smaller stages and interleave them, which divides the
+bubble by `v`, to `(1/v) · (p − 1)/m` of the ideal time, at the cost of `v` times the pipeline traffic.
+They write the bubble as `(p − 1)/m` measured against the ideal time; the lab's `(p − 1)/(m + p − 1)` is
+the same idle time as a share of the whole pipeline. GPipe (Huang et al., 2019) gives the same
+`(K − 1)/(M + K − 1)` and found it negligible once there are at least four micro-batches per stage.
+
+### Context parallelism for long sequences
+
+At 131,072 tokens, Llama 3 added context parallelism 16, splitting each sequence across GPUs, and
+lowered data parallelism to 8 to keep 16,384 GPUs, at 38% MFU (Table 4). The activation counts here grow
+in proportion to `s`, and the attention-score term with `s²`, which is why long sequences need their
+own split.
+
+### Two counts of activation memory
+
+**Anatomy of a training run** quotes the ZeRO paper: about 60 GB of activations for a 1.5-billion-
+parameter GPT-2 at sequence length 1,024 and batch 32, about 8 GB with activation checkpointing. ZeRO's
+footnote counts about 12 values per token per hidden unit per layer, 24 bytes at 2 bytes each.
+Korthikanti et al. count 34 bytes before the attention scores, because they also keep dropout masks
+and the inputs to every norm and nonlinearity. Scaled by 34/24, the same model needs about 85 GB even
+with selective recomputation; with full recomputation, 2 bytes instead of 24 gives about 5 GB.
+
+Both are first-order counts that draw the line around what is stored in different places, and neither
+is a measurement. This lab uses Korthikanti's, because it separates the three recomputation modes.
+
+### Counting MFU
+
+PaLM defined MFU so that rematerialization does not count as work: PaLM 540B reported 46.2% MFU and
+57.8% hardware FLOPs utilization. Korthikanti et al. reached 54.2% MFU on a 530-billion-parameter model
+with selective recomputation, against 42.1% with full recomputation. Published MFUs also differ in
+whether attention FLOPs are counted and which peak is used, so compare them with care.
+
+### Keeping a big job alive
+
+Llama 3 kept effective training time above 90% through 466 interruptions in 54 days. Its storage
+sustains 2 TB/s with peaks of 7 TB/s, and the paper names bursty checkpoint writes as a major challenge:
+it aims to minimize the time GPUs pause for a checkpoint and to save more often, so less work is lost.
+MegaScale detects and recovers from most faults automatically. Both treat failure as a rate to plan
+for, which is what Young's and Daly's formulas do.
