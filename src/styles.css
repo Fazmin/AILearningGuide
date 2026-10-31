@@ -29121,3 +29121,13 @@ path.sl-reference {
     gap: 0.15rem;
   }
 }
+
+/* The seven newer training labs share a narrow-card fix: a segmented control whose labels no longer
+   fit wraps its options onto a second row instead of letting the words run into each other. */
+:is(.op-lab, .ts-lab, .moe-lab, .mt-lab, .rle-lab, .etr-lab, .par-lab) .segmented > div {
+  flex-wrap: wrap;
+}
+
+:is(.op-lab, .ts-lab, .moe-lab, .mt-lab, .rle-lab, .etr-lab, .par-lab) .segmented button {
+  min-width: max-content;
+}
