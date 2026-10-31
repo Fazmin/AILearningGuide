@@ -1,0 +1,120 @@
+import type { LabScene } from "@app/module-sdk";
+
+/**
+ * Lab setups the lesson opens from its sections. Every scene starts from the lab's defaults
+ * (Fault on None, clip off, Constant schedule, Loss scale 2²⁰ on Static, no rollback, z-loss off,
+ * Adam learning rate 1), so the readouts show the lesson's own numbers unless a scene sets a
+ * control. `lossScale` is the exponent of the loss scale.
+ */
+const scenes: LabScene[] = [
+  {
+    id: "healthy",
+    sections: ["Read a healthy dashboard"],
+    title: "A healthy run",
+    look: "Every panel shades its normal range, and the thick line on Loss falls from the dotted line toward 2.",
+    step: 0,
+    state: { fault: "none" },
+    focus: "Run monitor",
+  },
+  {
+    id: "first-step",
+    sections: ["On the dashboard"],
+    title: "The step shows it first",
+    look: "On Update ÷ weight the line starts far above its shaded band, while Gradient norm stays low for its first few steps.",
+    step: 1,
+    state: { fault: "rate" },
+    focus: "Run monitor",
+  },
+  {
+    id: "explosion",
+    sections: ["Push the learning rate"],
+    title: "Learning rate 8, no clip",
+    look: "Gradient norm and Max logit climb in straight lines on their log axes until a red line marks the halt.",
+    step: 1,
+    state: { fault: "rate" },
+    focus: "Run monitor",
+  },
+  {
+    id: "both-fixes",
+    sections: ["On the fixes"],
+    title: "Clip plus warmup and cosine",
+    look: "With Gradient clip at 0.50 and Warmup + cosine, Final loss ends below the healthy run's, at sixteen times its rate.",
+    step: 1,
+    state: { fault: "rate", clipNorm: 0.5, schedule: "warmup-cosine" },
+    focus: "Run report",
+  },
+  {
+    id: "static-overflow",
+    sections: ["Overflow in fp16"],
+    title: "A static loss scale overflows",
+    look: "A red triangle on Gradient norm marks the first overflow, and the red halt line falls on the same step.",
+    step: 2,
+    state: { fault: "fp16", lossScale: 20, scaling: "static" },
+    focus: "Run monitor",
+  },
+  {
+    id: "dynamic-scale",
+    sections: ["Loss scaling", "The fixes"],
+    title: "Dynamic loss scaling",
+    look: "With Scaling on Dynamic, Skipped steps counts the steps it threw away, and Loss scale ends lower than it started.",
+    step: 2,
+    state: { fault: "fp16", lossScale: 20, scaling: "dynamic" },
+    focus: "Run report",
+  },
+  {
+    id: "formats",
+    sections: ["On the number formats"],
+    title: "fp16's narrow window",
+    look: "The green survives bar is short next to the fp32 and bf16 bars, and this run's gradient norms poke past its right end.",
+    step: 2,
+    state: { fault: "fp16", lossScale: 20, scaling: "static" },
+    focus: "Number formats",
+  },
+  {
+    id: "spike",
+    sections: ["Survive a bad batch"],
+    title: "Five garbage batches",
+    look: "An amber band marks the garbage, and the thick line on Loss jumps above the dotted line right after it.",
+    step: 3,
+    state: { fault: "bad-batch" },
+    focus: "Run monitor",
+  },
+  {
+    id: "rollback",
+    sections: ["On the rollback", "Roll back and skip"],
+    title: "Rolled back and skipped",
+    look: "The dotted amber line of the old run lies under the new one until the garbage, then spikes while the new run carries on.",
+    step: 3,
+    state: { fault: "bad-batch", rollback: true },
+    focus: "Run monitor",
+  },
+  {
+    id: "logits",
+    sections: ["Tame logit growth"],
+    title: "Adam at a rate of 1",
+    look: "Max logit climbs into the hundreds, and the thick line on Loss stays far above the dotted line.",
+    step: 4,
+    state: { fault: "logits" },
+    focus: "Run monitor",
+  },
+  {
+    id: "z-loss",
+    sections: ["On z-loss", "z-loss"],
+    title: "z-loss at 0.01",
+    look: "With z-loss at 0.01, Median log-partition falls a long way, but Final loss stays close to a model that knows nothing.",
+    step: 4,
+    state: { fault: "logits", zLoss: 0.01 },
+    focus: "Run report",
+  },
+  {
+    id: "no-underflow",
+    sections: ["What this lab simplifies", "Where it breaks"],
+    title: "No scaling at all",
+    look: "At Loss scale 2⁰ the green bar reaches as low as it goes, and the run still finishes with no overflow or skip.",
+    step: 2,
+    state: { fault: "fp16", lossScale: 0, scaling: "static" },
+    focus: "Number formats",
+  },
+];
+
+export default scenes;
