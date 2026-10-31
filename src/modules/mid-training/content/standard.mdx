@@ -1,0 +1,331 @@
+---
+objectives: ["Read a data mixture as shares of a fixed token budget, and turn a weight into effective epochs", "Explain why repeating scarce data helps at first, then stops helping, and with very little data starts to hurt", "Explain why labs switch to a target-heavy mixture while the learning rate decays", "Tell mid-training on a target mix from training on the target alone by what each costs the general domains", "Say what per-domain held-out loss can and cannot tell you about a capability"]
+terms: ["Data mixture", "Mixture weight", "Domain", "Per-domain held-out loss", "Token budget", "Effective epochs", "Data-constrained training", "Upsampling", "Warmup-stable-decay", "Annealing", "Mid-training", "Curriculum", "Forgetting"]
+---
+
+## The big picture
+
+A **data mixture** splits a fixed **token budget** among **domains**: so many tokens of web text,
+so many of code, so many of math. **Mid-training** is a late change to that split. Near the end of
+pretraining, while the learning rate decays, a lab shifts the mixture toward the domains it most
+wants the model to end on, and keeps some general text so the rest is not lost.
+
+This module measures both halves. It builds on *Train one from scratch*, whose 900-weight character
+bigram and minibatch SGD it reuses, on *Building a dataset*, where a mixture was one line in the
+pipeline, and on *Synthetic data*, because one of its domains is generated from templates.
+
+### Where it shows up
+
+- **Pretraining mixtures.** Llama 3 reports a final pretraining mix of roughly 50% general
+  knowledge, 25% math and reasoning, 17% code and 8% multilingual tokens (Grattafiori et al.,
+  arXiv 2407.21783).
+- **Mid-training.** OLMo 2 trains in two stages and calls the shorter second one, 5 to 10 percent
+  of training compute, mid-training. It runs on Dolmino Mix 1124, filtered web, academic and
+  encyclopedic text plus math, while the learning rate decays linearly to zero (Team OLMo, arXiv
+  2501.00656).
+- **Annealing.** In the last 40 million tokens of Llama 3's pretraining the rate anneals linearly
+  to zero and the mix upsamples very high-quality sources.
+
+### Why it matters
+
+The budget is fixed before the run starts, so every share is a trade: more of one domain is less
+of the others. The domains a lab most wants are also small, so upweighting them means repeating
+them, and repetition loses value. And every batch moves the same weights, so *when* a domain is
+seen changes where the weights settle, not only how often it was seen.
+
+### What you will be able to explain
+
+- How to read a data mixture as shares of a fixed token budget, and turn a weight into effective
+  epochs.
+- Why repeating scarce data helps at first, then stops helping, and with very little data starts to
+  hurt.
+- Why labs switch to a target-heavy mixture while the learning rate decays.
+- How mid-training on a target mix differs from training on the target alone in what each costs the
+  general domains.
+- What per-domain held-out loss can and cannot tell you about a capability.
+
+### What the lab shows
+
+Every loss on the page is measured live, from runs that train the full 900-weight table from zeros
+with plain SGD at rate 3, 16 pairs a batch, seed 7. Three domains are the course's fixed paragraphs:
+Harbor (8 sentences), Recipes (8) and Proverbs (10). Arithmetic is synthetic, 160 facts such as
+"four plus eight is twelve." generated from three templates with the numbers spelled out, because
+the toy vocabulary has no digits. Each domain keeps the last quarter of its sentences, rounded to
+whole sentences, out of training, and every loss is scored on those.
+
+- **Data mixture** splits 600 steps, 9,600 character pairs, among the four domains with **Mixture
+  preset** and four weight sliders.
+- **Arithmetic weight sweep** reruns that mixture at every **Arithmetic weight** from 0 to 8.
+- **Answer probe** asks the same trained table to complete 40 held-out facts.
+- **Repeated data** trains on Arithmetic alone with a **Budget** and a number of **Unique
+  sentences**.
+- **Late phase and annealing** switches the mixture at step 480, where the
+  **warmup-stable-decay** schedule starts to decay. Its schedule curve is the closed-form formula
+  the trainer applies, not a measurement.
+
+The key experiment: set **Late phase** to **Target mix**, and the run that ends on Arithmetic beats
+one that sees the same Arithmetic spread evenly, at a cost to General.
+
+## What it is
+
+### Shares of one budget
+
+A **mixture weight** is one number per domain, and only its ratio to the others counts. The lab
+divides each weight by the sum of the four to get a share. Each of the 16 slots in a batch then
+picks a domain with probability equal to its share and takes that domain's next pair from its own
+shuffled order.
+
+The default, **General-heavy**, is weights 3, 3, 3 and 1: 30% each for Harbor, Recipes and
+Proverbs and 10% for Arithmetic. **Uniform** is 1, 1, 1 and 1. Over 600 steps of 16 pairs the
+**token budget** is 9,600 character pairs, and the shares split that fixed total.
+
+### From shares to epochs
+
+**Effective epochs** are the pairs drawn from a domain divided by the training pairs it holds.
+Domains differ in size: Harbor's six training sentences hold 378 pairs, Recipes' six hold 292,
+Proverbs' seven hold 195, and Arithmetic's 120 hold 3,417.
+
+So equal weights do not mean equal epochs. Uniform gives Proverbs 12.48 epochs and Arithmetic 0.70.
+General-heavy gives Harbor 7.42, Recipes 10.21, Proverbs 14.72 and Arithmetic 0.28.
+
+Giving a domain a larger share of the budget than its share of the text is **upsampling**.
+Arithmetic is 80% of the training text, so General-heavy upsamples the three small general domains
+and downsamples Arithmetic to one batch slot in ten.
+
+### Scoring each domain
+
+**Per-domain held-out loss** is cross-entropy, in nats per character, on one domain's held-out
+sentences: 2 of Harbor's 8, 2 of Recipes' 8, 3 of Proverbs' 10 and 40 of the 160 arithmetic facts.
+**General** is the mean of the three general domains' held-out losses, each counted once. A table
+that knows nothing scores ln 30 = 3.401.
+
+### The schedule and the late phase
+
+**Warmup-stable-decay** ramps the rate up over the first 5% of steps, holds 3 through the stable
+phase, and decays it linearly to zero over the last 20%, from step 480. **Annealing** is that final
+decay. **Late phase** can change the mixture exactly there:
+
+- **Same mix** keeps the weights to the end.
+- **Target mix** makes half of every late batch Arithmetic and splits the other half among the
+  general domains in their own proportions. This is the shape of **mid-training**.
+- **Target only** makes every late batch Arithmetic, close to training on the target alone.
+
+A late switch is the simplest **curriculum**: one mixture for most of the run, another at the end.
+**Forgetting** here is General held-out at the end minus General held-out at step 480, measured on
+the same run.
+
+## Why it’s here
+
+### Data is scarce where it matters most
+
+The domains a lab most wants, such as math, code and carefully filtered text, are a small part of
+what can be collected, and a run's budget is far larger than any one of them. A mixture that
+upweights them has to repeat them. That is **data-constrained training**.
+
+Muennighoff et al. trained models under exactly that constraint. Up to 4 epochs of repeated data
+changed loss very little compared with unique data, while with much more repetition the value of
+extra compute decayed to zero (arXiv 2305.16264). The Repeated data card asks a toy the same
+question.
+
+### Why the end of the run matters
+
+Every batch moves the same weights, so the order of the data changes the result, not only its
+totals. The last steps have the final say, and the decaying rate sets how far they can move the
+weights.
+
+Labs use this. The MiniCPM authors, who introduced the WSD schedule, mixed high-quality data into
+the decay and found it worked better than adding the same data only at fine-tuning (Hu et al., arXiv
+2404.06395). Llama 3 found that annealing on small amounts of high-quality code and math raised its
+8B model's GSM8k score by 24.0% and MATH by 6.4%, while gains for the 405B model were negligible.
+OLMo 2's GSM8K rose from 24.1 to 67.5 for the 7B model from the end of pretraining to the end of
+mid-training.
+
+WSD makes this cheap. Its stable phase does not depend on the run's length, and a constant rate
+with a cooldown scales as reliably as cosine decay (Hägele et al., arXiv 2405.18392). So a lab can
+branch one checkpoint into several decays with different mixtures.
+
+### Mid-training versus fine-tuning
+
+A late phase that drops the general data entirely is continued training on the target alone, close
+to fine-tuning. Nothing in its loss mentions the general domains, so the shared weights drift toward
+the target, which is **forgetting**. Mid-training keeps general text in the late mix to prevent
+that.
+
+Ibrahim et al. found that new data degrades performance on earlier data, and that replaying earlier
+data while re-warming and re-decaying the rate matches retraining from scratch (arXiv 2403.08763).
+
+## How to play with it
+
+### Step 1: set the mixture
+
+Under **Mixture preset** press **Uniform**: each domain gets a quarter of the batches. The Epochs
+column reads 6.16 for Harbor, 8.34 for Recipes, 12.48 for Proverbs and 0.70 for Arithmetic. Held-out
+loss reads 2.197, 2.498, 2.400 and 1.967, and General 2.365.
+
+Now press **General-heavy**. Harbor rises to 7.42 epochs and falls to 2.097, and Recipes to 10.21
+epochs and 2.427. Proverbs rises to 14.72 epochs and moves from 2.400 to 2.408: past 12 passes,
+more passes over seven short proverbs buy nothing. Arithmetic pays, from 1.967 to 2.348, and General
+improves from 2.365 to 2.311.
+
+### Step 2: upweight the scarce domain
+
+Arithmetic is scarce in this mix, not in text. Keep the general weights at 3, 3, 3 and drag
+**Arithmetic weight** from 0 to 8. On **Arithmetic weight sweep**, Arithmetic held-out falls from
+2.832 to 1.706 while General held-out rises from 2.320 to 2.515.
+
+**Gain per extra epoch** shrinks down the column: 1.75 nats per epoch from weight 0 to 1, 1.04 from 1
+to 2, 0.25 from 7 to 8. Even weight 8 buys only 1.32 epochs of Arithmetic, so this shrinking gain is
+the learning curve flattening, not repetition. Weight 0 still scores 2.832, below 3.401, because
+letter habits learned from the general domains carry over.
+
+### Step 3: repeat or find more
+
+On **Repeated data**, keep **Budget** at 8,000 pairs and lower **Unique sentences** from 120. The
+bars hold the budget fixed and halve the data each time:
+
+- 120 sentences: 2.3 epochs, held-out 1.388.
+- 60: 4.7 epochs, 1.400.
+- 30: 9.4 epochs, 1.458.
+- 15: 18.8 epochs, 1.577.
+- 8: 34.6 epochs, 1.731.
+- 4: 70.8 epochs, 1.961.
+- 2: 135.6 epochs, 2.542.
+
+At 2 unique sentences, **Lowest along the run** reads 2.217 at 27.1 epochs, and the dashed line
+climbs for the rest of the budget.
+
+### Step 4: anneal on the target mix
+
+Set **Late phase** to **Target mix**. From step 480, half of every batch is Arithmetic. The table
+compares three runs:
+
+- **Switched at decay**: Arithmetic 1.911, General 2.398, Forgetting +0.060, 1,721 Arithmetic pairs.
+- **Spread evenly**: 2.110, 2.339, −0.027, 1,707 pairs.
+- **No switch**: 2.348, 2.311, −0.027, 943 pairs.
+
+Spread evenly draws the same pairs per domain on average, in one constant mixture, so the gap between
+the first two columns is timing alone. Arithmetic falls from 2.356 at step 480 to 1.911 in the last
+120 steps.
+
+### Step 5: mid-train or fine-tune?
+
+Switch **Late phase** to **Target only**. Switched at decay now reads Arithmetic 1.645, General
+2.691 and Forgetting +0.353, against +0.060 with Target mix. Spread evenly reads 1.935 and 2.375.
+Target only buys 0.266 more nats on Arithmetic and costs 0.293 on General.
+
+## What to notice
+
+- The budget is fixed, so every bar that falls on **Data mixture** is paid for by one that rises.
+- Equal weights give unequal epochs, and the smallest domain runs out of new text first.
+- Upweighting a domain buys less with each step: Gain per extra epoch falls from 1.75 to 0.25.
+- Repetition is nearly free at first and costly later. At 8,000 pairs, **Versus 120 unique** reads
+  +0.011 for 60 sentences and +0.069 for 30. It subtracts the unrounded losses, so it can differ by
+  0.001 from the rounded bars.
+- With very little data, more passes make held-out loss worse: 2 sentences bottom out at 2.217 and
+  end at 2.542.
+- Timing matters even when the data does not change. Switched and Spread evenly draw 1,721 and
+  1,707 Arithmetic pairs and end 0.199 nats apart on Arithmetic.
+- Forgetting tracks how much general text the late phase keeps: −0.027 with no switch, +0.060 with
+  Target mix, +0.353 with Target only.
+
+## Where it breaks
+
+### In this lab
+
+- **Toy domains.** Three domains are fixed paragraphs of 8 to 10 sentences, and Arithmetic is
+  generated from three templates. Their sizes, not their real value, decide where repetition sets
+  in.
+- **A bigram model.** The table predicts each character from the one before it, so domains differ
+  only in which letter tends to follow which.
+- **One seed.** At the default mixture, seeds 1 to 8 move Arithmetic held-out by up to 0.07 nats and
+  General held-out by about 0.01.
+- **Fixed choices.** General is a plain mean of three losses. The switch is always at step 480, the
+  Target mix share is always 50%, and the warmup is always 5%.
+- **Closed-form parts.** The learning-rate curve and the Arithmetic share curve on **Late phase and
+  annealing** are the formulas the trainer applies, drawn from the settings.
+
+### What the loss misses
+
+On **Answer probe** the default table gets 0 of 40 held-out facts right. It gives the same answer,
+ten, to every question, and ten is never the answer to a held-out fact here. A bigram sees only the
+space before the answer, so it cannot read the numbers in the question.
+
+Set **Arithmetic weight** to 0 and Arithmetic held-out rises to 2.832, yet the probe gets 3 of 40
+right, because it now answers one and three held-out answers happen to be one. The loss fell by
+learning how number words are spelled, not how to add. **Per-domain held-out loss** scores prediction
+of a domain's text, and a capability needs its own test.
+
+### Where the toy disagrees
+
+- **The decay buys retention, not a bigger gain.** With Target mix at **Constant rate**, Arithmetic
+  ends at 1.785, lower than 1.911 with the decay, and General at 2.462, worse than 2.398. Forgetting
+  doubles, from +0.060 to +0.127. In the toy most of the late-data gain comes from being last, and
+  full-size late steps pull the weights furthest toward it. Published annealing results attribute
+  their gains to target data during the decay; this toy reproduces the switch's advantage over an
+  even spread but not a boost from the decay itself.
+- **The decay barely helps on its own.** With Same mix, General falls by 0.027 over the last 20% of
+  steps with the decay and by 0.022 at a constant rate. MiniCPM's authors report a steep loss drop
+  once their decay starts.
+- **Repetition costs variety here, not memory.** A bigram cannot memorize a sentence, so repeating
+  data hurts it by narrowing which letter pairs it sees. Large models memorize: Hernandez et al.
+  found that repeating 0.1% of the data 100 times can degrade an 800-million-parameter model to the
+  level of one half its size (arXiv 2205.10487).
+
+### In real systems
+
+A lower loss on math text is not a better mathematician, which is why OLMo 2 reports GSM8K, a
+benchmark of held-out problems, after mid-training. Real mixtures cover tens of sources at trillions
+of tokens, and their weights come from runs of small proxy models. A weight that wins at small scale
+need not win at full scale. Forgetting is measured on suites of held-out tasks, not on one averaged
+loss.
+
+## Going deeper
+
+### Choosing weights without guessing
+
+DoReMi trains a small proxy model with group distributionally robust optimization over the domains
+and reads the domain weights from it. On The Pile it improved perplexity across all domains, even
+those it downweighted, raised average few-shot accuracy by 6.5 points, and reached the baseline's
+accuracy in 2.6 times fewer steps (Xie et al., arXiv 2305.10429).
+
+Data mixing laws fit a function from mixture proportions to loss on small runs, then predict
+unseen mixtures before training them (Ye et al., arXiv 2403.16952). It is the **Arithmetic weight
+sweep** turned into a formula you can optimize.
+
+### Annealing as a cheap data test
+
+Llama 3 judged candidate datasets by annealing a half-trained 8B model to zero over 40 billion
+tokens, with 30% of the weight on the candidate and 70% on the default mix. Blakeney et al.
+upsampled domain data at the end of training a 7B model on 1 trillion tokens. They gained up to
+6.90 points on MMLU, 8.26 on GSM8K and 6.17 on HumanEval, and found 10 to 20 percent of training
+the best trade-off with general ability (arXiv 2406.03476).
+
+### Beyond one switch
+
+SmolLM2 trains in several stages that mix web text with math, code and instruction data, and
+refines each stage's mixing rates by hand from the previous stage's results (Ben Allal et al.,
+arXiv 2502.02737). OLMo 2 runs mid-training several times with different data orders and averages
+the resulting weights. Llama 3 averages checkpoints from its final anneal.
+
+### Continued pretraining and fine-tuning
+
+Gururangan et al. showed that a second phase of pretraining on in-domain text improves tasks in that
+domain (arXiv 2004.10964). **Target only** is that idea at the end of a run. The next lab,
+*Fine-tuning & transfer*, starts from a trained model and measures forgetting under fine-tuning;
+*Hyperparameters & schedules* covers the schedule; *Evaluation* covers the benchmarks a mixture is
+finally judged on.
+
+### Toy versus real
+
+- **Budget.** This lab spends 9,600 character pairs; OLMo 2's 7B model trained on about 4 trillion
+  tokens.
+- **Decay length.** The late phase here is 20% of steps. MiniCPM found a decay over about 10% of
+  tokens enough, and OLMo 2's mid-training is 5 to 10 percent of compute.
+- **Mixture.** General-heavy is 30, 30, 30 and 10 percent of four tiny domains; Llama 3's final mix
+  is roughly 50, 25, 17 and 8 percent of trillions of tokens.
+- **Evaluation.** This lab reads per-domain loss and one probe; real mid-training is judged on
+  benchmarks of held-out problems.
+
+Sources: Grattafiori et al., *The Llama 3 Herd of Models* (arXiv 2407.21783), sections 3.1 and
+3.4; Team OLMo, *2 OLMo 2 Furious* (arXiv 2501.00656), sections 2.3 and 4; Hu et al., *MiniCPM*
+(arXiv 2404.06395), sections 4 and 6.

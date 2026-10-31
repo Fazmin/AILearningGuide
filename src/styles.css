@@ -27132,3 +27132,189 @@ path.sl-reference {
     display: none;
   }
 }
+
+/* mid-training */
+
+.explore-scroll[data-module="mid-training"][data-current-step="0"] .mt-weights,
+.explore-scroll[data-module="mid-training"][data-current-step="1"] .range-control:has(input[aria-label="Arithmetic weight"]),
+.explore-scroll[data-module="mid-training"][data-current-step="2"] .mt-repeat-controls,
+.explore-scroll[data-module="mid-training"][data-current-step="3"] .mt-late-controls,
+.explore-scroll[data-module="mid-training"][data-current-step="4"] .mt-late-table {
+  --lesson-step-target: 1;
+  position: relative;
+  z-index: 1;
+  border-radius: var(--radius-sm);
+  background-color: color-mix(in srgb, var(--module-accent) 12%, var(--panel-solid));
+  animation: step-target-in 300ms ease-out;
+}
+
+.tg-lab--hero > .mt-repeat-card,
+.tg-lab--hero > .mt-late-card {
+  grid-column: 1 / -1;
+}
+
+.mt-mixture {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  align-items: start;
+  gap: 0.6rem 1.2rem;
+}
+
+.mt-weights {
+  display: grid;
+  padding: 0.2rem 0.35rem 0.35rem;
+  gap: 0.15rem;
+}
+
+.mt-weights__note,
+.mt-subhead {
+  color: var(--muted);
+  font-size: 0.6875rem;
+  line-height: 1.45;
+}
+
+.mt-weights__note {
+  margin: 0.35rem 0 0;
+}
+
+.mt-subhead {
+  display: block;
+  margin-top: 0.8rem;
+}
+
+.mt-mixture__readouts {
+  display: grid;
+  min-width: 0;
+}
+
+.mt-budget-bar {
+  display: flex;
+  min-height: 1.7rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.mt-budget-bar > i {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  padding: 0 0.4rem;
+  border-right: 1px solid var(--panel-solid);
+  color: var(--ink);
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 0.625rem;
+  font-style: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mt-budget-bar > i:last-child {
+  border-right: 0;
+}
+
+.mt-budget-bar__harbor {
+  background: color-mix(in srgb, var(--forward) 30%, var(--panel-solid));
+}
+
+.mt-budget-bar__recipes {
+  background: color-mix(in srgb, var(--forward) 19%, var(--panel-solid));
+}
+
+.mt-budget-bar__proverbs {
+  background: color-mix(in srgb, var(--forward) 10%, var(--panel-solid));
+}
+
+.mt-budget-bar__target {
+  background: color-mix(in srgb, var(--attention) 30%, var(--panel-solid));
+}
+
+.mt-table-wrap {
+  min-width: 0;
+  margin-top: 0.7rem;
+  overflow-x: auto;
+}
+
+.mt-table-wrap caption {
+  padding-bottom: 0.4rem;
+  color: var(--muted);
+  font-size: 0.6875rem;
+  line-height: 1.45;
+  text-align: left;
+}
+
+.mt-table-wrap .tg-board th,
+.mt-table-wrap .tg-board td {
+  padding: 0.38rem 0.4rem;
+}
+
+.mt-table-wrap .tg-board thead th {
+  vertical-align: bottom;
+  white-space: normal;
+}
+
+.mt-probe-facts {
+  display: grid;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  list-style: none;
+  gap: 0.3rem;
+}
+
+.mt-probe-card .metric {
+  padding-inline: 0.5rem;
+}
+
+.mt-probe-card .metric span {
+  white-space: normal;
+}
+
+.mt-probe-card .viz-bar-row > * {
+  grid-template-columns: 4.6rem minmax(0, 1fr) 3.4rem;
+}
+
+.mt-probe-facts > li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: baseline;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+  background: var(--panel-muted);
+  gap: 0.15rem 0.8rem;
+  font-size: 0.7rem;
+}
+
+.mt-probe-facts > li > span {
+  grid-column: 1 / -1;
+  color: var(--ink-soft);
+}
+
+.mt-probe-facts > li > b {
+  color: var(--attention);
+  font-family: "JetBrains Mono Variable", monospace;
+  font-weight: 600;
+}
+
+.mt-probe-facts > li > i {
+  color: var(--muted);
+  font-family: "JetBrains Mono Variable", monospace;
+  font-style: normal;
+}
+
+.mt-repeat-controls,
+.mt-late-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  padding: 0.2rem 0.35rem;
+  gap: 0.2rem 0.9rem;
+}
+
+.mt-repeat-body,
+.mt-late-charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  align-items: start;
+  gap: 0.4rem 1.2rem;
+}
