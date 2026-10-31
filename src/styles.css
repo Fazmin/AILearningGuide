@@ -27495,3 +27495,320 @@ path.sl-reference {
   margin-top: 0.75rem;
   gap: 0.5rem;
 }
+
+/* optimizers */
+
+.explore-scroll[data-module="optimizers"][data-current-step="0"] .op-race-controls,
+.explore-scroll[data-module="optimizers"][data-current-step="1"] .op-rows-control,
+.explore-scroll[data-module="optimizers"][data-current-step="2"] .op-bias-controls,
+.explore-scroll[data-module="optimizers"][data-current-step="3"] .op-decay-controls,
+.explore-scroll[data-module="optimizers"][data-current-step="4"] .op-muon-controls,
+.explore-scroll[data-module="optimizers"][data-current-step="5"] .op-tune-controls {
+  --lesson-step-target: 1;
+  position: relative;
+  z-index: 1;
+  border-radius: var(--radius-sm);
+  background-color: color-mix(in srgb, var(--module-accent) 12%, var(--panel-solid));
+  animation: step-target-in 300ms ease-out;
+}
+
+.tg-lab.op-lab {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+}
+
+.op-lab > * {
+  min-width: 0;
+}
+
+.op-lab > .op-wide {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 1180px) {
+  .tg-lab.op-lab {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .op-lab > .op-wide {
+    grid-column: auto;
+  }
+}
+
+:root[data-text-size="large"] .tg-lab.op-lab {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+:root[data-text-size="large"] .op-lab > .op-wide {
+  grid-column: auto;
+}
+
+.op-rate-grid {
+  display: grid;
+  margin-top: 0.4rem;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 0.3rem 1rem;
+}
+
+.op-curves-control,
+.op-rows-control {
+  margin-top: 0.5rem;
+}
+
+.op-bias-controls,
+.op-decay-controls,
+.op-muon-controls,
+.op-tune-controls {
+  display: grid;
+  margin-top: 0.4rem;
+  gap: 0.3rem;
+}
+
+.op-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin-top: 0.6rem;
+}
+
+.op-grid {
+  stroke: var(--grid-line);
+  stroke-width: 1;
+}
+
+.op-tick,
+.op-axis-label {
+  fill: var(--muted);
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 10px;
+}
+
+.op-baseline {
+  stroke: var(--faint);
+  stroke-dasharray: 1.6 3.4;
+  stroke-width: 1.4;
+}
+
+.op-baseline-label {
+  fill: var(--muted);
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 9px;
+}
+
+.op-tone--forward {
+  color: var(--forward);
+}
+
+.op-tone--attention {
+  color: var(--attention);
+}
+
+.op-tone--gradient {
+  color: var(--gradient);
+}
+
+.op-tone--loss {
+  color: var(--loss);
+}
+
+.op-series {
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.6;
+  opacity: 0.72;
+}
+
+.op-series.is-selected {
+  stroke-width: 3;
+  opacity: 1;
+}
+
+.op-swatch {
+  display: inline-flex;
+  margin-right: 0.4rem;
+  vertical-align: middle;
+}
+
+.op-swatch svg {
+  width: 1.4rem;
+  height: 0.4rem;
+}
+
+.op-swatch line {
+  stroke: currentcolor;
+  stroke-width: 2.4;
+}
+
+.op-table-wrap {
+  margin-top: 0.7rem;
+  overflow-x: auto;
+}
+
+.op-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.72rem;
+}
+
+.op-table caption {
+  padding-bottom: 0.4rem;
+  color: var(--muted);
+  font-size: 0.6875rem;
+  line-height: 1.5;
+  text-align: left;
+}
+
+.op-table th,
+.op-table td {
+  padding: 0.34rem 0.45rem;
+  border-bottom: 1px solid var(--line);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.op-table th[scope="row"],
+.op-table thead th:first-child {
+  text-align: left;
+}
+
+.op-table th[scope="row"] small {
+  color: var(--muted);
+  font-size: 0.62rem;
+  font-weight: 500;
+  white-space: normal;
+}
+
+.op-table thead th {
+  color: var(--muted);
+  font-size: 0.64rem;
+  font-weight: 600;
+}
+
+.op-table td {
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 0.68rem;
+}
+
+.op-table td small {
+  display: block;
+  color: var(--muted);
+  font-size: 0.58rem;
+}
+
+.op-table tr.is-selected {
+  background: color-mix(in srgb, var(--module-accent) 10%, transparent);
+}
+
+.op-table td.is-best {
+  color: var(--module-accent);
+  font-weight: 700;
+  background: color-mix(in srgb, var(--module-accent) 9%, transparent);
+}
+
+.op-early,
+.op-spectrum {
+  margin: 0.6rem 0 0;
+}
+
+.op-early svg,
+.op-spectrum svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.op-early figcaption,
+.op-spectrum figcaption {
+  color: var(--muted);
+  font-size: 0.65rem;
+  line-height: 1.5;
+}
+
+.op-warmup {
+  fill: color-mix(in srgb, var(--warning) 14%, transparent);
+}
+
+.op-early-line {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.op-early-line.is-current {
+  stroke: var(--module-accent);
+  stroke-width: 2.2;
+}
+
+.op-early-line.is-other {
+  stroke: var(--faint);
+  stroke-dasharray: 5 3;
+  stroke-width: 1.4;
+}
+
+.op-band {
+  fill: color-mix(in srgb, var(--positive) 9%, transparent);
+}
+
+.op-unit {
+  stroke: var(--module-accent);
+  stroke-dasharray: 4 3;
+  stroke-width: 1.2;
+}
+
+.op-bar.is-before {
+  fill: color-mix(in srgb, var(--faint) 75%, transparent);
+}
+
+.op-bar.is-after {
+  fill: var(--module-accent);
+}
+
+.op-zero {
+  fill: none;
+  stroke: var(--loss);
+  stroke-width: 1.2;
+}
+
+.op-key {
+  display: inline-block;
+  width: 0.7rem;
+  height: 0.5rem;
+  margin: 0 0.15rem 0 0.4rem;
+  border-radius: 2px;
+  vertical-align: middle;
+}
+
+.op-key:first-child {
+  margin-left: 0;
+}
+
+.op-key.is-before {
+  background: color-mix(in srgb, var(--faint) 75%, transparent);
+}
+
+.op-key.is-after {
+  background: var(--module-accent);
+}
+
+.op-key.is-zero {
+  width: 0.45rem;
+  height: 0.45rem;
+  border: 1.2px solid var(--loss);
+  border-radius: 50%;
+  background: transparent;
+}
+
+.op-tune-controls .primary-action:disabled {
+  cursor: default;
+  opacity: 0.62;
+  filter: none;
+}
+
+.op-progress {
+  width: 100%;
+  height: 0.4rem;
+  accent-color: var(--module-accent);
+}
