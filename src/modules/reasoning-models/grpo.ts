@@ -1,4 +1,4 @@
-import { tinyRandom } from "@app/module-sdk";
+import { teachingRl, tinyRandom } from "@app/module-sdk";
 
 /**
  * A group-relative policy-gradient (GRPO-style) toy.
@@ -42,7 +42,7 @@ export const STEP_SUCCESS = 0.8;
 export const LENGTH_COST = 0.05;
 /** Policy-gradient iterations in one run. Fixed so a run is a few milliseconds. */
 export const ITERATIONS = 100;
-export const STD_EPSILON = 1e-6;
+export const STD_EPSILON = teachingRl.STD_EPSILON;
 /** Width of the length bump. */
 export const SIGMA = 1;
 /** The starting policy: it likes short answers, centred between 1 and 2 steps. */
@@ -151,11 +151,7 @@ export function summarize(iteration: number, centre: number, k: number, cost: bo
 
 /** Group-relative advantages: (reward - mean) / (std + epsilon), population std. */
 export function groupAdvantages(rewards: ReadonlyArray<number>): number[] {
-  const count = rewards.length;
-  const mean = rewards.reduce((sum, value) => sum + value, 0) / count;
-  const variance = rewards.reduce((sum, value) => sum + (value - mean) ** 2, 0) / count;
-  const std = Math.sqrt(variance);
-  return rewards.map((value) => (value - mean) / (std + STD_EPSILON));
+  return teachingRl.groupAdvantages(rewards);
 }
 
 /**
