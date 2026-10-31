@@ -239,6 +239,20 @@ activations and E5M2 for gradients. E5M2 follows IEEE 754; E4M3 has no infinitie
 pattern, which stretches its largest value to 448. The paper describes scaling each tensor so its
 largest magnitude lands near the format's maximum, which this lab does not do.
 
+### Training in low precision
+
+The same formats also speed up training, a different job from shrinking a file. Mixed precision runs
+the matrix multiplies in bf16 while an fp32 master copy of the weights takes each update, as Anatomy
+of a training run counts. DeepSeek-V3 trained in fp8, scaling each 1 × 128 tile of activations and
+each 128 × 128 block of weights separately, so one outlier cannot flatten a whole tensor
+(DeepSeek-AI, arXiv 2412.19437, Section 3.3). That is **Scaling granularity** `Per group` applied to
+arithmetic instead of storage.
+
+Below 8 bits the formats lean on shared scales. The microscaling (MX) formats give every 32 values
+one shared power-of-two scale (Rouhani et al., arXiv 2310.10537). The gpt-oss models were
+post-trained with their expert weights in MXFP4, which is what lets the 120-billion-parameter model
+fit on one 80 GB GPU (OpenAI, arXiv 2508.10925).
+
 ### Calibration methods
 
 Plain rounding looks only at the weights. **Calibration** also runs sample text through the model,

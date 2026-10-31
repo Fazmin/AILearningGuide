@@ -208,7 +208,9 @@ the reward scale and the constraint strength.
 The variants each attack one limit above: length-normalized and reference-free objectives (SimPO,
 ORPO) for length bias and the second model's memory, an added likelihood term on the chosen side
 for the "both sides fell" outcome, and online variants that sample fresh completions from the
-current policy and label those.
+current policy and label those. KTO goes further and drops the pairs altogether: it learns from
+single completions marked desirable or undesirable, the thumbs-up and thumbs-down data many products
+already collect (Ethayarajh et al., arXiv 2402.01306).
 
 DPO is run on a supervised fine-tuned checkpoint, and that checkpoint is normally the reference.
 Rafailov et al. (2023, arXiv 2305.18290) initialize the reference from the SFT model when one

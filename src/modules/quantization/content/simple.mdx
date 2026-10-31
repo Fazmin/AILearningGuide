@@ -402,6 +402,14 @@ The lab also lists a **bias** for each format. This is a fixed number subtracted
 
 The two fp8 formats come from a 2022 paper by Micikevicius and colleagues. They suggest E4M3 for weights and activations, and E5M2 for gradients. Gradients are the nudges that training applies to the weights. They matter while a model is being trained, not when it is used. E4M3 gives up its patterns for infinity and keeps only one for "not a number". That stretches its largest value up to 448. The paper describes scaling each tensor first, so that its biggest value lands near the format's maximum. This lab does not take that step.
 
+### Training in low precision
+
+The same short formats also make training faster. That is a different job from shrinking a file. Most large runs do their big multiplications in bf16. Meanwhile a full 32-bit copy of the weights takes each update. The Anatomy of a training run lab counts that copy.
+
+The team behind DeepSeek-V3 went further and trained in fp8. They gave every small tile of numbers its own scale. That way one unusually large value could not squash the rest. It is the **Per group** setting of **Scaling granularity**, used for math instead of storage.
+
+Below 8 bits, formats share one scale across a small block of values. The MX formats give every 32 values a single shared scale. OpenAI finished training its gpt-oss models with the expert layers in a 4-bit MX format. That lets the largest one fit on one 80 GB chip. It has about 120 billion weights.
+
 ### Calibration methods
 
 Plain rounding looks only at the weights, while **calibration** also runs sample text through the model. In a real model, each weight is multiplied by numbers that come from the text. A weight that is always multiplied by large numbers matters more than one multiplied by tiny ones. The claims below are the published ones, not measurements from this lab. The sources were checked on 30 September 2026. They are the papers' summaries and the documentation for llama.cpp version b10991, which is the version this app pins.

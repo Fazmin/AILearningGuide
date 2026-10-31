@@ -203,6 +203,22 @@ distribution instead of one sampled answer. The regularization account: the teac
 distribution is smoother than the labels. This lab mostly shows the first, since this teacher
 barely differs from its labels.
 
+### On-policy distillation
+
+Everything this lab distills is **off-policy**: the student matches the teacher at every position of
+the Harbor text, a fixed corpus it did not write. A student trained that way never sees its own
+mistakes, so when it generates, one wrong character leads it into contexts the corpus never held.
+
+**On-policy distillation** samples text from the student and asks the teacher to grade each token of
+that output, often by the reverse KL divergence. The dense signal of distillation then lands where
+the student actually goes. Agarwal et al. introduced it as GKD (arXiv 2306.13649), and Gu et al.'s
+MiniLLM (arXiv 2306.08543) argued for the reverse KL.
+
+It sits between supervised training and reinforcement learning: the student explores like an RL
+policy, but every token gets a grade instead of one reward per answer. The Qwen3 report
+distills its smaller models off-policy first and then on-policy from a larger teacher (Qwen Team,
+arXiv 2505.09388, Section 4.5). Reasoning models shows the reward-only side of that trade.
+
 ### Composing the steps
 
 Compression steps compose, and order matters. The usual pipeline prunes or distills, fine-tunes to

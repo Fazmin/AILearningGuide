@@ -288,6 +288,22 @@ general-purpose AI models to keep a policy for complying with Union copyright la
 rights reservations, and to publish a sufficiently detailed summary of the content used for
 training. Each of these needs a record kept with the data, not a better filter.
 
+### PII scrubbing and differential privacy
+
+Two defences act on personal data at different stages. **PII scrubbing** runs in the pipeline:
+pattern rules and trained detectors find emails, phone numbers, addresses and keys and replace them
+with placeholders. FineWeb, for example, anonymized email addresses and public IP addresses in its
+public release (Penedo et al., arXiv 2406.17557), and its maintainers note that names and phone
+numbers can remain. A scrubber removes only what its rules describe, which is why the extraction
+result above still matters.
+
+**Differential privacy** acts in training instead. DP-SGD clips each example's gradient and adds
+Gaussian noise before the update, which bounds how much any single example can change the model
+(Abadi et al., arXiv 1607.00133). The bound is formal, but it costs accuracy and compute. VaultGemma,
+a 1-billion-parameter model trained from scratch with a sequence-level guarantee of ε ≤ 2.0, trails
+its non-private counterpart on standard benchmarks; its authors compare it to non-private models
+from about five years earlier (Sinha et al., arXiv 2510.15001).
+
 ### Toy versus real
 
 - **Scale.** The lab's scrape is 20 lines and 899 characters, and its most repeated line is the

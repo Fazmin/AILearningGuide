@@ -250,6 +250,18 @@ per-coordinate scaling those are not equivalent. And a frontier run happens once
 hyperparameters come from sweeps on much smaller proxy models plus a rule for transferring the
 result. A wrong schedule is not an experiment you rerun.
 
+### The critical batch size
+
+The scaling rules hold only up to a point. McCandlish et al. measured a **gradient noise scale**
+that predicts a **critical batch size**: below it, doubling the batch roughly halves the steps a run
+needs; above it, the step count barely falls and the extra examples are wasted compute (arXiv
+1812.06162). The noise scale grows as the loss falls, because a better model's gradient is smaller
+next to its noise, so the useful batch grows during the run.
+
+That is why GPT-3 ramped its batch linearly from 32 thousand tokens to the full size over the first
+4 to 12 billion tokens (Brown et al., arXiv 2005.14165, Appendix B). This lab never measures the
+noise scale, so **Batch size** shows only the low-batch side of the curve.
+
 ### Toy versus real
 
 - **Peak rate.** The lab's SGD peak is 0.6, and its useful range runs from about 0.5 to 40. Runs

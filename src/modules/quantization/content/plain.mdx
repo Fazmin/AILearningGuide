@@ -818,6 +818,20 @@ up its patterns for infinity and keeps only one for “not a number”, which st
 value up to 448. The paper describes scaling each tensor first so that its biggest value lands near
 the format’s maximum, which is a step this lab does not take.
 
+### Training in low precision
+
+The same short formats also make training faster, which is a different job from shrinking a file.
+Most large runs do their big multiplications in bf16, while a full 32-bit copy of the weights takes
+each update, as the Anatomy of a training run lab counts. The team behind DeepSeek-V3 went further
+and trained in fp8. They gave every small tile of numbers its own scale, so one unusually large value
+could not squash the rest. That is the **Per group** setting of **Scaling granularity**, used for
+math during training instead of for storage.
+
+Below 8 bits, formats share one scale across a small block of values. The MX formats, for example,
+give every 32 values a single shared scale. OpenAI finished training its gpt-oss models with the
+expert layers already in a 4-bit MX format, and that is what lets the largest one, with about 120
+billion weights, fit on one 80 GB chip.
+
 ### Calibration methods
 
 Plain rounding looks only at the weights, while **calibration** also runs sample text through the

@@ -534,6 +534,23 @@ percentages instead of one sampled answer, so there is more to learn from. The s
 percentages are smoother than the raw right answers, so they make gentler targets to aim at. This lab
 mostly shows the first, since its teacher barely differs from the text’s own counts.
 
+### On-policy distillation
+
+Everything this lab distils is called **off-policy**: the student copies the teacher at every position
+of the Harbor text, which the student did not write. A student trained that way never sees its own
+mistakes. So when it writes on its own, one wrong letter can lead it somewhere the training text never
+went, and it has no practice getting back.
+
+**On-policy distillation** flips that around. The student writes some text, and the teacher grades
+every token of what the student wrote. Think of a driving instructor riding along while you drive,
+rather than you watching recordings of the instructor. Agarwal and colleagues introduced the idea in
+2023, and Gu and colleagues proposed a closely related method called MiniLLM the same year.
+
+It sits between ordinary training and reinforcement learning. The student explores like a learner
+trying things out, but every token gets a grade, instead of one score for the whole answer. The team
+behind the Qwen3 models used it for their smaller models, after an off-policy round first. The
+Reasoning models lab shows the one-score-per-answer side of that trade.
+
 ### Composing the steps
 
 The usual order is to prune or distil first, retrain to win back quality, and quantize last, because

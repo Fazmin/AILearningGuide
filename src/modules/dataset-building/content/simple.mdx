@@ -806,6 +806,16 @@ trained on.
 
 Both of these duties need a record kept alongside the data, not a better filter.
 
+### PII scrubbing and differential privacy
+
+Personal details such as names, emails and phone numbers are called **PII**. That is short for personally identifiable information. Two defences work on them at different stages.
+
+**PII scrubbing** happens while the data is being cleaned. Search rules and trained detectors look for emails, phone numbers, addresses and passwords. Each one gets swapped for a placeholder. The team behind the FineWeb dataset did this for email addresses and public internet addresses. They also warn that names and phone numbers can slip through. A scrubber only removes what its rules describe. That is why the extraction finding above still matters.
+
+**Differential privacy** works during training instead. Before each update, it limits how hard one example can push the weights. Then it adds random noise on top. That puts a provable limit on how much one example can change the model. Think of a crowd blurring one voice. You can hear what the room thinks, but you cannot pick out one speaker.
+
+The cost is quality. Google's VaultGemma has about 1 billion weights and was trained this way from the start. It scores below an ordinary model of the same size. Its makers compare it to ordinary models from about five years earlier.
+
 ### Toy versus real
 
 - **Scale:** the lab’s scrape is 20 lines and 899 characters. Its most repeated line, the

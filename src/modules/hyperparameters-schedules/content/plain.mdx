@@ -730,6 +730,18 @@ This lab shows the same link from the other side: hold the rate fixed and shrink
 run gets much worse. On **Constant** at a peak of 30, a **Batch size** of 64 finishes at 1.883,
 while a batch of 2 finishes at 12.325.
 
+### Bigger batches stop paying off
+
+Those rules only hold up to a point. Past a size called the **critical batch size**, a bigger batch
+barely cuts the number of steps, so the extra examples are wasted work. McCandlish and colleagues
+showed in 2018 how to estimate that size from how noisy the gradients are. Picture asking more and
+more people for directions: past a certain crowd, extra answers stop making the route any clearer.
+
+That size grows as training goes on. Late in a run, the useful part of each gradient is small next to
+the noise, so it takes a bigger batch to see it. That is why GPT-3 started with small batches and
+grew them over its first few billion tokens. This lab never measures the noise, so **Batch size**
+only shows the small-batch side of the story.
+
 ### Weight decay in large runs
 
 There are two ways to add weight decay's pull toward zero: one folds it into each weight's push, so

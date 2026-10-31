@@ -229,6 +229,14 @@ const definition: ModuleDefinition = {
       url: "https://papers.nips.cc/paper_files/paper/2024/hash/e45caa3d5273d105b8d045e748636957-Abstract-Conference.html",
       note: "Shows that DPO and similar methods still over-optimize even with no separate reward model: quality gets worse as the policy moves further from the reference, sometimes within the first epoch. This backs the lesson's claim that reward hacking survives in DPO because the margin is now the quantity being gamed.",
     },
+    {
+      authors: "Kawin Ethayarajh, Winnie Xu, Niklas Muennighoff, Dan Jurafsky, and Douwe Kiela",
+      title: "KTO: Model Alignment as Prospect Theoretic Optimization",
+      source: "Proceedings of the 41st International Conference on Machine Learning (ICML 2024), PMLR 235",
+      year: 2024,
+      url: "https://arxiv.org/abs/2402.01306",
+      note: "Replaces preference pairs with single completions labelled desirable or undesirable, and reports that it matches or beats preference-based methods at scales from 1B to 30B parameters. It backs the Going deeper point that KTO needs no pairs, only the thumbs-up and thumbs-down signal products already collect.",
+    },
   ],
   checkpoint: [
     {

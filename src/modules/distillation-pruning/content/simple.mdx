@@ -289,6 +289,14 @@ Real teachers learn far more than how often one character follows another. So th
 
 There are two explanations for why soft labels help. The first says each position carries a whole set of percentages, not one sampled answer. So there is more to learn from. The second says the teacher's percentages are smoother than raw right answers. So they make gentler targets to aim at. This lab mostly shows the first, since its teacher barely differs from the text's own counts.
 
+### On-policy distillation
+
+Everything this lab distils is called **off-policy**. The student copies the teacher at every spot in the Harbor text. The student did not write that text. So it never sees its own mistakes. When it writes on its own, one wrong letter can lead it somewhere new. It has no practice getting back.
+
+**On-policy distillation** flips that around. The student writes some text. Then the teacher grades every token the student wrote. Think of a driving teacher riding along while you drive. That beats only watching videos of the teacher. Agarwal and colleagues introduced the idea in 2023. Gu and colleagues proposed a close cousin called MiniLLM the same year.
+
+It sits between ordinary training and reinforcement learning. The student explores and tries things out. But every token gets a grade, not one score for the whole answer. The team behind the Qwen3 models used it for their smaller models. They ran an off-policy round first. The Reasoning models lab shows the one-score-per-answer side of that trade.
+
 ### Composing the steps
 
 The usual order is to prune or distil first, retrain to win back quality, and quantize last. Quantizing assumes the weights are final. Each step also inherits the errors of the one before it. Its own cost depends a lot on the settings.
