@@ -1,0 +1,402 @@
+---
+objectives: ["Read a data mixture as shares of a fixed token budget, and turn a weight into effective epochs", "Explain why repeating scarce data helps at first, then stops helping, and with very little data starts to hurt", "Explain why labs switch to a target-heavy mixture while the learning rate decays", "Tell mid-training on a target mix from training on the target alone by what each costs the general domains", "Say what per-domain held-out loss can and cannot tell you about a capability"]
+terms: ["Data mixture", "Mixture weight", "Domain", "Per-domain held-out loss", "Token budget", "Effective epochs", "Data-constrained training", "Upsampling", "Warmup-stable-decay", "Annealing", "Mid-training", "Curriculum", "Forgetting"]
+---
+## The big picture
+
+A language model learns from a huge pile of text that comes from many different sources, such as web
+pages, computer code and math problems. Because the total amount of reading is fixed before training
+starts, the team has to decide how much of each source the model will read, and that plan is called a
+**data mixture**.
+
+Near the end of training, many teams change the plan on purpose. They give the model much more of the
+text they care about most, such as math or code, while still mixing in ordinary text so that it keeps
+what it already learned. That late change is called **mid-training**, and this module is about why it
+works and what it costs.
+
+### Where you have met it
+
+Every chatbot you have used was trained on a mixture, and a few teams publish theirs. Meta's report on
+its Llama 3 models says that by the end, the training text was roughly half general knowledge, a
+quarter math and reasoning, 17% computer code and 8% other languages. In the last 40 million tokens of
+that training, the learning rate shrank to zero while the mix gave extra weight to the very best
+sources.
+
+OLMo 2 is an open model whose team trained it in two stages and calls the shorter second stage
+mid-training. That stage used 5 to 10 percent of the total computing work, and its text leaned toward
+carefully filtered writing and math.
+
+### Why it matters
+
+The amount of reading is fixed, so giving more of it to one source always means giving less to the
+others. The text a team wants most is often the text it has least of, which means that reading more of
+it usually means reading the same pages again. The order matters as well, because the last pages a
+model reads have a big say in where its learning ends up.
+
+### What you will be able to explain
+
+By the end of this lesson, you should be able to explain each of these in your own words:
+
+- how a mixture works as shares of a fixed budget, and how each share turns into the number of times
+  the model reads that source;
+- why reading scarce text again helps at first, then stops helping, and with very little text starts
+  to make things worse;
+- why teams switch to a mixture that is heavy in the text they care about while training slows down at
+  the very end;
+- how mid-training on a mix differs from training on the target text alone, judged by what each one
+  costs the other sources;
+- what a score on one source's text can tell you about a skill, and what it cannot tell you.
+
+### What the lab lets you do
+
+Every score in this lab comes from real training that runs live as you move the controls, and five
+cards each show one part of the story:
+
+- **Data mixture** splits one fixed amount of training among four sources and scores each source on
+  sentences it never trained on.
+- **Arithmetic weight sweep** reruns that training nine times, giving the math source a bigger share
+  each time.
+- **Answer probe** checks whether the trained model can actually answer the math questions it was
+  scored on.
+- **Repeated data** trains on math alone and lets you choose how many different sentences the budget is
+  spread over.
+- **Late phase and annealing** changes the mixture for the last fifth of training and compares that
+  with two other runs.
+
+Three of the four sources are short paragraphs used throughout this course, while the fourth,
+Arithmetic, is made up from three sentence patterns, such as “four plus eight is twelve.” The chart of
+the learning rate across the run is drawn from a formula, so it is the only picture here that is not
+measured.
+
+## What it is
+
+### The model and how it is scored
+
+The model is the tiny one from *Train one from scratch*, which reads one character and guesses the next
+one by looking it up in a table of 900 numbers called **weights**. Training nudges those weights a
+little after every small batch of examples so that later guesses improve. Each example is a pair of
+characters, one character and the one that follows it, and every batch in this lab holds 16 pairs.
+
+The lab scores the model by its **loss**, the average penalty for its guesses, which is measured in
+units called nats per character, and lower is better. A table that knows nothing gives every character
+the same chance and scores 3.401, so that is the number every run has to beat.
+
+The most important rule of scoring is that the test sentences are never used for training. Each source
+keeps the last quarter of its sentences, rounded to whole sentences, out of training, and every score in
+the lab is measured on those held-out sentences.
+
+### Four domains
+
+A source of text with its own style is called a **domain**, and this lab has four of them. Harbor has
+eight sentences of weather notes with 2 held out, and Recipes has eight cooking steps with 2 held out.
+Proverbs has ten short sayings with 3 held out, and Arithmetic has 160 made-up math facts with 40 held
+out.
+
+The tiny model has no digit symbols, only letters, spaces and full stops, so every number in a math fact
+is spelled out in words. The first three domains together are called General. A score on one domain's
+held-out sentences is a **per-domain held-out loss**, and General's score is the average of the first
+three, with each one counted once.
+
+### Shares of one budget
+
+Every run on the mixture cards takes 600 steps of 16 pairs, which comes to 9,600 pairs in total. That
+fixed total is the **token budget**, since a token here is a single character.
+
+You set the split with four sliders, one **mixture weight** per domain, and each weight runs from 0 to
+8. Only the ratio between the weights counts. The lab divides each weight by the sum of all four to get
+that domain's share, and each slot in a batch then picks a domain with a chance equal to its share.
+
+Here is a worked example with the default setting, which is called General-heavy. Its weights are 3, 3,
+3 and 1, which add up to 10. So Harbor, Recipes and Proverbs each get 3 out of 10, or 30% of every batch,
+while Arithmetic gets 1 out of 10, or 10%.
+
+### From shares to epochs
+
+One full pass through a domain's training sentences is called an epoch. The lab divides the pairs it
+drew from a domain by the pairs that domain holds. The result is the domain's **effective epochs**,
+which tells you how many times the budget read that domain over.
+
+The domains are very different sizes, which is why equal shares do not give equal epochs. Harbor's six
+training sentences hold 378 pairs, Recipes' six hold 292, Proverbs' seven hold 195, and Arithmetic's 120
+hold 3,417. So under General-heavy, a 30% share reads Proverbs 14.72 times, while a 10% share reads
+Arithmetic only 0.28 times.
+
+Arithmetic is 80% of all the training text, but General-heavy gives it only one slot in ten. Giving a
+domain a bigger share of the budget than its share of the text is called **upsampling**, so this setting
+upsamples the three small General domains and shrinks Arithmetic's share.
+
+### The schedule and the late phase
+
+The learning rate is the size of each nudge to the weights, and this lab changes it during the run with
+a plan called **warmup-stable-decay**. The rate climbs from almost zero over the first 5% of steps and
+stays at 3 for most of the run. Over the last 20%, starting at step 480, it shrinks steadily to zero.
+
+That final shrinking stretch is called **annealing**, and the **Late phase** control can change the
+mixture right where it starts:
+
+- **Same mix** keeps the same shares all the way to the end of the run.
+- **Target mix** makes half of every late batch Arithmetic and gives the other half to the three General
+  domains in their usual proportions, which is the shape of mid-training.
+- **Target only** makes every late batch Arithmetic, so the General domains are not read at all after
+  step 480.
+
+An order for presenting data, instead of one fixed mix for the whole run, is called a **curriculum**,
+and a single switch near the end is the simplest curriculum there is.
+
+### A study plan for a test
+
+Here is a made-up picture of the whole idea. Picture a student with 600 short practice sessions before a
+math test and four subjects to keep up, where the total time is fixed, so more math means less of
+everything else.
+
+In the last few days, the student spends half of each session on math while still reviewing the other
+subjects, and that is mid-training. If they dropped everything except math, the other subjects would
+start to slip, and that slipping is called **forgetting**.
+
+The picture stops matching in a few places. The model does not choose its plan, because every batch is
+drawn at random from the shares you set. It also does not understand math at all, as the Answer probe
+will show, so “studying math” only means reading more math sentences.
+
+## Why it’s here
+
+### The data you want most is scarce
+
+The text a team wants most, such as math, code and carefully checked writing, is a small part of
+everything it can collect, while the training budget is far bigger. So a mixture that gives that text a
+big share has to read it more than once, and training with more budget than new text is called
+**data-constrained training**.
+
+A research team led by Niklas Muennighoff studied exactly this problem. They found that reading the same
+data up to 4 times was almost as good as reading new data, but with much more repeating, extra training
+eventually stopped adding anything. The Repeated data card asks the tiny model the same question.
+
+### Why the end of the run matters
+
+Every batch nudges the same table of weights, so the order of the data changes where those weights end
+up, and the last batches have the final say. A shrinking learning rate also decides how far those last
+nudges are able to move things.
+
+Teams use this on purpose. The team behind a model called MiniCPM, who introduced the
+warmup-stable-decay plan, mixed their best data into the decay. That worked better than adding the same
+data only during fine-tuning, the training step that comes afterward. Llama 3's team found that a final
+stretch on small amounts of top-quality code and math lifted its 8-billion-weight model by 24.0% on a
+math test called GSM8k.
+
+The same stretch lifted that model by 6.4% on a harder test called MATH, although for their largest
+model the gain was close to nothing. For OLMo 2's 7-billion-weight model, the GSM8K score rose from 24.1
+before mid-training to 67.5 after it.
+
+The warmup-stable-decay plan also makes this cheap to try, because the long middle stretch does not
+depend on how long the run will be. A team can save the model just before the decay and run several
+different endings from that one point.
+
+### Mid-training or fine-tuning
+
+If the late phase drops the General text completely, training only scores the model on math text. Then
+nothing holds the other domains in place, so the shared weights drift toward math and the General score
+gets worse. Keeping some General text in the late mix is how mid-training limits that forgetting.
+
+Training on the target text alone is close to fine-tuning, which the next lab studies. An older
+study led by Suchin Gururangan found that a second round of training on text from one field improves
+the model's tasks in that field. Target only is that same idea, placed at the end of a run. A research team
+led by Adam Ibrahim found that new data hurts performance on earlier data. They also found that mixing
+earlier data back in, while raising and lowering the learning rate again, did as well as training from
+scratch.
+
+## How to play with it
+
+### Step 1: set the mixture
+
+Under **Mixture preset**, press **Uniform**, which sets all four weights to 1 so each domain gets a
+quarter of every batch. The Epochs column reads 6.16 for Harbor, 8.34 for Recipes, 12.48 for Proverbs and
+0.70 for Arithmetic, so equal weights did not give equal epochs.
+
+The held-out scores read 2.197 for Harbor, 2.498 for Recipes, 2.400 for Proverbs and 1.967 for
+Arithmetic, and General, the average of the first three, reads 2.365.
+
+Now press **General-heavy**. Harbor rises to 7.42 epochs and its score improves to 2.097, while Recipes
+rises to 10.21 epochs and improves to 2.427. Proverbs rises to 14.72 epochs, but its score moves from
+2.400 to 2.408, because after more than 12 passes over seven short sayings, extra passes buy nothing.
+
+Arithmetic pays for the change and gets worse, going from 1.967 to 2.348, while General improves from
+2.365 to 2.311. The budget is fixed, so every gain on this card is paid for somewhere else.
+
+### Step 2: upweight the scarce domain
+
+In this mix, Arithmetic is scarce in its share of the budget, not in its amount of text. Keep the other
+weights at 3 and drag **Arithmetic weight** from 0 up to 8. On **Arithmetic weight sweep**, Arithmetic's
+held-out score falls from 2.832 to 1.706, while General's rises from 2.320 to 2.515.
+
+The **Gain per extra epoch** column shows how much each extra pass through Arithmetic bought, in nats
+per epoch. It falls from 1.75 between weights 0 and 1 to 1.04 between weights 1 and 2, and down to 0.25
+between weights 7 and 8.
+
+Even at weight 8, Arithmetic gets only 1.32 epochs, so this shrinking gain is the learning slowing down,
+not the cost of repeated reading. At weight 0 the model never reads a math fact, yet Arithmetic scores
+2.832, well below 3.401, because letter habits learned from the other domains, such as where spaces go,
+carry over.
+
+### Step 3: repeat or find more
+
+On **Repeated data**, keep **Budget** at 8,000 pairs and lower **Unique sentences** from 120. The bars
+keep the budget fixed and halve the number of different sentences each time:
+
+- 120 different sentences are each read 2.3 times, and the held-out score is 1.388.
+- 60 different sentences are each read 4.7 times, and the held-out score is 1.400.
+- 30 different sentences are each read 9.4 times, and the held-out score is 1.458.
+- 15 different sentences are each read 18.8 times, and the held-out score is 1.577.
+- 8 different sentences are each read 34.6 times, and the held-out score is 1.731.
+- 4 different sentences are each read 70.8 times, and the held-out score is 1.961.
+- 2 different sentences are each read 135.6 times, and the held-out score is 2.542.
+
+**Try this:** Set **Unique sentences** to 2 and watch the dashed line drop and then turn back up, while
+the solid line for all 120 sentences levels off at its lowest. **Lowest along the run** reads 2.217 at 27.1 epochs,
+which means every pass after that point made the score worse.
+
+### Step 4: anneal on the target mix
+
+Set **Late phase** to **Target mix**, so that from step 480, half of every batch is Arithmetic. The
+table now compares three runs:
+
+- **Switched at decay**, this run, scores 1.911 on Arithmetic and 2.398 on General, with Forgetting at
+  +0.060 after reading 1,721 Arithmetic pairs.
+- **Spread evenly** reads the same amount of each domain on average, but in one fixed mix for the whole
+  run. It scores 2.110 on Arithmetic and 2.339 on General, with Forgetting at −0.027 after 1,707 pairs.
+- **No switch** is the default run, which scores 2.348 on Arithmetic and 2.311 on General, with
+  Forgetting at −0.027.
+
+The first two runs read almost the same amount of math, so the gap between them comes from timing alone.
+In the last 120 steps of the switched run, Arithmetic falls from 2.356 to 1.911.
+
+### Step 5: mid-train or fine-tune?
+
+Now switch **Late phase** to **Target only**, so that every late batch is Arithmetic. Switched at decay
+reads 1.645 on Arithmetic and 2.691 on General, and Forgetting climbs to +0.353, compared with +0.060
+for Target mix. Spread evenly reads 1.935 and 2.375.
+
+So dropping General from the late phase bought 0.266 more on Arithmetic and cost 0.293 on General.
+Keeping some General text in the late mix is what kept that second number small.
+
+## What to notice
+
+- The budget is fixed, so on **Data mixture** every score that improves is paid for by a score that
+  gets worse somewhere else.
+- Equal weights give unequal epochs, which is why the smallest domain is the first to run out of new
+  text.
+- More budget for one domain buys less each time, as the Gain per extra epoch column falls from 1.75 to
+  0.25.
+- Repeating text is nearly free at first and costly later, since at 8,000 pairs, **Versus 120 unique**
+  reads +0.011 for 60 sentences and +0.069 for 30.
+- With very little text, extra passes make the score worse, as two sentences bottom out at 2.217 and end
+  at 2.542.
+- Timing matters even when the data does not change, because the switched and evenly spread runs read
+  1,721 and 1,707 Arithmetic pairs yet end 0.199 apart on Arithmetic.
+- Forgetting follows how much General text the late phase keeps, reading −0.027 with no switch, +0.060
+  with Target mix, and +0.353 with Target only.
+
+## Where it breaks
+
+### In this lab
+
+The domains are tiny, since three are fixed paragraphs of 8 to 10 sentences and Arithmetic is built
+from three sentence patterns. Their sizes, rather than their real value, decide when repeating starts.
+
+The model is tiny too, and it guesses each character from only the one before it, so to this model two
+domains differ only in which letter tends to follow which.
+
+Every run uses one seed, the number that fixes the random order of the batches. At the default mixture,
+trying seeds 1 to 8 moves Arithmetic's score by up to 0.07 and General's by about 0.01, so small gaps
+between runs may be luck.
+
+Several choices are fixed in the code. General is a plain average of three scores, the switch always
+comes at step 480, Target mix is always half Arithmetic, and the warmup is always 5% of the steps. The
+learning-rate curve and the Arithmetic share curve are drawn from the settings by formula, not measured.
+
+### What the loss misses
+
+On **Answer probe**, the default model gets 0 of 40 held-out math facts right. It gives the same answer,
+ten, to every question, and ten is never the answer to a held-out fact here. The model only sees
+the space before the answer, so it cannot read the numbers in the question at all.
+
+Set **Arithmetic weight** to 0 and Arithmetic's score gets worse, rising to 2.832, yet the probe now gets
+3 of 40 right. That is because the model answers one to everything, and three held-out answers happen to
+be one. The score improved by learning how number words are spelled, not by learning how to add.
+
+**A common mix-up:** A lower score on math text does not mean the model got better at math. A
+per-domain score measures how well the model predicts that kind of text, while a skill needs its own
+test with real questions the model has never seen.
+
+### Where the toy disagrees
+
+Published results credit the decay itself with making late, high-quality data count, but this toy does
+not show that. With Target mix and **Schedule** on **Constant rate**, Arithmetic ends even lower, at
+1.785 instead of 1.911, but General ends worse, at 2.462 instead of 2.398, and Forgetting doubles from
++0.060 to +0.127.
+
+In this toy, most of the late gain comes from simply being last. Full-size steps at the end pull the
+weights furthest toward the latest batches, and the shrinking rate holds them back, so what the decay
+buys here is keeping more of General.
+
+The decay also does little on its own in this toy. With Same mix, General improves by 0.027 over the
+last 20% of steps with the decay and by 0.022 without it, while the MiniCPM team reports a steep drop
+once their decay starts.
+
+Repeating also hurts this model differently from large ones. This model cannot memorize a sentence, so
+repeating text hurts it by narrowing which letter pairs it sees. Large models can memorize, and one study
+found that repeating 0.1% of the training data 100 times made a model with 800 million weights perform
+like one half its size.
+
+### In real systems
+
+A lower score on math text does not make a better mathematician, which is why OLMo 2's team reports
+GSM8K, a test of math word problems the model never trained on. Real mixtures cover dozens of sources
+and trillions of tokens, and teams choose the shares from runs of small practice models. A share that
+wins at small scale may not win at full size, and forgetting is checked on whole sets of tests rather
+than on one average score.
+
+## Going deeper
+
+### Choosing the weights
+
+Guessing weights by hand is slow, so researchers have built methods that choose them. One method, called
+DoReMi, trains a small helper model and reads the weights from it. On a large public dataset called The
+Pile, it improved scores on every domain, even the ones it gave less weight to.
+
+DoReMi also raised accuracy on a set of tests by 6.5 points and reached the old accuracy in 2.6 times
+fewer training steps. Another approach fits a formula to small runs that predicts the score of a mixture
+before anyone trains it, which is the **Arithmetic weight sweep** turned into a formula.
+
+### Annealing as a cheap test
+
+Because the ending matters so much, it also works as a cheap way to test new data. Llama 3's team took a
+model halfway through training and annealed it on 40 billion tokens, giving 30% of the weight to a
+dataset they were testing and 70% to their usual mix.
+
+A team led by Cody Blakeney gave more weight to special data near the end of training a model with 7
+billion weights. It gained up to 6.90 points on a general knowledge test called MMLU, 8.26 on the GSM8K
+math test, and 6.17 on a coding test called HumanEval. They found that a final stretch of 10 to 20
+percent of training gave the best balance against general skill.
+
+### More than one switch
+
+Real curricula often have more than one switch. SmolLM2, a small open model, trained in several stages
+that mixed web text with math, code and instruction text. Its team adjusted each stage's mix by hand from
+how the stage before it went.
+
+OLMo 2's team ran mid-training several times with the data in different orders and averaged the results,
+while Llama 3's team averaged several saved copies of the model from its final stretch.
+
+The other labs in the course connect here. *Hyperparameters & schedules* covers learning-rate plans,
+*Building a dataset* covers where mixtures come from, and *Synthetic data* covers making more target
+text. The next lab, *Fine-tuning & transfer*, trains on the target alone and measures what that forgets.
+
+### Toy versus real
+
+- **Budget:** this lab reads 9,600 character pairs, while OLMo 2's 7-billion-weight model read about 4
+  trillion tokens.
+- **Length of the ending:** the late phase here is 20% of the steps. The MiniCPM team found a decay over
+  about 10% of the text was enough, and OLMo 2's mid-training used 5 to 10 percent of the work.
+- **Mixture:** General-heavy is 30, 30, 30 and 10 percent of four tiny domains, while Llama 3's final
+  mix was roughly 50, 25, 17 and 8 percent of trillions of tokens.
+- **Testing:** this lab reads per-domain scores and one probe, while real mid-training is judged on tests
+  of problems the model never saw.
