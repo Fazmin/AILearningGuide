@@ -1331,3 +1331,811 @@ export function trainTinyFactored(options: TinyFactoredOptions): TinyFactoredRun
     diverged,
   };
 }
+
+/* -------------------------------------------------------------------------- */
+/* Extended training: optimizers, faults, guards, data mixtures, and a trace. */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * `trainTinyExtended` is a separate entry point so `trainTinyModel` and `trainTinyFactored`, which
+ * about forty pinned lesson figures depend on, never change. With plain SGD on the table it runs the
+ * same arithmetic in the same order as `trainTinyModel`, and `tiny-lm.test.ts` checks that the two
+ * agree bit for bit; with SGD on the factored model it matches `trainTinyFactored`'s weights.
+ */
+export type TinyOptimizerKind = "sgd" | "momentum" | "adam" | "adamw" | "muon";
+
+export interface TinyOptimizerOptions {
+  kind: TinyOptimizerKind;
+  /** Momentum coefficient, or Adam's first-moment decay. Default 0.9, and 0.95 for Muon. */
+  beta1?: number;
+  /** Adam's second-moment decay. Default 0.999. */
+  beta2?: number;
+  /** Added to Adam's denominator. Default 1e-8. */
+  epsilon?: number;
+  /** Adam only: divide each moment by 1 − βᵗ so early steps are not shrunk toward zero. Default true. */
+  biasCorrection?: boolean;
+  /** Muon only: Nesterov momentum, as in the reference implementation. Default true. */
+  nesterov?: boolean;
+  /** Muon only: Newton–Schulz iterations, 0 to 8. Default 5. */
+  newtonSchulzSteps?: number;
+}
+
+/** `wsd` is warmup, a long constant stretch, then a linear decay to zero over `decayFraction`. */
+export type TinyExtendedSchedule = TinySchedule | "wsd";
+
+export type TinyFault =
+  /** Replaces `count` consecutive batches from `atStep` with pairs drawn from `text`. */
+  | { kind: "bad-batch"; atStep: number; count?: number; text: string }
+  /**
+   * Emulates an fp16 backward pass: gradients are multiplied by `scale`, rounded to half precision,
+   * then divided back. A static scale lets an overflow reach the weights; a dynamic one skips that
+   * step, halves the scale, and doubles it again after `growthInterval` clean steps.
+   */
+  | { kind: "loss-scale"; scale: number; dynamic?: boolean; growthInterval?: number };
+
+/** From `from` (a fraction of the run) onward, batches draw from the sources in these proportions. */
+export interface TinyMixturePhase {
+  from: number;
+  weights: ReadonlyArray<number>;
+}
+
+export type TinyExtendedModel =
+  | { kind: "table"; init?: Float32Array }
+  /** Logits are U·V with an inner width of `rank`; both factors start uniform in ±initScale/2. */
+  | { kind: "factored"; rank: number; initScale?: number };
+
+export interface TinyExtendedOptions {
+  /** Training text in epoch mode; in step mode only the text the checkpoints and final loss read. */
+  text: string;
+  model?: TinyExtendedModel;
+  epochs?: number;
+  /** Step mode: train for exactly this many batches, sampled from `sources` by `mixture`. */
+  steps?: number;
+  batchSize?: number;
+  learningRate?: number;
+  schedule?: TinyExtendedSchedule;
+  warmupFraction?: number;
+  /** `wsd` only: the closing share of the run spent decaying. Default 0.2. */
+  decayFraction?: number;
+  /** L2 for SGD, momentum and Adam; decoupled for AdamW and Muon. */
+  weightDecay?: number;
+  /** Rescales any batch gradient whose global norm exceeds this value. 0 disables it. */
+  clipNorm?: number;
+  seed?: number;
+  optimizer?: TinyOptimizerOptions;
+  faults?: ReadonlyArray<TinyFault>;
+  /** Adds z · (log Z)² per example, which pulls the log-partition toward zero (PaLM uses 1e-4). */
+  zLoss?: number;
+  /** Half-open step ranges [from, to) whose batches are read but never applied. */
+  skipSteps?: ReadonlyArray<readonly [number, number]>;
+  sources?: ReadonlyArray<{ id: string; text: string }>;
+  mixture?: ReadonlyArray<TinyMixturePhase>;
+  checkpoints?: number;
+  historyPoints?: number;
+  /** Record one `TinyTracePoint` per step. */
+  trace?: boolean;
+  /** Keep the first parameter matrix's gradient and update at this step (0-based). */
+  captureStep?: number;
+}
+
+export interface TinyTracePoint {
+  step: number;
+  /** Cross-entropy of this batch, before the update. */
+  loss: number;
+  learningRate: number;
+  /** Global gradient norm after unscaling and before clipping; Infinity on an overflow. */
+  gradientNorm: number;
+  clipped: boolean;
+  /** Largest logit any example in the batch produced. */
+  maxLogit: number;
+  /** Mean log-partition, log Σ exp(logit), over the batch. */
+  logPartition: number;
+  /** ‖Δw‖ / ‖w‖ after the step: how far the step moved the weights relative to their size. */
+  updateRatio: number;
+  /** Largest single-weight change in the step. */
+  maxUpdate: number;
+  skipped: boolean;
+  overflow: boolean;
+  lossScale: number;
+  /** The batch came from a `bad-batch` fault. */
+  faulty: boolean;
+}
+
+export interface TinyExtendedRun extends TinyTrainRun {
+  parameters: number;
+  clippedSteps: number;
+  skippedSteps: number;
+  overflowSteps: number;
+  /** The 1-based step on which the loss or a weight stopped being finite, or null. */
+  haltedAt: number | null;
+  /** Floats the optimizer keeps between steps. */
+  stateFloats: number;
+  /** Table model: total ‖Δrow‖ over the run, and the number of batches whose inputs included the row. */
+  rowMovement: Float64Array;
+  rowVisits: Int32Array;
+  /** Step mode: pairs drawn from each source, and the pairs each source holds. */
+  sourceSeen: number[];
+  sourcePairs: number[];
+  trace: TinyTracePoint[];
+  captured: { gradient: Float32Array; update: Float32Array; rows: number; cols: number } | null;
+}
+
+/** Multiplier on the peak rate; every schedule but `wsd` is `scheduleFactor`. */
+export function extendedScheduleFactor(
+  schedule: TinyExtendedSchedule,
+  progress: number,
+  warmupFraction = 0.15,
+  decayFraction = 0.2,
+): number {
+  if (schedule !== "wsd") return scheduleFactor(schedule, progress, warmupFraction);
+  const point = Math.min(1, Math.max(0, progress));
+  const warmup = Math.min(0.9, Math.max(0, warmupFraction));
+  const decay = Math.min(1 - warmup, Math.max(0, decayFraction));
+  if (warmup > 0 && point < warmup) return Math.max(0.02, point / warmup);
+  if (decay > 0 && point > 1 - decay) return Math.max(0, (1 - point) / decay);
+  return 1;
+}
+
+const HALF_MAX_FINITE = 65504;
+const HALF_MIN_NORMAL = 2 ** -14;
+const HALF_SUBNORMAL_STEP = 2 ** -24;
+
+/**
+ * Rounds a number to IEEE half precision: an 11-bit significand, ±Infinity from 65520 up, and
+ * subnormal steps of 2⁻²⁴ below 2⁻¹⁴. Ties round away from zero, a simplification of round-to-even.
+ */
+export function toHalf(value: number): number {
+  if (!Number.isFinite(value)) return value;
+  if (value === 0) return 0;
+  const sign = value < 0 ? -1 : 1;
+  const magnitude = Math.abs(value);
+  let rounded: number;
+  if (magnitude < HALF_MIN_NORMAL) {
+    rounded = Math.round(magnitude / HALF_SUBNORMAL_STEP) * HALF_SUBNORMAL_STEP;
+  } else {
+    const quantum = 2 ** (Math.floor(Math.log2(magnitude)) - 10);
+    rounded = Math.round(magnitude / quantum) * quantum;
+  }
+  if (rounded > HALF_MAX_FINITE) return sign * Infinity;
+  return sign * rounded;
+}
+
+const NEWTON_SCHULZ = [3.4445, -4.775, 2.0315] as const;
+
+/**
+ * Muon's quintic Newton–Schulz iteration (Jordan et al., 2024): normalizes a matrix and pushes its
+ * singular values toward 1 while keeping its singular vectors, an approximate orthogonalization.
+ * Zero directions stay zero. Returns a new rows × cols matrix.
+ */
+export function newtonSchulz(
+  source: ArrayLike<number>,
+  rows: number,
+  cols: number,
+  steps = 5,
+): Float64Array {
+  const transpose = rows > cols;
+  const r = transpose ? cols : rows;
+  const c = transpose ? rows : cols;
+  let norm = 0;
+  for (let index = 0; index < rows * cols; index += 1) norm += source[index] * source[index];
+  norm = Math.sqrt(norm) + 1e-7;
+  let x = new Float64Array(r * c);
+  for (let i = 0; i < r; i += 1) {
+    for (let j = 0; j < c; j += 1) {
+      x[i * c + j] = (transpose ? source[j * cols + i] : source[i * cols + j]) / norm;
+    }
+  }
+  const [a, b, cc] = NEWTON_SCHULZ;
+  const gram = new Float64Array(r * r);
+  const poly = new Float64Array(r * r);
+  let next = new Float64Array(r * c);
+  const iterations = Math.max(0, Math.min(8, Math.round(steps)));
+  for (let step = 0; step < iterations; step += 1) {
+    for (let i = 0; i < r; i += 1) {
+      for (let k = 0; k < r; k += 1) {
+        let sum = 0;
+        for (let j = 0; j < c; j += 1) sum += x[i * c + j] * x[k * c + j];
+        gram[i * r + k] = sum;
+      }
+    }
+    for (let i = 0; i < r; i += 1) {
+      for (let k = 0; k < r; k += 1) {
+        let sum = 0;
+        for (let l = 0; l < r; l += 1) sum += gram[i * r + l] * gram[l * r + k];
+        poly[i * r + k] = b * gram[i * r + k] + cc * sum;
+      }
+    }
+    for (let i = 0; i < r; i += 1) {
+      for (let j = 0; j < c; j += 1) {
+        let sum = 0;
+        for (let l = 0; l < r; l += 1) sum += poly[i * r + l] * x[l * c + j];
+        next[i * c + j] = a * x[i * c + j] + sum;
+      }
+    }
+    [x, next] = [next, x];
+  }
+  const out = new Float64Array(rows * cols);
+  for (let i = 0; i < r; i += 1) {
+    for (let j = 0; j < c; j += 1) {
+      if (transpose) out[j * cols + i] = x[i * c + j];
+      else out[i * cols + j] = x[i * c + j];
+    }
+  }
+  return out;
+}
+
+interface ParameterMatrix {
+  data: Float32Array;
+  grad: Float32Array;
+  rows: number;
+  cols: number;
+  first: Float32Array | null;
+  second: Float32Array | null;
+}
+
+/** Trains the table or factored model with any optimizer, fault, guard or mixture. */
+export function trainTinyExtended(options: TinyExtendedOptions): TinyExtendedRun {
+  const {
+    text,
+    model = { kind: "table" },
+    epochs = 8,
+    batchSize = 16,
+    learningRate = 0.6,
+    schedule = "constant",
+    warmupFraction = 0.15,
+    decayFraction = 0.2,
+    weightDecay = 0,
+    clipNorm = 0,
+    seed = 7,
+    optimizer = { kind: "sgd" },
+    faults = [],
+    zLoss = 0,
+    skipSteps = [],
+    checkpoints = 6,
+    historyPoints = 56,
+    trace = false,
+    captureStep,
+  } = options;
+  const kind = optimizer.kind;
+  const beta1 = optimizer.beta1 ?? (kind === "muon" ? 0.95 : 0.9);
+  const beta2 = optimizer.beta2 ?? 0.999;
+  const epsilon = optimizer.epsilon ?? 1e-8;
+  const biasCorrection = optimizer.biasCorrection ?? true;
+  const nesterov = optimizer.nesterov ?? true;
+  const nsSteps = optimizer.newtonSchulzSteps ?? 5;
+  const stepMode = options.steps !== undefined || options.sources !== undefined;
+  const watch = trace || zLoss > 0;
+
+  const random = tinyRandom(seed);
+  const table = model.kind === "table";
+  const rank = table ? 0 : Math.max(1, Math.min(V, Math.round(model.rank)));
+  const matrices: ParameterMatrix[] = [];
+  const makeMatrix = (rows: number, cols: number): ParameterMatrix => ({
+    data: new Float32Array(rows * cols),
+    grad: new Float32Array(rows * cols),
+    rows,
+    cols,
+    first: kind === "sgd" ? null : new Float32Array(rows * cols),
+    second: kind === "adam" || kind === "adamw" ? new Float32Array(rows * cols) : null,
+  });
+  if (model.kind === "table") {
+    const only = makeMatrix(V, V);
+    if (model.init) only.data.set(model.init.subarray(0, V * V));
+    matrices.push(only);
+  } else {
+    const scale = model.initScale ?? 0.3;
+    const left = makeMatrix(V, rank);
+    const right = makeMatrix(rank, V);
+    for (let index = 0; index < left.data.length; index += 1) left.data[index] = (random() - 0.5) * scale;
+    for (let index = 0; index < right.data.length; index += 1) right.data[index] = (random() - 0.5) * scale;
+    matrices.push(left, right);
+  }
+  const parameters = matrices.reduce((sum, matrix) => sum + matrix.data.length, 0);
+  const effectiveWeights = () => {
+    if (table) return Float32Array.from(matrices[0].data);
+    const [left, right] = matrices;
+    const weights = new Float32Array(V * V);
+    for (let row = 0; row < V; row += 1) {
+      for (let k = 0; k < V; k += 1) {
+        let sum = 0;
+        for (let j = 0; j < rank; j += 1) sum += left.data[row * rank + j] * right.data[j * V + k];
+        weights[row * V + k] = sum;
+      }
+    }
+    return weights;
+  };
+
+  // Data: one shuffled pass per epoch, or per-source cursors sampled by the mixture.
+  const sources = stepMode
+    ? options.sources && options.sources.length > 0
+      ? options.sources
+      : [{ id: "text", text }]
+    : [{ id: "text", text }];
+  const sourceData = sources.map((source) => bigramPairs(source.text));
+  const pairCount = sourceData[0].inputs.length;
+  const safeBatch = Math.max(1, Math.min(batchSize, stepMode ? batchSize : Math.max(1, pairCount)));
+  const batchesPerEpoch = pairCount === 0 ? 0 : Math.ceil(pairCount / safeBatch);
+  const usable = sourceData.some((data) => data.inputs.length > 0);
+  const totalSteps = stepMode
+    ? usable
+      ? Math.max(0, Math.round(options.steps ?? 0))
+      : 0
+    : batchesPerEpoch * Math.max(0, epochs);
+  const sourceSeen = sources.map(() => 0);
+  const sourcePairs = sourceData.map((data) => data.inputs.length);
+
+  const history: TinyHistoryPoint[] = [];
+  const recorded: TinyCheckpoint[] = [];
+  const traced: TinyTracePoint[] = [];
+  const rowMovement = new Float64Array(V);
+  const rowVisits = new Int32Array(V);
+  const stateFloats =
+    kind === "sgd" ? 0 : kind === "adam" || kind === "adamw" ? 2 * parameters : parameters;
+
+  const emptyRun = (): TinyExtendedRun => {
+    const weights = effectiveWeights();
+    return {
+      weights,
+      history,
+      checkpoints: [{ step: 0, progress: 0, loss: UNIFORM_CROSS_ENTROPY, weights: Float32Array.from(weights) }],
+      steps: 0,
+      tokens: pairCount,
+      updatedParameters: 0,
+      finalLoss: tinyCrossEntropy(weights, text),
+      diverged: false,
+      peakGradientNorm: 0,
+      parameters,
+      clippedSteps: 0,
+      skippedSteps: 0,
+      overflowSteps: 0,
+      haltedAt: null,
+      stateFloats,
+      rowMovement,
+      rowVisits,
+      sourceSeen,
+      sourcePairs,
+      trace: traced,
+      captured: null,
+    };
+  };
+  if (totalSteps === 0) return emptyRun();
+
+  const cursors = sourceData.map((data) => ({ order: shuffledOrder(0, random), at: 0, size: data.inputs.length }));
+  if (stepMode) {
+    for (const cursor of cursors) {
+      cursor.order = shuffledOrder(cursor.size, random);
+    }
+  }
+  const mixturePhases = [...(options.mixture ?? [{ from: 0, weights: sources.map(() => 1) }])].sort(
+    (left, right) => left.from - right.from,
+  );
+  const badBatch = faults.find((fault) => fault.kind === "bad-batch");
+  const badPairs = badBatch ? bigramPairs(badBatch.text) : null;
+  const lossScaleFault = faults.find((fault) => fault.kind === "loss-scale");
+  let lossScale = lossScaleFault ? Math.max(1, lossScaleFault.scale) : 1;
+  const growthInterval = lossScaleFault?.dynamic ? Math.max(1, lossScaleFault.growthInterval ?? 200) : 0;
+  let cleanSteps = 0;
+
+  const batchInputs = new Int32Array(safeBatch);
+  const batchTargets = new Int32Array(safeBatch);
+  const probabilities = new Float32Array(V);
+  const logits = new Float32Array(V);
+  const outer = new Float32Array(V);
+  const touched = new Set<number>();
+  const updatedRows = new Set<number>();
+  const delta = new Float32Array(Math.max(...matrices.map((matrix) => matrix.data.length)));
+  const historyEvery = Math.max(1, Math.floor(totalSteps / historyPoints));
+  const checkpointEvery = Math.max(1, Math.floor(totalSteps / Math.max(1, checkpoints - 1)));
+  let step = 0;
+  let adamStep = 0;
+  let windowLoss = 0;
+  let windowSteps = 0;
+  let peakGradientNorm = 0;
+  let clippedSteps = 0;
+  let skippedSteps = 0;
+  let overflowSteps = 0;
+  let diverged = false;
+  let haltedAt: number | null = null;
+  let captured: TinyExtendedRun["captured"] = null;
+  let order = shuffledOrder(0, random);
+
+  recorded.push({ step: 0, progress: 0, loss: tinyCrossEntropy(effectiveWeights(), text), weights: effectiveWeights() });
+
+  const softmaxInto = (into: Float32Array, source: Float32Array) => {
+    let maximum = -Infinity;
+    for (let k = 0; k < V; k += 1) maximum = Math.max(maximum, source[k] / 1);
+    let total = 0;
+    for (let k = 0; k < V; k += 1) {
+      into[k] = Math.exp(source[k] / 1 - maximum);
+      total += into[k];
+    }
+    for (let k = 0; k < V; k += 1) into[k] /= total;
+  };
+
+  const drawFromSource = (source: number) => {
+    const cursor = cursors[source];
+    if (cursor.at >= cursor.size) {
+      cursor.order = shuffledOrder(cursor.size, random);
+      cursor.at = 0;
+    }
+    const pair = cursor.order[cursor.at];
+    cursor.at += 1;
+    sourceSeen[source] += 1;
+    return pair;
+  };
+
+  while (step < totalSteps && !diverged) {
+    // Assemble this step's batch.
+    let size: number;
+    if (stepMode) {
+      const progressNow = totalSteps <= 1 ? 1 : step / (totalSteps - 1);
+      let phase = mixturePhases[0];
+      for (const candidate of mixturePhases) if (candidate.from <= progressNow) phase = candidate;
+      const weights = sources.map((_, index) =>
+        sourceData[index].inputs.length > 0 ? Math.max(0, phase.weights[index] ?? 0) : 0,
+      );
+      const total = weights.reduce((sum, value) => sum + value, 0);
+      const shares = total > 0 ? weights.map((value) => value / total) : weights.map((_, index) => (sourceData[index].inputs.length > 0 ? 1 : 0));
+      const shareTotal = shares.reduce((sum, value) => sum + value, 0);
+      size = safeBatch;
+      for (let slot = 0; slot < size; slot += 1) {
+        let pick = random() * shareTotal;
+        let source = 0;
+        while (source < shares.length - 1 && pick >= shares[source]) {
+          pick -= shares[source];
+          source += 1;
+        }
+        while (shares[source] === 0 && source > 0) source -= 1;
+        const pair = drawFromSource(source);
+        batchInputs[slot] = sourceData[source].inputs[pair];
+        batchTargets[slot] = sourceData[source].targets[pair];
+      }
+    } else {
+      const batch = step % batchesPerEpoch;
+      if (batch === 0) order = shuffledOrder(pairCount, random);
+      const start = batch * safeBatch;
+      const end = Math.min(pairCount, start + safeBatch);
+      size = end - start;
+      for (let slot = 0; slot < size; slot += 1) {
+        const pair = order[start + slot];
+        batchInputs[slot] = sourceData[0].inputs[pair];
+        batchTargets[slot] = sourceData[0].targets[pair];
+      }
+    }
+    const faulty =
+      badBatch !== undefined &&
+      badPairs !== null &&
+      badPairs.inputs.length > 0 &&
+      step >= badBatch.atStep &&
+      step < badBatch.atStep + Math.max(1, badBatch.count ?? 1);
+    if (faulty && badPairs) {
+      const offset = (step - (badBatch?.atStep ?? 0)) * size;
+      for (let slot = 0; slot < size; slot += 1) {
+        const pair = (offset + slot) % badPairs.inputs.length;
+        batchInputs[slot] = badPairs.inputs[pair];
+        batchTargets[slot] = badPairs.targets[pair];
+      }
+    }
+
+    // Forward and backward.
+    const inverseSize = 1 / size;
+    let batchLoss = 0;
+    let maxLogit = -Infinity;
+    let partitionSum = 0;
+    touched.clear();
+    for (let slot = 0; slot < size; slot += 1) {
+      const row = batchInputs[slot];
+      const target = batchTargets[slot];
+      if (table) {
+        const weights = matrices[0].data;
+        const gradient = matrices[0].grad;
+        rowSoftmax(weights, row, probabilities);
+        batchLoss -= Math.log(Math.max(1e-12, probabilities[target]));
+        const offset = row * V;
+        let logPartition = 0;
+        if (watch) {
+          let maximum = -Infinity;
+          for (let k = 0; k < V; k += 1) maximum = Math.max(maximum, weights[offset + k]);
+          let total = 0;
+          for (let k = 0; k < V; k += 1) total += Math.exp(weights[offset + k] - maximum);
+          logPartition = maximum + Math.log(total);
+          maxLogit = Math.max(maxLogit, maximum);
+          partitionSum += logPartition;
+        }
+        if (zLoss > 0) {
+          for (let k = 0; k < V; k += 1) {
+            gradient[offset + k] +=
+              ((probabilities[k] - (k === target ? 1 : 0)) + 2 * zLoss * logPartition * probabilities[k]) * inverseSize;
+          }
+        } else {
+          for (let k = 0; k < V; k += 1) {
+            gradient[offset + k] += (probabilities[k] - (k === target ? 1 : 0)) * inverseSize;
+          }
+        }
+        touched.add(row);
+      } else {
+        const [left, right] = matrices;
+        for (let k = 0; k < V; k += 1) {
+          let sum = 0;
+          for (let j = 0; j < rank; j += 1) sum += left.data[row * rank + j] * right.data[j * V + k];
+          logits[k] = sum;
+        }
+        softmaxInto(probabilities, logits);
+        batchLoss -= Math.log(Math.max(1e-12, probabilities[target]));
+        let logPartition = 0;
+        if (watch) {
+          let maximum = -Infinity;
+          for (let k = 0; k < V; k += 1) maximum = Math.max(maximum, logits[k]);
+          let total = 0;
+          for (let k = 0; k < V; k += 1) total += Math.exp(logits[k] - maximum);
+          logPartition = maximum + Math.log(total);
+          maxLogit = Math.max(maxLogit, maximum);
+          partitionSum += logPartition;
+        }
+        for (let k = 0; k < V; k += 1) {
+          outer[k] =
+            zLoss > 0
+              ? ((probabilities[k] - (k === target ? 1 : 0)) + 2 * zLoss * logPartition * probabilities[k]) * inverseSize
+              : (probabilities[k] - (k === target ? 1 : 0)) * inverseSize;
+        }
+        for (let j = 0; j < rank; j += 1) {
+          let leftTerm = 0;
+          for (let k = 0; k < V; k += 1) {
+            leftTerm += outer[k] * right.data[j * V + k];
+            right.grad[j * V + k] += outer[k] * left.data[row * rank + j];
+          }
+          left.grad[row * rank + j] += leftTerm;
+        }
+        touched.add(row);
+      }
+    }
+    for (const row of touched) rowVisits[row] += 1;
+    batchLoss *= inverseSize;
+
+    // Emulated fp16 backward: scale, round, unscale.
+    let overflow = false;
+    if (lossScaleFault) {
+      for (const matrix of matrices) {
+        const gradient = matrix.grad;
+        for (let index = 0; index < gradient.length; index += 1) {
+          if (gradient[index] === 0) continue;
+          const half = toHalf(gradient[index] * lossScale);
+          if (!Number.isFinite(half)) overflow = true;
+          gradient[index] = half / lossScale;
+        }
+      }
+    }
+
+    // Gradient norm, summed in the same order as trainTinyModel and trainTinyFactored.
+    let squaredNorm = 0;
+    if (table) {
+      const gradient = matrices[0].grad;
+      for (const row of touched) {
+        const offset = row * V;
+        for (let k = 0; k < V; k += 1) squaredNorm += gradient[offset + k] ** 2;
+      }
+    } else {
+      for (const matrix of matrices) {
+        for (let index = 0; index < matrix.grad.length; index += 1) squaredNorm += matrix.grad[index] ** 2;
+      }
+    }
+    const gradientNorm = overflow ? Infinity : Math.sqrt(squaredNorm);
+    if (Number.isFinite(gradientNorm)) peakGradientNorm = Math.max(peakGradientNorm, gradientNorm);
+    const progress = totalSteps <= 1 ? 1 : step / (totalSteps - 1);
+    const stepRate = learningRate * extendedScheduleFactor(schedule, progress, warmupFraction, decayFraction);
+
+    const inSkipRange = skipSteps.some(([from, to]) => step >= from && step < to);
+    const dynamicSkip = overflow && growthInterval > 0;
+    const skipped = inSkipRange || dynamicSkip;
+    const clipped = !skipped && clipNorm > 0 && gradientNorm > clipNorm;
+    const clipScale = clipped ? clipNorm / gradientNorm : 1;
+    let deltaSquared = 0;
+    let weightSquared = 0;
+    let maxUpdate = 0;
+
+    if (skipped) {
+      skippedSteps += 1;
+      if (dynamicSkip) {
+        overflowSteps += 1;
+        lossScale = Math.max(1, lossScale / 2);
+        cleanSteps = 0;
+      }
+      for (const matrix of matrices) matrix.grad.fill(0);
+    } else {
+      if (clipped) clippedSteps += 1;
+      if (overflow) overflowSteps += 1;
+      if (growthInterval > 0) {
+        cleanSteps += 1;
+        if (cleanSteps >= growthInterval) {
+          lossScale *= 2;
+          cleanSteps = 0;
+        }
+      }
+      if (kind === "adam" || kind === "adamw") adamStep += 1;
+      for (let which = 0; which < matrices.length; which += 1) {
+        const matrix = matrices[which];
+        const { data, grad, rows, cols } = matrix;
+        const capture = which === 0 && captureStep === step;
+        if (kind === "sgd") {
+          if (table) {
+            for (const row of touched) {
+              const offset = row * V;
+              for (let k = 0; k < V; k += 1) {
+                const before = data[offset + k];
+                const decay = weightDecay * data[offset + k];
+                data[offset + k] -= stepRate * (grad[offset + k] * clipScale + decay);
+                delta[offset + k] = data[offset + k] - before;
+              }
+              updatedRows.add(row);
+            }
+            if (capture) captured = { gradient: Float32Array.from(grad), update: Float32Array.from(grad), rows, cols };
+            for (const row of touched) grad.fill(0, row * V, row * V + V);
+          } else {
+            if (capture) captured = { gradient: Float32Array.from(grad), update: Float32Array.from(grad), rows, cols };
+            for (let index = 0; index < data.length; index += 1) {
+              const before = data[index];
+              if (weightDecay === 0) data[index] -= stepRate * (grad[index] * clipScale);
+              else data[index] -= stepRate * (grad[index] * clipScale + weightDecay * data[index]);
+              delta[index] = data[index] - before;
+            }
+            grad.fill(0);
+          }
+        } else if (kind === "momentum") {
+          const velocity = matrix.first!;
+          for (let index = 0; index < data.length; index += 1) {
+            const before = data[index];
+            velocity[index] = beta1 * velocity[index] + (grad[index] * clipScale + weightDecay * data[index]);
+            data[index] -= stepRate * velocity[index];
+            delta[index] = data[index] - before;
+          }
+          if (capture) captured = { gradient: Float32Array.from(grad), update: Float32Array.from(velocity), rows, cols };
+          grad.fill(0);
+        } else if (kind === "adam" || kind === "adamw") {
+          const first = matrix.first!;
+          const second = matrix.second!;
+          const firstCorrection = biasCorrection ? 1 - beta1 ** adamStep : 1;
+          const secondCorrection = biasCorrection ? 1 - beta2 ** adamStep : 1;
+          const update = capture ? new Float32Array(data.length) : null;
+          for (let index = 0; index < data.length; index += 1) {
+            const before = data[index];
+            let g = grad[index] * clipScale;
+            if (kind === "adam") g += weightDecay * data[index];
+            else data[index] *= 1 - stepRate * weightDecay;
+            first[index] = beta1 * first[index] + (1 - beta1) * g;
+            second[index] = beta2 * second[index] + (1 - beta2) * g * g;
+            const step = first[index] / firstCorrection / (Math.sqrt(second[index] / secondCorrection) + epsilon);
+            if (update) update[index] = step;
+            data[index] -= stepRate * step;
+            delta[index] = data[index] - before;
+          }
+          if (capture && update) captured = { gradient: Float32Array.from(grad), update, rows, cols };
+          grad.fill(0);
+        } else {
+          const momentum = matrix.first!;
+          const direction = new Float64Array(data.length);
+          for (let index = 0; index < data.length; index += 1) {
+            const g = grad[index] * clipScale;
+            momentum[index] = beta1 * momentum[index] + g;
+            direction[index] = nesterov ? g + beta1 * momentum[index] : momentum[index];
+          }
+          const orthogonal = newtonSchulz(direction, rows, cols, nsSteps);
+          const aspect = Math.sqrt(Math.max(1, rows / cols));
+          for (let index = 0; index < data.length; index += 1) {
+            const before = data[index];
+            data[index] *= 1 - stepRate * weightDecay;
+            data[index] -= stepRate * orthogonal[index] * aspect;
+            delta[index] = data[index] - before;
+          }
+          if (capture) {
+            captured = { gradient: Float32Array.from(direction), update: Float32Array.from(orthogonal), rows, cols };
+          }
+          grad.fill(0);
+        }
+        const touchedAll = !(kind === "sgd" && table);
+        const length = touchedAll ? data.length : 0;
+        for (let index = 0; index < length; index += 1) {
+          deltaSquared += delta[index] * delta[index];
+          maxUpdate = Math.max(maxUpdate, Math.abs(delta[index]));
+        }
+        if (!touchedAll) {
+          for (const row of touched) {
+            for (let k = 0; k < V; k += 1) {
+              const change = delta[row * V + k];
+              deltaSquared += change * change;
+              maxUpdate = Math.max(maxUpdate, Math.abs(change));
+            }
+          }
+        }
+        if (table) {
+          const rowsMoved = touchedAll ? Array.from({ length: V }, (_, row) => row) : [...touched];
+          for (const row of rowsMoved) {
+            let rowSquared = 0;
+            for (let k = 0; k < V; k += 1) rowSquared += delta[row * V + k] * delta[row * V + k];
+            rowMovement[row] += Math.sqrt(rowSquared);
+          }
+          if (touchedAll) for (let row = 0; row < V; row += 1) updatedRows.add(row);
+        }
+        for (let index = 0; index < data.length; index += 1) weightSquared += data[index] * data[index];
+        if (!touchedAll) delta.fill(0);
+      }
+    }
+
+    let finite = Number.isFinite(batchLoss);
+    for (const matrix of matrices) {
+      if (!finite) break;
+      for (let index = 0; index < matrix.data.length; index += 1) {
+        if (!Number.isFinite(matrix.data[index])) {
+          finite = false;
+          break;
+        }
+      }
+    }
+    if (!finite) {
+      diverged = true;
+      haltedAt = step + 1;
+    }
+
+    if (trace) {
+      traced.push({
+        step,
+        loss: batchLoss,
+        learningRate: stepRate,
+        gradientNorm,
+        clipped,
+        maxLogit: Number.isFinite(maxLogit) ? maxLogit : 0,
+        logPartition: size > 0 ? partitionSum / size : 0,
+        updateRatio: weightSquared > 0 ? Math.sqrt(deltaSquared / weightSquared) : 0,
+        maxUpdate,
+        skipped,
+        overflow,
+        lossScale,
+        faulty,
+      });
+    }
+
+    windowLoss += Number.isFinite(batchLoss) ? batchLoss : UNIFORM_CROSS_ENTROPY * 4;
+    windowSteps += 1;
+    step += 1;
+
+    if (step % historyEvery === 0 || step === totalSteps || diverged) {
+      history.push({
+        step,
+        progress,
+        loss: windowLoss / Math.max(1, windowSteps),
+        learningRate: stepRate,
+        gradientNorm,
+      });
+      windowLoss = 0;
+      windowSteps = 0;
+    }
+    if (step % checkpointEvery === 0 || step === totalSteps) {
+      const weights = effectiveWeights();
+      recorded.push({ step, progress, loss: diverged ? Number.NaN : tinyCrossEntropy(weights, text), weights });
+    }
+  }
+
+  const weights = effectiveWeights();
+  return {
+    weights,
+    history,
+    checkpoints: recorded,
+    steps: step,
+    tokens: pairCount,
+    updatedParameters: table ? updatedRows.size * V : parameters,
+    finalLoss: diverged ? Number.NaN : tinyCrossEntropy(weights, text),
+    diverged,
+    peakGradientNorm,
+    parameters,
+    clippedSteps,
+    skippedSteps,
+    overflowSteps,
+    haltedAt,
+    stateFloats,
+    rowMovement,
+    rowVisits,
+    sourceSeen,
+    sourcePairs,
+    trace: traced,
+    captured,
+  };
+}
