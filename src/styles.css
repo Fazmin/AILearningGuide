@@ -27132,3 +27132,251 @@ path.sl-reference {
     display: none;
   }
 }
+
+/* rl-environments */
+
+.explore-scroll[data-module="rl-environments"][data-current-step="0"] .rle-scorecard,
+.explore-scroll[data-module="rl-environments"][data-current-step="1"] .range-control:has(input[aria-label="Training update"]),
+.explore-scroll[data-module="rl-environments"][data-current-step="2"] .rle-replay,
+.explore-scroll[data-module="rl-environments"][data-current-step="3"] .rle-design-control,
+.explore-scroll[data-module="rl-environments"][data-current-step="4"] .rle-leash-controls,
+.explore-scroll[data-module="rl-environments"][data-current-step="5"] .rle-unseen-bars {
+  --lesson-step-target: 1;
+  position: relative;
+  z-index: 1;
+  border-radius: var(--radius-sm);
+  background-color: color-mix(in srgb, var(--module-accent) 12%, var(--panel-solid));
+  animation: step-target-in 300ms ease-out;
+}
+
+.tg-lab--hero.rle-lab > .rle-train-card {
+  grid-column: 1 / -1;
+}
+
+.rle-episode-control {
+  max-width: 26rem;
+}
+
+.rle-ticket {
+  margin-top: 0.7rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--line);
+  border-left: 0.2rem solid var(--module-accent);
+  border-radius: var(--radius-sm);
+  background: var(--panel-muted);
+}
+
+.rle-ticket span {
+  color: var(--muted);
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 0.62rem;
+}
+
+.rle-ticket p {
+  margin: 0.25rem 0 0;
+  color: var(--ink);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.rle-desk-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr));
+  gap: 0.9rem;
+  align-items: start;
+  margin-top: 0.4rem;
+}
+
+.rle-subhead {
+  margin: 0.8rem 0 0.35rem;
+  color: var(--ink-soft);
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+
+.rle-replay {
+  display: grid;
+  gap: 0.3rem;
+  margin: 0;
+  padding: 0.2rem;
+  list-style: none;
+}
+
+.rle-replay li {
+  display: grid;
+  gap: 0.15rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+}
+
+.rle-replay b {
+  color: var(--ink);
+  font-size: 0.72rem;
+}
+
+.rle-replay code {
+  font-size: 0.68rem;
+}
+
+.rle-replay span {
+  color: var(--ink-soft);
+  font-size: 0.68rem;
+  line-height: 1.45;
+}
+
+.rle-replay small {
+  color: var(--muted);
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 0.6rem;
+}
+
+.rle-replay em {
+  color: var(--muted);
+  font-size: 0.66rem;
+}
+
+.rle-replay li.is-loophole {
+  border-color: color-mix(in srgb, var(--loss) 60%, var(--line));
+  background: color-mix(in srgb, var(--loss) 7%, var(--panel));
+}
+
+.rle-replay li.is-capped {
+  border-style: dashed;
+  background: var(--panel-muted);
+}
+
+.rle-flag {
+  margin-left: 0.4rem;
+  padding: 0.05rem 0.35rem;
+  border: 1px solid color-mix(in srgb, var(--loss) 50%, var(--line));
+  border-radius: var(--radius-xs);
+  color: var(--loss);
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 0.58rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.rle-scorecard th,
+.rle-scorecard td {
+  vertical-align: top;
+}
+
+.rle-scorecard td {
+  white-space: nowrap;
+}
+
+.rle-scorecard td:last-child {
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 0.66rem;
+  line-height: 1.45;
+  text-align: left;
+  white-space: normal;
+}
+
+.rle-reward-line {
+  margin: 0.5rem 0 0;
+  color: var(--ink-soft);
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 0.64rem;
+  line-height: 1.5;
+}
+
+.rle-train-controls,
+.rle-leash-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  gap: 0.55rem 1.1rem;
+  align-items: end;
+}
+
+.rle-train-controls {
+  margin-top: 0.4rem;
+}
+
+.rle-leash-controls {
+  grid-column: 1 / -1;
+  padding: 0.2rem 0.3rem;
+}
+
+.rle-train-controls .segmented {
+  margin: 0;
+}
+
+.rle-checker-control.is-unused .segmented {
+  opacity: 0.55;
+}
+
+.rle-unused {
+  margin: 0.25rem 0 0;
+  color: var(--muted);
+  font-size: 0.64rem;
+}
+
+.rle-policy-summary {
+  display: grid;
+  gap: 0.15rem;
+  margin: 0.6rem 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--muted);
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 0.62rem;
+}
+
+.rle-unseen-bars {
+  padding: 0.2rem;
+}
+
+.rle-strip {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin-top: 0.2rem;
+  overflow: visible;
+}
+
+.rle-strip text {
+  fill: var(--muted);
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 10px;
+}
+
+.rle-strip-grid {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.rle-strip .is-success {
+  fill: var(--forward);
+  stroke: var(--panel-solid);
+  stroke-width: 1.2;
+}
+
+.rle-strip .is-hack {
+  fill: none;
+  stroke: var(--loss);
+  stroke-width: 1.8;
+}
+
+.rle-strip-band {
+  fill: color-mix(in srgb, var(--module-accent) 12%, transparent);
+  stroke: color-mix(in srgb, var(--module-accent) 40%, var(--line));
+  stroke-width: 1;
+}
+
+.rle-strip-seed.is-current text {
+  fill: var(--ink);
+  font-weight: 700;
+}
+
+.rle-strip-summary {
+  margin: 0.3rem 0 0;
+  color: var(--ink-soft);
+  font-size: 0.68rem;
+  line-height: 1.5;
+}
