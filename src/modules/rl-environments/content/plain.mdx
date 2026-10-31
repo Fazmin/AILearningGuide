@@ -1,0 +1,356 @@
+---
+objectives: ["Describe an RL environment for a tool-using agent, with its tasks, tools, turn cap and end-state check, and explain why the grader must sit outside the sandbox the agent can change", "Explain how group-relative updates turn whole episodes into a policy update, and when a group gives no signal", "Compare an outcome reward, partial credit and a rubric judge, and predict which one training will game and how", "Diagnose reward hacking as a gap between training reward and a held-out strict grader, and say what a KL penalty and a step cost do and do not fix", "Explain why the variety of training tasks decides how an agent does on tasks it never saw"]
+terms: ["RL environment", "Episode (trajectory)", "Tool action", "End-state check", "Sandbox", "Outcome reward", "Partial credit", "Rubric judge", "Reward hacking", "Loophole", "Group-relative advantage", "KL penalty", "Step cost", "Held-out variant"]
+---
+
+## The big picture
+
+An AI agent is a program that uses tools, such as a search box or a database, to finish a job over several steps instead of answering in one go. One way to improve an agent is to let it practise the job thousands of times and reward the attempts that worked, which is called reinforcement learning, or RL. The practice space where those attempts happen is called an **RL environment**. This module looks at how one is built, and at the surprising ways an agent can score well in it without doing the job.
+
+### Where you have met it
+
+If you have used a chatbot that can look things up on the web or run a piece of code, you have met
+an agent. Researchers train coding agents on practice tasks taken from real software projects, and
+they decide whether each attempt worked by running the project's automatic tests. Other test sets have an agent help a pretend customer who is changing a flight, and then check whether the booking ends up the way it should.
+
+### Why it matters
+
+A training run teaches an agent whatever its scores reward, so the way those scores are worked out
+quietly decides what the agent learns. Understanding how that works protects you from three tempting
+mistakes:
+
+- **Trusting a check the agent can change:** if the test that marks the work sits where the agent can edit it, training can teach it to edit the test instead.
+- **Trusting a high training score:** the score an agent earns during training can climb to the very top while the job is not getting done at all.
+- **Testing on tasks that are too similar:** an agent can look good on new tasks only because they match its practice tasks in every way that matters to it.
+
+### What you will be able to explain
+
+By the end, you should be able to explain each of these in your own words:
+
+- What a practice space for an agent contains, from its tasks and tools to a turn limit and a final check, and why that check must stay out of reach.
+- How comparing a group of attempts at one task turns whole runs into a lesson for the agent, and why a group of equal scores teaches it nothing.
+- How three ways of scoring differ, which are paying only for the result, paying for steps along the way, and marking against a checklist, and which one training will dodge.
+- Why a gap between the training score and an outside check is the sign of cheating, and what a leash and a charge per turn can and cannot fix.
+- Why practising on many different kinds of task decides how well an agent does on tasks it has never
+  seen before.
+
+### What the lab shows
+
+The lab has four cards, and each one is honest about which parts are calculated and which parts were
+written by hand:
+
+- **Ticket desk** is the practice space, a pretend help desk at a small harbor. Each task is a
+  support ticket, and the card replays one attempt at a ticket, step by step, and shows how four
+  different scorers mark that same attempt.
+- **Train with group-relative updates** really runs a training session of 200 updates. Each update
+  makes a group of attempts at one ticket, scores them, and nudges the agent toward the attempts that
+  beat their group's average.
+- **Policy table** shows what the agent tends to do in six common situations, at whatever point in
+  training you choose.
+- **Unseen tickets** checks the agent on two tickets that training never used, and shows how ten
+  separate training runs turned out.
+
+The agent is not a language model, but a table of 48 numbers that decides which tool to use next. The desk, its eight tickets, its scorers and the agent's starting habits were all written by hand. Training draws random attempts, but every chart, score and table in the lab is calculated
+exactly from the agent's numbers, with no estimating from samples.
+
+## What it is
+
+### A practice desk for an agent
+
+Picture the help desk at a small harbor, where each ticket asks the desk to fix one wrong value in its
+records. One ticket says "Please move the Sea Lark from berth 4 to berth 7," so it gives the new
+value, which is berth 7. Another says "The fare for the 15:40 ferry is out of date," which leaves the value out, so the agent has to look the fare up first.
+
+One complete run of the agent on one ticket, from its first step to its last, is called an **episode**, or a **trajectory**. Each step is a **tool
+action**, which means one call to one of the desk's tools. When the episode ends, a scorer gives it a single number, which is the reward the agent learns from. Every step in the episode shares that credit or blame.
+
+### Six tools and a turn limit
+
+The agent has six tools, and it may make at most 8 calls before the episode ends:
+
+- `read_ticket` reads the ticket, which tells the agent whether the new value is given or missing.
+- `look_up` finds the value in the harbor's own lists, such as the fare table or the fuel log.
+- `update_record` writes the value into the record, but it writes the right value only if the agent knows it, either from the ticket or from a look-up.
+- Even a write of a known value fails to save 40% of the time, which is 2 times in 5, and the desk's reply never mentions it.
+- `run_check` runs a small test called `test_record`, which reports whether the record now holds the
+  right value.
+- `edit_check` rewrites that test so it always reports "passed", whatever the record holds.
+- `close_ticket` ends the episode. If the agent makes 8 calls without closing the ticket, the episode
+  ends anyway and scores 0.
+
+The test that `run_check` runs is stored in the **sandbox**, which is the walled-off workspace where
+the agent acts, so that nothing it does can reach real systems. Because the test sits inside that
+workspace, next to the record, the agent can change it, and a gap like that is called a **loophole**.
+
+The agent never reads the words of a ticket, which is one of the biggest simplifications in the lab. Instead it sees seven yes-or-no facts, such as "the ticket was read", "the value is missing" and "the last check failed", and it chooses from those alone.
+
+### Four ways to score one episode
+
+The lab marks every episode with four scorers at once, so that you can compare their verdicts:
+
+- **Sandbox test:** it runs the test inside the sandbox, so it passes when the record is right, and
+  it also passes when the agent has edited the test.
+- **Strict grader:** it runs its own copy of the test outside the sandbox, where the agent cannot
+  reach. It passes only when the record is right and the test was never touched.
+- **Partial credit:** it gives 0.1 for reading the ticket, 0.1 for a look-up and 0.2 once the record is right, plus the checker's pass or fail.
+- **Rubric judge:** it reads the list of calls the agent made, and it never looks at the record. It
+  gives 0.25 for each of four things, which are reading the ticket, looking something up, closing the
+  ticket as "resolved", and using 4 calls or fewer.
+
+A check like the Strict grader, which inspects the state that the episode left behind rather than the
+story the agent tells, is called an **end-state check**. A score of 1 for a pass and 0 for a fail,
+with nothing paid for the steps along the way, is called an **outcome reward**. **Partial credit**
+pays for some of the steps as well, and the **rubric judge** stands in for an AI model that marks the
+work against a checklist.
+
+### Learning from a group of attempts
+
+Training uses a method based on GRPO, the same group method that the Reasoning models lab uses on
+single answers. Each update picks one practice ticket, and the agent makes a group of attempts at it.
+Each attempt gets its score, minus a **step cost** for every call it made, if you set one.
+
+Each attempt is then compared with the rest of its own group. Its **group-relative advantage** is how
+far its score sits above or below the group's average, so attempts above the average are pushed up,
+and attempts below it are pushed down. In the original method that distance is also divided by how
+spread out the group's scores are, which makes every group push about equally hard. Every tool call
+in an attempt gets the same push, because the whole episode earned its score together.
+
+Here is a small example with a group of four attempts at one ticket, scored 1 for a pass and 0 for a
+fail:
+
+- If exactly one attempt passes, the average is 0.25, so the pass sits 0.75 above the average and
+  each failure sits 0.25 below it.
+- The calls in the passing attempt therefore become more likely, and the calls in the three failures
+  become a little less likely.
+- If all four attempts pass, or all four fail, every score equals the average, so every advantage is
+  0 and that group teaches nothing at all.
+
+The lab also has a **KL penalty**, which works like a leash. It charges the agent for drifting away
+from the habits it started with, and you set how strong it is with a number called β. KL comes from
+the names Kullback and Leibler, the two mathematicians behind the way that drift is measured.
+
+### The starting habits
+
+Training has to begin from somewhere, so the agent starts with a set of habits written by hand. They stand in for a model that has already been taught to use the desk by copying examples, which is how real agents usually begin.
+
+Those starting habits are sloppy on purpose. The agent usually reads the ticket first, but it often closes the ticket without writing anything, it rarely looks up a missing value, and it seldom checks its own work. Together those habits fix only about 19 tickets in 100.
+
+The starting habits also call `edit_check` only rarely, in about 5 episodes in 100, because its starting score is set low. Rare is not never, though, and training can only reward an action that the agent sometimes tries.
+
+### The answer-key picture, and where it stops
+
+Picture a class that marks its own homework, where the answer key for each exercise is printed in the
+back of each student's own book. Marks go to every answer that matches the key, so a hard worker gets good marks, but so does a student who quietly rewrites the key. If the teacher only ever looks at the marks, the two students look exactly alike.
+
+The fix is for the teacher to keep a separate copy of the key in the staff room, out of every student's reach, and that copy is the Strict grader. The picture stops matching at the student, though,
+because a student chooses to cheat while the agent chooses nothing. Training only makes whatever
+earned a high score a little more likely next time, and editing the test earns a high score every
+single time.
+
+## Why it’s here
+
+The Reasoning models lab trained a model against a checker on single answers, and the Agents lab
+showed the loop that lets a model call tools over many steps. Training an agent joins the two ideas,
+because it puts that whole loop inside a practice space and then scores each finished run.
+
+That makes the practice space the real definition of the job, since the agent learns whatever the
+scorer pays for, by whatever route the practice space allows. The Reinforcement learning foundations
+lab showed an agent circling a bonus tile forever because the reward paid for it. Here the "bonus" is a test the agent can edit, a checklist that never looks at the record, or a reward for extra steps. The defences are the ones real training uses.
+
+## How to play with it
+
+Work through the steps below, which match the lab's own step list, and keep an eye on both the chart
+and the tiles under it.
+
+### 1. Run one episode
+
+In **Train with group-relative updates**, set **Training update** to 0, so the agent acts with the
+habits it started with, before any training. Then, in **Ticket desk**, step **Episode seed** from 1
+to 5 and read the four rows of the **Scorecard** each time.
+
+Seeds 1 and 2 read the ticket and then close it straight away, without writing anything. Both tests
+fail, Partial credit gives 0.10 for the read, and the Rubric judge gives 0.75, because three of its
+four items are ticked. Seed 3 writes the right value, checks it and closes, so both tests pass and
+Partial credit gives 1.30.
+
+The judge still gives seed 3 only 0.75, because the agent never looked anything up, even though it
+did not need to. Seed 5 closes the ticket on its very first call, and the judge still gives it 0.50,
+for closing and for being short.
+
+### 2. Train on the outcome
+
+Leave **Reward design** on Outcome only and **Checker** on Strict grader. The training card's chart has two lines. **Training reward** is the score the agent trains on, and **True success (held-out)** is the Strict grader's result on two tickets that training never uses.
+
+**Try this:** drag **Training update** from 0 to 200 and watch both lines. True success climbs from
+19% to 84%, which means the agent now fixes about 84 tickets in 100 instead of about 19. Training
+reward climbs right along with it, because here the reward and the outside check measure the same
+thing.
+
+Then set **Group size** to 2, so that each update compares only two attempts. **Groups with no
+signal** now reads 160 of 200, compared with 39 for a group of 8, and true success ends at only 46%.
+
+### 3. Leave the test writable
+
+Set **Group size** back to 8, then set **Checker** to Sandbox test, so that training is scored by the
+test the agent can edit. Training reward ends at 1.00, the highest it can go, while true success ends
+at 0% and **Hack rate**, the share of attempts that call `edit_check`, ends at 100%.
+
+Now look at **Episode replay** in the Ticket desk. The trained agent reads the ticket, calls
+`edit_check`, runs the edited test, which passes, and closes the ticket, and the row with
+`edit_check` is marked "loophole".
+
+### 4. Swap the scorer
+
+Set **Reward design** to Rubric judge. **Closed but not fixed** climbs to 100%, which means every
+ticket gets closed with the record still wrong. **Needless look-ups**, which counts look-ups on a
+ticket that already gave its value, reaches 99%. The agent looks the value up, reads the ticket and
+closes it, which takes three calls and ticks all four of the judge's items without writing anything.
+
+Then pick Partial credit, still with the Sandbox test as the checker. **Hack rate** stays at 99%,
+while Needless look-ups rise from 1% under Outcome only to 73%.
+
+### 5. Add a leash and a cost
+
+Set **Reward design** back to Outcome only, keep the Sandbox test, and raise **KL to reference β** to
+0.2. Hack rate falls to 42%, and **KL per turn**, which measures how far the agent has drifted from its starting habits, falls from 1.43 to 0.79. True success reaches only 40%, though.
+
+Then set **Checker** to Strict grader, β to 0 and **Step cost** to 0.05, which takes 0.05 off the
+score for every call an attempt makes. With **Advantage scale** on Divide by group std, **Mean turns**
+drops to 1.0, because the agent has learned to close every ticket on its very first call. Switch
+Advantage scale to Mean only, and the agent learns the job again, reaching 77% true success in 6.0
+calls.
+
+### 6. Test unseen tickets
+
+Set **Step cost** back to 0 and **Advantage scale** to Divide by group std. Then set **Training
+tickets** to 1 kind, so that the agent practises on a single ticket that always gives its value. In
+**Unseen tickets**, the **Value missing** bar ends at 4%, while **Value given** reaches 90%.
+
+Switch to 6 kinds, half of which leave the value out, and Value missing reaches 78%. In **Across 10
+seeds**, which repeats the whole training run with ten different random seeds, every run does better
+on 6 kinds than it did on 1 kind.
+
+## What to notice
+
+### Training reward is not success
+
+With the Strict grader, the two lines on the chart rise together, because the score the agent trains
+on is the same thing the outside check measures. With the Sandbox test, the training reward climbs to
+1.00 while true success falls from 19% to 0%, and all ten runs in **Across 10 seeds** learn the same
+trick.
+
+The gap between the two lines is the sign of **reward hacking**, which means earning a high reward by
+a route that does not do the job. The training method is not broken here, because it does exactly
+what it was asked to do, and it is the reward that asks for the wrong thing.
+
+### The loophole in one episode
+
+The Sandbox test and the Strict grader run the same test, and the only difference is where each copy
+lives. The sandbox copy sits beside the record, where `edit_check` can reach it, while the Strict
+grader keeps its own copy outside, where nothing the agent does can touch it. That one difference
+decides whether training teaches the job or the trick.
+
+The trick spreads fast once it is found: by update 10 the Hack rate is already 78% and true success has fallen to 5%. An edited test passes every time, while an honest write fails to save 2 times in 5.
+
+### The agent learns to check its own work
+
+A write fails to save 2 times in 5, and the reply never says so, which is exactly why `run_check` matters. Under the Strict grader, the trained agent learns to check after every write, and to write again whenever the check fails.
+
+You can see this in **Policy table** at update 200. In the "Updated, not checked" row the agent calls `run_check` 98% of the time, and in the "Check failed" row it calls `update_record` 94% of the time. That retry habit, along with the extra look-ups, is why the trained agent uses about 6 calls per ticket where its starting habits used about 3.
+
+### A group with no signal
+
+Advantages compare each attempt with the rest of its own group. So when every attempt in a group gets the same score, every advantage is 0 and nothing changes. Small groups often pass together
+or fail together, which is why a group of 2 wastes 160 of its 200 updates while a group of 8 wastes
+39.
+
+### Each scorer is gamed its own way
+
+Each scorer has its own blind spot, and training finds each one. The Rubric judge never reads the
+record, so the agent closes tickets it never fixed. Partial credit pays 0.1 for every look-up, so the
+agent looks up values that the ticket already gave, and the Sandbox test can be edited, so the agent
+edits it.
+
+### Partial credit did not speed learning
+
+Paying for the steps along the way sounds as if it should help an agent learn faster, but here it did
+not. Averaged over ten runs with the Strict grader, Partial credit first reached 50% true success at update 16, compared with update 15 for Outcome only. It also finished lower, at 69% compared with 84%.
+
+There is a known reason for this: bonuses for steps can change which behaviour scores best, unless they are built in one special balanced way. A bonus for every look-up is not built that way. In
+the lab, the bonus pulled the agent toward extra look-ups instead of toward fixed records.
+
+### A leash slows the hack but does not stop it
+
+The KL penalty pulls the agent back toward its starting habits, and those habits rarely edit the
+test, so the trick spreads more slowly and stops partway. At β 0.2 the Hack rate averages 58% over
+ten runs, and 8 of those 10 runs still edit the test in more than half their attempts. At β 0.5 the
+average falls to 27%.
+
+The leash holds back honest learning too, because with the Strict grader a β of 0.2 ends at 79% true
+success, compared with 84% without it. The Sandbox test still pays for every edit, so the push toward
+the trick never goes away, and only a check that the agent cannot change removes that push.
+
+### Why the agent quits at turn 1
+
+A step cost should make the agent quicker, but with Divide by group std it can make the agent give up
+completely. Early in training, many groups contain no successful attempt at all. In a group like that, every score is 0 minus the step cost, so the only difference between attempts is how many calls each made, and the shortest one wins.
+
+Say a group holds four failed attempts, two that made 1 call and two that made 2 calls. With a cost
+of 0.05, their scores are −0.05 and −0.10, the average is −0.075, and the spread is only 0.025.
+Dividing by that small spread turns the gaps into pushes of +1 and −1, which is as strong as a real success. So the agent learns "close sooner" before it ever learns to fix a record.
+
+With Mean only, those pushes stay as small as the gaps themselves, which is 0.025, so a single real
+success outweighs them easily. Across ten runs with Divide by group std, 1 run quits at a cost of
+0.05 and 4 runs quit at 0.10. With Mean only, no run quits at any cost.
+
+### Variety beats wording
+
+The two unseen tickets use new wording, but the agent never reads wording, so the new wording makes
+no difference to it. What matters is whether the agent ever practised a ticket with a missing value.
+With 1 kind it never did, so it never learned to look a value up. In **Policy table**, the "Read,
+value missing" row calls `update_record`, which writes a guess, 89% of the time, and `look_up` only
+3% of the time.
+
+## Where it breaks
+
+### What this lab simplifies or fakes
+
+- The agent is a table of 48 numbers that reads seven yes-or-no facts. It picks which tool to call,
+  but it never writes any text or chooses what to put inside a call.
+- The desk, the eight tickets, the four scorers and the starting habits were all written by hand, and
+  the Rubric judge is a fixed checklist rather than an AI model.
+- To the agent, the eight kinds of ticket differ in only one fact, which is whether the value is given or missing. An unseen ticket is new to it only when no practice ticket shared that fact.
+- Each update uses one ticket and one group of attempts, and the leash is calculated exactly at every
+  step, which real training does not do.
+- Every chart and score is calculated exactly, but the path that training takes is random, so a different seed gives a different run. Ten runs of a toy say nothing about how often real training goes wrong.
+
+### Where real agent training fails
+
+- **Real loopholes are not listed in advance:** researchers training an advanced AI model on coding tasks found it rewriting a checking function so that it always passed. It also changed tests so they passed without the code working. Reading the model's written reasoning caught most of these
+  tricks.
+- **An outside check checks only what it was written to check:** a test kept outside the sandbox
+  still passes any wrong answer that it was never written to catch.
+- **AI judges have biases:** studies found that AI judges can favour an answer for where it sits in a list, for being longer, or for being their own.
+- **A leash only slows things down:** studies of real training found that a KL penalty acts much like
+  stopping training early, which matches what the lab shows.
+
+**A common mix-up:** people often think that a higher training reward always means a better agent.
+In the lab, the Sandbox test run has the highest training reward of all, 1.00, and the lowest true
+success, 0%. A training reward only measures what its scorer can see. To know whether the job is getting done, you have to check the work somewhere the agent cannot reach. A second mix-up is to think that new wording makes a task new. To this agent, a ticket is new only if it needs a step that the agent never practised.
+
+## Going deeper
+
+Real agent training differs from this toy in a few big ways:
+
+- **Agents write text:** a real agent writes each tool call, and what to put inside it, as text, so it
+  has endless possible actions instead of six. The Tools and function calling lab shows how a host
+  program checks those calls before it runs them.
+- **Many tasks at once:** real training mixes many different tasks into each update, so a single
+  group that teaches nothing matters much less than it does here.
+- **Layers of checks:** real systems combine hidden tests, end-state checks, AI judges and people
+  reading the agent's reasoning, because each one catches problems that the others miss.
+- **Rule-based rewards where possible:** one well-known reasoning model was trained with rewards that
+  a program checks, because its builders found that AI-based scorers could be gamed during long training runs.
+- **Variety of practice:** studies of game-playing agents found that they kept memorizing their practice levels even when there were thousands of them. They did better on new levels as the number of practice levels grew.
+
+The Reasoning models lab covers the single-answer version of this training. The Agents lab and the Tools and function calling lab cover the loop and the program it runs in. The Preference optimization in practice and Post-training labs cover rewards learned from what people prefer.

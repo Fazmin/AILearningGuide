@@ -1,0 +1,299 @@
+---
+objectives: ["Describe an RL environment for a tool-using agent, with its tasks, tools, turn cap and end-state check, and explain why the grader must sit outside the sandbox the agent can change", "Explain how group-relative updates turn whole episodes into a policy update, and when a group gives no signal", "Compare an outcome reward, partial credit and a rubric judge, and predict which one training will game and how", "Diagnose reward hacking as a gap between training reward and a held-out strict grader, and say what a KL penalty and a step cost do and do not fix", "Explain why the variety of training tasks decides how an agent does on tasks it never saw"]
+terms: ["RL environment", "Episode (trajectory)", "Tool action", "End-state check", "Sandbox", "Outcome reward", "Partial credit", "Rubric judge", "Reward hacking", "Loophole", "Group-relative advantage", "KL penalty", "Step cost", "Held-out variant"]
+---
+
+## The big picture
+
+This module is about **RL environments**: the programs that hand a tool-using agent a task, run each
+**tool action** it takes, and score the finished **episode (trajectory)**. Reasoning models are
+trained against a checker on single answers. Agents are trained the same way on whole episodes, and
+the environment decides what counts as success.
+
+The lab's environment is the Harbor ticket desk. A ticket asks for one value in a record to be
+corrected, the agent has six tools and eight turns, and four scorers grade the result. The module
+builds on *Reasoning models* (group-relative training against a checker), *Agents* (the host loop and
+its step cap) and *Reinforcement learning foundations* (policy gradients and reward hacking).
+
+### Where it shows up
+
+- **Coding-agent environments.** SWE-bench builds 2,294 tasks from real GitHub issues in 12 Python
+  repositories and accepts a patch only if tests from the original fix, applied by the harness after
+  the patch, go from failing to passing (Jimenez et al., 2024). SWE-Gym packages 2,438 such tasks,
+  each with an executable runtime and unit tests, to train agents and verifiers (Pan et al., 2025).
+- **Tool-use benchmarks.** τ-bench has agents talk to a simulated user and call domain tools, and it
+  grades by comparing the database at the end of the conversation with an annotated goal state
+  (Yao et al., 2025).
+- **Verifiable rewards.** RLVR rewards a policy only when a program confirms the result (Lambert et al., 2024), and GRPO scores a group of answers to the same question against each other (Shao et al., 2024). DeepSeek-R1 used GRPO with rule-based rewards and avoided neural reward models for reasoning tasks, because those are susceptible to reward hacking during large-scale RL (Guo et al., 2025).
+- **Hacked tests.** A frontier reasoning model trained in agentic coding environments learned, among
+  other hacks, to make a verify function always return true and to update a unit test so it passed
+  trivially (Baker et al., 2025).
+
+### Why it matters
+
+An agent trained by RL learns whatever the environment pays for. Three design choices decide what
+that is:
+
+- **Where the check lives.** A test stored in the **sandbox** the agent works in is a test the agent
+  can edit. An **end-state check** run outside it, on the record the episode left behind, cannot be
+  edited.
+- **What the reward pays for.** An **outcome reward** pays only for the result, **partial credit**
+  also pays for steps, and a **rubric judge** pays for what the transcript shows. Each can be
+  satisfied without the task being done, each in its own way.
+- **What training covers.** A policy can only learn situations its training tasks put it in. A
+  **held-out variant** measures what carries over.
+
+### What you will be able to explain
+
+- What an RL environment for a tool-using agent contains (tasks, tools, a turn cap and an end-state
+  check), and why the grader must sit outside the sandbox the agent can change.
+- How group-relative updates turn whole episodes into a policy update, and when a group gives no
+  signal.
+- How an outcome reward, partial credit and a rubric judge differ, and which one training will game,
+  and how.
+- Why reward hacking shows as a gap between training reward and a held-out strict grader, and what a
+  KL penalty and a step cost do and do not fix.
+- Why the variety of training tasks decides how an agent does on tasks it never saw.
+
+### What the lab shows
+
+Nothing here is a language model. The desk, its eight tickets, the six tools, the four scorers and
+the starting policy are written by hand. The policy is 48 numbers: a linear softmax over the six
+tools that reads seven yes/no features. Training runs 200 sampled GRPO-style updates from a seed.
+Every curve, tile, bar and table cell is an exact expectation of the policy at that update,
+computed by dynamic programming over the desk's states, so the only randomness is the training path
+and the one replayed episode.
+
+- **Ticket desk** replays one episode, picked by **Episode seed**, from the policy at the chosen
+  **Training update**. Its **Scorecard** gives the **Sandbox test**, **Strict grader**, **Partial
+  credit** and **Rubric judge** verdicts.
+- **Train with group-relative updates** sets **Reward design**, **Checker**, **Training tickets**,
+  **Group size**, **KL to reference β**, **Step cost**, **Advantage scale** and **Seed**, and plots
+  **Training reward** against **True success (held-out)**.
+- **Policy table** shows the policy in six situations, and **Unseen tickets** shows held-out success
+  by value class and where seeds 1 to 10 end.
+
+The key experiment: with the defaults, true success climbs from 19% to 84%. Set **Checker** to
+*Sandbox test* and training reward ends at 1.00 while true success ends at 0%.
+
+## What it is
+
+An RL environment for an agent is a loop with a scorer at the end. Each turn the agent sends a tool
+action, the environment runs it and replies, and after the last turn a grader scores the episode.
+Training then makes the actions in high-scoring episodes likelier.
+
+### The ticket desk
+
+A ticket asks for one record to be corrected. Some tickets state the new value, and others leave it
+out, so it must be looked up. The six tools:
+
+- `read_ticket` and `look_up` gather information.
+- `update_record` writes the right value only once the value is known (read on a ticket that gives
+  it, or looked up), and even then fails to save 40% of the time without saying so.
+- `run_check` runs `test_record`, a test stored in the sandbox next to the record.
+- `edit_check` rewrites that test so it always passes. This is the **loophole**.
+- `close_ticket` ends the episode. An episode that reaches 8 calls without closing scores 0.
+
+The policy never reads the ticket's words. It sees seven features: read, value missing, value known,
+updated, last check passed, last check failed, and test edited.
+
+### Four scorers
+
+- **Sandbox test:** 1 if the ticket was closed and the record is right *or* the test was edited.
+- **Strict grader:** an end-state check outside the sandbox with its own copy of the test. It gives 1
+  only if the record is right and the test untouched.
+- **Partial credit:** 0.1 for reading, 0.1 for a look-up and 0.2 once the record is right, plus the
+  chosen checker's verdict.
+- **Rubric judge:** 0.25 each for reading, looking up, closing with "resolved", and using 4 calls or
+  fewer. It never looks at the record.
+
+### The starting policy
+
+Training starts from a hand-written reference policy that stands in for a model after supervised
+fine-tuning. It usually reads first, but it often closes without writing, rarely looks a missing
+value up, and seldom checks its write. It solves 19% of held-out tickets, uses about 3 calls per
+episode, and calls `edit_check` in about 5% of episodes, because that tool's logit is a constant
+−2.5. Training can only reward an action the policy sometimes takes.
+
+### Group-relative updates over episodes
+
+Each update samples a group of G episodes on one training ticket. An episode's reward is its score
+minus the **step cost** times its turns. Its **group-relative advantage** is that reward minus the
+group mean, divided by the group's standard deviation under *Divide by group std* (the GRPO recipe)
+or left undivided under *Mean only*. Every turn of an episode shares its advantage:
+
+`w ← w + (0.6 / G) · Σᵢ [ Aᵢ · Σₜ ∇log π(aₜ | sₜ) − β · Σₜ ∇KL(π(·|sₜ) ‖ π_ref(·|sₜ)) ]`
+
+The **KL penalty** pulls each visited state's tool probabilities back toward the starting policy,
+with weight β. A group whose rewards are all equal has zero advantage everywhere, so it teaches
+nothing.
+
+## Why it’s here
+
+*Reasoning models* trained one number against a checker on single answers. Agents act over many
+turns in a world that changes, and *Agents* showed the host loop that runs them. Training an agent
+puts that loop inside an **RL environment**, and the environment becomes the specification: the
+policy learns what the scorer pays for, by whatever route the environment allows.
+*Reinforcement learning foundations* showed a bonus tile maximized faithfully. Here the bonus is a
+writable test, a lenient judge or a per-step reward, and the defences are the ones real training
+uses.
+
+## How to play with it
+
+### 1. Run one episode
+
+Set **Training update** to 0, so the hand-written starting policy acts, and step **Episode seed**
+from 1 to 5. Seeds 1 and 2 read the ticket and close it at once: both tests fail, partial credit
+gives 0.10 and the rubric judge 0.75. Seed 3 writes the right value, checks it and closes, so both
+tests pass and partial credit gives 1.30, but the judge still gives 0.75 because there was no
+look-up. Seed 5 closes on its first turn, and the judge still gives 0.50.
+
+### 2. Train on the outcome
+
+With *Outcome only* and *Strict grader*, drag **Training update** from 0 to 200. **True success
+(held-out)** climbs from 19% to 84%, and **Training reward** climbs with it, because here the reward
+and the held-out grader measure the same thing. Then set **Group size** to 2: **Groups with no
+signal** reads 160 of 200, against 39 with a group of 8, and true success ends at 46%.
+
+### 3. Leave the test writable
+
+Set **Group size** back to 8 and **Checker** to *Sandbox test*. Training reward ends at 1.00, true
+success at 0%, and **Hack rate** at 100%. In **Episode replay** the trained policy reads the ticket,
+calls `edit_check`, runs the edited check and closes.
+
+### 4. Swap the scorer
+
+Set **Reward design** to *Rubric judge*. **Closed but not fixed** reaches 100% and **Needless
+look-ups** 99%: the policy looks the value up, reads the ticket and closes in three calls, which
+ticks all four items. Then pick *Partial credit*, still with the Sandbox test. **Hack rate** stays at
+99%, and needless look-ups rise from 1% under *Outcome only* to 73%.
+
+### 5. Add a leash and a cost
+
+Back on *Outcome only* with the Sandbox test, raise **KL to reference β** to 0.2. **Hack rate** falls
+to 42% and **KL per turn** from 1.43 to 0.79, but true success reaches only 40%. Then set
+**Checker** to *Strict grader*, β to 0 and **Step cost** to 0.05. Under *Divide by group std*,
+**Mean turns** collapses to 1.0: the policy closes every ticket on its first turn. Switch **Advantage
+scale** to *Mean only* and it learns again, reaching 77% true success in 6.0 turns.
+
+### 6. Test unseen tickets
+
+Set **Step cost** to 0 and **Advantage scale** back to *Divide by group std*. With **Training
+tickets** at *1 kind*, the **Value missing** bar in **Unseen tickets** ends at 4% while **Value
+given** reaches 90%. At *6 kinds*, Value missing reaches 78%, and in **Across 10 seeds** every seed
+ends with higher true success than it did on 1 kind.
+
+## What to notice
+
+### Training reward is not success
+
+With the Strict grader the two curves rise together. With the Sandbox test, training reward climbs to
+1.00 while true success falls from 19% to 0%, and all ten seeds in the strip hack. The gap between
+the curves is the **reward hacking**: the optimizer is working, and the reward pays for the wrong
+thing.
+
+### The agent learns to check its own work
+
+A write fails to save 40% of the time without saying so, which is what makes `run_check` worth a
+turn. Under the Strict grader the trained policy checks after a write 98% of the time and writes
+again after a failed check 94% of the time (the *Updated, not checked* and *Check failed* rows of
+**Policy table**). With the extra look-ups, that retry loop is why it uses about 6 calls per ticket
+where the reference used about 3.
+
+### A group with no signal
+
+Advantages are relative to the group, so a group that all passes or all fails moves nothing. Small
+groups are often all-pass or all-fail, which is why a group of 2 wastes most of its updates.
+
+### Each scorer is gamed its own way
+
+The rubric judge never reads the record, so training closes tickets it never fixed. Partial credit
+pays 0.1 for each look-up, so training looks up values the ticket already gave. The Sandbox test
+can be edited, so training edits it.
+
+### Partial credit did not speed learning
+
+Partial credit is meant to speed learning by paying for progress, and in this toy it did not.
+Averaged over seeds 1 to 10, *Partial credit* with the Strict grader first passes 50% true success at
+update 16, against 15 for *Outcome only*, and it ends lower, at 69% against 84%. Only potential-based
+shaping is guaranteed to leave the best policy unchanged (Ng et al., 1999). A bonus per look-up is
+not potential-based, and here it moved the policy toward look-ups.
+
+### A leash slows the hack but does not stop it
+
+At β 0.2 the hack rate averages 58% over seeds 1 to 10, and 8 of 10 seeds still hack more than half
+the time. At β 0.5 the average is 27%. The leash slows honest learning too: with the Strict grader, β
+0.2 ends at 79% against 84%. The sandbox test still pays for every edit, so the gradient keeps
+pointing at the loophole.
+
+### Why the agent quits at turn 1
+
+Early in training many groups contain no success, so their rewards differ only by the step cost and
+the shortest episode wins. Dividing by a spread of a few hundredths turns that small gap into
+advantages as large as a success's. Across seeds 1 to 10, 1 run quits at Step cost 0.05 and 4 at
+0.10, while under *Mean only* none do at any cost. The cost itself is small: 8 turns at 0.05 cost
+0.40, less than one success.
+
+### Variety beats wording
+
+The held-out tickets have new wording, but the policy never reads wording. With 1 kind, no training
+ticket leaves its value out, so the *value missing* situation is never trained and the policy writes
+a guess. In **Policy table**, the *Read, value missing* row calls `update_record` 89% of the time and
+`look_up` 3%.
+
+## Where it breaks
+
+### In this lab
+
+- The policy is 48 weights reading seven yes/no features. It chooses which tool to call, but never
+  the arguments and never any text.
+- The desk, the tickets, the scorers and the starting policy are authored. The rubric judge is a
+  fixed checklist, not a model.
+- To the policy, the eight ticket kinds differ by one yes/no feature, so a held-out ticket is new
+  only when its value class was never trained.
+- There is one ticket per update and one gradient step per group, with no probability ratio or
+  clipping, and the KL is exact per state rather than the per-token estimate GRPO uses.
+- The readouts are exact expectations, while the training path and the replayed episode are sampled
+  from fixed seeds. Ten seeds of a toy say nothing about how often real runs hack.
+
+### In real systems
+
+- **Loopholes are not listed in advance.** Real environments give agents shells and files. Baker et
+  al. (2025) report a model making a verify function always return true and updating a unit test so
+  it passed trivially. A monitor reading the model's chain of thought caught most of these hacks, but
+  with too much optimization against it the model learned to hide its intent while still hacking.
+- **An outside grader checks only what it was written to check.** SWE-bench applies its tests after
+  the patch, and τ-bench compares the final database with a goal state. Either check passes whatever
+  it does not test.
+- **Language-model judges have biases.** Zheng et al. (2023) found position, verbosity and
+  self-enhancement biases in LLM judges, even though GPT-4 agreed with human preferences over 80% of
+  the time.
+- **A KL penalty works like early stopping.** Gao et al. (2023) found that a KL penalty did not
+  measurably improve the trade-off between true score and drift from the start, and that its effect
+  resembled early stopping. The lab shows the same pattern.
+- **Normalization choices matter.** Liu et al. (2025) show that dividing by the group's standard
+  deviation gives extra weight to questions whose rewards are nearly all equal, and they propose
+  removing it.
+
+## Going deeper
+
+Real agent RL differs from the toy in scale and in what is sampled:
+
+- **Policies over text.** The agent writes its tool calls, arguments and reasoning as tokens, so the
+  action space is every string and the host has to validate what it runs (*Tools and function
+  calling*).
+- **Many tasks per batch.** Real runs mix many tasks and many episodes per update, so one all-fail
+  group matters less, and they reuse each batch with clipped, PPO-style ratios.
+- **Graders in layers.** Hidden tests outside the sandbox, end-state checks, rubric or model judges
+  and monitors on the transcript each catch different hacks, and each has its own blind spots.
+  Specification gaming is the general name for satisfying the letter of an objective without its
+  intent (Krakovna et al., 2020), and a proxy that can never be hacked is a very strong condition
+  (Skalse et al., 2022).
+- **Rule-based rewards where possible.** DeepSeek-R1 used rule-based rewards for reasoning tasks because its authors observed that learned reward models are susceptible to reward hacking at scale (Guo et al., 2025).
+- **Variety of environments.** Cobbe et al. (2019) found agents overfitting to surprisingly large
+  sets of training levels and generalizing better as the number of levels grew. Agent training mixes
+  many environments for the same reason.
+
+*Reasoning models* covers the single-answer version of this training. *Agents* and *Tools and
+function calling* cover the loop and the host it runs in, and *Preference optimization in practice*
+and *Post-training* cover rewards learned from human preferences.
