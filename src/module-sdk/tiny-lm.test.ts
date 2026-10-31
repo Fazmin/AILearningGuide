@@ -480,25 +480,26 @@ describe("distillation", () => {
   });
 });
 
+/** FNV-1a over the IEEE bits of every value, so one flipped bit anywhere changes the digest. */
+const digest = (values: ArrayLike<number>) => {
+  const holder = new Float64Array(1);
+  const halves = new Uint32Array(holder.buffer);
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < values.length; index += 1) {
+    holder[0] = values[index];
+    for (const half of halves) {
+      hash ^= half;
+      hash = Math.imul(hash, 0x01000193) >>> 0;
+    }
+  }
+  return hash >>> 0;
+};
+
 /**
  * `trainTinyFactored` gained schedule, clipping and weight decay after other labs had pinned
  * numbers from it. The defaults must leave every one of those results exactly as it was.
  */
 describe("factored training options", () => {
-  /** FNV-1a over the IEEE bits of every value, so one flipped bit anywhere changes the digest. */
-  const digest = (values: ArrayLike<number>) => {
-    const holder = new Float64Array(1);
-    const halves = new Uint32Array(holder.buffer);
-    let hash = 0x811c9dc5;
-    for (let index = 0; index < values.length; index += 1) {
-      holder[0] = values[index];
-      for (const half of halves) {
-        hash ^= half;
-        hash = Math.imul(hash, 0x01000193) >>> 0;
-      }
-    }
-    return hash >>> 0;
-  };
   const fingerprint = (run: ReturnType<typeof trainTinyFactored>) => ({
     weights: digest(run.weights),
     loss: digest([run.finalLoss]),
@@ -659,4 +660,73 @@ describe("factored training options", () => {
     expect(norm(decayed)).toBeLessThan(norm(plain));
     expect(decayed.diverged).toBe(false);
   });
+});
+
+/**
+ * `trainTinyModel` feeds about forty pinned numbers across the training labs. These digests were
+ * recorded before the optimizer, fault and mixture options existed, so any change to the default
+ * path, even one flipped bit, fails here before it reaches a lesson.
+ */
+describe("full-table training stays bit-identical", () => {
+  const fingerprint = (run: ReturnType<typeof trainTinyModel>) => ({
+    weights: digest(run.weights),
+    loss: digest([run.finalLoss]),
+    history: digest(
+      run.history.flatMap((point) => [
+        point.step,
+        point.progress,
+        point.loss,
+        point.learningRate,
+        point.gradientNorm,
+      ]),
+    ),
+    checkpoints: digest(
+      run.checkpoints.flatMap((point) => [point.step, point.progress, point.loss, ...point.weights]),
+    ),
+    counts: [run.steps, run.tokens, run.updatedParameters, run.diverged ? 1 : 0],
+    peak: digest([run.peakGradientNorm]),
+  });
+
+  const proverbs = TINY_CORPORA.proverbs.text;
+  const frozen = Array.from({ length: TINY_VOCAB_SIZE }, (_, row) => row % 3 === 0);
+  const start = trainTinyModel({ text: harbor, epochs: 12, seed: 2 }).weights;
+  const baseline = [
+    {
+      name: "every option left at its default",
+      options: { text: harbor },
+      expected: { weights: 1710472106, loss: 1221705201, history: 1852998527, checkpoints: 2311685483, counts: [256, 498, 780, 0], peak: 351003695 },
+    },
+    {
+      name: "cosine with warmup, clipping and decay",
+      options: { text: harbor, epochs: 25, batchSize: 8, learningRate: 2, schedule: "cosine", warmupFraction: 0.1, clipNorm: 1, weightDecay: 0.01, seed: 3, checkpoints: 9 },
+      expected: { weights: 3596926067, loss: 259222997, history: 3985146859, checkpoints: 455796448, counts: [1575, 498, 780, 0], peak: 3835554366 },
+    },
+    {
+      name: "a very high rate at batch 4",
+      options: { text: proverbs, epochs: 6, batchSize: 4, learningRate: 900, seed: 5 },
+      expected: { weights: 1329261633, loss: 3237272633, history: 2807709084, checkpoints: 3137877514, counts: [432, 288, 720, 0], peak: 4198930381 },
+    },
+    {
+      name: "one-cycle with dense history",
+      options: { text: recipes, epochs: 10, batchSize: 16, learningRate: 1.2, schedule: "one-cycle", seed: 7, historyPoints: Number.MAX_SAFE_INTEGER },
+      expected: { weights: 3595776124, loss: 4028711374, history: 2712091061, checkpoints: 2545473479, counts: [250, 395, 720, 0], peak: 81121329 },
+    },
+    {
+      name: "warmup-decay from a starting table with frozen rows",
+      options: { text: recipes, epochs: 15, learningRate: 0.8, schedule: "warmup-decay", init: start, trainableRows: frozen, seed: 11 },
+      expected: { weights: 2606857738, loss: 1873110421, history: 3912161398, checkpoints: 1748956339, counts: [375, 395, 270, 0], peak: 2476883935 },
+    },
+    {
+      name: "zero epochs",
+      options: { text: harbor, epochs: 0 },
+      expected: { weights: 3837222245, loss: 1444314045, history: 2166136261, checkpoints: 3460608196, counts: [0, 498, 0, 0], peak: 292984781 },
+    },
+  ] as const;
+
+  it.each(baseline.map((entry) => [entry.name, entry] as const))(
+    "leaves %s bit-identical",
+    (_name, entry) => {
+      expect(fingerprint(trainTinyModel(entry.options))).toEqual(entry.expected);
+    },
+  );
 });
