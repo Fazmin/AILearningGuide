@@ -233,7 +233,7 @@ the current view does not read from — so a learner never mistakes a demonstrat
 inference.
 
 `Going deeper` should connect the toy to the current production mechanism and to the
-neighboring modules by name, so the course reads as one system rather than sixteen unrelated
+neighboring modules by name, so the course reads as one system rather than a set of unrelated
 labs.
 
 ## Glossary

@@ -247,7 +247,8 @@ which one a released model came from.
 divide them rather than shrink them. Data, tensor, and pipeline parallelism split the work: the
 batch, each layer's matrices, or the stack of layers. Narayanan and colleagues show how the three
 compose to reach thousands of GPUs (arXiv 2104.04473). Data parallelism on its own leaves each
-worker with a full copy of the state.
+worker with a full copy of the state. *Splitting training across GPUs* turns these splits into a
+calculator: memory per GPU, pipeline bubbles, communication, and utilization for real model shapes.
 
 **Sharding.** ZeRO partitions the optimizer state, gradients, and parameters across the workers
 (arXiv 1910.02054), and PyTorch's FSDP, motivated by ZeRO, shards model parameters (arXiv

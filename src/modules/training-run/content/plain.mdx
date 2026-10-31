@@ -704,7 +704,8 @@ numbers, and there are three main ways to split the work across chips:
   assembly line.
 
 A paper by Narayanan and colleagues shows how the three combine to train on thousands of GPUs. Data
-parallelism on its own still leaves every chip holding a full copy of the 16 bytes per weight.
+parallelism on its own still leaves every chip holding a full copy of the 16 bytes per weight. The
+Splitting training across GPUs lab, which comes next, puts numbers on all three splits.
 
 ### Sharding
 

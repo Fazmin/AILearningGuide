@@ -342,6 +342,7 @@ Set **Experts per token** to 1, then raise **Experts** from 8 to 16. Watch **Tot
 - **Modern attention at scale** looks at the costs this table only hints at, including the KV cache. It also covers two designs that cut its cost, called grouped-query attention and sliding-window attention.
 - **Inference & KV cache** measures how the `2·n·d` column grows while a model generates text.
 - Each expert in **Sparse experts** takes in 64 numbers and widens them to 256 in the middle. Then it narrows them back to 64. That is two sets of 64 × 256 weights, or 32,768 in all.
+- The router in **Sparse experts** is never trained. The **Training a mixture of experts** lab trains one. It shows why a trained router piles tokens onto one or two experts. An extra rule is needed to spread the load.
 - The squash used in the **Unrolled RNN** is a curve called tanh. That is why you may see a plain recurrent chain called a "tanh chain".
 - Convolutions can reach farther with dilated kernels. These skip over squares so that one window covers a wider area.
 - Here are the years some named designs were first described. The LSTM came in 1997, and both the transformer and sparsely gated experts came in 2017. The Switch Transformer, another mixture of experts, and the state-space model S4 came in 2021. Mamba followed in 2023.

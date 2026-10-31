@@ -101,3 +101,4 @@ In **Who sees whom**, compare **Wiring** options, and raise **Conv layers**. In 
 - **Inference & KV cache** measures how the `2·n·d` column grows during generation.
 - Named work: LSTM (Hochreiter and Schmidhuber, 1997), the transformer (Vaswani et al., 2017), sparsely gated experts (Shazeer et al., 2017), Switch Transformer (Fedus et al., 2021), S4 (Gu et al., 2021), and Mamba (Gu and Dao, 2023).
 - Mixtral 8x7B routes each token to 2 of 8 experts: 46.7B parameters stored, about 12.9B used per token.
+- **Training a mixture of experts** trains the router that **Sparse experts** leaves untrained, and shows why a learned router collapses onto a few experts unless a balancing term spreads the load.

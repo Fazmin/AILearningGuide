@@ -2,7 +2,7 @@
 
 A desktop app that teaches you how modern AI works by letting you play with it.
 
-There are 51 small hands-on labs. In each one you move a slider, click a word, or train a tiny model, and you watch what changes. Next to every lab there is a short lesson that explains what you just saw. You can read it in short, simple sentences, in plain everyday words, or in the more technical version.
+There are 58 small hands-on labs. In each one you move a slider, click a word, or train a tiny model, and you watch what changes. Next to every lab there is a short lesson that explains what you just saw. You can read it in short, simple sentences, in plain everyday words, or in the more technical version.
 
 **[Try it in your browser](https://fazmin.github.io/AILearningGuide/)**. There's nothing to install.
 
@@ -16,7 +16,7 @@ I wanted to create a single place for anyone to learn AI. One that runs on your 
 
 ## What's inside
 
-The 51 labs are split into six groups. You can go in order or jump to whatever you're curious about.
+The 58 labs are split into seven groups. You can go in order or jump to whatever you're curious about.
 
 | Group | What you'll learn |
 | --- | --- |
@@ -25,11 +25,12 @@ The 51 labs are split into six groups. You can go in order or jump to whatever y
 | **Look inside models** (15 to 21) | Next-token prediction, attention, the transformer block, the KV cache, attention at scale, scaling laws, and structured decoding |
 | **Build with a trained model** (22 to 27) | Search with embeddings, RAG, tools and function calling, agents, multimodal models, and failure modes and safety |
 | **Explore the frontier** (28 to 35) | Reinforcement learning, post-training, in-context learning and reasoning, diffusion, the AI ecosystem, ethics, and interpretability |
-| **Train and adapt a model** (36 to 51) | A full training run from start to finish: datasets, synthetic data, hyperparameters, training from scratch, fine-tuning, LoRA, model merging, instruction tuning, preference tuning, reasoning models, evaluation, quantization, distillation, serving, and a final "ship it" capstone |
+| **Pretrain a model** (36 to 46) | A full training run: splitting it across GPUs, building a dataset, synthetic data, hyperparameters, optimizers, training from scratch, evaluation, keeping a run stable, mixture-of-experts training, and mid-training with data mixtures |
+| **Adapt and ship a model** (47 to 58) | Fine-tuning, LoRA, model merging, training an embedding model, instruction tuning, preference tuning, reasoning models, RL environments for agents, quantization, distillation, serving, and a final "ship it" capstone |
 
 ## Screenshots
 
-**Learning map.** The home screen shows all six groups of labs and how far you've got.
+**Learning map.** The home screen shows all seven groups of labs and how far you've got.
 
 ![The learning map on the home screen](docs/screenshots/home.jpg)
 
@@ -45,7 +46,7 @@ The 51 labs are split into six groups. You can go in order or jump to whatever y
 
 ![The train-from-scratch lab](docs/screenshots/train-tiny-lm.jpg)
 
-**Connections map.** See how all 51 labs link together. Pick one to see what it builds on and what it leads to.
+**Connections map.** See how all 58 labs link together. Pick one to see what it builds on and what it leads to.
 
 ![The connections map](docs/screenshots/connections.jpg)
 
@@ -55,7 +56,7 @@ The 51 labs are split into six groups. You can go in order or jump to whatever y
 
 ## Features
 
-- **51 interactive labs.** Each lab is split into a few short steps with a "Try this" hint, so you always know what to do next.
+- **58 interactive labs.** Each lab is split into a few short steps with a "Try this" hint, so you always know what to do next.
 - **Three ways to read.** Simple mode uses short sentences an 8th grader can follow. Plain mode uses everyday words. Standard mode uses the proper technical terms. Switch at any time from the top bar.
 - **Real models where it matters.** The attention lab runs a small trained transformer in the app. The training labs train a tiny language model live while you watch.
 - **Checkpoints.** Short quizzes at the end of each lab to check what stuck.

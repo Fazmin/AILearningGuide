@@ -352,7 +352,7 @@ The 16 bytes per weight have to live somewhere, so big runs divide them up rathe
 - Tensor parallelism splits each layer's grids of numbers into pieces held by different chips.
 - Pipeline parallelism gives each chip a different slice of the stack of layers, like stations on an assembly line.
 
-A paper by Narayanan and colleagues shows how the three combine to train on thousands of GPUs. Data parallelism on its own still leaves every chip holding a full copy of the 16 bytes per weight.
+A paper by Narayanan and colleagues shows how the three combine to train on thousands of GPUs. Data parallelism on its own still leaves every chip holding a full copy of the 16 bytes per weight. The Splitting training across GPUs lab comes next. It puts numbers on all three splits.
 
 ### Sharding
 

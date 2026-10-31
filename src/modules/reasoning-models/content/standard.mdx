@@ -140,3 +140,11 @@ model, and extend the promising ones.
 copies the text of the steps, not a guaranteed algorithm. Preference optimization and
 post-training are where related recipes live, and Agents spend a similar budget on tool calls
 instead of tokens.
+
+### From one answer to an environment
+
+This lab grades one answer with one fixed checker. Agent training stretches the same loop over many
+turns: the policy calls tools inside a sandbox, and a grader reads the environment's end state
+instead of a final string. The checker becomes part of the environment, so if the policy can reach
+it, tampering with it is one more action that pays. *RL environments & agents* trains a small policy
+this way and shows a reward won through a writable test.

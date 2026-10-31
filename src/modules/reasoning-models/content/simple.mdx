@@ -519,3 +519,11 @@ guarantee that the method behind that working is sound.
 Related recipes live in the Preference optimization in practice and Post-training labs. They cover
 other ways to train a model after its main training. The Agents lab shows a similar budget being spent
 on tool calls instead of on extra tokens. Tool calls are actions such as running a search.
+
+### From one answer to an environment
+
+This lab grades one answer with one fixed checker. Training an agent stretches the same loop over many
+turns. The model uses tools inside a closed-off practice space, called a sandbox. A grader then checks
+how things stand at the end, instead of reading a final answer. So the checker is part of the space the
+model acts in. If the model can reach the checker, changing it is one more move that pays. The RL
+environments & agents lab trains a small model this way. It shows a test being gamed.
