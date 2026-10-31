@@ -1,0 +1,287 @@
+---
+objectives: ["Explain how Adam gives every weight its own step size, and why rarely used weights move furthest under it", "Explain what bias correction fixes in Adam's first steps, and why Adam runs usually start with a warmup", "Tell L2 regularization inside Adam from decoupled weight decay, and predict which weights each one shrinks", "Describe what Muon does to an update matrix, and which weights it is and is not meant for", "Compare optimizers only after tuning each one, and count the optimizer-state memory each one costs"]
+terms: ["Optimizer state", "Momentum", "First moment", "Second moment", "Bias correction", "Epsilon", "Adaptive step size", "Adam", "AdamW", "Decoupled weight decay", "Muon", "Newton–Schulz iteration", "Orthogonalized update"]
+---
+## The big picture
+
+An AI model learns by taking thousands of small steps. After each guess, a program works out which way each of its numbers should move. A part of that program, called the **optimizer**, decides how far each number moves.
+
+The simplest optimizer moves every number by a fixed amount times its push. The optimizers that train real chatbots are cleverer. They remember past pushes and pick a different step size for every number.
+
+This module races four optimizers on the same tiny model. They are called SGD, Momentum, AdamW and Muon. Then it takes each one apart so you can see what it does.
+
+The choice matters for three reasons. It changes which numbers move fast and which barely move. It changes how much computer memory training needs, because the optimizer's memory is kept for every number. It also changes which optimizer looks best, since a race is only fair when each gets its best settings.
+
+Big AI labs care about all three reasons. AdamW has been the standard optimizer for language models for years. A newer one, Muon, was used to train Kimi K2, a very large model from the company Moonshot AI.
+
+By the end of this module, you will be able to explain these five things:
+
+- How Adam gives every number its own step size, and why the least used numbers move the furthest.
+- What bias correction fixes in Adam's very first steps, and why Adam training starts with a slow warm-up.
+- How two ways of pulling numbers toward zero act inside Adam, and which numbers each one shrinks most.
+- What Muon does to a whole table of changes, and which parts of a model it is for.
+- Why optimizers should only be compared after each one is tuned, and how much memory each one needs.
+
+The lab gives you seven cards:
+
+- **Optimizer race:** This card trains four real tiny models side by side, one per optimizer. It plots how wrong each one is as it learns.
+- **Step size per row:** This card shows how far each row of the model's table moves. You can compare common rows with rare ones.
+- **Bias correction and warmup:** This card zooms in on Adam's first 60 steps, where its two famous fixes work.
+- **Weight decay:** This card compares two ways of pulling the model's numbers toward zero.
+- **Orthogonalized update:** This card looks inside one step taken by Muon.
+- **Tuned against tuned:** This card gives every optimizer the same search for its best step size.
+- **Optimizer state:** This card counts how much memory each optimizer keeps.
+
+Almost everything you see is measured from real training runs in your browser. Two readouts come from a formula instead, and the lesson points them out.
+
+## What it is
+
+### The model and the race
+
+The model in this lab is tiny, and it reads a short text called Harbor weather notes. The text begins "the morning fog settles over the harbor". The model learns to guess each character from the one before it.
+
+Everything it knows sits in a table of 900 numbers called **weights**. There is one row of 30 scores for each of its 30 characters. To guess what follows a t, the model reads the t row. It turns those 30 scores into chances for the next character.
+
+The text has eight sentences, and the model trains only on the first six. Those give 378 pairs of neighbouring characters. The last two sentences are kept aside as **held-out** text. They are a fair test of whether the model learned patterns or just memorized.
+
+The **loss** is a score for how wrong the model is, and lower is better. A model that knows nothing spreads its bets evenly over all 30 characters. It scores 3.401, so a dotted line sits at that height on the chart.
+
+Each run takes 600 steps, and in every step the program takes a batch of 16 pairs. It works out the push on each weight, which is called the **gradient**. Then it hands that push to the optimizer.
+
+Every run sees the same batches in the same order. So the only difference between runs is the optimizer.
+
+### Four ways to take a step
+
+Each optimizer has a **learning rate**, a number that scales its steps. Each one turns the push into a step in its own way:
+
+- **SGD:** This one moves each weight by the learning rate times its push. It remembers nothing between steps.
+- **Momentum:** This one keeps a running total of past pushes, like a ball rolling downhill. Each step it keeps 0.9 of the old total and adds the new push.
+- **AdamW:** This one keeps two running averages for every weight. It uses them to give each weight its own step size.
+- **Muon:** This one keeps a running total like Momentum. Then it evens out the whole table of changes before each step.
+
+Momentum keeps 0.9 of its old total each time. So a push that stays the same builds up to ten times its size. That is why Momentum at a rate of 0.1 steps about like SGD at a rate of 1. A rate only compares fairly with rates for the same optimizer.
+
+### The picture: a volume knob for every weight
+
+Picture a music app with an auto-volume setting. Some songs were recorded loud and some were recorded quietly. Without the setting, the quiet songs are hard to hear.
+
+With the setting on, quiet songs get turned up and loud ones down, so all of them sound alike.
+
+Adam does this for every weight. It keeps a running average of each weight's push, called the **first moment**. It also keeps a running average of the push squared, called the **second moment**. The square root of the second moment tells Adam how loud that weight's pushes usually are.
+
+Adam divides the first average by that square root. Big pushes get turned down, and tiny pushes get turned up. So each step comes out close to the learning rate.
+
+That is called an **adaptive step size**. Each weight's step is sized from its own history, not from one rule for everyone.
+
+Adam adds a tiny number called **epsilon** to the bottom of the division. It stops Adam from ever dividing by zero. It is 0.00000001, so it only matters for a weight with almost no push.
+
+Here the picture stops matching, because the music app hears the whole song first. Adam only knows a weight's past pushes, and at the start it knows almost nothing.
+
+Also, a weight's pushes might keep flipping between up and down. Then Adam's average of them shrinks toward zero, but the loudness does not. So that weight takes small steps.
+
+### Adam’s first steps
+
+Adam's two averages start at zero, so after one step each holds only a small slice of the push. The first average holds a tenth of the push, and the second holds a thousandth of its square.
+
+**Bias correction** scales both averages back up by exactly the amount they are short. With the correction, the first step moves every pushed weight by exactly the learning rate.
+
+Without it, the first step comes out about 3.16 times too big. Both averages are too small. But the second one sits under a square root, which shrinks it less than it should.
+
+Even with the correction, the early averages come from very few pushes. So the step sizes are shaky at first. That is why Adam training usually starts with a **warmup**. The learning rate starts small and climbs to its full value.
+
+### Two ways to pull weights toward zero
+
+**Weight decay** pulls every weight a little toward zero on each step. That stops the model from leaning too hard on any one pattern. There are two ways to add this pull.
+
+The first way, called L2, adds the pull to the push before the optimizer sees it. The second way, called **decoupled weight decay**, shrinks each weight directly by a tiny fixed share. **AdamW** is Adam with the second kind.
+
+For SGD the two ways give the same step. For **Adam** they do not. Adam divides each push by how loud that weight's pushes usually are. So a pull added to a quiet weight's push gets turned up by the volume knob too.
+
+### Muon: even out the directions
+
+**Muon** treats the whole table as one object. Any change to the table can be split into basic patterns of change. Each pattern has a strength, and mathematicians call these strengths singular values.
+
+Usually a few patterns are strong and many are weak. So a change mostly moves the table along a few directions. Muon resets every pattern to a strength of about 1, and it keeps the patterns themselves. The result is called an **orthogonalized update**.
+
+In sound terms, it works like an equalizer that sets every band to the same level. Booming bands get turned down and faint ones get turned up. But a band with no sound in it stays silent.
+
+Finding the patterns exactly is slow, so Muon uses a shortcut called the **Newton–Schulz iteration**. It repeats a short multiplication five times. Each pass moves the strengths closer to 1, and a strength of zero stays at zero.
+
+### What an optimizer remembers
+
+The memory an optimizer keeps between steps is called its **optimizer state**. SGD keeps none, while **Momentum** and Muon keep one number per weight for their running total. Adam keeps two numbers per weight for its two averages.
+
+Each of those numbers takes 4 bytes, and a byte is the basic unit of computer memory. For this lab's 900 weights that is tiny. For a model with billions of weights, it adds up to many gigabytes, each a billion bytes.
+
+## Why it’s here
+
+SGD gives every weight the same multiplier, so a weight's step grows and shrinks with its push. In a language model the pushes are very uneven. A common word gets a push almost every step, but a rare word might get one in a thousand.
+
+With one learning rate for everything, you face a bad trade. A rate small enough for the busy weights leaves the rare ones barely moving. A rate big enough for the rare ones makes the busy ones overshoot. Adam's volume knob gets around that trade, which is why it trains language models so well.
+
+The knob has costs, and each card shows one cost with its fix. The averages start at zero, so bias correction is needed. They start out shaky, so a warm-up helps.
+
+A pull added to the push gets turned up with it, so decoupled decay is used instead. And keeping two numbers per weight costs memory, which matters a lot in huge models.
+
+Muon tackles the same problem another way. It evens out the step for each direction of change, not for each weight. It also keeps only one number per weight.
+
+## How to play with it
+
+### Race at the defaults
+
+Every rate slider on **Optimizer race** starts at that optimizer's usual setting, called its default. They are **SGD rate** 1, **Momentum rate** 0.1, **AdamW rate** 0.03 and **Muon rate** 0.05. Leave them there and read the table under the chart:
+
+- **SGD:** It ends with a training loss of 2.040 and a **Held out** score of 2.116. That is the worst held-out score.
+- **Momentum:** It ends at 2.040 and 2.115, almost exactly the same as SGD.
+- **AdamW:** It ends at 1.819 and 2.041, the best of the four on both scores.
+- **Muon:** It ends at 1.832 and 2.059, in second place on both scores.
+
+Now switch **Curves** to **Held-out loss**. An epoch is one pass through all 378 training pairs. AdamW's curve drops to its lowest point, 2.025, at epoch 13. Then it drifts back up to 2.041. SGD's curve is still falling when the run ends.
+
+### Rare rows and busy rows
+
+**Try this:** On **Step size per row**, set **Optimizer** to SGD and read **q ÷ space**. Then switch to AdamW and read it again.
+
+The space character starts 70 of the 378 training pairs. So its row is in 580 of the 600 batches. The letter q starts only one pair, so its row is in just 25 batches.
+
+Each bar shows how far a row moved per visit. A visit means a batch that held its character.
+
+Under SGD the space row moves 0.101 per visit and the q row 0.059, so **q ÷ space** reads 0.59. The rare row moves less, because its push is small and SGD's step follows the push.
+
+Under AdamW the space row moves 0.036 and the q row 0.540, so **q ÷ space** reads 14.9. AdamW's rate is 33 times smaller than SGD's. Yet its q row moves about nine times as far per visit. That is the volume knob at work.
+
+### Break Adam’s first step
+
+Set **AdamW rate** to 0.3, which is ten times its default. Look at **Bias correction and warmup** with **Bias correction** on. **First-step move** reads 0.300, exactly the rate. **Early peak loss** reads 3.499.
+
+Now turn **Bias correction** off, and the first step jumps to 0.949. The solid curve climbs through the first epoch, and the batch loss peaks at 7.853 on step 22. That is more than twice the 3.401 of a model that knows nothing.
+
+Next set **Warmup** to 10%. Now the rate starts small and climbs over the first 60 steps. The first step drops to 0.019, and the peak drops to 3.849. At 20% the batch loss never rises above its starting 3.401.
+
+The **Held out** score tells the same story. It is 2.213 with the correction and 2.529 without it. Without the correction but with a 10% warmup, it is 2.342.
+
+### Two ways to decay
+
+Set **AdamW rate** back to 0.03 and set **Weight decay** to 0.1. Keep **Decay mode** on **Decoupled**. **Weight norm** reads 59.45, **Held out** reads 2.061 and **Shrink per step** reads 0.0030. The weight norm is the size of all 900 weights taken together.
+
+Now switch **Decay mode** to **L2 in gradient**. The weight norm collapses to 1.19. **Held out** rises to 3.274, close to a model that knows nothing. **Shrink per step** jumps to 0.030, which is ten times bigger.
+
+The small table shows which rows got hit hardest. Under L2 the q row keeps only 0.12% of the size it reaches without decay. The space row keeps 3.6%. Under decoupled decay they keep about 60% and 68%.
+
+**Shrink per step** is worked out by formula, not measured. It follows one weight of 1.0 that gets no push of its own for 10 steps. Then it reports how much that weight shrank on average each step.
+
+### Watch Newton–Schulz work
+
+On **Orthogonalized update**, keep **Captured step** at **Step 300**. Set **Newton–Schulz iterations** to 0. Each grey bar is the strength of one pattern in Muon's change before the shortcut. With zero passes, the coloured bars match them exactly.
+
+There are 26 nonzero strengths, from 0.543 all the way down to 0.0000021. Now raise the iterations and watch **Between 0.5 and 1.5**. It counts how many strengths have landed near 1.
+
+It counts 9 of 26 after one pass and 15 after two. It counts 19 after three, 22 after five and 25 after eight. **Zero directions** stays at 4 the whole time.
+
+Then switch **Captured step** to **Step 1**. Only 9 rows had a push on that first step. So only 9 patterns are nonzero, from 0.211 to 0.537. After five passes they sit between 0.682 and 1.121. The other 21 stay at exactly zero.
+
+### Tune each, then count the bytes
+
+Press **Tune each**. The lab trains 20 more runs, five for each optimizer. They use a tenth, three tenths, one, three and ten times each default rate. The lab marks the best held-out score in each row.
+
+SGD's best rate turns out to be 3, which scores 2.041 instead of 2.116. Momentum's best is 0.3, which scores 2.035. AdamW's and Muon's defaults were already their best, at 2.041 and 2.059.
+
+Then read **Optimizer state**, where a KB is a thousand bytes. For this lab's 900 weights, SGD keeps 0 B and Momentum 3.6 KB. AdamW keeps 7.2 KB and Muon 3.6 KB.
+
+For a model with 7.5 billion weights, those become 0 B, 30 GB, 60 GB and 30 GB. A full training setup for Adam at that size needs 120 GB. That counts extra copies of every weight.
+
+## What to notice
+
+### On the race
+
+- AdamW's training loss keeps falling, down to 1.819. But its held-out score turns back up after epoch 13. It learns the six training sentences faster than that learning carries over to new ones.
+- Momentum at 0.1 lands within 0.001 of SGD at 1. Its running total makes a steady push about ten times bigger. So a rate number means something different for each optimizer.
+
+**A common mix-up:** The lowest training loss does not make an optimizer the best one. AdamW fits the training sentences best here. But the held-out score shows how well a model handles new text, and there the gaps are much smaller.
+
+### On the step sizes
+
+- Under SGD the busiest rows move furthest per visit, but under AdamW the rarest rows do. A rare row's push is averaged with fifteen other pairs, so it is small. SGD's step follows it, but Adam's step stays close to the rate.
+- Adam's averages also keep moving a row for several steps after each visit. That adds to how far the row travels.
+- Momentum's q row moves 0.059 per visit, the same as SGD's. Its space row drops from 0.101 to 0.022. Momentum does not turn up quiet weights, but it smooths out the busy row's zig-zag. Muon's **q ÷ space** is 9.4, from evening out directions instead of weights.
+
+### On the early steps
+
+- The 3.16 comes straight from the averages. After one step they hold a tenth of the push and a thousandth of its square. A tenth divided by the square root of a thousandth is about 3.16.
+- At the default rate of 0.03 nothing spikes. The first step is only 0.030 with the correction and 0.095 without it. But the run without the correction still ends worse on held-out text, at 2.103 against 2.041.
+- That is about what a corrected run scores at three times the rate, 2.107 at 0.09. Without the correction, Adam's steps stay too big for the whole run.
+- Warmup helps even with the correction on. At a rate of 0.3, a 10% warmup moves **Held out** from 2.213 to 2.187.
+
+### On weight decay
+
+- Decoupled decay shrinks every weight by the same share each step, which is the rate times the decay. At a rate of 0.03 and a decay of 0.1, it takes 0.3% of each weight per step.
+- L2 decay gets turned up by Adam's volume knob. A weight whose own push is weaker than the pull gets dragged toward zero fast. It moves by about the whole learning rate, however small the decay is.
+- That is why **Shrink per step** reads 0.030 under L2 at every decay setting.
+- The rare rows collapse first under L2. At a decay of 0.001 the space row keeps 39% of its size, but the q row keeps 14%. Decoupled decay keeps 99% of each.
+- Decoupled decay is forgiving. From off all the way to 0.1, **Held out** stays between 2.031 and 2.061. L2 only helps at 0.0001, where it reaches 2.035. At 0.0003 it is already worse than no decay, at 2.074.
+- To be fair to L2, its best setting ties with decoupled decay's best. Across five shuffles, L2 at 0.0001 scores 2.034 to 2.039. That beats decoupled decay at 0.1, which scores 2.061 to 2.065.
+- But decoupled decay at 0.03 scores 2.031 to 2.036 across the same shuffles. That overlaps L2's range. So here decoupling buys a wide range of good settings, not a better best one.
+
+### On the orthogonalized update
+
+- Before the shortcut, a few patterns carry most of the change. At **Step 300**, 14 of the 26 nonzero strengths are below 0.07. After five passes most sit near 1. A pattern the push barely used gets as big a step as the strongest one.
+- The strengths never settle exactly on 1. The shortcut is tuned to grow small strengths quickly. So they bounce inside a band and never go above about 1.20. Muon's designers aimed for a band of about 0.7 to 1.3.
+- Very weak patterns need more passes. Each pass multiplies a tiny strength by only about 3.4. So a strength of 0.0000021 is still only 0.001 after five passes.
+- Patterns with no push stay at zero. At **Step 300** the four zeros come from the rows for j, x and two marker symbols. None of them ever starts a training pair.
+
+### On tuning and memory
+
+- At the defaults AdamW beat SGD by 0.075. After tuning, SGD and AdamW differ by only 0.0003. Momentum leads both of them by 0.006.
+- The shuffle seed sets the order of the batches. Changing it moves each tuned score by 0.006 to 0.011. So none of those three optimizers is really ahead.
+- Averaged over five shuffle seeds, Momentum scores 2.036, SGD 2.039 and AdamW 2.044. The race at the defaults mostly measured how good each default rate was.
+- Muon trails AdamW by 0.018 after tuning. All five of its shuffle seeds finish behind all five of AdamW's.
+- AdamW keeps twice the memory of Momentum or Muon. That works out to 60 GB against 30 GB at 7.5 billion weights.
+
+## Where it breaks
+
+### What this lab simplifies
+
+- **One small model:** The table is the model's input layer and its output layer at the same time. There is nothing in between. Muon's designers use AdamW for exactly those two layers. So the race tests Muon where it is not meant to run. Its last place says little about its real job.
+- **Little data and one shuffle:** There are only 378 training pairs, 600 steps and one shuffle seed. The held-out text is just two sentences long. Gaps of a few thousandths sit inside the noise. So the five-seed numbers in this lesson were measured separately.
+- **A search that grades itself:** **Tune each** picks each rate with the held-out text it then reports. That makes every best score look a little better than it is. It also tunes only the learning rate, from just five choices.
+- **Fixed settings:** The race keeps each rate the same for the whole run. The Adam cards change only the AdamW run. Muon always makes five passes over the whole table.
+- **Readouts with limits:** **Shrink per step** comes from a formula for one idle weight. **Step size per row** counts every zig-zag as distance. The early-steps chart shows single batches of 16 pairs, which are noisy. The 7.5-billion column is arithmetic, not a measurement.
+
+### Where the real mechanisms fail
+
+- **Big steps on little evidence:** Adam lets rarely used weights take full-size steps after very few pushes. That can knock training off course. So large runs add warm-ups and other safety settings.
+- **Fixed but still shaky:** Bias correction removes the averages' lean toward zero. But it does not remove how shaky they are early on. A 2020 paper by Liu and colleagues argues that warmup works by waiting out that shakiness.
+- **L2 inside Adam is uneven:** Weights with big past pushes barely feel an L2 pull. That is why AdamW replaced Adam with L2. Even decoupled decay is tied to the learning rate in practice. The usual code shrinks each weight by the rate times the decay.
+- **Muon needs a partner:** Input layers, output layers and small lists of numbers still go to AdamW. So a Muon run uses two optimizers with two sets of settings. Moonshot AI also had to add weight decay and size adjustments to train big models with Muon. Kimi K2 needed one more fix on top.
+- **Races depend on tuning:** A 2021 study of fifteen optimizers on eight problems found that none clearly won everywhere. A 2025 study found that many claims of doubling AdamW's speed came from poorly tuned AdamW runs. The real gains also shrank as the models grew.
+
+## Going deeper
+
+### What large runs use
+
+Most large language models are trained with AdamW, a slow warm-up and a falling learning rate. That is the recipe from Hyperparameters & schedules. Llama 2, for example, uses a decay of 0.1.
+
+Muon has moved from small speed records to very large models. Those include Kimi K2 and Moonlight, another Moonshot AI model trained on 5.7 trillion tokens.
+
+### Two ways to even out a step
+
+There is a neat way to see Adam and Muon side by side. With its averages switched off, Adam moves every weight by exactly the learning rate, up or down. So it evens out the step for each weight.
+
+Muon evens out the step for each direction of change instead. **Step size per row** shows the first idea in action. **Orthogonalized update** shows the second.
+
+### Shrinking what an optimizer remembers
+
+Adam's memory can be cut down in several ways. One method, called Adafactor, keeps averages only for whole rows and whole columns. It skips the average for every single number.
+
+Another method, the 8-bit optimizer, stores each remembered number in 1 byte instead of 4. Its paper puts Adam's memory for a model with 1 billion weights at 8 GB. It cuts that down to 2 GB.
+
+Anatomy of a training run counts the rest of the memory that training needs. That includes the copies of the weights and the gradients.
+
+### Toy versus real
+
+- **Rate:** This lab's AdamW default is 0.03, picked for a short run on a tiny model. PyTorch is a popular coding toolkit, and its usual default is 0.001.
+- **Second average:** This lab keeps 0.999 of Adam's second average each step. That setting comes from the original Adam paper. Llama 2 keeps 0.95.
+- **Decay:** Decay is off here by default. PyTorch uses 0.01 by default, and Llama 2 uses 0.1.
+- **Memory:** This lab's AdamW memory is 7.2 KB. At 7.5 billion weights it is 60 GB. A full training setup with extra copies of every weight needs 120 GB.
+- **Muon:** This lab runs Muon on the whole table. Real runs use it only on the inner layers, and they hand the input and output layers to AdamW.
+- **Tuning:** How we know a model works explains a key rule. The text that picks a setting should not also be the text that reports its score.

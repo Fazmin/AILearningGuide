@@ -1,0 +1,332 @@
+---
+objectives: ["Explain how Adam gives every weight its own step size, and why rarely used weights move furthest under it", "Explain what bias correction fixes in Adam's first steps, and why Adam runs usually start with a warmup", "Tell L2 regularization inside Adam from decoupled weight decay, and predict which weights each one shrinks", "Describe what Muon does to an update matrix, and which weights it is and is not meant for", "Compare optimizers only after tuning each one, and count the optimizer-state memory each one costs"]
+terms: ["Optimizer state", "Momentum", "First moment", "Second moment", "Bias correction", "Epsilon", "Adaptive step size", "Adam", "AdamW", "Decoupled weight decay", "Muon", "Newton–Schulz iteration", "Orthogonalized update"]
+---
+
+## The big picture
+
+An **optimizer** is the rule that turns a gradient into a change of the weights. Plain stochastic
+gradient descent (SGD) moves every weight by the learning rate times its gradient. The optimizers that
+train language models do more: they keep **optimizer state**, running averages of past gradients, and
+use it to size each weight's step. This module races four of them on one tiny model, SGD, SGD with
+**momentum**, **AdamW** and **Muon**, then takes each apart.
+
+It builds on Hyperparameters & schedules, which trained one model with plain SGD and studied its
+learning rate. Here each optimizer has its own rate, and the question is what the optimizer does with
+the gradient before that rate multiplies it.
+
+### Where it shows up
+
+AdamW has long been the dominant optimizer for pretraining language models (Wen et al., arXiv
+2509.02046). Llama 2, for instance, trained with AdamW at β1 = 0.9, β2 = 0.95, ε = 10⁻⁵ and weight
+decay 0.1 (Touvron et al., arXiv 2307.09288, section 2.2). Muon was introduced in 2024 for the
+hidden-layer matrices of neural networks and first set training-speed records (Jordan et al., 2024).
+It has since been scaled up: Moonshot AI
+trained Kimi K2, a mixture-of-experts model with 1 trillion total and 32 billion activated parameters,
+on 15.5 trillion tokens with MuonClip, a Muon variant (Kimi Team, arXiv 2507.20534).
+
+### Why it matters
+
+Three things ride on the choice. The steps: Adam divides by each weight's running gradient size, so
+one learning rate means very different moves for a busy weight and a rarely used one. The memory: Adam
+keeps two numbers per weight, so in mixed precision its optimizer state is 12 of the 16 bytes per
+parameter that the model states take (Rajbhandari et al., arXiv 1910.02054). And the comparisons: reported speedups
+for new optimizers often shrink once the baseline is tuned as carefully (Wen et al.), so how a
+comparison is run decides what it shows.
+
+### What you will be able to explain
+
+- How Adam gives every weight its own step size, and why rarely used weights move furthest under it.
+- What bias correction fixes in Adam's first steps, and why Adam runs usually start with a warmup.
+- How L2 regularization inside Adam differs from decoupled weight decay, and which weights each one
+  shrinks.
+- What Muon does to an update matrix, and which weights it is and is not meant for.
+- Why optimizers should be compared only after each is tuned, and what optimizer-state memory each
+  one costs.
+
+### What the lab shows
+
+The lab trains for real. Every run is the 30 × 30 character bigram table, 900 weights, trained with
+`trainTinyExtended` on the first six of the eight Harbor sentences, 378 character pairs, for 25 epochs
+of batch 16: 600 steps from zeroed weights with shuffle seed 1. The last two sentences, 118 pairs, are
+never trained on; they are the **held-out** text.
+
+- **Optimizer race** trains all four optimizers and plots their losses. Measured.
+- **Step size per row** reads how far each row of the table moved per visit. Measured by the trainer.
+- **Bias correction and warmup** and **Weight decay** change the AdamW run and read its trace and
+  weights. Measured, except **Shrink per step**, a closed-form illustration for one idle weight.
+- **Orthogonalized update** captures one step of the Muon run, then reruns the Newton–Schulz iteration
+  on it and computes the singular values in the module. Measured.
+- **Tuned against tuned** trains 20 more runs when you press **Tune each**. Measured; the seed figures
+  quoted beside it were measured for this lesson.
+- **Optimizer state** reads the trainer's own float counts for the 900 weights. The 7.5-billion column
+  is arithmetic.
+
+## What it is
+
+### Four update rules
+
+For one weight w with gradient g and learning rate η:
+
+- **SGD**: w ← w − η g. Nothing is kept between steps.
+- **Momentum**: v ← 0.9 v + g, then w ← w − η v (Sutskever et al., ICML 2013). A steady gradient
+  builds v up to ten times g, so momentum at η = 0.1 takes about the step SGD takes at 1.
+- **Adam**: the **first moment** m ← 0.9 m + 0.1 g and the **second moment** s ← 0.999 s + 0.001 g².
+  **Bias correction** divides them by 1 − 0.9ᵗ and 1 − 0.999ᵗ at step t, and the step is
+  w ← w − η m̂ ÷ (√ŝ + ε), with **epsilon** ε = 10⁻⁸ (Kingma & Ba, arXiv 1412.6980).
+- **AdamW** adds a separate shrink, w ← w − η λ w, which is **decoupled weight decay** with decay λ
+  (Loshchilov & Hutter, arXiv 1711.05101).
+- **Muon** keeps a momentum matrix M ← 0.95 M + G for each 2D weight matrix and steps along an
+  orthogonalized version of it.
+
+### Why Adam’s steps are per weight
+
+The ratio m̂ ÷ √ŝ is a running mean over a running root-mean-square. If a weight's gradient keeps its
+sign, the ratio is close to 1 whether the gradient is 10 or 0.001, so the step is close to η; Kingma
+and Ba note that each step is approximately bounded by the rate. That is an **adaptive step size**:
+each weight's step is scaled to its own gradient history, so a weight that rarely gets a gradient steps
+about as far as one that gets a gradient every batch. If a gradient flips sign from batch to batch, m̂
+averages toward zero while √ŝ does not, and the step shrinks. This is **Adam**.
+
+### Muon: orthogonalize, then step
+
+**Muon** treats a weight matrix as a matrix. Any update matrix splits into directions, each with a
+strength called a singular value; an update dominated by a few large singular values moves the weights
+mostly along a few directions. Muon replaces its momentum with the nearest semi-orthogonal matrix: the
+same directions with every nonzero singular value set to 1, so each direction the momentum points along
+gets an equal step (Jordan et al., 2024).
+
+Computing that exactly takes a singular value decomposition. Muon runs a **Newton–Schulz iteration**
+instead: divide M by its Frobenius norm, then repeat X ← 3.4445 X − 4.775 (XXᵀ)X + 2.0315 (XXᵀ)²X five
+times. Each pass is a polynomial in X, so it keeps the directions and maps every singular value through
+σ → 3.4445σ − 4.775σ³ + 2.0315σ⁵, which pushes it toward a band around 1 and leaves 0 at 0. The result
+is an **orthogonalized update**. Muon's only state is M, one float per weight.
+
+## Why it’s here
+
+Plain SGD gives every weight the same multiplier on its gradient, so a weight's step scales with its
+gradient. In a language model gradients differ by orders of magnitude between parameters: the embedding
+row of a frequent token gets a gradient almost every step, a rare token's row almost never. With one
+global rate, a rate small enough for the busy parameters leaves the rare ones nearly frozen, and a rate
+large enough for the rare ones makes the busy ones overshoot. Adam's per-weight scaling removes most of
+that tension.
+
+The scaling has costs, and this lab isolates the fix for each. The running averages start at zero,
+which bias correction fixes. They rest on few gradients early on, which warmup works around (Liu et al.,
+arXiv 1908.03265). A decay term added to the gradient gets rescaled with it, which decoupled decay
+avoids. And two buffers per weight double momentum's optimizer memory. Muon answers the same question
+per direction instead of per weight, with one buffer.
+
+## How to play with it
+
+### Race at the defaults
+
+Leave **SGD rate** at 1, **Momentum rate** at 0.1, **AdamW rate** at 0.03 and **Muon rate** at 0.05,
+each optimizer's default, and read the table under **Optimizer race**:
+
+- SGD: training loss 2.040, **Held out** 2.116.
+- Momentum: 2.040 and 2.115.
+- AdamW: 1.819 and 2.041.
+- Muon: 1.832 and 2.059.
+
+AdamW finishes lowest on both, Muon second, and SGD and momentum all but tie. Switch **Curves** to
+**Held-out loss**: AdamW's curve bottoms out at 2.025 at epoch 13 and drifts back up to 2.041, while
+SGD's is still falling at epoch 25.
+
+### Rare rows and busy rows
+
+On **Step size per row**, with **Optimizer** on SGD, the space row, which is in 580 of the 600 batches,
+moves 0.101 per visit, and the q row, in 25 batches, moves 0.059: **q ÷ space** reads 0.59. Switch to
+AdamW: space 0.036, q 0.540, **q ÷ space** 14.9. AdamW's rate is a thirty-third of SGD's, yet its q row
+moves nine times as far per visit.
+
+### Break Adam’s first step
+
+Set **AdamW rate** to 0.3, ten times its default. With **Bias correction** on, **First-step move** reads
+0.300 and **Early peak loss** 3.499. Turn it off: 0.949 and 7.853, the batch loss peaking on step 22.
+Set **Warmup** to 10%: 0.019 and 3.849. At 20% the batch loss never rises above its starting 3.401.
+
+**Held out** follows: 2.213 with the correction, 2.529 without, and 2.342 without it but with a 10%
+warmup.
+
+### Two ways to decay
+
+Set **AdamW rate** back to 0.03 and **Weight decay** to 0.1. With **Decay mode** on **Decoupled**,
+**Weight norm** reads 59.45, **Held out** 2.061 and **Shrink per step** 0.0030. Switch to **L2 in
+gradient**: 1.19, 3.274 and 0.030. The table of rows says why: under L2 the q row keeps 0.12% of the
+size it has without decay and the space row 3.6%, while decoupled decay leaves them 60% and 68%.
+
+### Watch Newton–Schulz work
+
+On **Orthogonalized update** at **Step 300**, set **Newton–Schulz iterations** to 0: the after bars
+equal the before bars, 26 nonzero values from 0.543 down to 2.1 × 10⁻⁶. Step up and count **Between
+0.5 and 1.5**: 9 of 26 after one iteration, 15 after two, 19 after three, 22 after five and 25 after
+eight. **Zero directions** stays at 4.
+
+Switch **Captured step** to **Step 1**: only 9 rows had a gradient, and their 9 values, from 0.211 to
+0.537, land between 0.682 and 1.121 after five iterations, while the other 21 directions stay at zero.
+
+### Tune each, then count the bytes
+
+Press **Tune each**. Twenty runs train, five per optimizer, at a tenth, three tenths, one, three and
+ten times its default. SGD's best rate is 3, at 2.041 against 2.116 at its default; momentum's is 0.3,
+at 2.035; AdamW's and Muon's defaults are already their best, 2.041 and 2.059.
+
+Then read **Optimizer state**: 0 B, 3.6 KB, 7.2 KB and 3.6 KB for this lab's 900 weights, and 0 B,
+30 GB, 60 GB and 30 GB at 7.5 billion. **Mixed-precision Adam, all model states** reads 120 GB.
+
+## What to notice
+
+### On the race
+
+- Training and held-out loss tell different stories. AdamW's training loss keeps falling to 1.819 while
+  its held-out loss turns up after epoch 13; it fits six sentences faster than what it learns carries
+  over to two new ones.
+- Momentum at 0.1 lands within 0.001 of SGD at 1. With β = 0.9 a steady gradient builds a velocity ten
+  times its size, so the two take about the same effective step. Rates compare only within one
+  optimizer.
+
+### On the step sizes
+
+- Under SGD the busiest rows move furthest per visit; under AdamW the rarest do. A rare row's gradient
+  is averaged with fifteen other pairs, so it is small, and SGD's step is proportional to it. Adam's
+  step is about η whatever the gradient's size, and its averages keep moving a row for several steps
+  after each visit.
+- Momentum's q row moves 0.059 per visit, the same as SGD's, while its space row drops from 0.101 to
+  0.022. Momentum does not rescale weights; it smooths them, so successive steps stop zig-zagging.
+  Muon's **q ÷ space**, 9.4, comes from evening out directions rather than weights.
+
+### On the early steps
+
+- The first-step ratio is exactly (1 − β1) ÷ √(1 − β2) = 0.1 ÷ √0.001 ≈ 3.16. Both moments start too
+  small, but the second sits under a square root, so the step comes out too big.
+- At the default 0.03 nothing spikes (a first step of 0.030 or 0.095), but the uncorrected run still
+  ends worse, 2.103 against 2.041, about what a corrected run reaches at three times the rate, 2.107 at
+  0.09. Over 600 steps 1 − 0.999ᵗ never exceeds 0.46, so every uncorrected step is inflated.
+- Warmup helps even with the correction on: at 0.3, a 10% warmup moves **Held out** from 2.213 to 2.187.
+
+### On weight decay
+
+- Decoupled decay shrinks every weight by the same fraction, η λ, 0.3% per step at rate 0.03 and decay
+  0.1. L2 adds λw to the gradient, and Adam divides that by each weight's own √ŝ. A weight whose own
+  gradient is small next to the pull moves toward zero by about η per step however small λ is, which
+  is why **Shrink per step** reads 0.030 under L2 at every decay. This is Loshchilov and Hutter's
+  point: L2 inside Adam regularizes weights with large past gradients less.
+- Under L2 the rare rows collapse first: at 0.001 the space row keeps 39% of its size and q 14%.
+  Decoupled decay keeps 99% of each.
+- Decoupled decay is forgiving: from off to 0.1, **Held out** stays between 2.031 and 2.061. L2 helps
+  only at 0.0001, where it reaches 2.035; at 0.0003 it is already worse than no decay, 2.074.
+- Measured honestly, the best of each ties. L2 at 0.0001 beats decoupled decay at the common 0.1 on all
+  five seeds, 2.034 to 2.039 against 2.061 to 2.065. But decoupled decay's best notch, 0.03, scores
+  2.031 to 2.036 over the same seeds, overlapping L2's best. Decoupling buys a wide range of good
+  settings here, not a better best one.
+
+### On the orthogonalized update
+
+- Before the iteration a few directions carry most of the update: at **Step 300** 14 of the 26
+  nonzero values are below 0.07. After five iterations most sit near 1, so a direction the momentum
+  barely pointed along gets a step as large as the strongest. Jordan et al. observe that
+  SGD-momentum and Adam updates for transformer matrices are dominated by a few directions, and
+  speculate that orthogonalizing helps by raising the scale of the rare ones.
+- The values never settle on 1. The coefficients are chosen to grow small values fast, so outputs
+  bounce in a band that never passes about 1.20; the Muon post designs for a band of roughly 0.7 to 1.3.
+- Very weak directions need more passes. Each one multiplies a tiny value by about 3.4, so 2.1 × 10⁻⁶
+  is still only 0.001 after five iterations.
+- Directions with no gradient stay at zero. At **Step 300** these four come from the rows for j, x and
+  the two marker symbols, which never start a training pair.
+
+### On tuning and memory
+
+- At their defaults AdamW beat SGD by 0.075. Tuned, SGD and AdamW differ by 0.0003 and momentum leads
+  them by 0.006, while five shuffle seeds move each tuned result by 0.006 to 0.011. Over those seeds
+  the means are 2.036 for momentum, 2.039 for SGD and 2.044 for AdamW: no ranking. The race at defaults
+  measured how good each default was.
+- Muon trails AdamW by 0.018 tuned, and all five of its seeds finish behind all five of AdamW's.
+- AdamW's two buffers are twice momentum's or Muon's: 60 GB against 30 GB of fp32 state at 7.5 billion
+  weights. In mixed precision a 4-byte fp32 master copy joins them, and 12 of Adam's 16 bytes per
+  weight are optimizer state.
+
+## Where it breaks
+
+### What this lab simplifies
+
+- **One small model.** The 30 × 30 table is an embedding and an output layer in one matrix, with no
+  hidden layers. Muon's authors use AdamW for exactly these layers, so the race tests Muon where it is
+  not meant to run, and tuned Muon's last place says nothing about hidden layers.
+- **Little data and one seed.** 378 training pairs, 600 steps, shuffle seed 1, and a held-out set of
+  two sentences, 118 pairs. Differences of a few thousandths are inside the seed noise; the five-seed
+  figures in this lesson were measured separately.
+- **A flattering search.** **Tune each** picks each rate on the same held-out text it reports, which
+  flatters every row a little; a sound comparison chooses on a validation split and reports on a
+  separate test split. It tunes only the rate, on a grid of five points, never β1, β2, ε or the
+  schedule.
+- **Fixed recipes.** The race uses a constant rate and no clipping. The Adam controls change only the
+  AdamW run, and Muon always runs five iterations on the whole table.
+- **Readouts with caveats.** **Shrink per step** is a closed-form illustration of one idle weight, not
+  a measurement of the run. **Step size per row** measures path length, which counts zig-zags. The
+  early-steps chart plots single batches of 16 pairs. The 7.5-billion column is arithmetic.
+
+### Where the real mechanisms fail
+
+- **Full steps on little evidence.** Adam gives rarely used parameters full-size steps on few
+  gradients, which can destabilize training. Large runs pair it with warmup, gradient clipping and β2
+  lowered to 0.95, as in Llama 2.
+- **Correction is not calibration.** Bias correction removes the averages' bias toward zero but not
+  their noise. Liu et al. argue warmup works by reducing that early variance, and their RAdam corrects
+  it directly.
+- **Decay coupled to the rate.** L2 inside Adam regularizes weights with large past gradients less than
+  decoupled decay does, which is why AdamW replaced Adam with L2. Even decoupled decay is tied to the
+  rate in practice: PyTorch's AdamW shrinks by η λ each step, and so does this lab's trainer, while
+  Loshchilov and Hutter scale it by the schedule multiplier instead.
+- **Muon needs a partner.** Embeddings, the output layer and vector parameters still go to AdamW, so a
+  Muon run carries two optimizers and two sets of settings. Moonshot AI needed weight decay and
+  per-parameter update scaling to scale it (Liu et al., arXiv 2502.16982), and for Kimi K2 added QK-clip
+  against exploding attention logits, which its report says occur more often with Muon than with AdamW.
+  Each step also costs extra matrix multiplications.
+- **Benchmarks depend on tuning.** Schmidt et al. benchmarked fifteen optimizers on eight problems,
+  found none clearly dominating, and found that trying several at their defaults works about as well
+  as tuning one (ICML 2021, arXiv 2007.01547). Wen et al. found that against a well-tuned AdamW, many
+  reported 2× speedups reflect weak baselines, and the best alternatives' lead shrinks from about 1.4×
+  at 0.1 billion parameters to 1.1× at 1.2 billion.
+
+## Going deeper
+
+### What large runs use
+
+AdamW with warmup and a decaying schedule, the recipe from Hyperparameters & schedules, usually with
+β2 lowered from 0.999 to 0.95 and decay 0.1, as Llama 2 lists. Muon has moved from speed records to
+production: Liu et al. report about twice AdamW's computational efficiency in compute-optimal scaling
+experiments and trained Moonlight, a 16-billion-parameter mixture-of-experts model, on 5.7 trillion
+tokens; Kimi K2 followed with MuonClip.
+
+### Steepest descent under a norm
+
+Bernstein and Newhouse read optimizers as steepest descent under different norms (arXiv 2409.20325).
+With the running averages switched off, Adam becomes sign descent, every weight moving ±η, which is
+steepest descent under the infinity norm. Shampoo without accumulation steps to the nearest
+semi-orthogonal matrix, steepest descent under the spectral norm, which is Muon's step. Read that way,
+Adam evens out the step per weight and Muon per direction: **Step size per row** and **Orthogonalized
+update** show the two.
+
+### Shrinking optimizer state
+
+Two fp32 buffers per weight can be cut. Adafactor keeps only per-row and per-column sums of the
+squared-gradient average for each matrix, memory proportional to rows plus columns instead of rows
+times columns, and can switch momentum off (Shazeer & Stern, ICML 2018). 8-bit optimizers store the
+buffers in a byte each with block-wise quantization while matching 32-bit results: 32-bit momentum and
+Adam need 4 and 8 bytes per parameter, 4 GB and 8 GB for a 1-billion-parameter model, cut to 1 GB and
+2 GB (Dettmers et al., ICLR 2022). ZeRO splits the state across data-parallel devices instead. Anatomy
+of a training run counts where the rest of the training memory goes.
+
+### Toy versus real
+
+- **Rate.** AdamW's default here is 0.03, chosen for a 600-step toy; PyTorch's AdamW defaults to 0.001.
+  Loss & gradient descent and Hyperparameters & schedules cover how rates are chosen.
+- **β2.** The lab uses Adam's published default, 0.999. Llama 2 uses 0.95.
+- **Decay.** Off by default here. PyTorch's AdamW defaults to 0.01, and Llama 2 uses 0.1.
+- **Memory.** The lab's AdamW state is 7.2 KB. At 7.5 billion weights its fp32 buffers are 60 GB, and
+  mixed-precision Adam's model states are 120 GB.
+- **Muon.** The lab runs it on the whole table. Real runs use it only on hidden 2D matrices, with AdamW
+  for embeddings and the output layer.
+- **Tuning.** The lab tunes one rate per optimizer on its own held-out text. How we know a model works
+  covers why the text that picks a setting cannot also be the text that reports it.
