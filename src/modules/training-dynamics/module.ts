@@ -41,7 +41,7 @@ const definition: ModuleDefinition = {
   slug: "training-dynamics",
   title: "Training dynamics",
   group: "foundations",
-  order: 12,
+  order: 14,
   icon: "ChartNoAxesCombined",
   accent: "#2185a6",
   prerequisites: ["module-05-backpropagation"],

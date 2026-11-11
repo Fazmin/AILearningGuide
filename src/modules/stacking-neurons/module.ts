@@ -56,7 +56,7 @@ const definition: ModuleDefinition = {
   slug: "stacking-neurons",
   title: "Stacking neurons",
   group: "foundations",
-  order: 9,
+  order: 11,
   icon: "Network",
   accent: "#a75bba",
   prerequisites: ["module-02-single-neuron"],

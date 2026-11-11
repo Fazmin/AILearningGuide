@@ -57,7 +57,7 @@ const definition: ModuleDefinition = {
   slug: "architecture-zoo",
   title: "The architecture zoo",
   group: "foundations",
-  order: 14,
+  order: 16,
   icon: "Shapes",
   accent: "#5a7a3a",
   prerequisites: ["module-34-why-gpus"],

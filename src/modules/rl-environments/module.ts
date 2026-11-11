@@ -13,7 +13,7 @@ const definition: ModuleDefinition = {
   slug: "rl-environments",
   title: "RL environments & agents",
   group: "training-adapting",
-  order: 54,
+  order: 56,
   icon: "Ticket",
   accent: "#5a62b0",
   prerequisites: ["module-46-reasoning-models", "module-41-agents", "module-45-rl-foundations"],

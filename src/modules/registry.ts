@@ -63,7 +63,10 @@ export const modules: RegisteredModule[] = Object.values(moduleFiles)
   .sort((a, b) => a.order - b.order);
 
 export const modulesById = new Map(modules.map((module) => [module.id, module]));
-export const modulesBySlug = new Map(modules.map((module) => [module.slug, module]));
+/** Every lab by its slug, and by any slug it used to have, so old links keep working. */
+export const modulesBySlug = new Map(
+  modules.flatMap((module) => [module.slug, ...(module.formerSlugs ?? [])].map((slug) => [slug, module] as const)),
+);
 
 export function modulesInGroup(group: ModuleGroupId) {
   return modules.filter((module) => module.group === group);
@@ -74,4 +77,8 @@ const ids = modules.map((module) => module.id);
 
 if (new Set(orders).size !== orders.length || new Set(ids).size !== ids.length) {
   throw new Error("Module IDs and order values must be unique.");
+}
+
+if (modulesBySlug.size !== modules.reduce((count, module) => count + 1 + (module.formerSlugs?.length ?? 0), 0)) {
+  throw new Error("A module slug or former slug is used twice.");
 }

@@ -51,7 +51,7 @@ const definition: ModuleDefinition = {
   slug: "transformer-block",
   title: "The transformer block",
   group: "inside-models",
-  order: 17,
+  order: 19,
   icon: "Blocks",
   accent: "#387f8d",
   prerequisites: ["module-08-attention"],

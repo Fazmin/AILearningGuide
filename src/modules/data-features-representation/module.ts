@@ -42,7 +42,7 @@ const definition: ModuleDefinition = {
   slug: "data-features-representation",
   title: "Data, features, and representation",
   group: "groundwork",
-  order: 3,
+  order: 5,
   icon: "Table2",
   accent: "#6b5cbf",
   prerequisites: ["module-30-math-you-need"],

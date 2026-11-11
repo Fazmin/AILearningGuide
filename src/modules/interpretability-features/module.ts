@@ -72,7 +72,7 @@ const definition: ModuleDefinition = {
   slug: "interpretability-features",
   title: "Interpretability I: features",
   group: "frontiers",
-  order: 34,
+  order: 36,
   icon: "Microscope",
   accent: "#2c8a8e",
   prerequisites: ["module-09-transformer-block", "module-14-diffusion-vaes"],

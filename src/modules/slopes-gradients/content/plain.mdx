@@ -1,0 +1,456 @@
+---
+objectives: ["Read a derivative as the rate at which an output changes when its input is nudged, and say why that rate settles as the nudge shrinks", "Use the sign and size of a slope to tell which way is downhill, and spot a flat place that is not a bottom", "Build a gradient from one slope per dial and explain why it points straight uphill", "Multiply the slopes along a chain to predict how a nudge at the start moves the end", "Predict what a downhill step does when the step size is too small, too large or about right, and why the walk can settle in a valley that is not the deepest"]
+terms: ["Parameter", "Loss", "Slope", "Derivative", "Flat spot", "Partial derivative", "Gradient", "Contour line", "Saddle point", "Chain rule", "Backpropagation", "Gradient descent", "Learning rate", "Local minimum"]
+sections: {"Which way should you turn the dial?":"overview","Build the idea, one card at a time":"mechanism","Your turn: reach the valley floor":"lab","What this picture leaves out":"limits","Where you will meet this again":"next"}
+---
+
+## Which way should you turn the dial?
+
+Imagine a machine inside a closed box, with a single dial on the front that you can turn and a single meter that displays how wrong the machine currently is. A lower reading is better, but you are not allowed to open the box, so the only thing you can do is turn the dial and watch the meter. Which direction should you turn it, and how far should you go?
+
+With only one dial you could patiently try every setting and keep the best one. That plan collapses
+as soon as the machine has a thousand dials, because there are far too many combinations of settings
+for anybody to try them all. You need a way to decide from the position you are already in, without
+ever seeing the whole machine.
+
+The trick that this entire lesson is built on is to give the dial a tiny nudge, and then watch which
+way the meter moves and by how much. That one small experiment tells you which direction is the better one,
+and it keeps working even when the machine has millions of dials instead of one.
+
+### A hillside in fog
+
+Imagine standing on a hillside in thick fog and trying to reach the bottom of the valley. You cannot
+see the valley at all, but you can feel which way the ground tilts under your boots. So you take a
+step in whichever direction slopes down, feel the ground again, and keep repeating that until the
+ground is level.
+
+The lab works in exactly the same way, because the dial setting is your position on the hillside and the reading on the meter is your height. The tilt under your boots is the
+number that you are about to learn how to measure.
+
+The comparison stops matching in one important way, which is that a real hillside only lets you walk
+in two directions, north or south and east or west. A machine can have millions of separate dials,
+and nobody can imagine a hillside with a million directions, so the arithmetic has to do the walking for you.
+
+### What you will be able to do
+
+The plan is to meet five short ideas, each one built on the idea before it, and then to face a
+challenge that cannot be solved without all of them. When you have finished, you will be able to do
+five things:
+
+- measure how quickly the meter changes when the dial is nudged, and explain why that rate settles
+  on a single number as the nudge gets smaller;
+- read the sign and the size of a slope to tell which direction is downhill, and recognise a level
+  place that is not actually a bottom;
+- build a single arrow out of one slope for each dial, and explain why that arrow always points
+  straight uphill;
+- multiply the slopes along a chain of machines to predict how a nudge at the start will move the
+  reading at the end;
+- predict what a downhill step will do when it is too small, too large or about right, and explain
+  why the walk can finish in the wrong valley.
+
+### What the lab is made of
+
+It is worth being completely clear about what you are looking at before you begin. Every curve and every map
+in this lab is drawn from a short formula that was written especially for the lesson. Nothing on the page was measured from a real AI model, and no data of any kind was involved in producing it.
+
+That choice is deliberate, because a small formula allows you to check every number on the screen with an ordinary calculator. Keep the machine with the dial in mind as you go, because the final part of the
+challenge reveals what it has really been all along.
+
+## Build the idea, one card at a time
+
+Keep the lab open beside this page while you read, because every part below belongs to one of its
+cards and tells you which control to touch. The lab holds six cards, labelled from 1 of 6 to 6 of 6,
+and shows one at a time. The **Next** button under each card opens the following one, and the step
+bar above the lab jumps to any of them. The sixth card is the challenge, which has a section of its
+own after these five.
+
+### Nudge the dial
+
+Begin at the first card, which is called **Nudge the dial**, and notice the two labels: the dial has the short name **w** and the meter is called **L**. Later labs use the same two letters for the same two jobs, so it is worth becoming comfortable with them immediately.
+
+The curve in the picture displays what the meter reads at every possible setting of the dial. The dial
+starts at 4, where the tile **Meter at w = 4.00** reads 2.00. The card has already nudged the dial
+upward by 1, to a setting of 5, and the meter reads 5.00 there.
+
+So a change of 1 in the dial produced a change of 3 in the meter, and dividing the second number by
+the first gives 3. The **Ratio** line prints that same calculation as “change in meter ÷ change in
+dial”. Read the answer as a rate: near this setting, every unit of dial costs you about 3 units of
+meter.
+
+**Pause and predict:** a nudge of 1 is quite a large push for a dial that only goes up to 6, so
+suppose you make the nudge half as big. Will the ratio halve as well, will it double, or will it
+change only a little? Choose an answer in the card’s **Predict first** box, and then drag **Nudge
+size** from 1 down to 0.5.
+
+The ratio only slides from 3 to 2.5, because a smaller nudge also moves the meter by a smaller
+amount. The top and the bottom of the fraction shrink together, and most of the change cancels out.
+This time the meter went from 2.00 to 3.25, which is a change of 1.25, and 1.25 divided by 0.5 is
+2.5.
+
+Continue dragging **Nudge size** to the left and read the ratio at each stop: it goes 2.25, then 2.1,
+then 2.05, and finally 2.01 at the smallest nudge. The numbers are gradually closing in on 2 without ever going past it, and the tile **Slope it settles on** has been showing 2.00 the whole time.
+
+Why does the ratio settle down like this instead of drifting further and further forever? Look at
+the box on the right-hand side of the picture, which is labelled “magnified” and zooms in on the two
+points until the nudge fills it. At a nudge of 1 the piece of curve inside that box is obviously
+bent, but at a nudge of 0.01 it looks as straight as a ruler.
+
+That is the entire secret, because on a perfectly straight line the ratio comes out the same for
+every size of nudge. Any smooth curve appears straight once you zoom in far enough, so the ratio stops
+changing as soon as the nudge is small enough to fit inside the straight-looking part.
+
+The number that the ratio eventually settles on is called the **slope** of the curve at that point, and its
+formal name is the **derivative**. You can think of it as an exchange rate between the dial and the meter. Here the rate is 2, which means an extremely small turn of the dial buys about twice as much change in the meter.
+
+The exchange rate comparison has one important catch, which is that a bank gives you the same rate whether you change ten dollars or a thousand. The rate on this card is only accurate for small amounts, and you have already seen the evidence, because a nudge of 1 gave 3 instead of 2.
+
+**Try this:** drag **Dial w** down to 1.5 and shrink the nudge again, and this time the ratio
+settles on −3. The minus sign means the meter falls as the dial goes up, so turning the dial upward
+from here makes the machine less wrong. At a dial setting of 3 the slope is exactly 0, because that
+is the bottom of this bowl.
+
+In summary, the slope is how much the meter changes for every small unit of dial, measured at one particular position. That was only one position at a time, however, and you had to move the dial to see another one. What would the slope look like if you could see it everywhere at once?
+
+### A slope at every point
+
+Press **Next** to open the second card, **A slope at every point**, where the meter is bumpier and has two
+valleys with a hump between them. Underneath it sits a second picture, which shows the slope of the
+top curve at every setting of the dial.
+
+Drag the dial across the picture, or use the slider called **Dial w** underneath. A single vertical
+line runs down through both pictures, so you can read the meter and its slope at the same setting.
+At a setting of 1, for example, the meter reads 2.79 and the tile **Slope here** reads −1.82.
+
+Now interpret that slope in the way you learned on the first card, where a negative slope meant that the
+meter falls as the dial goes up. The lower ground must therefore be to the right, and the tile
+**Downhill is** agrees.
+
+The sign of the slope is the part you will use most often, because it tells you a direction to travel in. A
+positive slope means the ground rises toward the right, which puts downhill on the left, while a
+negative slope puts downhill on the right. The size of the slope tells you how steep the ground is,
+and you never need to look at the curve to discover either of those things.
+
+The shaded bands display the same information for the entire curve at once, so you can check the rule
+everywhere. Wherever the top curve is falling, the band is hatched and the slope curve sits below
+its zero line. Wherever the top curve is rising, the band is plain and the slope curve sits above
+that line.
+
+**Pause and predict:** the slope curve crosses its zero line in three places, each marked with a
+dotted line, so are all three of them valley bottoms? Park the dial on each dotted line in turn to
+find out, and notice that the dial snaps onto a dotted line when you get close to it.
+
+Only two of the three are bottoms, and they sit at dial settings of 1.57 and 4.62, where the meter
+reads 2.28 and 1.36. The third is at 2.88, right on top of the hump, where the meter reads 3.12. The
+slope is 0 up there as well, because the ground is level at the very top of a hill.
+
+**A common mix-up:** it is tempting to believe that a slope of 0 means you have found the lowest
+point. A slope of 0 only tells you that the ground is level in the exact place where you are
+standing. You could be in a valley, on top of a hill, or in a place that is neither of those.
+
+To see that third kind of place, set **Meter curve** to **A shelf**. This different curve rises, levels off at a dial setting of 3, and then continues rising afterwards. The slope there is 0 and the meter
+reads 5.00, yet the ground keeps getting lower all the way to the left. Any level place like this
+one, whether it is a bottom, a top or a shelf, is called a **flat spot**.
+
+Remember this mix-up, because it returns twice more before the lesson is over, and it looks a little different on every occasion.
+
+In summary, the slope is a curve in its own right, where the sign tells you which direction is uphill and the size tells you how steep. A zero tells you that the ground is level where you stand, and it
+tells you nothing more than that. So far there has only been one dial, so what happens when the
+machine is given a second one?
+
+### Two dials, one slope each
+
+The third card is called **Two dials, one slope each**, and its machine has a second dial named **b** beside **w**, a pair of letters later labs also use.
+
+A curve cannot display a meter that depends on two separate dials, so this card draws a map seen from directly
+above. Moving left and right changes dial w, and moving up and down changes dial b. Each curved line
+joins all the settings where the meter reads the same number, which is printed on the line. A line
+like that is called a **contour line**, and hiking maps use them to show height.
+
+The card opens on a round bowl with its lowest point in the middle, where the meter reads 1. The red
+point is your current setting, with w at 4.5 and b at 4, and the meter reads 2.63 there.
+
+Two dials may sound more difficult than one, but you already possess the tool for the job, which is to turn one
+dial and leave the other one alone. Under **Dials turning**, the button **w only** is already
+pressed, and a dashed line shows the only path the point can now travel along. The slope along that
+path is +1.50, and the tile **Slope along w** shows it.
+
+Now press **b only** and watch the dashed line stand upright, because only b is turning this time, and the tile **Slope along b** reads +1.00. These are two separate slopes measured at the same position, one for each dial. A slope measured like this, while every other dial is held still, is called a **partial derivative**.
+
+Later labs write these two slopes as ∂L/∂w and ∂L/∂b, and you can read the first one aloud as “the
+slope of L with respect to w”. The curly ∂ is only there to remind you that the other dials were
+held still while this one moved.
+
+**Pause and predict:** each slope is drawn as a leg that starts at the red point, so suppose you
+joined the two legs into a single arrow. Would that arrow point downhill, uphill, or sideways along
+the contour line? Choose an answer in **Predict first**, and then press **Both together** to see
+what happens.
+
+The arrow points uphill, because each leg points in the direction its own dial has to turn to raise
+the meter. The two legs together therefore point to where the meter rises fastest. Look carefully at the position where the arrow leaves the red contour line, and you will see that it crosses at a right
+angle.
+
+This arrow is called the **gradient**, and written out in full it is the list of the two slopes, (+1.50, +1.00). In *Vectors & matrices* you met a list of numbers drawn as an arrow, and
+this is one more example of the same thing. Later labs write the gradient as ∇L, which you can read
+aloud as “grad L”.
+
+The length of the arrow tells you how steep the ground is, and here the tile **Steepness (arrow
+length)** reads 1.80. Drag the point toward the middle of the bowl and watch the arrow gradually become shorter.
+At the lowest point both slopes are 0, so there is no arrow left to draw.
+
+The gradient points uphill, but you want to go down, so the direction to walk in is the exact opposite, which the card shows as a short dashed arrow marked “downhill”.
+
+**Pause and predict:** set **Surface** to **Long valley** and move the point to w = 1, b = 4. Will the
+uphill arrow point directly away from the lowest point, the way it did in the round bowl?
+
+It does not, because the slopes read −0.50 along w and +2.00 along b, and so the arrow points almost
+straight up the nearest wall. The dashed downhill arrow misses the lowest point by a wide margin.
+The gradient answers the question “which way is steepest from here?”, and that is a different
+question from “where is the bottom?”. Remember this for later, because the entire challenge depends on it.
+
+Now choose **Saddle** and drag the point to the centre of the map, where both slopes are 0 and the
+meter reads 5.00, so this is a flat spot. Move right to w = 5, however, and the meter climbs to
+7.00, while moving up to b = 5 instead drops it to 3.00. A flat spot that rises in one direction and
+falls in another is called a **saddle point**, and it is the same mix-up again with two dials.
+
+In summary, every dial has a slope of its own, and the list of those slopes is an arrow that points
+straight uphill. Until now each dial has reached the meter directly, so what happens when a dial can
+only reach the meter by going through another machine first?
+
+### Dials that drive dials
+
+The fourth card is called **Dials that drive dials**, and it has one dial again, but now two
+machines stand in a row behind it. Machine A turns the dial w into a middle reading called **u**,
+and machine B then turns u into the meter.
+
+Every machine has a curve of its own in the picture, with a point showing the position where it is currently working. With the dial at 3, machine A gives a middle reading of 9.00, and machine B turns that 9.00
+into a meter reading of 5.00. The short pink line through each point shows the slope at that point,
+which is 3.00 for machine A and 2.00 for machine B.
+
+**Pause and predict:** you nudge the dial by 0.1, the first slope is 3, and the second slope is 2,
+so about how far will the meter move? Choose an answer in the **Predict first** box before you read
+any further down this page.
+
+The answer is about 0.6, and the three bars underneath the curves show where it comes from. Machine A
+multiplies the nudge by its own slope, so the 0.1 becomes 0.3 of middle reading. Machine B then
+multiplies again by its own slope, which turns that 0.3 into 0.6 of meter.
+
+In other words the rates multiply, so the slope of the entire chain is 3 × 2, which is 6, and the
+**Overall slope** line prints exactly that. Adding the two slopes instead is the usual slip, and it
+gives the wrong answer of 0.5.
+
+Money behaves in the same way when you exchange it twice. If one dollar buys 3 silver coins, and every silver coin buys 2 copper coins, then one dollar buys 6 copper coins altogether. You
+always multiply the rates along a chain and never add them, and this rule is known as the **chain
+rule**.
+
+The card is honest about one small detail, which is that it also runs the nudge through both
+machines for real. The meter actually moves by 0.602, slightly more than the 0.600 that the slopes
+predicted. You met the reason on the first card, where a slope turned out to be accurate only for an extremely small nudge.
+
+**Try this:** slide **Dial w** from 3 up to 5 while you keep an eye on the three bars. Machine A is now even steeper than before, with a slope of 4.00, but machine B has gone almost completely flat, with a
+slope of 0.029. The overall slope drops from 6 to 0.12, and the final bar all but disappears.
+
+A single flat link is enough to silence the entire chain, however steep the other links happen to be.
+Now look at what the meter reads, which is 9.96 and right at the top of its range. The machine is
+about as wrong as it can possibly be, and yet the dial has almost no say in the matter.
+
+That is the mix-up for the third time, because a slope close to 0 does not mean that everything is
+fine. Here it means that the dial has lost its grip on the meter.
+
+In summary, you multiply the slopes of the links along a chain, and a single flat link blocks
+everything that comes before it. You can now find the slope for any dial, even one that is buried
+behind other machines, so it is time to put that slope to work.
+
+### Walk downhill
+
+The fifth card is called **Walk downhill**, and it returns to a single dial that reaches the meter
+directly. Imagine that the curve is hidden by fog, so that all you can feel is the slope in the
+place where you are standing.
+
+The rule for a single step is short, because you only read the slope and then move the dial in the
+opposite direction. The card writes it as “new w = w − step size × slope”. The minus sign is there
+because the slope points uphill while you want to travel down, and the **step size** is a number
+that you choose yourself. A steep slope produces a long step, and a level position produces no step whatsoever.
+
+**Pause and predict:** the card opens on **Two valleys**, with the walk starting at a dial setting
+of 2.6, just to the left of the hump. The valley on the right is the deeper one, with a reading of
+1.36, so where do you think the walk will finish? Choose an answer in the **Predict first** box
+before you take any steps.
+
+Before you press anything, read the **Next step** line, which calculates the first step for you. The slope at the beginning is +0.608, which is positive, so uphill is to the right, and the step size is
+0.20. The new setting is therefore 2.600 − 0.20 × 0.608, which comes to 2.478, so press **Take a step** once and watch the dial move there, to the left.
+
+Now press **Take 10 steps** and watch the walk roll down into the left-hand valley, where it stops near a dial setting of 1.57 with the meter reading 2.28. It never discovers the deeper valley on the far side of the hump, and it could not have, because each step reads only the slope under its own feet.
+
+A walk like this is called **gradient descent**, and it finds a low point, which is not always the
+lowest one. A valley that is lower than everything close to it, without being the lowest overall, is
+called a **local minimum**.
+
+Study the trail of dots before you move on, and notice that the hops gradually get shorter as the walk approaches the valley floor. The step size never changed, so something else must be shrinking them.
+It is the slope, which falls toward 0 near the floor, and each step is the step size multiplied by
+the slope.
+
+Now for the step size itself, which is easiest to study on a simpler curve. Set **Meter curve** to
+**Bowl** and drag **Start w** to 5, and then try four different sizes, changing **Step size** and
+pressing **Take 10 steps** each time.
+
+- With a step size of 0.05 the walk crawls, and after 10 steps it has only reached 3.697 when the
+  bottom of the bowl is at 3.
+- With a step size of 0.5 the very first step lands exactly on 3, which is a lucky fit for this
+  particular bowl and not something to expect elsewhere.
+- With a step size of 0.9 every step jumps right across the bottom, from 5 to 1.4 and back to 4.28,
+  but the bounces shrink and the walk eventually settles.
+- With a step size of 1.1 every step lands higher than the one before, so the meter climbs from 5.00
+  to 6.76 and then to 9.29.
+
+Why would a large step climb when the slope pointed in exactly the right direction? Think back to what you saw
+on the first card, where the slope only described the curve close to the point you measured it at. A
+long step trusts the slope far beyond the place where it stops being true, and so it lands high up
+on the opposite wall.
+
+Later labs call the step size the **learning rate**, and they write it as η, a Greek letter that is
+read aloud as “eta”.
+
+In summary, you step against the slope, with a step size large enough to get somewhere and small enough to stay inside the valley. Once there are two dials to move at the same time, that choice becomes more difficult to make.
+
+## Your turn: reach the valley floor
+
+The last card is called **Challenge: reach the valley floor**, and it brings everything together:
+two dials, the gradient, and the walk downhill.
+
+The map is the Long valley from the third card, and the walk begins at w = 0.5, b = 4.5, high up on
+one wall. The meter reads 4.03 at that position, while the floor of the valley reads 1.00. You are given 12 steps, and every step moves both dials against their own slopes using an identical step size. Your goal
+is to finish with the meter under 1.05, which means landing inside the small dashed ring, and the
+only number you control is the step size.
+
+### A first try
+
+**Try this:** leave **Step size** at 0.10 and press **Run all 12 steps**, and then look at the bar
+under the buttons to see how far you got.
+
+The meter finishes at 1.436, which is well short of the goal, and the path on the map shows why. The
+walk drops down the steep wall in a few steps and then crawls along the floor, still a long way from
+the ring when the steps run out.
+
+You saw the reason on the third card, where the slope along b was large on the wall while the slope
+along w was small. A single step size multiplies both of them, so the walk moves quickly down the
+wall and only slowly along the floor.
+
+### Too far the other way
+
+**Pause and predict:** if 0.10 is too small, why not make the step size considerably bigger? Set **Step
+size** to 1.00 and think about what the steep wall will do to such a long step, and then press **Run
+all 12 steps** to check your guess.
+
+The walk jumps completely across the valley and lands just as high on the opposite wall, and then it
+jumps straight back again. After 12 steps it is still bouncing from wall to wall, and the meter
+reads 3.25.
+
+The grey dashed path on the map is your previous try, which the card keeps so that you can compare
+the two. One try never left the floor, and the other never managed to reach it.
+
+### Find the range that works
+
+The step size has to be small enough for the steep walls and, at the same time, large enough for the
+gentle floor. There is a range of values that manages both, and your job is to discover it by changing
+**Step size**, running the walk again, and reading the bar.
+
+If you get stuck, try a step size of 0.60, where the first step overshoots the floor a little before the walk settles down and the meter finishes at 1.016. On this map every step
+size from 0.45 to 0.90 reaches the goal.
+
+Watch the **Next step** line while you experiment, because it shows two numbers, one for each dial.
+The first moves w along the floor and the second moves b across the walls, and the same step size
+has to serve both of them.
+
+### What you just did
+
+You have just chosen a learning rate, which is the first number anybody sets when they train an AI
+model. They choose it in the same way you did, by experimenting with a value and watching the meter.
+
+It is time to say what the machine in the box has been all along. Each dial is one of a model’s
+adjustable numbers, which are called **parameters**. The meter is the model’s **loss**, a single
+number that says how wrong its answers are, and the walk downhill is what people mean when they talk
+about training.
+
+A real model has millions of dials where this lab has only one or two, but everything else you did
+in these six cards carries over unchanged.
+
+## What this picture leaves out
+
+A picture this small has to leave things out, and they fall into two separate lists. Some are simplifications inside the lab, while others are genuine difficulties with the idea itself, and it helps to keep them apart.
+
+### What the lab simplifies
+
+Every curve in the lab is a short formula, with no model and no data standing behind it. The bowl on
+the first card is “the dial minus 3, squared, plus 1”, and the two valleys are a shallow bowl with a
+ripple added. The numbers on the screen are exact answers to those formulas, and none of them was
+measured.
+
+The lab can draw the entire curve before you take a single step, which is a view that real training
+never gets. A real loss is only ever calculated at the current setting, so nobody is able to look ahead and choose the deepest valley.
+
+The slopes in the lab are exact, while a real slope is only an estimate, because a real model’s loss is calculated from a sample of its training examples. That makes the slope shake a little from one step to the next, and the lab has nothing in it that could possibly shake.
+
+The nudge on the first card is a way of understanding the slope, and real training does not find its
+slopes that way. Nudging every dial in turn would take one extra run of the model for each dial, and
+a large model has billions of them. Real training gets every slope from one backward pass through
+the model, using the chain rule.
+
+Each dial in the lab only turns between 0 and 6, and the walk stops when it reaches either end. Real
+parameters have no stops at all, so a walk that starts to climb in a real model keeps on climbing
+until the numbers overflow.
+
+One more caution belongs here, about the step size of 0.5 that landed on the bottom of the bowl in a
+single step. That happened because of the exact shape of this bowl, and you should not read anything
+more into it.
+
+### Where the real idea runs into trouble
+
+The following problems belong to the method itself, and they follow it into every real model, however large.
+
+**The slope is only a local promise**, because it describes the ground near your feet and a long
+step can leave that ground behind. Real loss surfaces are full of long valleys with steep walls,
+like the one in the challenge. A single step size has to suit the steepest direction, which leaves
+it slow in all of the gentle ones.
+
+**Level ground is not the finish line**, as the hilltop, the shelf and the saddle each showed with a
+slope of 0 that was not a bottom. When there are many dials, saddle points are far more common than
+true bottoms, and the ground around them stays nearly level for a long distance. A walk can creep across a place like that for an extremely long time.
+
+**A flat link blocks the signal**, in the way that a single flat machine on the fourth card cut the
+overall slope from 6 to 0.12. A real model is a chain of dozens or even hundreds of links. If many
+of those links have small slopes, the product can shrink to almost nothing before it reaches the
+earliest dials. If many of them have large slopes, the product can become enormous instead.
+
+**The walk finds a low place, not the lowest one**, as it did in the left-hand valley on the fifth
+card. Be careful with this one, though, because a drawing with a single dial makes it look like the
+main danger, and for large models it usually is not. With millions of directions to move in, a walk
+is rarely boxed in on every side at once.
+
+**A low meter is not the same thing as a good model**, because the walk only lowers the loss on the
+examples it was measured on. Whether the model also does well on examples it has never seen is a
+separate question, and this lab has no way of showing it.
+
+## Where you will meet this again
+
+Everything in this lab comes back later in the guide, usually with a different name attached, so
+here is where to look for each piece.
+
+*Loss & gradient descent* runs the same walk on a loss surface that comes from real data. It has two
+dials called w and b, an arrow that crosses the contour lines at a right angle, and a learning rate
+for you to set. It also studies the crawl and the bounce from your challenge in considerably greater depth.
+
+*Backpropagation* is the chain rule from the fourth card, run through an entire network. It starts
+at the loss and works backwards, multiplying slopes one link at a time, until every dial has a slope
+of its own.
+
+*Training dynamics* trains a small model inside your browser and plots its loss falling over
+thousands of steps. It also shows the gap that this lab could not show, between the loss on practice
+examples and the loss on new ones.
+
+*Hyperparameters & schedules* asks what happens when the step size changes during the walk, with
+larger steps at the beginning and smaller ones near the end.
+
+*Optimizers in practice* keeps the same gradient and takes smarter steps with it. One example is remembering the previous few steps, so that the bouncing from side to side across a valley cancels itself out.
+
+The arrow itself comes from *Vectors & matrices*, because a gradient is a vector. You can add it,
+stretch it and measure its length with the same tools you used there.

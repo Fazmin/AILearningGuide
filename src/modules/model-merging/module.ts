@@ -25,7 +25,7 @@ const definition: ModuleDefinition = {
   slug: "model-merging",
   title: "Model merging",
   group: "training-adapting",
-  order: 49,
+  order: 51,
   icon: "GitMerge",
   accent: "#3a6a8a",
   prerequisites: ["module-22-lora-adapters"],

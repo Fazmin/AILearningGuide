@@ -19,7 +19,7 @@ const definition: ModuleDefinition = {
   slug: "scaling-laws",
   title: "Scaling laws",
   group: "inside-models",
-  order: 20,
+  order: 22,
   icon: "ChartSpline",
   accent: "#b16b36",
   prerequisites: ["module-06-training-dynamics", "module-09-transformer-block", "module-11-inference-kv-cache"],

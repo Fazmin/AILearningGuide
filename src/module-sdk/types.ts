@@ -65,11 +65,17 @@ export interface ModuleContext {
   currentStep: number;
   mode: ExplanationMode;
   narrate: (message: string) => void;
+  /** The lab's step names, in order. The shell passes them; a test harness may leave them out. */
+  steps?: ReadonlyArray<string>;
+  /** Move the lab to another step, for a lab that pages through its cards. */
+  goToStep?: (index: number) => void;
 }
 
 export interface ModuleDefinition {
   id: string;
   slug: string;
+  /** Slugs this lab used to have. A link or bookmark made under one still opens the lab. */
+  formerSlugs?: string[];
   title: string;
   group: ModuleGroupId;
   order: number;

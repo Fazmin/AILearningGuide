@@ -69,7 +69,7 @@ The classes are not linearly separable, so 12 of the 18 points are support vecto
 
 ### Naive Bayes: a product of per-feature likelihoods
 
-By Bayes' rule (see The math you need), P(c | x, y) is proportional to P(c) P(x, y | c). The naive step splits the joint likelihood into one factor per feature, P(x | c) P(y | c), as if x and y were independent once the class is known. Each factor is a 1-D Gaussian with that class's mean and variance, fitted by averaging.
+By Bayes' rule (see *Probability & surprise*), P(c | x, y) is proportional to P(c) P(x, y | c). The naive step splits the joint likelihood into one factor per feature, P(x | c) P(y | c), as if x and y were independent once the class is known. Each factor is a 1-D Gaussian with that class's mean and variance, fitted by averaging.
 
 Class 0 has prior 0.667 and class 1 has 0.333. At the default probe (0.50, 0.50), class 0 scores 0.667 × 1.446 × 1.632 = 1.574 and class 1 scores 0.333 × 1.217 × 1.298 = 0.527. Normalizing gives P(y=1|x) = 0.527 / (1.574 + 0.527) = 0.251, so the probe is called class 0.
 
@@ -81,7 +81,7 @@ Feature vectors from the previous lab predict nothing until a method turns them 
 
 Neural nets are a later hypothesis class. They are not classical methods on this page.
 
-The naive Bayes subsection above leans on *The math you need* for Bayes' rule and Gaussian means and variances, and logistic regression leans on it for the sigmoid.
+The naive Bayes subsection above leans on *Probability & surprise* for Bayes' rule and Gaussian means and variances, and logistic regression leans on it for the sigmoid.
 
 ## How to play with it
 

@@ -13,7 +13,7 @@ const definition: ModuleDefinition = {
   slug: "structured-decoding",
   title: "Structured and constrained decoding",
   group: "inside-models",
-  order: 21,
+  order: 23,
   icon: "Braces",
   accent: "#1a7f9c",
   prerequisites: ["module-07-next-token-prediction"],

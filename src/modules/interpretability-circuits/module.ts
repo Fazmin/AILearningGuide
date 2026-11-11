@@ -63,7 +63,7 @@ const definition: ModuleDefinition = {
   slug: "interpretability-circuits",
   title: "Interpretability II: circuits",
   group: "frontiers",
-  order: 35,
+  order: 37,
   icon: "CircuitBoard",
   accent: "#a65d38",
   prerequisites: ["module-15-interpretability-features"],

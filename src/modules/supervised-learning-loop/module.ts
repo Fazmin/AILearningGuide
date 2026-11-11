@@ -32,7 +32,7 @@ const definition: ModuleDefinition = {
   slug: "supervised-learning-loop",
   title: "The supervised learning loop",
   group: "groundwork",
-  order: 5,
+  order: 7,
   icon: "Repeat",
   accent: "#3c7a8f",
   prerequisites: ["module-32-classical-machine-learning"],

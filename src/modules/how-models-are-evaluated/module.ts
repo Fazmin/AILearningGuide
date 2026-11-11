@@ -35,7 +35,7 @@ const definition: ModuleDefinition = {
   slug: "how-models-are-evaluated",
   title: "How we know a model works",
   group: "groundwork",
-  order: 6,
+  order: 8,
   icon: "Target",
   accent: "#3f8a3d",
   prerequisites: ["module-50-supervised-learning-loop"],

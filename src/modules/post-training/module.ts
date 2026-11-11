@@ -27,7 +27,7 @@ const definition: ModuleDefinition = {
   slug: "post-training",
   title: "Post-training",
   group: "frontiers",
-  order: 29,
+  order: 31,
   icon: "MessagesSquare",
   accent: "#c65767",
   prerequisites: ["module-07-next-token-prediction", "module-45-rl-foundations"],

@@ -13,7 +13,7 @@ const definition: ModuleDefinition = {
   slug: "hyperparameters-schedules",
   title: "Hyperparameters & schedules",
   group: "pretraining",
-  order: 40,
+  order: 42,
   icon: "SlidersHorizontal",
   accent: "#b8703a",
   prerequisites: ["module-17-training-run"],

@@ -42,7 +42,7 @@ const definition: ModuleDefinition = {
   slug: "why-gpus",
   title: "Why GPUs",
   group: "foundations",
-  order: 13,
+  order: 15,
   icon: "Cpu",
   accent: "#c43d5a",
   prerequisites: ["module-03-stacking-neurons"],

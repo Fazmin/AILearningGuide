@@ -10,7 +10,7 @@ const definition: ModuleDefinition = {
   slug: "ship-it",
   title: "Ship it",
   group: "training-adapting",
-  order: 58,
+  order: 60,
   icon: "Workflow",
   accent: "#c2562f",
   prerequisites: [

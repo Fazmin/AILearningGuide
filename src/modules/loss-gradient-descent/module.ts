@@ -36,10 +36,10 @@ const definition: ModuleDefinition = {
   slug: "loss-gradient-descent",
   title: "Loss & gradient descent",
   group: "foundations",
-  order: 10,
+  order: 12,
   icon: "Mountain",
   accent: "#dd6b45",
-  prerequisites: ["module-02-single-neuron", "module-30-math-you-need"],
+  prerequisites: ["module-02-single-neuron", "module-59-slopes-gradients"],
   estimatedMinutes: 14,
   steps: ["Measure error","Read the slope","Take steps","Compare momentum"],
   stepInstructions: [

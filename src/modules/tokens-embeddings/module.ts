@@ -7,7 +7,7 @@ const definition: ModuleDefinition = {
   slug: "tokens-embeddings",
   title: "Tokens & embeddings",
   group: "foundations",
-  order: 7,
+  order: 9,
   icon: "Binary",
   accent: "#5a67d8",
   prerequisites: ["module-31-data-features-representation"],

@@ -1,0 +1,196 @@
+---
+objectives: ["Read a derivative as the rate at which an output changes when its input is nudged, and say why that rate settles as the nudge shrinks", "Use the sign and size of a slope to tell which way is downhill, and spot a flat place that is not a bottom", "Build a gradient from one slope per dial and explain why it points straight uphill", "Multiply the slopes along a chain to predict how a nudge at the start moves the end", "Predict what a downhill step does when the step size is too small, too large or about right, and why the walk can settle in a valley that is not the deepest"]
+terms: ["Parameter", "Loss", "Slope", "Derivative", "Flat spot", "Partial derivative", "Gradient", "Contour line", "Saddle point", "Chain rule", "Backpropagation", "Gradient descent", "Learning rate", "Local minimum"]
+sections: {"Which way should you turn the dial?":"overview","Build the idea, one card at a time":"mechanism","Your turn: reach the valley floor":"lab","What this picture leaves out":"limits","Where you will meet this again":"next"}
+---
+
+## Which way should you turn the dial?
+
+A machine has one dial, `w`, and one meter, `L`, that reads how wrong it currently is. You cannot
+see inside it. Which way should you turn the dial to lower the meter, and how far? Trying every
+setting works for one dial and fails for a million, so the decision has to come from local
+information: nudge the dial, watch the meter, and act on the ratio.
+
+That ratio is a derivative. One derivative per dial makes a gradient, derivatives multiply along a
+chain of computations, and repeatedly stepping against the gradient is gradient descent. The story
+of the dial is deliberately kept free of machine-learning vocabulary until the challenge, where the
+dial is named a parameter and the meter a loss.
+
+### What you will be able to explain
+
+- Why the difference quotient `ΔL/Δw` converges as the nudge shrinks, and what its limit measures.
+- How the sign, size and zeros of `L′(w)` describe a curve, and why `L′(w) = 0` does not identify a
+  minimum.
+- How partial derivatives assemble into a gradient vector that is normal to the contour line and
+  points in the direction of steepest ascent.
+- Why the derivative of a composition is the product of the derivatives of its links, and what one
+  near-zero factor does.
+- How the step size decides whether gradient descent crawls, converges, oscillates or diverges, and
+  why it converges to a local minimum.
+
+### What the lab shows
+
+Every picture is a closed-form function evaluated in the browser. Nothing is measured from a trained
+model and no data is involved, so every readout can be checked by hand. All dials run from 0 to 6.
+
+## Build the idea, one card at a time
+
+The lab has six cards, one idea each, and shows one per step; **Next** under a card opens the
+following one. The first five are below, in order; the sixth is the challenge.
+
+### Nudge the dial
+
+The meter is `L(w) = (w − 3)² + 1`. With the dial at 4 and a nudge `h`, the card draws the two
+points, the secant through them, and the difference quotient `[L(w + h) − L(w)] / h` as **Ratio**.
+
+**Pause and predict:** if the nudge is halved from 1 to 0.5, does the ratio halve, double, or barely
+move?
+
+It barely moves. Numerator and denominator shrink together, and for this quadratic the quotient is
+exactly `2(w − 3) + h`. At `w = 4` it reads 3, 2.5, 2.25, 2.1, 2.05 and 2.01 for nudges of 1, 0.5,
+0.25, 0.1, 0.05 and 0.01. The limit as `h → 0` is the derivative, `L′(4) = 2`, shown as **Slope it
+settles on**. The magnifier rescales the picture to the size of the nudge, and the curve inside it
+straightens as `h` shrinks: a differentiable function is locally linear, which is why the quotient
+converges.
+
+Read `L′(w)` as an exchange rate that is valid only for small changes. The error of the quotient
+here is the nudge itself, so a nudge of 1 is off by 1. At `w = 1.5` the derivative is −3, meaning
+the meter falls as the dial rises.
+
+### A slope at every point
+
+The derivative is a function of `w`. The second card plots `L(w)` above `L′(w)` on a shared axis for
+a curve with two minima, `L(w) = 0.2u² + 0.9 cos(1.8u) − 0.3u + 2.2` with `u = w − 3`. At `w = 1` the
+meter reads 2.79 and the slope is −1.82. The sign of `L′` gives the direction of increase, its
+magnitude gives steepness, and the hatched bands mark the intervals where `L` is decreasing.
+
+**Pause and predict:** `L′` has three zeros on this curve. Are they all minima?
+
+They are not. The stationary points are minima at `w ≈ 1.57` (L = 2.28) and `w ≈ 4.62` (L = 1.36)
+and a maximum at `w ≈ 2.88` (L = 3.12). The alternative curve, **A shelf**, is `L(w) = 5 + 0.15u³`,
+whose derivative `0.45u²` touches zero at `w = 3` without changing sign: an inflection point with a
+horizontal tangent. A zero derivative is a first-order condition. Classifying the point needs the
+sign change of `L′`, or the second derivative.
+
+### Two dials, one slope each
+
+With a second dial `b`, the meter is a surface `L(w, b)`, drawn as a contour map. Holding `b` fixed
+and differentiating in `w` gives the partial derivative `∂L/∂w`; holding `w` fixed gives `∂L/∂b`.
+On the round bowl `L = 1 + ½[(w − 3)² + (b − 3)²]` at `(4.5, 4)` they are +1.50 and +1.00, and the
+card draws each as a leg.
+
+**Pause and predict:** joined tip to tail, do the two legs make an arrow that points downhill,
+uphill or along the contour?
+
+Uphill. The vector of partials is the gradient, `∇L = (∂L/∂w, ∂L/∂b) = (1.50, 1.00)`. It is normal
+to the contour line through the point and points in the direction of steepest ascent, and its
+length, 1.80, is the rate of ascent in that direction. Descent uses `−∇L`.
+
+The other two surfaces separate ideas that the bowl hides. On **Long valley**, `L = 1 + ½[0.25(w −
+3)² + 2(b − 3)²]`, the gradient at `(1, 4)` is `(−0.50, +2.00)`: it points up the steep wall, and
+`−∇L` does not point at the minimum. On **Saddle**, `L = 5 + ½[(w − 3)² − (b − 3)²]`, the gradient
+vanishes at the centre although the surface rises along `w` and falls along `b`.
+
+### Dials that drive dials
+
+Now the dial reaches the meter through an intermediate value: `u = (w + 3)² / 4`, then `L = 10 σ(0.8
+(u − 9))`, where `σ` is the logistic function. At `w = 3` the local derivatives are `du/dw = 3` and
+`dL/du = 2`.
+
+**Pause and predict:** how far does `L` move for a nudge of 0.1 in `w`?
+
+About 0.6. The chain rule gives `dL/dw = (dL/du)(du/dw) = 2 × 3 = 6`: each link scales the change
+passing through it. The card also evaluates the composition directly, and the true change for a
+nudge of 0.1 is 0.602, because derivatives are first-order approximations.
+
+At `w = 5` the first link is steeper, 4.00, but the logistic has saturated and its derivative is
+0.029, so `dL/dw` is 0.12. The meter reads 9.96 there, near its maximum of 10. A vanishing factor
+makes the upstream derivative vanish whatever the other factors are, and it says nothing about
+whether the loss is low.
+
+### Walk downhill
+
+Gradient descent repeats `w ← w − η L′(w)` with a chosen step size `η`. The card opens on the
+two-minimum curve, starting at 2.6, just left of the maximum at 2.88.
+
+**Pause and predict:** the right-hand minimum is the lower one. Which does the walk reach?
+
+The left one. `L′(2.6) = +0.608`, so the first step with `η = 0.2` goes to 2.478, and ten steps
+bring the dial to about 1.57, where the meter reads 2.28. The update uses only local slope, so it
+converges to the minimum of whichever basin it starts in. The steps shorten without any change to
+`η`, because `L′ → 0` near the minimum.
+
+The **Bowl** isolates the role of `η`. Since `L′ = 2(w − 3)`, each step multiplies the distance from
+the minimum by `1 − 2η`. From a start of 5:
+
+- `η = 0.05` gives a factor of 0.9, and the dial is still at 3.697 after ten steps;
+- `η = 0.5` gives a factor of 0, an exact hit that is special to a quadratic with this curvature;
+- `η = 0.9` gives −0.8, an oscillation that decays (5, 1.4, 4.28, …);
+- `η = 1.1` gives −1.2, so the meter rises from 5.00 to 6.76 to 9.29 until the dial reaches its
+  stop.
+
+In general, descent on a quadratic with curvature `λ` is stable only when `η` is below `2/λ`. On the
+two-minimum curve the left minimum has curvature of about 2.86, and at `η = 0.8` the walk never
+settles there, alternating between about 1.30 and 1.98.
+
+## Your turn: reach the valley floor
+
+The challenge runs two-dial descent on the long valley from `(0.5, 4.5)`, where `L = 4.03`. The goal
+is `L` under 1.05 within 12 steps; the minimum is 1.00. The only control is `η`.
+
+The curvatures are 0.25 along `w` and 2 along `b`, so each step multiplies the two error components
+by `1 − 0.25η` and `1 − 2η`. A small step, 0.10, kills the `b` error quickly but leaves the `w`
+error at `0.975¹²` of its start, and the meter ends at 1.436. A step of 1.00 makes the `b` factor
+exactly −1: the walk reflects between the walls without decaying and ends at 3.25.
+
+On the slider’s grid of 0.05, every step size from 0.45 to 0.90 succeeds; 0.60 ends at 1.016. The
+ratio of the two curvatures, 8, is the condition number, and it is what forces the compromise. The
+step size must be below `2/λ` for the largest curvature, which makes progress along the smallest one
+slow.
+
+The step size is the learning rate, the dials are parameters, the meter is the loss, and the walk is
+training.
+
+## What this picture leaves out
+
+### What the lab simplifies
+
+- Every function is authored, low-dimensional and known everywhere. A real loss is evaluated only at
+  the current parameters and has millions to billions of dimensions.
+- The lab’s gradients are exact. Training estimates the gradient from a minibatch, so each step is
+  noisy.
+- The nudge in the first card is numerical differentiation. It is how the idea is introduced, not
+  how gradients are computed: finite differences need one extra evaluation per parameter and suffer
+  truncation and round-off error. Frameworks use reverse-mode automatic differentiation instead.
+- Dials are clamped to the interval from 0 to 6, which hides true divergence.
+- Landing on the minimum in one step at `η = 0.5` is a property of this quadratic.
+
+### Where the real idea runs into trouble
+
+- **Locality.** A gradient is a first-order statement about a neighbourhood. Its usable range is set
+  by curvature, and ill-conditioned valleys make any single step size a poor compromise. Measured on
+  real networks, full-batch gradient descent tends to operate near the stability threshold, with the
+  largest Hessian eigenvalue hovering around `2/η`.
+- **Stationary points that are not minima.** In high dimensions saddle points are much more numerous
+  than local minima and are surrounded by plateaus where gradients are small and progress is slow.
+- **Products of many factors.** A deep network’s gradient is a product of many local derivatives.
+  Saturating units contribute factors near zero, which is the vanishing-gradient problem; factors
+  above one compound into exploding gradients.
+- **Local minima.** Descent converges to a local minimum of the basin it starts in. The one-dial
+  picture overstates how much this matters for large networks, whose loss surfaces vary a great deal
+  with architecture.
+- **Training loss is not generalisation.** Descent lowers the loss on the data it was computed on,
+  and this lab has no data.
+
+## Where you will meet this again
+
+- *Loss & gradient descent* runs the same walk on a loss surface built from data, over `w` and `b`,
+  and studies the settle, zigzag and blow-up regimes in depth.
+- *Backpropagation* applies the chain rule through a whole computation graph, from the loss back to
+  every weight.
+- *Training dynamics* follows the loss over thousands of steps and separates training loss from
+  validation loss.
+- *Hyperparameters & schedules* varies the learning rate over the course of a run.
+- *Optimizers in practice* keeps the gradient and changes the step: momentum and adaptive methods
+  target exactly the ill-conditioning in the challenge.
+- *Vectors & matrices* supplies the object itself: the gradient is a vector.

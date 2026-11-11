@@ -38,7 +38,7 @@ const definition: ModuleDefinition = {
   slug: "ethics-and-impact",
   title: "Ethics and impact",
   group: "frontiers",
-  order: 33,
+  order: 35,
   icon: "Landmark",
   accent: "#6a5a3a",
   prerequisites: ["module-48-the-ecosystem"],

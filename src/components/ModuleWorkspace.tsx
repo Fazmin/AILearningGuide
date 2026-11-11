@@ -424,10 +424,17 @@ export function ModuleWorkspace({ module }: { module: RegisteredModule }) {
     if (store.searchFocus?.kind !== "card" || store.searchFocus.moduleId !== module.id) return;
     const label = store.searchFocus.label;
     const frame = window.requestAnimationFrame(() => {
-      if (revealSurface(label, "center")) store.setSearchFocus(null);
+      if (revealSurface(label, "center")) {
+        store.setSearchFocus(null);
+        return;
+      }
+      // A lab that shows one step's cards at a time may have this card on another step. A lab scene
+      // that points at the card says which; moving there re-runs this effect, which then finds it.
+      const step = module.scenes.find((scene) => scene.focus === label && scene.step !== undefined)?.step;
+      if (step !== undefined && step !== currentStep) store.setCurrentStep(module.id, step);
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [module.id, revealSurface, store.searchFocus, store.setSearchFocus]);
+  }, [currentStep, module.id, module.scenes, revealSurface, store.searchFocus, store.setSearchFocus, store.setCurrentStep]);
 
   /**
    * Move the lab to a step and a state. Labs that follow the step reset their own stage when it changes
@@ -623,6 +630,8 @@ export function ModuleWorkspace({ module }: { module: RegisteredModule }) {
                 state={currentState}
                 setState={(patch) => store.setModuleState(module.id, patch)}
                 currentStep={currentStep}
+                steps={module.steps}
+                goToStep={(index) => store.setCurrentStep(module.id, index)}
                 mode={store.mode}
                 narrate={(message) => {
                   if (store.verboseNarration) setAnnouncement(message);

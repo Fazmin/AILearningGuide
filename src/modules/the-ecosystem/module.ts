@@ -27,7 +27,7 @@ const definition: ModuleDefinition = {
   slug: "the-ecosystem",
   title: "The ecosystem",
   group: "frontiers",
-  order: 32,
+  order: 34,
   icon: "Globe",
   accent: "#4a6fa8",
   prerequisites: ["module-33-how-models-are-evaluated", "module-10-scaling-laws", "module-12-post-training"],

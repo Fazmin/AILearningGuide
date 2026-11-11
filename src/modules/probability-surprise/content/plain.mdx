@@ -1,0 +1,323 @@
+---
+objectives: ["Read a probability distribution as one whole shared among outcomes, and a conditional probability as one row of a count table rescaled to add to one","Predict how a tally of samples settles onto the true bars, and read the mean, the variance and the bell curve of an average","Update a belief with Bayes' rule by multiplying a prior by a likelihood and rescaling","Measure surprise in bits, average it into entropy, and explain why cross-entropy can never fall below the entropy","Turn raw scores into probabilities with softmax, and say what temperature and the sigmoid do"]
+terms: ["Probability distribution","Sample","Mean and variance","Gaussian (normal) distribution","Conditional probability","Bayes' rule","Prior","Posterior","Surprise","Entropy","Cross-entropy","KL divergence","Softmax and temperature","Sigmoid and logit"]
+sections: {"How sure is a guess?":"overview","Build the idea, one card at a time":"mechanism","Try the challenge":"lab","What this picture leaves out":"limits","Where you will meet this again":"next"}
+---
+
+## How sure is a guess?
+
+Finish this sentence: “the sky is ___”. You probably thought of `blue`, and so would most people, but stories also say the sky is grey, or dark, or clear, and now and then a story even calls it green. So what should a program answer when you ask it for the next word?
+
+A language model, the kind of program behind a chatbot, never answers that question with a single word. It answers with a list of chances, one for every word that could come next, and only afterwards is one word picked from that list. Everything about how these models are trained and tested rests on that list of chances, which is why this lab comes before any lab about models.
+
+That raises three questions, and the lab takes them in order:
+
+1. How do you write down a belief that is spread over several possible answers instead of resting on one?
+2. What happens when you pick from that belief again and again, as a chatbot does every time it writes a word?
+3. How do you score a guesser fairly, so that being honestly unsure costs a little while being confidently wrong costs a lot?
+
+The third question has a surprising answer, because the fair score turns out to be a count of something like coin flips. It also has a floor that no guesser can get under, however clever the guesser is. Hold on to that claim, because you will test it yourself near the end of the lab.
+
+### What you will be able to do
+
+By the end of the lab you will be able to do five things:
+
+- read a set of chances as one whole shared out among the possible answers, and find the chances for one situation by rescaling one row of a table of counts;
+- predict how a tally of random picks settles onto the true chances as the picks pile up, and read the centre and width of the bell-shaped pile that averages make;
+- update a belief when a clue arrives, by multiplying how common each explanation was by how well that explanation predicts the clue;
+- measure surprise in a unit called bits, average it, and explain why a guesser's average bill can never fall below the truth's own average surprise;
+- turn the raw scores a model produces into chances, and say what the setting called temperature really does to them.
+
+### What the lab runs
+
+The lab follows one small story from start to finish, which is guessing the next word after a short prompt. There are only five candidate words, and every number was made up so that you can check each sum by hand. Behind the pictures sits a table of 200 invented stories, so nothing here was measured from a real model.
+
+The random picks are real picks, but they start from a fixed seed, which is a starting number that makes the same “random” run come out the same way every time. That is the reason this lesson can tell you in advance what you will see. The later lab *Next-token prediction* shows the same kind of bars coming out of a real model.
+
+## Build the idea, one card at a time
+
+Here is the plan for this section: each step of the lab shows one card with one picture, and every picture adds a single idea to the one before it. The **Next** button under the card opens the following step. Read a part of the lesson, then go and touch the control that it names, and try to guess what will happen before you move anything.
+
+### Bars that add to one
+
+Open the first step, where the card shows the prompt “the sky is ___” and five bars, one for each word that could come next. The bar for `blue` stands at 50%, while `grey` has 25%, `dark` has 12%, `clear` has 8% and `green` has 5%.
+
+Each bar is a **probability**, which is a share of the chance, written as a number from 0, meaning never, to 1, meaning always. That means 50%, 0.50 and “1 time in 2” are three ways of saying the same thing. The lab writes it as P(blue) = 0.50, which you read aloud as “the probability of blue is 0.50”.
+
+Now look at the strip above the bars, which is one long bar cut into five parts that are exactly as wide as the bars are tall. The strip is always full, because one of the five words has to come next, and so the five shares always add up to one whole. You can check that with the starting bars: 0.50 + 0.25 + 0.12 + 0.08 + 0.05 = 1.00.
+
+It works like one pizza shared among five people: cut the slices any way you like, but you cannot hand out more than one pizza or leave a slice behind.
+
+**Pause and predict:** you are about to drag the `blue` bar up to 80%, so decide first what the `grey` bar will do.
+
+The `grey` bar shrinks, and so do the other three, because only 20% is left for the four of them to share. They keep their proportions as they shrink, so `grey` still has half of whatever `blue` leaves over, and half of 20% is 10%. The dashed outlines on the card show where the bars started, which makes the change easy to compare.
+
+Next, switch **Show as** to **counts out of 100 stories**. None of the bars move, but the labels now count stories, so the starting `blue` bar says that 50 of every 100 stories beginning “the sky is” go on to say `blue`. A percent and a count out of 100 are two ways of reading one picture, and the count is often the easier one to think with.
+
+A full set of bars like this, covering every possible answer with shares that add to one, is called a **probability distribution**. That is the answer to the first question, because a belief spread over several answers is a set of bars that add to one.
+
+Press **Reset the bars** before you move on, because the bars describe what could happen but nothing has happened yet, and the next step picks a word.
+
+### Draw from the bars
+
+Go to the second step, which is about picking one answer at random, so that each answer is as likely to be picked as its bar is tall. That is called drawing a **sample**, and it is the move a chatbot makes every time it writes a word.
+
+Set **Number of draws** to **1** and look at the word that comes out, which is `grey`, even though `blue` is twice as likely. One draw tells you very little about the bars, because any word that has a bar can turn up.
+
+**Pause and predict:** you will set the draws to 10 in a moment, so decide whether `blue` will come up exactly 5 times to match its 50% bar.
+
+Set **Number of draws** to **10** and look at the dotted bars, which show the tally of what was drawn. The word `blue` came up 7 times, `grey` came up twice and `clear` once, while `dark` and `green` never appeared at all. The readout **Biggest gap, tally to bars** says 20.0 points, because `blue` took 70% of the draws against a bar of only 50%.
+
+Nothing is broken here, because this is what luck looks like in a small sample. Ten draws can only produce shares in steps of 10%, so `dark` could never have shown its 12% exactly, however the draws had fallen.
+
+Now raise the draws to **100** and then to **1,000**, and watch the same readout each time. At 100 draws the biggest gap is 9.0 points, and at 1,000 draws it has fallen to 0.9 points. By then `blue` has come up 507 times, which is 50.7% of the draws and very close to its bar.
+
+The line chart under the bars tells the same story for a single word. It follows `blue`'s share of all the draws so far, which swings wildly at the left of the chart and then flattens onto the dashed line at 50%. Press the name of another word under the bars if you want to follow that word instead.
+
+This settling is called the **law of large numbers**, which says that as draws pile up, each answer's share of the draws closes in on its probability. It is also the reason a probability means anything at all. Saying that `blue` has a probability of 0.50 is a promise about the long run and not about the next draw.
+
+**Try this:** press **New luck** while the draws are set to 10, which gives you a different run of ten with a different tally and a different gap. Press it a few more times and you will see how much one run of ten draws can disagree with another.
+
+So small samples are noisy and large ones settle down, and the next card measures how noisy they are, which matters every time someone tests a model on a handful of questions.
+
+### Averages pile up in a bell
+
+Go to the third step and picture a guesser that always answers with the tallest bar, `blue`, earning 1 point for a hit and 0 points for a miss. Its score on one question is all or nothing, but nobody tests a guesser with a single question.
+
+The table at the top of the card works out the guesser's long-run average score. You multiply each word's chance by the points that word earns and add up the results, so `blue` gives 0.50 × 1 while every other word gives its chance times 0. The total is 0.50, and this long-run average is called the **mean**, or the **expected value**.
+
+The guesser never actually scores 0.50 on a single question, since each answer scores either 0 or 1. So you also need a number that says how far single answers land from the mean. Each answer misses the mean by 0.5 in one direction or the other, and the table squares that distance and averages it, which gives 0.25. That average squared distance is called the **variance**.
+
+Squared points are awkward to think in, so you take the square root to get back to ordinary points, and the square root of 0.25 is 0.5. That number is the **standard deviation**, which you can read as the typical distance from the mean.
+
+Now look at a whole test, because the picture shows 2,000 pretend tests of 25 questions each, where every test's score is its average points per question. Each bar counts how many of those tests ended up with a particular score.
+
+The scores heap up into a hump with its centre near 0.50, and the readout **Mean of the pile** says 0.50. The hump is wide, though, because **Standard deviation** reads 0.101. A guesser that is right exactly half the time will therefore often score 0.40 or 0.60 on a 25-question test through luck alone.
+
+The smooth curve drawn over the pile is a **bell curve**, which is also called a **Gaussian** or a normal distribution. Two numbers are enough to draw the whole curve, because the mean sets where its centre sits and the variance sets how wide it spreads. About 68% of the area under any bell lies within one standard deviation of its centre, and the card shades that band.
+
+**Pause and predict:** suppose you want the pile to be half as wide, and decide whether each test needs 50 questions, 100 questions or 250.
+
+Set **Questions per test** to **100** and the standard deviation falls to 0.050, half of what it was, so the answer is 100 questions. Halving the wobble takes four times as many questions, not twice as many, and at 400 questions it halves again to 0.025.
+
+The card shows why this happens, because the variance of an average is the variance of one answer divided by the number of questions. Here that is 0.25 ÷ 25 = 0.01, and the square root of 0.01 is 0.100. The pile itself measured 0.101, a hair away from that, because 2,000 tests are themselves only a sample.
+
+So a test score is one draw from a bell, and it carries a wobble that shrinks only slowly as the test grows. That is why later labs put error bars on scores before they compare two models.
+
+All of these bars have belonged to a single prompt, while a real model has to cope with any prompt at all, which is what the next card is about.
+
+### Context changes the bars
+
+Go to the fourth step, look at its first card, and switch **Prompt** from “the sky is ___” to “the grass is ___”. The bars jump, so that `green` now stands at 70% while `blue` has dropped to 10%. The five words are the same as before, but the situation is different, and so the bars are different.
+
+The table above the bars shows where they come from, because it sorts 200 made-up stories by how they begin, down the side, and by which word comes next, across the top. The row for “the grass is” holds 50 stories, and 35 of those stories say `green`.
+
+To get the bars for a prompt, you keep only its row and divide each count by the total for that row. For `green` after “the grass is”, that works out as 35 ÷ 50 = 0.70. Dividing by the row's own total is what makes the bars for that row add up to one again.
+
+A chance that is worked out inside one situation like this is called a **conditional probability**. The lab writes this one as P(green | the grass is) = 0.70, where you read the upright bar as “given”. In words, it is the probability of `green`, given that the story so far is “the grass is”.
+
+Switch to “the sea is ___” and check one for yourself: that row also has 50 stories, and 20 of them say `blue`, so P(blue | the sea is) = 20 ÷ 50 = 0.40.
+
+This is the one thing a language model outputs, since for any text so far it gives a full set of probabilities for the next word, given that text. A model does not look its bars up in a table as this lab does, but what it produces has exactly this shape.
+
+The same table can also be read in the other direction, and that reading answers a harder question.
+
+### Read the table backwards
+
+Scroll down to the second card of the same step, where the prompt is hidden and all you are told is that the next word was `blue`. The question is which prompt that word followed.
+
+It is tempting to reason that `blue` follows “the sky is” half the time, so the chance must be 50%. That reasoning answers a different question, because it tells you how often a sky story says `blue` and not how often a `blue` comes from a sky story.
+
+The safe way is to count, reading down the `blue` column of the table. Of the 200 stories, 50 sky stories say `blue`, and so do 5 grass stories and 20 sea stories. That makes 75 stories with `blue` in them, of which 50 began “the sky is”, so the chance is 50 ÷ 75, or about 67%.
+
+The picture on the card does the same sum with areas. Each prompt is a column whose width is its share of all the stories, which is 50% for the sky and 25% each for the grass and the sea. This starting belief, which you hold before you see any clue, is called the **prior**.
+
+Each column is then filled up to the chance that `blue` follows that prompt, which is 50% for the sky, 10% for the grass and 40% for the sea. A number that says how well an explanation predicts the clue you saw is called a **likelihood**.
+
+The filled area of a column is its width times its height, so the area for the sky is 0.50 × 0.50 = 0.25. The other two areas are 0.025 and 0.10, and the three of them add up to 0.375.
+
+The strip under the columns keeps only the filled areas and stretches them out to make one whole. The sky's part of the strip is 0.25 ÷ 0.375, about 67%, which matches the count you made a moment ago, and this updated belief is called the **posterior**.
+
+That whole move is **Bayes' rule**: you multiply each prior by its likelihood, and then you rescale the results so that they add to one.
+
+**Pause and predict:** suppose sky stories were rare, 1 story in 10 instead of 1 in 2, while the clue is still `blue`. Decide whether the probability that it was a sky story changes.
+
+Drag the **Prior** slider down to 10%, and the sky's posterior falls from 67% to 18%, while “the sea is” takes the lead with about 65%. The word `blue` is just as typical of sky stories as it ever was, but there are now so few sky stories that most `blue`s come from somewhere else.
+
+**A common mix-up:** treating “how often does a sky story say blue” as though it were “how often does a blue come from a sky story”. The first is a likelihood and the second is a posterior, and you cannot get from one to the other without knowing the prior.
+
+So a clue shifts a belief without replacing it, and something that was rare before the clue arrived stays fairly rare afterwards, unless the clue is a very strong one.
+
+You can now read bars, draw from them and update them when a clue arrives. The last thing missing is a way to score a guess, which is the third question from the start.
+
+### Surprise in bits
+
+Go to the fifth step, where the card shows the sky bars again with a second set of bars hanging underneath them. The hanging bars answer one question, which is how surprised you should be if this word turns out to be the one that happens.
+
+A word with a tall bar is no great surprise when it happens, while a word with a short bar is a big one. The lab measures that surprise by counting halvings, starting from a probability of 100%. The `blue` bar is at 50%, one halving away from certain, so its surprise is 1, while `grey` at 25% is two halvings away and has a surprise of 2.
+
+The unit for this count is the **bit**, and one bit is the surprise of one fair coin flip landing heads. Two bits is the surprise of two heads in a row, which happens 1 time in 4. Three bits is the surprise of three heads in a row, which happens 1 time in 8, and the lines across the hanging bars are labelled in exactly this way.
+
+Most chances are not neat halvings, and then the count lands between two whole numbers. The `dark` bar at 12% has a surprise of 3.06 bits, a little over three halvings, and the `green` bar at 5% has 4.32 bits.
+
+The formula on the card is −log₂ of the probability, which you read aloud as “minus log base two”. A logarithm with base two answers the question “how many times must I multiply by 2 to reach this number?”, and the minus sign turns that into a count of halvings.
+
+**Try this:** drag the `blue` bar down from 50% to 25% and watch its hanging bar, which grows from the 1-bit line to the 2-bit line. Every time a chance halves, its surprise goes up by exactly one bit, wherever the chance started. Press **Reset the bars** afterwards, so that the next part starts from the same numbers as this lesson.
+
+Now use the lower half of the card, which asks about two separate stories, one of each kind, when **First word** is set to `blue` and **Second word** to `grey`.
+
+The chance of getting both is the two chances multiplied together, 0.50 × 0.25 = 0.125, which the card draws as a small shaded rectangle. The surprise of getting both is the two surprises added together, 1.00 + 2.00 = 3.00 bits, which the card draws end to end. Three bits is exactly the surprise of a chance of 0.125, since 0.125 is three halvings away from certain.
+
+This is why the logarithm earns its place in the lab. Probabilities multiply, and a long chain of multiplied probabilities shrinks towards zero until a computer can no longer tell it from zero. Surprises add instead, and a sum stays an ordinary number that is far easier to work with.
+
+Here is where the coin picture stops matching, because real coin flips only come in whole numbers while surprise does not, and you cannot flip a coin 3.06 times. The bit is a unit of measurement, like the metre, so it is fine to have 3.06 of them.
+
+Each word now has its own surprise, but a guesser needs one number for the whole set of bars, which is what the next card builds.
+
+### Average surprise
+
+Scroll down to the second card of the same step, where the question is how surprised you are on average if you watch these bars play out over a great many stories.
+
+**Pause and predict:** decide which bars give the highest average surprise, out of one sure thing, the lopsided sky bars and five equal bars.
+
+The picture is a row of blocks, one for each word, and each block is as tall as that word's surprise and as wide as its probability. The width matters because the probability is how often you actually meet that surprise.
+
+Look at the block for `green`, which is the tallest at 4.32 bits but is only 5% wide, because `green` hardly ever happens. The block for `blue` is short, at only 1 bit, but half of all stories land on it. The dashed line marks the average height when each block counts for as much as it is wide, and it sits at 1.87 bits.
+
+The formula under the picture says the same thing in numbers: 0.50 × 1.00 + 0.25 × 2.00 + 0.12 × 3.06 + 0.08 × 3.64 + 0.05 × 4.32 = 1.87 bits. It is the expected value from the bell card over again, with surprise as the number attached to each word in place of points.
+
+This average surprise is called the **entropy** of the bars, and it measures how uncertain they are.
+
+Now drag **Shape of the bars** all the way to the left, where one word takes everything and its block is as wide as the whole picture, with no height at all. The entropy is 0.00 bits, because a sure thing never surprises you.
+
+Then drag it all the way to the right, where all five bars stand at 20% and every block is 2.32 bits tall, so the average is 2.32 bits as well. That is as high as the entropy can go with five words, so the answer to the prediction is the five equal bars.
+
+If you guessed the sky bars, you were probably looking at their tall blocks. Those blocks are tall because the words are rare, and rare words are narrow, so they add very little to the average.
+
+The boxes beside the readouts turn bits back into a number of choices. Bars with 2.32 bits are as uncertain as a fair pick among 5 words, while bars with 0 bits are like a pick among only 1. The sky bars, at 1.87 bits, are as uncertain as a fair pick among 3.67 words, and later labs call this number the **perplexity**.
+
+Entropy is the average surprise of someone who already knows the true bars, but a model does not know them, so the next card works out what that ignorance costs.
+
+### Your guess against what happens
+
+Go to the sixth step, where there are now two sets of bars. The solid bars show what really happens, and they are the same sky bars as before, which the lab calls p. The hatched bars are a model's guess, called q, and you can drag them.
+
+Picture a weather forecaster who has to pay a fine every day, where the fine is the surprise of whatever weather turned up, worked out from the probabilities the forecaster announced. If the forecaster gave rain a 50% chance and it rains, the fine is 1 bit, but if the forecaster gave rain only 1% and it rains, the fine is 6.64 bits.
+
+The model is in the same position as that forecaster. Words turn up as often as the solid bars say, while the model pays the surprise worked out from its own hatched bars. Its average fine is called the **cross-entropy**, and the card calls it the bill.
+
+The model starts out knowing nothing, with every one of its bars at 20%. Each word then costs it 2.32 bits, whichever word turns up, so **The bill** reads 2.32 bits. The truth's own entropy is 1.87 bits, shown as **Best possible**, and the difference of 0.45 bits is shown as **Wasted**.
+
+**Pause and predict:** decide whether any set of hatched bars can push the bill below 1.87 bits.
+
+Try to beat it by being bold, and set the model's `blue` bar to 60% so that the other four drop to 10% each. The word `blue` now costs only 0.74 bits, which is cheaper than it was. The other words cost 3.32 bits each, however, and they still turn up half the time. The bill comes to 2.03 bits, which beats knowing nothing but is still above 1.87.
+
+Now set **Set the model to** to **confidently wrong: 96% green**, which makes `green` cost almost nothing, although `green` hardly ever happens and every other word now costs 6.64 bits. The bill jumps to 6.31 bits, of which 4.44 are wasted, so a confident wrong guess is far worse than admitting that you do not know.
+
+Finally choose **matches what happens**, or drag the hatched bars onto the solid ones yourself. The wasted bits fall to 0.00 and the bill stops at 1.87. So the answer to the prediction is no, because the bill bottoms out at the entropy and no guess can get underneath it.
+
+The wasted part has a name of its own, the **KL divergence**, which is the extra bits you pay for believing q when the world follows p. It is zero only when the two sets of bars match exactly.
+
+The forecaster picture stops matching in one way, because a forecaster can look up the true weather record afterwards, while nobody has the true bars for language. The bill can be measured from real text, while the best possible bill can only be guessed at.
+
+This is the claim from the start of the lesson, and it is also what training a language model means. Training changes q, one small step at a time, to make the bill smaller, and the only way to drive the bill down is to make q look more like p.
+
+One piece is still missing, because a model does not hold a set of bars inside it, so the last card shows where its bars come from.
+
+### From scores to bars
+
+Go to the seventh step, which starts from the fact that a model produces one raw number for each word, called a score or a **logit**. A score can be any size and can even be negative, so scores are not chances, and on this card they are 2.0, 1.3, 0.6, 0.2 and −0.3.
+
+Three moves turn those scores into bars, and the card shows the moves from top to bottom in a recipe that is called **softmax**.
+
+1. Raise e to each score, where the letter e stands for a fixed number of about 2.718, which gives 7.39, 3.67, 1.82, 1.22 and 0.74.
+2. Add those five results together, which gives a total of 14.84 for these scores.
+3. Divide each result by that total, so that for `blue` you get 7.39 ÷ 14.84, which is 0.498 and makes a bar of 50%.
+
+Raising e to a score is a job for a calculator, and all you need to know is that the result is always positive and grows fast as the score rises. The bars that come out are the sky bars you started with, and they were shares of a total all along, which is why they add to one.
+
+**Pause and predict:** you will press **Add 1 to every score** in a moment, which makes the scores 3.0, 2.3, 1.6, 1.2 and 0.7, so decide first whether the bars will change.
+
+Press the button and compare the rows, where the middle row changes a lot and its total grows from 14.84 to 40.35, yet the bars do not move at all. Adding 1 to a score multiplies its result in the middle row by e, and when every number in a fraction is multiplied by the same amount, the shares stay the same. Only the gaps between the scores matter.
+
+Now try the **Temperature** slider, which divides every score by the temperature before the three moves begin. Set it to 0.5 and the gaps between the scores double, so the bars sharpen and `blue` rises to 74%. Set it to 2.0 and the gaps halve, so the bars flatten, with `blue` falling to 34% and `green` rising to 11%.
+
+The dashed outlines mark where the bars stand at a temperature of 1, and you can see that the order of the words never changes, whatever the temperature. Temperature only stretches or squeezes the gaps the model already has, so it changes how adventurous the draws are without adding any knowledge.
+
+Press **Reset scores** before you go on, which also puts the temperature back to 1. The bottom of the card keeps only two words, `blue` and `grey`, and with two words the share that `blue` gets depends on a single number. That number is the gap between the two scores, which here is 2.0 − 1.3 = 0.7.
+
+The curve that turns a gap into a share is called the **sigmoid**. It is S-shaped, because it gives exactly 50% when the gap is zero and flattens out towards 100% on the right and 0% on the left. At a gap of 0.7 it gives 66.8%, and the two readouts, **Softmax on the two scores** and **Sigmoid of the gap**, agree with each other.
+
+Press **Add 1 to every score** once more and watch the dot on the curve. It stays exactly where it is, because the gap between the two scores has not changed.
+
+That completes the chain, in which a model makes scores, softmax turns those scores into bars that add to one, and a word is drawn from the bars. The bill then measures how surprised the model was by the word that really came.
+
+## Try the challenge
+
+Go to the last step, where one card puts the whole lab into a single task that should take you a minute or two.
+
+A new prompt appears, “the night is ___”, and this time the true bars are hidden. All you get is a tally of 40 draws from them, in which `blue` came up 3 times, `grey` 4 times, `dark` 20 times, `clear` 11 times and `green` twice. Your job is to set the hatched bars so that your bill comes within 0.05 bits of the best possible bill.
+
+Your bars start at 20% each, so press **Score it** before you change anything, and **Bits wasted** reads 0.583, which is the price of knowing nothing.
+
+**Pause and predict:** decide what the best guess is that anyone could make from a tally, and try it out before you read on.
+
+The winning move is to count and divide, so the word `dark`, which came up 20 times out of 40, should get 50%. The word `clear` came up 11 times, and 11 ÷ 40 is 27.5%, so it should get 27% or 28%. Do the same for the other three words, or drag each hatched bar until it is as tall as the dotted bar beside it.
+
+Press **Score it** again, and with bars of 7%, 10%, 50%, 28% and 5% the wasted bits read 0.010, which is well inside the goal.
+
+Notice that the answer is not 0.000, and press **Reveal the true bars** to see why: the truth has `dark` at 55% and not at 50%. Forty draws give a noisy picture of the bars, as the second card showed, so the best guess from the tally lands close to the truth without matching it.
+
+There are two more rounds with different hidden bars, and they are worth trying before you read any further.
+
+What you did comes back in the later labs, because counting what follows a prompt and dividing by the total is exactly how the smallest language model in this guide is built. That model is the bigram table in *Next-token prediction*. Every larger model chases the same target with far more machinery, which is a set of bars that makes the real next word as unsurprising as possible.
+
+### What to notice across the cards
+
+- **One operation appears three times**, because rescaling to add to one turns a row of counts into bars, turns priors times likelihoods into a posterior, and finishes softmax.
+- **One average appears three times**, because multiplying each probability by a number and adding the results gives the mean score, then the entropy, and then the bill.
+- **Small samples always wobble**, which is why the tally of 10 draws, the pile of 25-question tests and the 40 draws of the challenge all miss the truth by a visible amount.
+- **Confidence has a price**, because putting more of your bars on one word makes that word cheap and every other word expensive, which only pays off when the world agrees.
+
+## What this picture leaves out
+
+### What the lab simplifies
+
+Every number in this lab is either invented or worked out from a short formula, and none of it was measured from a real model. It is worth being exact about which parts are which.
+
+- **The counts are authored**, which means the 200 stories and the hidden bars of the challenge were chosen by the lesson's writers so that the sums come out cleanly.
+- **There are only five words**, while a real model spreads its bars over tens of thousands of possible next pieces of text, most of which get a tiny share.
+- **The draws are seeded**, so they follow a fixed starting number, and each seed for the challenge was picked so that counting and dividing meets the goal.
+- **Other runs of 40 draws can miss that goal**, because counting from so few draws is often off by a little more than the 0.05 bits allowed.
+- **No bar can reach zero**, because the lab keeps every bar at 1% or more, and a word with a 0% bar would have an endless surprise if it ever happened.
+- **The draws do not affect each other**, while real text is the opposite, because every word that is written changes the probabilities for the next one.
+- **The pretend tests are too tidy**, since every question has the same probability of a hit, while real test questions vary in difficulty and often come in related groups.
+- **The bell is a close fit and not an exact one**, because the pile is made of separate bars and leans to one side when the mean is near 0 or 1.
+- **You are shown the truth**, since the lab knows the true bars and can print the best possible bill, which nobody can do for real language.
+
+### Where the real ideas run into trouble
+
+**A low bill is not the same as being right**, because cross-entropy only rewards a model for giving high probabilities to the text it is tested on. It does not check whether that text is true or useful, so a model can be quite unsurprised by nonsense.
+
+**You only ever see samples**, since the real bill is an average over a pile of example text, and it wobbles like any other average of a sample. Two models whose scores differ by less than that wobble have not really been told apart.
+
+**Zero is dangerous**, because a model that gives a word no probability at all pays without limit when that word turns up. Counting from a small sample does exactly this to any word that happened not to appear, which is why real counting models keep back a little probability for the unseen.
+
+**Bayes' rule needs a prior you can defend**, and in the lab that prior is a count you can see in the table. In real problems it is often a judgement, so two people who start from different priors will reach different posteriors from the same clue.
+
+**The wasted bits depend on the direction**, because the bits wasted by believing q when the world follows p are not the same as the bits wasted the other way round. Which direction a method measures therefore changes which mistakes it punishes most.
+
+**Temperature is not a knowledge dial**, because it only reshapes the probabilities a model already has. A model's bars can also be too sharp or too flat for how often the model is actually right, and correcting that is a separate job called calibration.
+
+## Where you will meet this again
+
+Every idea in this lab comes back later with a real model attached to it.
+
+- ***Next-token prediction*** shows a real model's bars for the next piece of text, draws from them one piece at a time, and lets you turn the temperature yourself. It also builds its smallest model by counting and dividing, as you did in the challenge, and it reports surprise under the name surprisal.
+- ***Loss & gradient descent*** and ***Train one from scratch*** use cross-entropy as the loss, which is the single number that training pushes down. Some labs measure it with a different logarithm, in a unit called nats, where 1 bit is about 0.69 nats.
+- ***How we know a model works*** and ***Evaluation*** return to the bell card, because a score from a small test is one noisy draw and needs an error bar before it is compared.
+- ***Classical machine learning*** uses Bayes' rule and bell curves in a method called naive Bayes, and it uses the sigmoid in a method called logistic regression.
+- ***Distillation & pruning*** and ***Post-training*** use the KL divergence to compare the bars of two models, for instance when a small model is trained to copy a large one.
+- ***Reinforcement learning foundations*** uses the expected value, as the long-run average reward that a way of acting earns.
+
+If you remember one picture from this lab, make it the row of blocks. Each block is as wide as how often something happens and as tall as how surprised the guesser is when it does.

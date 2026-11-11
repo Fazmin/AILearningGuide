@@ -7558,6 +7558,238 @@ input[type="range"]::-webkit-slider-thumb {
   box-shadow: inset 0 0 0 0.08rem var(--panel-solid);
 }
 
+/* Predict first: a guess the reader commits to before the lab shows the answer. */
+.viz-predict {
+  display: grid;
+  margin-top: 0.75rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px dashed color-mix(in srgb, var(--module-accent) 55%, var(--line-strong));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--module-accent) 5%, var(--panel-solid));
+  gap: 0.55rem;
+}
+
+.viz-predict.is-correct,
+.viz-predict.is-wrong {
+  border-style: solid;
+}
+
+.viz-predict__prompt {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.viz-predict__prompt > span {
+  display: inline-block;
+  margin-right: 0.5rem;
+  padding: 0.14rem 0.42rem;
+  border: 1px solid color-mix(in srgb, var(--module-accent) 42%, var(--line));
+  border-radius: 999px;
+  color: var(--module-accent);
+  background: var(--panel-solid);
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  vertical-align: 0.08em;
+  white-space: nowrap;
+}
+
+.viz-predict__options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.viz-predict__options button {
+  min-height: 2rem;
+  padding: 0.3rem 0.7rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  background: var(--panel-solid);
+  font-size: 0.78rem;
+  font-weight: 560;
+}
+
+.viz-predict__options button:hover {
+  border-color: var(--module-accent);
+}
+
+.viz-predict__options button[aria-pressed="true"] {
+  border-color: var(--module-accent);
+  box-shadow: inset 0 0 0 1px var(--module-accent);
+}
+
+/* Right and wrong are told apart by the mark as well as the colour. */
+.viz-predict__options button.is-answer {
+  border-color: var(--positive);
+  color: var(--positive);
+  background: color-mix(in srgb, var(--positive) 9%, var(--panel-solid));
+  box-shadow: none;
+}
+
+.viz-predict__options button.is-answer::before {
+  content: "✓ ";
+}
+
+.viz-predict__options button.is-miss {
+  border-color: var(--negative);
+  border-style: dashed;
+  color: var(--negative);
+  box-shadow: none;
+}
+
+.viz-predict__options button.is-miss::before {
+  content: "✕ ";
+}
+
+.viz-predict__reveal {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.viz-predict__reveal strong {
+  color: var(--ink);
+}
+
+/* The foot of a lab that pages through its cards: where you are, and a button to the next step. */
+.viz-step-pager {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 0.55rem 0.8rem;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  background: color-mix(in srgb, var(--panel-solid) 80%, transparent);
+  gap: 0.4rem 0.7rem;
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.viz-step-pager__where {
+  color: var(--ink-soft);
+  font-weight: 650;
+}
+
+.viz-step-pager__note {
+  min-width: 0;
+}
+
+.viz-step-pager button {
+  min-height: 2.1rem;
+  padding: 0.35rem 0.8rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  background: var(--panel-solid);
+  font-size: 0.78rem;
+  font-weight: 620;
+  text-align: left;
+}
+
+.viz-step-pager button:hover {
+  border-color: var(--module-accent);
+}
+
+.viz-step-pager .viz-step-pager__next {
+  margin-left: auto;
+  border-color: var(--module-accent);
+  color: white;
+  background: var(--module-accent);
+}
+
+.viz-step-pager .viz-step-pager__next:hover {
+  filter: brightness(1.06);
+}
+
+/* A challenge's progress toward its goal. */
+.viz-goal {
+  display: grid;
+  margin-top: 0.75rem;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel-muted);
+  gap: 0.45rem;
+}
+
+.viz-goal.is-done {
+  border-color: var(--positive);
+  background: color-mix(in srgb, var(--positive) 8%, var(--panel-solid));
+}
+
+.viz-goal__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.8rem;
+  font-size: 0.75rem;
+}
+
+.viz-goal__head span {
+  color: var(--muted);
+}
+
+.viz-goal__head strong {
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 0.8125rem;
+}
+
+.viz-goal.is-done .viz-goal__head strong {
+  color: var(--positive);
+}
+
+.viz-goal.is-done .viz-goal__head strong::before {
+  content: "✓ ";
+}
+
+.viz-goal__track {
+  position: relative;
+  display: block;
+  height: 0.6rem;
+  border-radius: 999px;
+  background: var(--panel-strong);
+}
+
+.viz-goal__track b {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 999px;
+  background: var(--module-accent);
+  transition: width 160ms ease-out;
+}
+
+.viz-goal.is-done .viz-goal__track b {
+  background: var(--positive);
+}
+
+.viz-goal__track em {
+  position: absolute;
+  top: -0.25rem;
+  bottom: -0.25rem;
+  width: 0;
+  border-left: 2px solid var(--ink);
+}
+
+.viz-goal__hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+:root[data-motion="reduced"] .viz-goal__track b {
+  transition: none;
+}
+
 .viz-stage-flow {
   display: flex;
   margin: 0;
@@ -10155,22 +10387,6 @@ input[type="range"]::-webkit-slider-thumb {
   background: var(--panel-muted);
 }
 
-.math-walk {
-  margin: 0.55rem 0 0;
-  padding-left: 1.15rem;
-}
-
-.math-walk li {
-  margin: 0.28rem 0;
-  color: var(--ink-soft);
-  font-size: 0.78rem;
-  line-height: 1.55;
-}
-
-.math-surface-control {
-  margin-bottom: 0.35rem;
-}
-
 .dfr-lab {
   --dfr-red: #b85a48;
   --dfr-blue: #3f6494;
@@ -10958,16 +11174,6 @@ input[type="range"]::-webkit-slider-thumb {
 .explore-scroll[data-module="what-ai-is"][data-current-step="4"] .term-sort-card .term-listbox,
 .explore-scroll[data-module="what-ai-is"][data-current-step="5"] .place-ring-control,
 .explore-scroll[data-module="what-ai-is"][data-current-step="6"] .signal-sort,
-.explore-scroll[data-module="math-you-need"][data-current-step="0"] .math-topic-control,
-.explore-scroll[data-module="math-you-need"][data-current-step="1"] .math-widget,
-.explore-scroll[data-module="math-you-need"][data-current-step="2"] .math-widget,
-.explore-scroll[data-module="math-you-need"][data-current-step="3"] .math-surface-control,
-.explore-scroll[data-module="math-you-need"][data-current-step="4"] .prob-idea-control,
-.explore-scroll[data-module="math-you-need"][data-current-step="5"] .prob-idea-control,
-.explore-scroll[data-module="math-you-need"][data-current-step="6"] .prob-idea-control,
-.explore-scroll[data-module="math-you-need"][data-current-step="7"] .math-widget,
-.explore-scroll[data-module="math-you-need"][data-current-step="8"] .math-walk-card,
-.explore-scroll[data-module="math-you-need"][data-current-step="8"] .math-formula,
 .explore-scroll[data-module="data-features-representation"][data-current-step="0"] .dfr-street,
 .explore-scroll[data-module="data-features-representation"][data-current-step="1"] .dfr-stamps,
 .explore-scroll[data-module="data-features-representation"][data-current-step="2"] .dfr-queue,
@@ -12647,7 +12853,6 @@ path.sl-reference {
   text-align: right;
 }
 
-
 .sl-term-bar {
   display: flex;
   height: 1.35rem;
@@ -12703,7 +12908,6 @@ path.sl-reference {
   height: 0.6rem;
   border-radius: 0.15rem;
 }
-
 
 .sl-curve-label {
   fill: var(--muted);
@@ -16317,100 +16521,6 @@ path.sl-reference {
 }
 
 /* math-you-need */
-.myn-plane {
-  width: min(100%, 20rem);
-  margin-inline: auto;
-}
-
-.myn-plot {
-  width: min(100%, 26rem);
-  margin-inline: auto;
-}
-
-.myn-lab .gw-legend {
-  justify-content: center;
-}
-
-.myn-sliders {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.35rem 1rem;
-}
-
-.myn-head--forward { fill: var(--forward); }
-.myn-head--attention { fill: var(--attention); }
-.myn-head--loss { fill: var(--loss); }
-.myn-head--gradient { fill: var(--gradient); }
-.myn-head--muted { fill: var(--muted); }
-
-.gw-plot .myn-arc {
-  fill: none;
-  stroke: var(--muted);
-  stroke-width: 1.2;
-}
-
-.gw-plot .myn-square {
-  fill: none;
-  stroke: var(--ink-soft);
-  stroke-width: 1.3;
-  stroke-dasharray: 4 3;
-}
-
-.gw-plot .myn-image {
-  fill: color-mix(in srgb, var(--forward) 18%, transparent);
-  stroke: var(--forward);
-  stroke-width: 1.6;
-}
-
-.gw-plot .myn-muted-arrow {
-  stroke: var(--muted);
-  stroke-width: 1.8;
-}
-
-.gw-plot .myn-run {
-  stroke: var(--muted);
-  stroke-width: 1;
-  stroke-dasharray: 2 2;
-}
-
-.gw-plot .myn-min {
-  fill: var(--positive);
-}
-
-.gw-plot .myn-trail {
-  fill: none;
-  stroke: var(--ink-soft);
-  stroke-width: 1;
-  stroke-dasharray: 1.5 3;
-}
-
-.gw-plot .myn-trail-dot {
-  fill: var(--panel-solid);
-  stroke: var(--ink-soft);
-  stroke-width: 1.2;
-}
-
-.gw-plot .myn-ball {
-  stroke: var(--panel-solid);
-  stroke-width: 1.5;
-}
-
-.gw-plot .myn-truth {
-  fill: none;
-  stroke: var(--ink);
-  stroke-width: 1.4;
-}
-
-.gw-plot .myn-bar-truth.is-first { fill: color-mix(in srgb, var(--ink) 40%, var(--panel)); }
-.gw-plot .myn-bar-truth.is-second { fill: color-mix(in srgb, var(--ink) 22%, var(--panel)); }
-.gw-plot .myn-bar-model.is-first { fill: color-mix(in srgb, var(--loss) 72%, var(--panel)); }
-.gw-plot .myn-bar-model.is-second { fill: color-mix(in srgb, var(--loss) 40%, var(--panel)); }
-
-@media (max-width: 720px) {
-  .myn-sliders {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
 
 /* what-ai-is */
 .wai-sliders {
@@ -16572,7 +16682,6 @@ path.sl-reference {
 @container (max-width: 36rem) {
   .wai-twin,
   .wai-sliders,
-  .myn-sliders,
   .gw-lab .ai-ring-layout {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -16609,8 +16718,6 @@ path.sl-reference {
 .gw-plot .eval-chance {
   stroke-dasharray: 3 3;
 }
-
-
 
 .gw-plot .gw-halo {
   paint-order: stroke;
@@ -19779,7 +19886,6 @@ path.sl-reference {
 .hp-trace .hp-clip-label {
   font-size: 10px;
 }
-
 
 .tl-chart {
   display: block;
@@ -40439,215 +40545,16 @@ text.sl-mark--user {
 /* ── math-you-need ── */
 
 /* Controls on the left, the picture they move on the right, so cause and effect share one glance. */
-.math-widget-card {
-  container-type: inline-size;
-}
-
-.myn-split {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.12fr);
-  gap: 0.4rem 1.1rem;
-  align-items: start;
-}
-
-.myn-split__side,
-.myn-split__pic {
-  display: grid;
-  min-width: 0;
-  gap: 0.45rem;
-  align-content: start;
-}
-
-.myn-split__side > .lab-note,
-.myn-split__side > .metric-row {
-  margin: 0;
-}
-
-.myn-split__side > .gw-legend {
-  justify-content: flex-start;
-  margin-top: 0.2rem;
-}
-
-.myn-split__pic > .gw-plot {
-  width: 100%;
-  margin-block: 0.2rem 0;
-}
-
-.myn-split__pic > .gw-legend {
-  margin-top: 0.1rem;
-}
-
-.myn-split__side .metric-row {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.myn-split__side .metric-row .metric:nth-child(2n) {
-  border-right: 0;
-}
-
-.myn-split__side .metric-row .metric:nth-child(-n + 2) {
-  border-bottom: 1px solid var(--line);
-}
-
-.myn-split__side .metric-row .metric:last-child:nth-child(odd) {
-  grid-column: 1 / -1;
-}
 
 /* The card is its own container now, so the shared 36rem stacking rule would fire too early here. */
-.myn-split .myn-sliders {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-@container (max-width: 24rem) {
-  .myn-split .myn-sliders {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-@container (max-width: 33rem) {
-  .myn-split {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .myn-split__pic > .gw-plot {
-    width: min(100%, 26rem);
-    margin-inline: auto;
-  }
-}
-
-.gw-plot .myn-halo {
-  paint-order: stroke;
-  stroke: var(--panel-muted);
-  stroke-width: 3px;
-  stroke-linejoin: round;
-}
 
 /* Gaussian: the 68% is an area under the curve, so that is what gets shaded. */
-.gw-plot .myn-area {
-  fill: color-mix(in srgb, var(--forward) 26%, transparent);
-  stroke: none;
-}
-
-.gw-plot .myn-area-edge {
-  stroke: var(--forward);
-  stroke-width: 1.4;
-}
-
-.gw-plot .myn-area-name {
-  fill: var(--forward);
-  font-size: 10.5px;
-  font-weight: 650;
-}
 
 /* Bayes' rule as areas. */
-.myn-bayes {
-  width: min(100%, 31rem);
-}
-
-.gw-plot .myn-bayes__all {
-  fill: var(--panel-solid);
-  stroke: var(--line-strong);
-  stroke-width: 1;
-}
-
-.gw-plot .myn-bayes__pos {
-  fill: color-mix(in srgb, var(--forward) 62%, var(--panel-solid));
-  stroke: var(--forward);
-  stroke-width: 1.2;
-}
-
-.gw-plot .myn-bayes__neg {
-  stroke: var(--attention);
-  stroke-width: 1.2;
-}
-
-.gw-plot .myn-bayes__neg-base {
-  fill: color-mix(in srgb, var(--attention) 22%, var(--panel-solid));
-}
-
-.gw-plot .myn-bayes__neg-line {
-  stroke: var(--attention);
-  stroke-width: 2.2;
-}
-
-.gw-plot .myn-bayes__split {
-  stroke: var(--ink);
-  stroke-width: 1.6;
-}
-
-.gw-plot .myn-bayes__frame {
-  fill: none;
-  stroke: var(--ink-soft);
-  stroke-width: 1.2;
-}
-
-.gw-plot .myn-bayes__flow {
-  fill: none;
-  stroke: var(--muted);
-  stroke-width: 1.4;
-}
-
-.gw-plot .myn-bayes__value {
-  fill: var(--panel-solid);
-  font-family: "JetBrains Mono Variable", monospace;
-  font-size: 11.5px;
-  font-weight: 700;
-}
-
-.gw-plot .myn-bayes__value.is-neg {
-  fill: var(--ink);
-}
-
-.gw-plot .myn-bayes__value.is-out {
-  fill: var(--forward);
-  font-size: 13px;
-}
 
 /* The two logits and the gap between them. */
-.gw-plot .myn-gap__brace {
-  fill: none;
-  stroke: var(--ink-soft);
-  stroke-width: 1.2;
-}
-
-.gw-plot .myn-gap__span {
-  fill: color-mix(in srgb, var(--ink) 22%, transparent);
-}
-
-.gw-plot .myn-gap__z {
-  fill: var(--ink);
-  font-family: "JetBrains Mono Variable", monospace;
-  font-size: 10.5px;
-  font-weight: 600;
-}
 
 /* Count-table rows drawn as marks. */
-.myn-marks {
-  display: inline-flex;
-  gap: 0.28rem;
-  vertical-align: middle;
-}
-
-.myn-marks i {
-  width: 0.78rem;
-  height: 0.78rem;
-  border: 1.5px solid var(--ink-soft);
-  border-radius: 50%;
-  background: var(--panel-solid);
-}
-
-.myn-marks i.is-on {
-  border-color: var(--forward);
-  background: var(--forward);
-}
-
-.myn-bars-title {
-  margin: 0.7rem 0 -0.15rem;
-  color: var(--ink-soft);
-  font-size: 0.72rem;
-  font-weight: 600;
-}
 
 /* ── data-features-representation ── */
 
@@ -48911,5 +48818,3158 @@ details.db-probe-table-wrap > .db-probe-table {
 :root[data-motion="reduced"] .pref-dumbbell__chosen,
 :root[data-motion="reduced"] .pref-dumbbell__rejected,
 :root[data-motion="reduced"] .pref-dumbbell__value {
+  transition: none;
+}
+
+/* math-labs · slopes-gradients */
+/* Slopes & gradients: six full-width cards, one idea each, drawn at the card's real width. */
+.sg-lab {
+  display: grid;
+  width: 100%;
+  max-width: 78rem;
+  margin: 0 auto;
+  gap: 0.9rem;
+  container-type: inline-size;
+}
+
+.sg-lab > .sg-card {
+  min-width: 0;
+}
+
+/* The lab shows one card per step. Its heading is the scroll target, so each step opens from the top. */
+.explore-scroll[data-module="slopes-gradients"][data-current-step="0"] .sg-card--nudge > .surface-heading,
+.explore-scroll[data-module="slopes-gradients"][data-current-step="1"] .sg-card--slope > .surface-heading,
+.explore-scroll[data-module="slopes-gradients"][data-current-step="2"] .sg-card--map > .surface-heading,
+.explore-scroll[data-module="slopes-gradients"][data-current-step="3"] .sg-card--chain > .surface-heading,
+.explore-scroll[data-module="slopes-gradients"][data-current-step="4"] .sg-card--walk > .surface-heading,
+.explore-scroll[data-module="slopes-gradients"][data-current-step="5"] .sg-card--race > .surface-heading {
+  --lesson-step-target: 1;
+  scroll-margin-top: 1.2rem;
+  scroll-margin-bottom: min(34rem, 62vh);
+}
+
+.sg-lede {
+  max-width: 70ch;
+  margin: -0.35rem 0 0;
+  color: var(--ink-soft);
+  font-size: 0.8125rem;
+  line-height: 1.55;
+}
+
+.sg-lede b {
+  color: var(--ink);
+  font-family: "JetBrains Mono Variable", monospace;
+  font-weight: 650;
+}
+
+.sg-card .formula-live {
+  margin-top: 0.75rem;
+}
+
+.sg-card .viz-predict__reveal b {
+  color: var(--ink);
+  font-weight: 650;
+}
+
+/* ---- plots ---- */
+.sg-frame {
+  margin-top: 0.75rem;
+}
+
+.sg-plot {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel-muted);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.sg-plot--drag-x {
+  touch-action: pan-y;
+}
+
+.sg-plot--drag-xy {
+  touch-action: none;
+}
+
+.sg-plot .sg-hit {
+  fill: transparent;
+  cursor: ew-resize;
+}
+
+.sg-map .sg-hit {
+  cursor: move;
+}
+
+.sg-plot text {
+  font-family: "JetBrains Mono Variable", monospace;
+}
+
+.sg-plot .sg-tick {
+  fill: var(--muted);
+  font-size: 10.5px;
+}
+
+.sg-plot .sg-axis-label,
+.sg-plot .sg-plot-title {
+  fill: var(--ink-soft);
+  font-size: 11px;
+}
+
+.sg-plot .sg-plot-title {
+  fill: var(--ink);
+  font-weight: 650;
+}
+
+.sg-plot .sg-band-label {
+  fill: var(--ink-soft);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.sg-plot .sg-mark,
+.sg-plot .sg-contour-label,
+.sg-plot .sg-lens-title {
+  fill: var(--ink);
+  font-size: 11.5px;
+  font-weight: 650;
+  paint-order: stroke;
+  stroke: var(--panel-muted);
+  stroke-width: 3.5px;
+  stroke-linejoin: round;
+}
+
+.sg-plot .sg-contour-label {
+  fill: var(--muted);
+  font-size: 10.5px;
+  font-weight: 560;
+}
+
+.sg-plot .sg-lens-title {
+  fill: var(--muted);
+  font-size: 10.5px;
+  font-weight: 600;
+  stroke: var(--panel-solid);
+}
+
+.sg-plot .sg-mark.is-dial,
+.sg-plot .sg-axis-label.is-dial { fill: var(--forward); }
+.sg-plot .sg-mark.is-meter { fill: var(--loss); }
+.sg-plot .sg-mark.is-slope { fill: var(--gradient); }
+.sg-plot .sg-mark.is-mid,
+.sg-plot .sg-axis-label.is-mid { fill: var(--attention); }
+.sg-plot .sg-mark.is-accent { fill: var(--module-accent); }
+.sg-plot .sg-mark.is-goal { fill: var(--positive); }
+.sg-plot .sg-mark.is-faint {
+  fill: var(--muted);
+  font-weight: 560;
+}
+
+.sg-plot .sg-axis {
+  fill: none;
+  stroke: color-mix(in srgb, var(--ink) 45%, var(--line));
+  stroke-width: 1;
+}
+
+.sg-plot .sg-grid {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.sg-plot .sg-zero {
+  stroke: color-mix(in srgb, var(--ink) 62%, var(--line));
+  stroke-width: 1.4;
+}
+
+.sg-plot .sg-curve {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 2.4;
+  stroke-linejoin: round;
+}
+
+.sg-plot .sg-line {
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.sg-plot .sg-line--dial { stroke: var(--forward); }
+.sg-plot .sg-line--meter { stroke: var(--loss); }
+.sg-plot .sg-line--slope { stroke: var(--gradient); }
+.sg-plot .sg-line--mid { stroke: var(--attention); }
+.sg-plot .sg-line--ink { stroke: color-mix(in srgb, var(--ink) 55%, transparent); stroke-width: 1.4; }
+.sg-plot .sg-line--thick { stroke-width: 3; }
+.sg-plot .sg-line--arrow { stroke-width: 3.4; }
+.sg-plot .sg-line--bar { stroke-width: 4; stroke-linecap: butt; }
+.sg-plot .sg-line--tick { stroke-width: 3; }
+.sg-plot .is-dashed { stroke-dasharray: 6 4; }
+
+.sg-plot .sg-ghost {
+  fill: none;
+  stroke: color-mix(in srgb, var(--gradient) 42%, transparent);
+  stroke-width: 1.5;
+  stroke-dasharray: 2 4;
+}
+
+.sg-plot .sg-leader {
+  stroke: color-mix(in srgb, var(--ink) 38%, transparent);
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+}
+
+.sg-plot .sg-leader--mid {
+  stroke: var(--attention);
+}
+
+.sg-plot .sg-cursor {
+  stroke: color-mix(in srgb, var(--module-accent) 70%, transparent);
+  stroke-width: 1.2;
+}
+
+.sg-plot .sg-flat {
+  stroke: color-mix(in srgb, var(--ink) 55%, transparent);
+  stroke-width: 1.1;
+  stroke-dasharray: 1.5 3.5;
+  stroke-linecap: round;
+}
+
+.sg-plot .sg-head--dial { fill: var(--forward); }
+.sg-plot .sg-head--meter { fill: var(--loss); }
+.sg-plot .sg-head--slope { fill: var(--gradient); }
+.sg-plot .sg-head--mid { fill: var(--attention); }
+.sg-plot .sg-head--ink { fill: color-mix(in srgb, var(--ink) 60%, var(--panel-muted)); }
+.sg-plot .sg-head--accent { fill: var(--module-accent); }
+.sg-plot .sg-head--goal { fill: var(--positive); }
+
+.sg-plot .sg-dot {
+  stroke: var(--panel-solid);
+  stroke-width: 1.5;
+}
+
+.sg-plot .sg-dot--meter { fill: var(--loss); }
+.sg-plot .sg-dot--slope { fill: var(--gradient); }
+.sg-plot .sg-dot--hollow {
+  fill: var(--panel-solid);
+  stroke: var(--ink);
+}
+
+.sg-plot .sg-handle {
+  fill: var(--module-accent);
+  stroke: var(--panel-solid);
+  stroke-width: 2.2;
+}
+
+.sg-plot .sg-knob circle {
+  fill: var(--panel-solid);
+  stroke: var(--module-accent);
+  stroke-width: 3;
+}
+
+.sg-plot .sg-knob--map circle {
+  fill: var(--module-accent);
+  stroke: var(--panel-solid);
+  stroke-width: 2.2;
+}
+
+.sg-plot .sg-knob {
+  outline: none;
+}
+
+.sg-plot .sg-knob:focus-visible circle {
+  stroke: var(--ink);
+  stroke-width: 3.2;
+}
+
+/* card 1: the magnifier */
+.sg-plot .sg-lens {
+  fill: var(--panel-solid);
+  stroke: var(--line-strong);
+  stroke-width: 1.2;
+}
+
+.sg-plot .sg-zoom-box {
+  fill: none;
+  stroke: color-mix(in srgb, var(--ink) 50%, transparent);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.sg-plot .sg-zoom-link {
+  stroke: color-mix(in srgb, var(--ink) 30%, transparent);
+  stroke-width: 1;
+}
+
+/* card 2: where the meter falls and rises */
+.sg-plot .sg-band--rising {
+  fill: color-mix(in srgb, var(--gradient) 7%, transparent);
+}
+
+.sg-plot .sg-hatch--fall {
+  stroke: color-mix(in srgb, var(--forward) 26%, transparent);
+  stroke-width: 1.4;
+}
+
+.sg-plot .sg-area {
+  stroke: none;
+}
+
+.sg-plot .sg-area--rising {
+  fill: color-mix(in srgb, var(--gradient) 24%, transparent);
+}
+
+.sg-plot .sg-area--falling {
+  fill: color-mix(in srgb, var(--forward) 22%, transparent);
+}
+
+/* cards 3 and 6: the map */
+.sg-frame--map {
+  min-width: 0;
+}
+
+.sg-plot.sg-map {
+  margin: 0 auto;
+}
+
+.sg-plot .sg-map__ground {
+  fill: var(--panel-solid);
+}
+
+.sg-plot .sg-map__frame {
+  fill: none;
+  stroke: var(--line-strong);
+}
+
+.sg-plot .sg-contour {
+  fill: none;
+  stroke: color-mix(in srgb, var(--ink) 34%, transparent);
+  stroke-width: 1.1;
+  stroke-linecap: round;
+}
+
+.sg-plot .sg-contour--here {
+  stroke: var(--module-accent);
+  stroke-width: 1.6;
+}
+
+.sg-map .sg-mark,
+.sg-map .sg-contour-label {
+  stroke: var(--panel-solid);
+}
+
+.sg-plot .sg-guide {
+  stroke: color-mix(in srgb, var(--ink) 50%, transparent);
+  stroke-width: 1.2;
+  stroke-dasharray: 3 4;
+}
+
+.sg-plot .sg-right-angle {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1.3;
+}
+
+.sg-plot .sg-goal-ring {
+  fill: none;
+  stroke: var(--positive);
+  stroke-width: 2.2;
+  stroke-dasharray: 4 3;
+}
+
+.sg-plot .sg-trail {
+  fill: none;
+  stroke: var(--module-accent);
+  stroke-width: 1.8;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.sg-plot .sg-trail--ghost {
+  stroke: color-mix(in srgb, var(--ink) 38%, transparent);
+  stroke-width: 1.4;
+  stroke-dasharray: 3 4;
+}
+
+.sg-plot .sg-trail-dot {
+  fill: var(--panel-solid);
+  stroke: var(--module-accent);
+  stroke-width: 1.6;
+}
+
+/* ---- around the plots ---- */
+.sg-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 1.1rem;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+  list-style: none;
+}
+
+.sg-key li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.sg-key__line {
+  display: inline-block;
+  width: 1.4rem;
+  height: 0;
+  border-top: 2px solid currentColor;
+}
+
+.sg-key__line.is-slope { color: var(--gradient); }
+.sg-key__line.is-ink { color: color-mix(in srgb, var(--ink) 60%, transparent); }
+.sg-key__line.is-dashed { border-top-style: dashed; }
+.sg-key__line.is-ghost {
+  color: color-mix(in srgb, var(--gradient) 55%, transparent);
+  border-top-style: dotted;
+}
+
+.sg-controls {
+  display: grid;
+  gap: 0 1.4rem;
+}
+
+@container (min-width: 34rem) {
+  .sg-controls--two {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+.sg-pick {
+  max-width: 22rem;
+  margin-top: 0.75rem;
+}
+
+.sg-pick .segmented,
+.sg-side .segmented {
+  margin: 0;
+}
+
+.sg-pick--legs {
+  max-width: none;
+}
+
+.sg-reading {
+  margin: 0.85rem 0 0;
+  padding: 0.6rem 0.75rem;
+  border-left: 0.18rem solid var(--gradient);
+  border-radius: var(--radius-xs);
+  color: var(--ink);
+  background: var(--panel-muted);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.sg-caption {
+  margin: 0.4rem 0 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.sg-split {
+  display: grid;
+  align-items: start;
+  margin-top: 0.75rem;
+  gap: 1rem;
+}
+
+.sg-split > .sg-frame {
+  margin-top: 0;
+}
+
+@container (min-width: 37rem) {
+  .sg-split {
+    grid-template-columns: minmax(0, 1.3fr) minmax(15rem, 1fr);
+  }
+}
+
+.sg-side {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+}
+
+.sg-side > .range-control:first-child {
+  margin-top: 0;
+}
+
+.sg-card .metric-row.sg-metrics--grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.sg-metrics--grid .metric:nth-child(2n) {
+  border-right: 0;
+}
+
+.sg-metrics--grid .metric:nth-child(n + 3) {
+  border-top: 1px solid var(--line);
+}
+
+.sg-actions {
+  display: flex;
+  flex-wrap: wrap;
+  margin-top: 0.9rem;
+  gap: 0.5rem;
+}
+
+.sg-actions .primary-action,
+.sg-actions .quiet-action {
+  width: auto;
+  min-width: 8.5rem;
+  margin-top: 0;
+  flex: 1 1 8.5rem;
+}
+
+.sg-actions--stack {
+  flex-direction: column;
+}
+
+.sg-actions--stack .primary-action,
+.sg-actions--stack .quiet-action {
+  flex: 0 0 auto;
+}
+
+.sg-actions button:disabled {
+  cursor: not-allowed;
+  filter: none;
+  opacity: 0.45;
+}
+
+/* card 4: the chain of changes */
+.sg-chain {
+  display: grid;
+  align-items: stretch;
+  margin-top: 0.75rem;
+  gap: 0.45rem;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@container (min-width: 34rem) {
+  .sg-chain {
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr);
+  }
+}
+
+.sg-chain__cell {
+  display: grid;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--line);
+  border-top: 0.2rem solid var(--chain-tone);
+  border-radius: var(--radius-sm);
+  background: var(--panel-muted);
+  gap: 0.25rem;
+}
+
+.sg-chain__cell--dial { --chain-tone: var(--forward); }
+.sg-chain__cell--mid { --chain-tone: var(--attention); }
+.sg-chain__cell--meter { --chain-tone: var(--loss); }
+
+.sg-chain__cell > span,
+.sg-chain__link > span {
+  color: var(--muted);
+  font-size: 0.6875rem;
+}
+
+.sg-chain__cell > strong,
+.sg-chain__link > strong {
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 0.875rem;
+}
+
+.sg-chain__cell > i {
+  display: block;
+  height: 0.6rem;
+  border-radius: 0.2rem;
+  background: var(--panel-strong);
+  overflow: hidden;
+}
+
+.sg-chain__cell > i > b {
+  display: block;
+  min-width: 1px;
+  height: 100%;
+  background: var(--chain-tone);
+  transition: width 160ms ease-out;
+}
+
+.sg-chain__cell > small {
+  color: var(--chain-tone);
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 0.72rem;
+  font-weight: 620;
+}
+
+.sg-chain__link {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  padding: 0.2rem 0.1rem;
+  gap: 0.1rem;
+}
+
+.sg-chain__link > strong {
+  color: var(--gradient);
+}
+
+.sg-chain__link > em {
+  color: var(--muted);
+  font-size: 1rem;
+  font-style: normal;
+  line-height: 1;
+  /* Stacked on a narrow card, the chain runs downward. */
+  transform: rotate(90deg);
+}
+
+@container (min-width: 34rem) {
+  .sg-chain__link > em {
+    transform: none;
+  }
+}
+
+:root[data-motion="reduced"] .sg-chain__cell > i > b {
+  transition: none;
+}
+
+/* math-labs · probability-surprise */
+
+/* Each step shows its own card, so the step's focus treatment is the card's heading. */
+.explore-scroll[data-module="probability-surprise"][data-current-step="0"] .ps-card .surface-heading,
+.explore-scroll[data-module="probability-surprise"][data-current-step="1"] .ps-card .surface-heading,
+.explore-scroll[data-module="probability-surprise"][data-current-step="2"] .ps-card .surface-heading,
+.explore-scroll[data-module="probability-surprise"][data-current-step="3"] .ps-card .surface-heading,
+.explore-scroll[data-module="probability-surprise"][data-current-step="4"] .ps-card .surface-heading,
+.explore-scroll[data-module="probability-surprise"][data-current-step="5"] .ps-card .surface-heading,
+.explore-scroll[data-module="probability-surprise"][data-current-step="6"] .ps-card .surface-heading,
+.explore-scroll[data-module="probability-surprise"][data-current-step="7"] .ps-card .surface-heading {
+  --lesson-step-target: 1;
+  animation: ps-step-in 320ms ease-out;
+}
+
+@keyframes ps-step-in {
+  from {
+    opacity: 0.35;
+    transform: translateY(0.25rem);
+  }
+}
+
+.ps-shell {
+  width: 100%;
+  container-type: inline-size;
+}
+
+.ps-lab {
+  display: grid;
+  width: 100%;
+  max-width: 64rem;
+  margin: 0 auto;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.8rem;
+  --ps-truth: var(--module-accent);
+  --ps-guess: var(--forward);
+  --ps-evidence: color-mix(in srgb, var(--ink-soft) 62%, var(--panel-solid));
+  --ps-accent-ink: color-mix(in srgb, var(--module-accent) 72%, var(--ink));
+}
+
+.ps-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.ps-card > *,
+.ps-card .ps-controls > * {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.ps-card .surface-heading h3 {
+  font-size: 1.02rem;
+}
+
+.ps-lead,
+.ps-hint,
+.ps-arrow,
+.ps-empty {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.ps-hint,
+.ps-arrow {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.ps-hint > span,
+.ps-arrow > span {
+  color: var(--ps-accent-ink);
+  font-weight: 700;
+}
+
+.ps-arrow {
+  padding-left: var(--ps-axis, 2.6rem);
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+
+.ps-empty {
+  padding: 1.4rem 0.8rem;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  text-align: center;
+}
+
+.ps-subhead {
+  margin: 0.5rem 0 0;
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--line);
+  color: var(--ink);
+  font-size: 0.875rem;
+  font-weight: 680;
+  letter-spacing: -0.01em;
+}
+
+.ps-prompt {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 0;
+  gap: 0.4rem 0.8rem;
+}
+
+.ps-prompt__text {
+  padding: 0.32rem 0.7rem;
+  border: 1px solid color-mix(in srgb, var(--module-accent) 40%, var(--line));
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  background: color-mix(in srgb, var(--module-accent) 7%, var(--panel-solid));
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 0.9rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.ps-prompt__text b {
+  color: var(--ps-accent-ink);
+  letter-spacing: 0.04em;
+}
+
+.ps-prompt__aside {
+  min-width: 12rem;
+  flex: 1;
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.ps-controls {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 0.6rem 0.8rem;
+}
+
+.ps-controls > .ps-hint {
+  min-width: 12rem;
+  flex: 1 1 0;
+  align-self: center;
+}
+
+.ps-controls .segmented {
+  min-width: min(100%, 14rem);
+  flex: 1 1 auto;
+}
+
+.ps-card .segmented > div {
+  flex-wrap: wrap;
+}
+
+.ps-card .segmented button {
+  min-height: 1.9rem;
+  flex: 1 1 auto;
+}
+
+.ps-button {
+  min-height: 2.35rem;
+  padding: 0.4rem 0.8rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  background: var(--panel-solid);
+  font-size: 0.75rem;
+  font-weight: 620;
+}
+
+.ps-button:hover:not(:disabled) {
+  border-color: var(--module-accent);
+}
+
+.ps-button:disabled {
+  color: var(--faint);
+  background: var(--panel-muted);
+  cursor: default;
+}
+
+.ps-controls .primary-action {
+  width: auto;
+  min-height: 2.35rem;
+  padding-inline: 1.3rem;
+}
+
+.ps-card .formula-live {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+}
+
+.ps-card .formula-live > span,
+.ps-card .formula-live > small {
+  grid-column: 1 / -1;
+}
+
+.ps-card .formula-live > span {
+  color: var(--ink-soft);
+  font-size: 0.72rem;
+  font-weight: 620;
+}
+
+.ps-card .formula-live code,
+.ps-card .formula-live strong {
+  font-size: 0.8125rem;
+}
+
+.ps-card .formula-live > small {
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.ps-card .metric span {
+  font-size: 0.7rem;
+}
+
+/* The whole, cut into parts. */
+.ps-whole {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.ps-whole__bar {
+  position: relative;
+  display: flex;
+  height: 2.3rem;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  gap: 2px;
+}
+
+.ps-whole__part {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  color: var(--ink);
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 0.72rem;
+  white-space: nowrap;
+  overflow: hidden;
+  gap: 0.35rem;
+  transition: flex-grow 180ms ease-out;
+}
+
+.ps-whole__part b {
+  font-family: var(--font-ui);
+  font-weight: 680;
+}
+
+.ps-whole__part--0 { background: color-mix(in srgb, var(--module-accent) 50%, var(--panel-solid)); }
+.ps-whole__part--1 { background: color-mix(in srgb, var(--module-accent) 38%, var(--panel-solid)); }
+.ps-whole__part--2 { background: color-mix(in srgb, var(--module-accent) 28%, var(--panel-solid)); }
+.ps-whole__part--3 { background: color-mix(in srgb, var(--module-accent) 20%, var(--panel-solid)); }
+.ps-whole__part--4 { background: color-mix(in srgb, var(--module-accent) 13%, var(--panel-solid)); }
+
+.ps-whole__part em {
+  display: inline-flex;
+  font-style: normal;
+  gap: 0.35rem;
+}
+
+/* Ruled into 100 cells, one story each: every part is ruled into as many cells as it has stories. */
+.ps-whole__bar.is-cells .ps-whole__part {
+  background-image: linear-gradient(90deg, transparent calc(100% - 1.5px), var(--panel-solid) calc(100% - 1.5px));
+  background-size: calc(100% / var(--ps-cells, 1)) 100%;
+}
+
+.ps-whole__bar.is-cells .ps-whole__part em {
+  padding: 0.05rem 0.35rem;
+  border-radius: 0.25rem;
+  background: var(--panel-solid);
+}
+
+.ps-whole__scale {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 0.6875rem;
+  gap: 0.6rem;
+}
+
+/* Columns: one bar (or a pair) per word on a fixed 0–100% scale. */
+.ps-cols {
+  display: grid;
+  padding-top: 1.15rem;
+  grid-template-columns: var(--ps-axis, 2.6rem) minmax(0, 1fr) var(--ps-tail, 0rem);
+}
+
+.ps-cols__axis {
+  position: relative;
+  height: var(--ps-track);
+}
+
+.ps-cols__axis span {
+  position: absolute;
+  right: 0.4rem;
+  color: var(--muted);
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 0.65rem;
+  line-height: 1;
+  transform: translateY(50%);
+}
+
+.ps-cols__plot {
+  display: grid;
+  align-items: start;
+  background: repeating-linear-gradient(to top, var(--line) 0 1px, transparent 1px 25%) top / 100% var(--ps-track) no-repeat;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.ps-col {
+  display: grid;
+  min-width: 0;
+  justify-items: center;
+  gap: 0.28rem;
+}
+
+.ps-col__track {
+  position: relative;
+  width: 100%;
+  height: var(--ps-track);
+  border-top: 1px solid var(--line);
+  border-bottom: 1.5px solid var(--line-strong);
+}
+
+.ps-col.is-editable .ps-col__track {
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.ps-col__bars {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0 14%;
+  gap: 0.3rem;
+}
+
+.ps-bar {
+  position: relative;
+  min-height: 2px;
+  max-width: 3.8rem;
+  flex: 1 1 0;
+  border-radius: 0.3rem 0.3rem 0 0;
+  transition: height 180ms ease-out;
+}
+
+.ps-bar--truth {
+  background: var(--ps-truth);
+}
+
+.ps-bar--tally {
+  background:
+    radial-gradient(circle at 50% 50%, var(--ps-evidence) 0 1.5px, transparent 1.7px) 0 0 / 6px 6px,
+    color-mix(in srgb, var(--ps-evidence) 26%, var(--panel-solid));
+  box-shadow: inset 0 0 0 1.5px var(--ps-evidence);
+}
+
+.ps-bar--guess {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--ps-guess) 0 2.5px,
+    color-mix(in srgb, var(--ps-guess) 22%, var(--panel-solid)) 2.5px 6px
+  );
+  box-shadow: inset 0 0 0 1.5px var(--ps-guess);
+}
+
+.ps-bar b {
+  position: absolute;
+  bottom: calc(100% + 3px);
+  left: 50%;
+  padding: 0 0.15rem;
+  border-radius: 0.2rem;
+  color: var(--ink);
+  background: var(--panel-solid);
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 0.6875rem;
+  font-weight: 620;
+  line-height: 1.15;
+  white-space: nowrap;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.ps-bar.is-tall b {
+  top: 8px;
+  bottom: auto;
+}
+
+.ps-bar.is-handle::after {
+  position: absolute;
+  top: -3px;
+  left: 50%;
+  width: min(1.5rem, 70%);
+  height: 5px;
+  border-radius: 3px;
+  background: var(--ink);
+  content: "";
+  transform: translateX(-50%);
+}
+
+.ps-bar.is-handle b {
+  bottom: calc(100% + 6px);
+}
+
+.ps-bar.is-handle.is-tall b {
+  bottom: auto;
+}
+
+.ps-bar[role="slider"]:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.ps-col__ghost {
+  position: absolute;
+  right: 11%;
+  bottom: 0;
+  left: 11%;
+  border: 1.5px dashed var(--ink-soft);
+  border-bottom: 0;
+  border-radius: 0.35rem 0.35rem 0 0;
+  opacity: 0.75;
+  pointer-events: none;
+}
+
+.ps-col__name {
+  color: var(--ink);
+  font-size: 0.8rem;
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+button.ps-col__name {
+  padding: 0.16rem 0.55rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--panel-solid);
+}
+
+button.ps-col__name:hover {
+  border-color: var(--module-accent);
+}
+
+button.ps-col__name[aria-pressed="true"] {
+  border-color: var(--module-accent);
+  background: color-mix(in srgb, var(--module-accent) 14%, var(--panel-solid));
+  box-shadow: inset 0 0 0 1px var(--module-accent);
+}
+
+.ps-col__foot {
+  color: var(--muted);
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 0.65rem;
+  line-height: 1.25;
+  text-align: center;
+  white-space: pre-line;
+}
+
+/* Surprise bars hanging under a Columns chart. */
+.ps-mirror {
+  --ps-axis: 6.9rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.ps-hang {
+  display: grid;
+  padding-bottom: 1.1rem;
+  grid-template-columns: var(--ps-axis, 2.6rem) minmax(0, 1fr);
+}
+
+.ps-hang__axis {
+  position: relative;
+  height: var(--ps-track);
+}
+
+.ps-hang__axis span {
+  position: absolute;
+  right: 0.4rem;
+  color: var(--muted);
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 0.65rem;
+  line-height: 1;
+  white-space: nowrap;
+  transform: translateY(-50%);
+}
+
+.ps-hang__axis span:first-child {
+  transform: translateY(-10%);
+}
+
+.ps-hang__plot {
+  display: grid;
+  height: var(--ps-track);
+  border-top: 1.5px solid var(--line-strong);
+  background: repeating-linear-gradient(to bottom, transparent 0 calc(100% / var(--ps-lines) - 1px), var(--line) calc(100% / var(--ps-lines) - 1px) calc(100% / var(--ps-lines)));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.ps-hang__col {
+  position: relative;
+  display: flex;
+  justify-content: center;
+}
+
+.ps-hang__col i {
+  position: relative;
+  display: block;
+  width: 42%;
+  max-width: 3.8rem;
+  min-height: 2px;
+  border-radius: 0 0 0.3rem 0.3rem;
+  background: repeating-linear-gradient(
+    45deg,
+    var(--ps-truth) 0 2px,
+    color-mix(in srgb, var(--ps-truth) 20%, var(--panel-solid)) 2px 6px
+  );
+  box-shadow: inset 0 0 0 1.5px var(--ps-truth);
+  transition: height 180ms ease-out;
+}
+
+.ps-hang__col.is-selected i {
+  box-shadow: inset 0 0 0 1.5px var(--ps-truth), 0 0 0 2px color-mix(in srgb, var(--module-accent) 30%, transparent);
+}
+
+.ps-hang__col b {
+  position: absolute;
+  top: calc(100% + 3px);
+  left: 50%;
+  color: var(--ink);
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 0.6875rem;
+  font-style: normal;
+  font-weight: 620;
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+
+/* Legend swatches repeat each fill, so a series is never told apart by colour alone. */
+.ps-legend {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 0;
+  padding: 0;
+  color: var(--ink-soft);
+  font-size: 0.72rem;
+  list-style: none;
+  gap: 0.3rem 1rem;
+}
+
+.ps-legend li {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.ps-swatch {
+  display: inline-block;
+  width: 1rem;
+  height: 0.8rem;
+  flex: none;
+  border-radius: 0.18rem;
+}
+
+.ps-swatch--truth { background: var(--ps-truth); }
+
+.ps-swatch--tally,
+.ps-swatch--pile {
+  background:
+    radial-gradient(circle at 50% 50%, var(--ps-evidence) 0 1.3px, transparent 1.5px) 0 0 / 5px 5px,
+    color-mix(in srgb, var(--ps-evidence) 26%, var(--panel-solid));
+  box-shadow: inset 0 0 0 1.5px var(--ps-evidence);
+}
+
+.ps-swatch--guess {
+  background: repeating-linear-gradient(135deg, var(--ps-guess) 0 2.5px, color-mix(in srgb, var(--ps-guess) 22%, var(--panel-solid)) 2.5px 6px);
+  box-shadow: inset 0 0 0 1.5px var(--ps-guess);
+}
+
+.ps-swatch--inside {
+  background: color-mix(in srgb, var(--ps-guess) 42%, var(--panel-solid));
+  box-shadow: inset 0 0 0 1.5px var(--ps-guess);
+}
+
+.ps-swatch--ghost {
+  border: 1.5px dashed var(--ink-soft);
+  background: transparent;
+}
+
+.ps-swatch--bell {
+  height: 0;
+  border-top: 2.5px solid var(--ps-guess);
+  border-radius: 0;
+}
+
+/* Sliders in a row under the columns they control. */
+.ps-sliders {
+  display: grid;
+  margin-right: var(--ps-tail, 0rem);
+  margin-left: var(--ps-axis, 2.6rem);
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.ps-sliders .range-control {
+  margin-top: 0;
+  gap: 0.3rem;
+}
+
+.ps-sliders .range-control > span {
+  flex-wrap: wrap;
+  font-size: 0.6875rem;
+  line-height: 1.25;
+  gap: 0 0.3rem;
+}
+
+.ps-sliders .range-control output {
+  font-size: 0.6875rem;
+}
+
+.ps-range-ends {
+  display: flex;
+  justify-content: space-between;
+  margin-top: -0.55rem !important;
+  color: var(--muted);
+  font-size: 0.6875rem;
+}
+
+/* The draws, as words. */
+.ps-tape {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  min-height: 1.7rem;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+  gap: 0.3rem;
+}
+
+.ps-tape code {
+  padding: 0.1rem 0.4rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 0.3rem;
+  color: var(--ink-soft);
+  background: var(--panel-muted);
+  font-size: 0.72rem;
+}
+
+.ps-tape code.is-follow {
+  border-color: var(--module-accent);
+  color: var(--ink);
+  background: color-mix(in srgb, var(--module-accent) 12%, var(--panel-solid));
+  font-weight: 650;
+}
+
+/* Tables: the count table and the worked sums. */
+.ps-table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.ps-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.ps-table caption {
+  padding-bottom: 0.4rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-align: left;
+  caption-side: top;
+}
+
+.ps-table th,
+.ps-table td {
+  padding: 0.36rem 0.45rem;
+  border-bottom: 1px solid var(--line);
+  text-align: right;
+}
+
+.ps-table thead th {
+  color: var(--muted);
+  font-size: 0.6875rem;
+  font-weight: 620;
+  line-height: 1.25;
+  vertical-align: bottom;
+}
+
+.ps-table th[scope="row"],
+.ps-table thead th:first-child {
+  color: var(--ink);
+  font-weight: 640;
+  text-align: left;
+}
+
+.ps-table td {
+  font-family: "JetBrains Mono Variable", monospace;
+}
+
+.ps-table tfoot th,
+.ps-table tfoot td {
+  border-top: 1.5px solid var(--line-strong);
+  border-bottom: 0;
+  color: var(--ink);
+}
+
+.ps-table tfoot small {
+  display: block;
+  color: var(--muted);
+  font-family: var(--font-ui);
+  font-size: 0.6875rem;
+}
+
+.ps-table tr.is-hit th,
+.ps-table tr.is-hit td {
+  background: color-mix(in srgb, var(--module-accent) 8%, var(--panel-solid));
+}
+
+.ps-table--counts {
+  table-layout: fixed;
+}
+
+.ps-table--counts th:first-child {
+  width: var(--ps-axis, 8.4rem);
+}
+
+.ps-table--counts th:last-child,
+.ps-table--counts td:last-child {
+  width: var(--ps-tail, 4rem);
+}
+
+.ps-table--counts thead th,
+.ps-table--counts td {
+  text-align: center;
+}
+
+.ps-table--counts td {
+  position: relative;
+  padding-bottom: 0.6rem;
+}
+
+.ps-table--counts td i {
+  position: absolute;
+  bottom: 0.22rem;
+  left: 50%;
+  height: 0.22rem;
+  max-width: 76%;
+  border-radius: 0.12rem;
+  background: color-mix(in srgb, var(--ink-soft) 45%, var(--panel-solid));
+  transform: translateX(-50%);
+}
+
+.ps-table--counts .ps-table__total {
+  color: var(--muted);
+}
+
+.ps-table--counts tr.is-picked th,
+.ps-table--counts tr.is-picked td,
+.ps-table--counts td.is-picked,
+.ps-table--counts thead th.is-picked {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--module-accent) 13%, var(--panel-solid));
+  font-weight: 700;
+}
+
+.ps-table--counts tr.is-picked td i,
+.ps-table--counts td.is-picked i {
+  background: var(--module-accent);
+}
+
+.ps-table--counts tr.is-picked th:first-child {
+  box-shadow: inset 3px 0 0 var(--module-accent);
+}
+
+.ps-table--counts thead th.is-picked {
+  box-shadow: inset 0 3px 0 var(--module-accent);
+}
+
+.ps-aligned {
+  --ps-axis: 8.4rem;
+  --ps-tail: 4rem;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.ps-aligned .ps-cols__axis span {
+  right: 0.5rem;
+}
+
+/* Softmax: scores, e to the score, shares, one column per word. */
+.ps-aligned--flow {
+  --ps-axis: 6.6rem;
+  --ps-tail: 0rem;
+  gap: 0.2rem;
+}
+
+.ps-flow {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.ps-flow__row {
+  display: grid;
+  align-items: stretch;
+  grid-template-columns: var(--ps-axis) repeat(5, minmax(0, 1fr));
+}
+
+.ps-flow__name {
+  align-self: center;
+  padding-right: 0.6rem;
+  color: var(--ink-soft);
+  font-size: 0.72rem;
+  line-height: 1.3;
+  text-align: right;
+}
+
+.ps-flow__name b {
+  display: block;
+  color: var(--ink);
+}
+
+.ps-flow__cell {
+  position: relative;
+  display: block;
+}
+
+.ps-flow__cell b {
+  position: absolute;
+  left: 50%;
+  color: var(--ink);
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 0.6875rem;
+  font-weight: 620;
+  line-height: 1.2;
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+
+.ps-flow__cell--score {
+  height: 7.6rem;
+  background: linear-gradient(var(--line-strong), var(--line-strong)) center / 100% 1.5px no-repeat;
+}
+
+.ps-flow__cell--score i {
+  position: absolute;
+  left: 50%;
+  width: 36%;
+  max-width: 3.2rem;
+  min-height: 2px;
+  border-radius: 0.25rem 0.25rem 0 0;
+  background: color-mix(in srgb, var(--ink-soft) 70%, var(--panel-solid));
+  transform: translateX(-50%);
+  transition: height 180ms ease-out;
+}
+
+/* A negative score hangs below the zero line and is hatched as well as placed lower. */
+.ps-flow__cell--score i.is-negative {
+  border-radius: 0 0 0.25rem 0.25rem;
+  background: repeating-linear-gradient(135deg, var(--ink-soft) 0 2px, color-mix(in srgb, var(--ink-soft) 18%, var(--panel-solid)) 2px 5px);
+  box-shadow: inset 0 0 0 1.5px var(--ink-soft);
+}
+
+.ps-flow__cell--power {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  height: 4.6rem;
+  padding-top: 1rem;
+  border-bottom: 1.5px solid var(--line-strong);
+}
+
+.ps-flow__cell--power i {
+  position: relative;
+  display: block;
+  width: 36%;
+  max-width: 3.2rem;
+  min-height: 2px;
+  border-radius: 0.25rem 0.25rem 0 0;
+  background: color-mix(in srgb, var(--module-accent) 55%, var(--panel-solid));
+  transition: height 180ms ease-out;
+}
+
+.ps-flow__cell--power b {
+  bottom: calc(100% + 2px);
+}
+
+.ps-flow__step {
+  margin: 0.15rem 0 0.15rem var(--ps-axis);
+  padding: 0.3rem 0.6rem;
+  border-left: 0.16rem solid var(--module-accent);
+  color: var(--ink-soft);
+  background: color-mix(in srgb, var(--module-accent) 5%, var(--panel));
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.ps-flow__step > span {
+  color: var(--ps-accent-ink);
+  font-weight: 700;
+}
+
+/* Pictures drawn as SVG at the card's real width. */
+.ps-plot {
+  width: 100%;
+  min-width: 0;
+}
+
+.ps-plot svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.ps-plot text {
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 10.5px;
+  fill: var(--muted);
+}
+
+.ps-plot .ps-axis-label {
+  font-family: var(--font-ui);
+  font-size: 11px;
+}
+
+.ps-grid {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.ps-axis {
+  stroke: var(--line-strong);
+  stroke-width: 1.5;
+}
+
+.ps-zero {
+  stroke: var(--line-strong);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.ps-halo {
+  paint-order: stroke;
+  stroke: var(--panel-solid);
+  stroke-linejoin: round;
+  stroke-width: 3.5px;
+}
+
+.ps-block {
+  stroke: var(--panel-solid);
+  stroke-width: 1;
+}
+
+.ps-block--truth.ps-block--even { fill: color-mix(in srgb, var(--ps-truth) 62%, var(--panel-solid)); }
+.ps-block--truth.ps-block--odd { fill: color-mix(in srgb, var(--ps-truth) 42%, var(--panel-solid)); }
+.ps-block--guess.ps-block--even { fill: color-mix(in srgb, var(--ps-guess) 58%, var(--panel-solid)); }
+.ps-block--guess.ps-block--odd { fill: color-mix(in srgb, var(--ps-guess) 38%, var(--panel-solid)); }
+
+.ps-block-ghost {
+  fill: none;
+  stroke: var(--ps-truth);
+  stroke-width: 1.8;
+  stroke-dasharray: 5 3;
+}
+
+.ps-plot .ps-block-name {
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  font-weight: 650;
+  fill: var(--ink);
+}
+
+.ps-plot .ps-block-bits {
+  font-weight: 600;
+  fill: var(--ink);
+}
+
+.ps-plot .ps-block-area {
+  font-size: 11px;
+  font-weight: 600;
+  fill: var(--ink);
+}
+
+.ps-level {
+  stroke-width: 2;
+  stroke-dasharray: 7 4;
+}
+
+.ps-level--truth { stroke: var(--ink); }
+.ps-level--guess { stroke: var(--ink); }
+
+.ps-level--ghost {
+  stroke: var(--ps-truth);
+  stroke-dasharray: 2 3;
+}
+
+.ps-plot .ps-level-name {
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  font-weight: 700;
+  fill: var(--ink);
+}
+
+.ps-plot .ps-level-name--ghost {
+  fill: var(--ps-accent-ink);
+}
+
+.ps-bracket {
+  stroke: var(--loss);
+  stroke-width: 3;
+}
+
+.ps-plot .ps-bracket-name {
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  font-weight: 700;
+  fill: var(--loss);
+}
+
+.ps-pile {
+  fill: color-mix(in srgb, var(--ps-evidence) 55%, var(--panel-solid));
+  stroke: var(--ps-evidence);
+  stroke-width: 0.6;
+}
+
+.ps-pile.is-inside {
+  fill: color-mix(in srgb, var(--ps-guess) 42%, var(--panel-solid));
+  stroke: var(--ps-guess);
+}
+
+.ps-band {
+  fill: color-mix(in srgb, var(--ps-guess) 10%, transparent);
+}
+
+.ps-band-span {
+  fill: none;
+  stroke: var(--ps-guess);
+  stroke-width: 1.8;
+}
+
+.ps-plot__note {
+  margin: 0.2rem 0 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-align: center;
+}
+
+.ps-bell {
+  fill: none;
+  stroke: var(--ps-guess);
+  stroke-width: 2.4;
+  stroke-linejoin: round;
+}
+
+.ps-mean {
+  stroke: var(--ink);
+  stroke-width: 1.5;
+  stroke-dasharray: 6 3;
+}
+
+.ps-plot .ps-mean-name,
+.ps-plot .ps-band-name {
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 650;
+  fill: var(--ink);
+}
+
+.ps-plot .ps-band-name {
+  font-weight: 500;
+  fill: var(--ink-soft);
+}
+
+.ps-curve {
+  fill: none;
+  stroke: var(--ps-truth);
+  stroke-width: 2.4;
+}
+
+.ps-drop {
+  stroke: var(--ink-soft);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.ps-dot {
+  fill: var(--ps-truth);
+  stroke: var(--panel-solid);
+  stroke-width: 2;
+}
+
+.ps-plot .ps-dot-name {
+  font-size: 11.5px;
+  font-weight: 650;
+  fill: var(--ink);
+}
+
+/* Bayes' rule as areas: solid, hatched and dotted, one fill per prompt. */
+.ps-bayes__all {
+  fill: var(--panel-muted);
+  stroke: var(--line-strong);
+  stroke-width: 1;
+}
+
+.ps-bayes__fill {
+  stroke: var(--ink-soft);
+  stroke-width: 1;
+}
+
+.ps-bayes__fill--0 { fill: color-mix(in srgb, var(--ps-truth) 62%, var(--panel-solid)); }
+.ps-bayes__base--1 { fill: color-mix(in srgb, var(--forward) 20%, var(--panel-solid)); }
+.ps-bayes__base--2 { fill: color-mix(in srgb, var(--positive) 18%, var(--panel-solid)); }
+
+.ps-bayes__ink {
+  stroke: var(--forward);
+  stroke-width: 2.4;
+}
+
+.ps-bayes__dot {
+  fill: var(--positive);
+}
+
+.ps-bayes__funnel {
+  opacity: 0.22;
+}
+
+.ps-bayes__funnel--0 { fill: var(--ps-truth); }
+.ps-bayes__funnel--1 { fill: var(--forward); }
+.ps-bayes__funnel--2 { fill: var(--positive); }
+
+.ps-bayes__frame {
+  fill: none;
+  stroke: var(--line-strong);
+  stroke-width: 1;
+}
+
+.ps-plot .ps-bayes__name {
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  font-weight: 680;
+  fill: var(--ink);
+}
+
+.ps-plot .ps-bayes__prior {
+  fill: var(--ink-soft);
+}
+
+.ps-plot .ps-bayes__like,
+.ps-plot .ps-bayes__joint {
+  fill: var(--ink);
+}
+
+.ps-plot .ps-bayes__post {
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 700;
+  fill: var(--ink);
+}
+
+/* Two draws in a row. */
+.ps-pair__all {
+  fill: var(--panel-muted);
+  stroke: var(--line-strong);
+  stroke-width: 1;
+}
+
+.ps-pair__area {
+  fill: color-mix(in srgb, var(--ps-truth) 62%, var(--panel-solid));
+  stroke: var(--ps-truth);
+  stroke-width: 1;
+}
+
+.ps-pair__edge {
+  stroke: var(--ink-soft);
+  stroke-width: 2;
+}
+
+.ps-pair__bits {
+  stroke: var(--ps-truth);
+  stroke-width: 1.5;
+}
+
+.ps-pair__bits--a { fill: color-mix(in srgb, var(--ps-truth) 48%, var(--panel-solid)); }
+.ps-pair__bits--b { fill: color-mix(in srgb, var(--ps-truth) 22%, var(--panel-solid)); }
+
+.ps-plot .ps-pair__label {
+  font-size: 11px;
+  font-weight: 620;
+  fill: var(--ink);
+}
+
+.ps-pair__mark {
+  stroke: var(--ink);
+  stroke-width: 2;
+  stroke-dasharray: 4 3;
+}
+
+.ps-plot .ps-pair__value {
+  font-size: 11.5px;
+  font-weight: 700;
+  fill: var(--ink);
+}
+
+/* "A fair choice among N" as N boxes. */
+.ps-fair-row {
+  display: grid;
+  align-items: center;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.8rem;
+}
+
+.ps-fair {
+  display: flex;
+  gap: 0.3rem;
+}
+
+.ps-fair__box {
+  position: relative;
+  width: 1.7rem;
+  height: 1.7rem;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 0.3rem;
+  background: var(--panel-muted);
+  overflow: hidden;
+}
+
+.ps-fair__box i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--module-accent);
+  transition: width 180ms ease-out;
+}
+
+/* The bill: best possible plus what is wasted. */
+.ps-bill {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.ps-bill__bar {
+  display: flex;
+  height: 1.5rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--panel-muted);
+  overflow: hidden;
+}
+
+.ps-bill__bar span {
+  flex: none;
+  transition: width 180ms ease-out;
+}
+
+.ps-bill__best {
+  background: color-mix(in srgb, var(--ps-truth) 45%, var(--panel-solid));
+}
+
+.ps-bill__waste {
+  background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--loss) 60%, var(--panel-solid)) 0 3px, color-mix(in srgb, var(--loss) 14%, var(--panel-solid)) 3px 7px);
+}
+
+.ps-bill__bar .ps-bill__waste {
+  border-left: 2px solid var(--loss);
+}
+
+.ps-bill__key {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.75rem;
+  font-weight: 600;
+  gap: 0.2rem 0.9rem;
+}
+
+.ps-bill__key span {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.ps-bill__key span.is-waste {
+  color: var(--loss);
+}
+
+.ps-bill__key i {
+  display: inline-block;
+  width: 0.9rem;
+  height: 0.75rem;
+  border-radius: 0.15rem;
+}
+
+.ps-swatch--block {
+  background: color-mix(in srgb, var(--ps-guess) 50%, var(--panel-solid));
+}
+
+.ps-win {
+  margin: 0;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--positive);
+  border-radius: var(--radius-sm);
+  color: var(--ink-soft);
+  background: color-mix(in srgb, var(--positive) 8%, var(--panel-solid));
+  font-size: 0.8125rem;
+  line-height: 1.55;
+}
+
+.ps-win b {
+  color: var(--ink);
+}
+
+@container (max-width: 34rem) {
+  .ps-mirror {
+    --ps-axis: 5.6rem;
+  }
+
+  .ps-aligned {
+    --ps-axis: 5.4rem;
+    --ps-tail: 2.6rem;
+  }
+
+  .ps-aligned--flow {
+    --ps-axis: 4.4rem;
+    --ps-tail: 0rem;
+  }
+
+  .ps-sliders {
+    gap: 0.3rem;
+  }
+
+  .ps-fair-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+:root[data-motion="reduced"] .ps-bar,
+:root[data-motion="reduced"] .ps-hang__col i,
+:root[data-motion="reduced"] .ps-whole__part,
+:root[data-motion="reduced"] .ps-flow__cell i,
+:root[data-motion="reduced"] .ps-fair__box i,
+:root[data-motion="reduced"] .ps-bill__bar span {
+  transition: none;
+}
+
+:root[data-motion="reduced"] .explore-scroll[data-module="probability-surprise"] .ps-card .surface-heading {
+  animation: none;
+}
+
+/* math-labs · vectors-matrices */
+.vm-shell {
+  width: 100%;
+  container-type: inline-size;
+}
+
+.vm-lab {
+  display: grid;
+  width: 100%;
+  max-width: 78rem;
+  margin: 0 auto;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.9rem;
+  --vm-size: var(--forward);
+  --vm-alive: var(--attention);
+  --vm-accent-ink: color-mix(in srgb, var(--module-accent) 72%, var(--ink));
+}
+
+.vm-card {
+  scroll-margin-top: 1rem;
+}
+
+.vm-card .surface-heading {
+  margin-bottom: 0.6rem;
+}
+
+.vm-lead {
+  max-width: 46rem;
+  margin: 0 0 0.85rem;
+  color: var(--ink-soft);
+  font-size: 0.8125rem;
+  line-height: 1.55;
+}
+
+.vm-lead strong {
+  color: var(--ink);
+}
+
+.vm-card .viz-predict {
+  margin: 0 0 0.9rem;
+}
+
+.vm-card .formula-live,
+.vm-card .viz-goal {
+  margin-top: 0.85rem;
+}
+
+/* Picture on the left, its controls and exact numbers on the right; stacked when the lab is narrow. */
+.vm-stage {
+  display: grid;
+  align-items: start;
+  justify-content: start;
+  grid-template-columns: min(calc(62% - 0.5rem), 33.75rem) minmax(0, 26rem);
+  gap: 1rem;
+}
+
+@container (max-width: 35rem) {
+  .vm-stage {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.vm-side {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: 0.6rem;
+}
+
+.vm-side .range-control,
+.vm-matrix .range-control,
+.vm-pieces__control .range-control {
+  margin-top: 0;
+}
+
+.vm-side .segmented,
+.vm-picker .segmented,
+.vm-wrap .segmented {
+  margin: 0;
+}
+
+.vm-side .metric-row,
+.vm-side .vm-box {
+  margin: 0;
+}
+
+.vm-picker,
+.vm-pickers,
+.vm-wrap--rounds {
+  margin-bottom: 0.8rem;
+}
+
+.vm-pickers {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.vm-pickers .vm-picker {
+  margin-bottom: 0;
+}
+
+.vm-picker .segmented > div,
+.vm-wrap .segmented > div {
+  flex-wrap: wrap;
+  gap: 0.15rem;
+}
+
+.vm-picker .segmented button {
+  min-width: 3.4rem;
+  flex: 1 1 auto;
+}
+
+.vm-wrap .segmented button {
+  flex: 1 1 100%;
+  text-align: left;
+}
+
+.vm-wrap--three .segmented button {
+  min-width: 30%;
+  flex: 1 1 auto;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.vm-wrap--two .segmented button {
+  flex: 1 1 22%;
+  text-align: center;
+}
+
+.vm-wrap--rounds .segmented button {
+  flex: 1 1 30%;
+  text-align: center;
+}
+
+/* The control a step is about: tinted while its step is the current one. */
+.vm-target {
+  display: grid;
+  padding: 0.55rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  gap: 0.6rem;
+}
+
+/* The lab shows one card per step. Its heading is the scroll target, so each step opens from the top;
+   the control the step is about keeps a tint. */
+.explore-scroll[data-module="vectors-matrices"][data-current-step="0"] .vm-card--0 > .surface-heading,
+.explore-scroll[data-module="vectors-matrices"][data-current-step="1"] .vm-card--1 > .surface-heading,
+.explore-scroll[data-module="vectors-matrices"][data-current-step="2"] .vm-card--2 > .surface-heading,
+.explore-scroll[data-module="vectors-matrices"][data-current-step="3"] .vm-card--3 > .surface-heading,
+.explore-scroll[data-module="vectors-matrices"][data-current-step="4"] .vm-card--4 > .surface-heading,
+.explore-scroll[data-module="vectors-matrices"][data-current-step="5"] .vm-card--5 > .surface-heading,
+.explore-scroll[data-module="vectors-matrices"][data-current-step="6"] .vm-card--6 > .surface-heading,
+.explore-scroll[data-module="vectors-matrices"][data-current-step="7"] .vm-card--7 > .surface-heading {
+  --lesson-step-target: 1;
+  scroll-margin-top: 1.2rem;
+}
+
+.vm-card .vm-target {
+  border-color: color-mix(in srgb, var(--module-accent) 40%, var(--line));
+  background-color: color-mix(in srgb, var(--module-accent) 10%, var(--panel-solid));
+  animation: step-target-in 300ms ease-out;
+}
+
+/* ── the plane ── */
+.vm-plane {
+  min-width: 0;
+}
+
+.vm-plane svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel-muted);
+  touch-action: pan-y;
+  user-select: none;
+}
+
+.vm-grid line {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.vm-grid.is-quiet line {
+  stroke: var(--grid-line);
+}
+
+.vm-axis {
+  stroke: color-mix(in srgb, var(--ink) 42%, var(--line));
+  stroke-width: 1.2;
+}
+
+.vm-tick text {
+  fill: var(--muted);
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 10px;
+}
+
+.vm-axis-name text {
+  fill: var(--muted);
+  font-size: 10.5px;
+  font-weight: 560;
+  paint-order: stroke;
+  stroke: var(--panel-muted);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+.vm-axis-name text.vm-axis-name__title {
+  fill: var(--ink-soft);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.vm-arrow,
+.vm-arrow__stub {
+  color: var(--ink-soft);
+}
+
+.vm-arrow line {
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.vm-arrow polygon,
+.vm-arrow__stub {
+  fill: currentColor;
+  stroke: currentColor;
+  stroke-width: 1;
+  stroke-linejoin: round;
+}
+
+.vm-arrow.is-bold line {
+  stroke-width: 3.2;
+}
+
+.vm-arrow.is-accent,
+.vm-arrow__stub.is-accent {
+  color: var(--module-accent);
+}
+
+.vm-arrow.is-ink {
+  color: var(--ink);
+}
+
+.vm-arrow.is-size {
+  color: var(--vm-size);
+}
+
+.vm-arrow.is-alive {
+  color: var(--vm-alive);
+}
+
+.vm-arrow.is-gradient {
+  color: var(--gradient);
+}
+
+.vm-arrow.is-ghost {
+  color: var(--muted);
+}
+
+.vm-arrow.is-ghost line {
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+}
+
+.vm-arrow.is-path {
+  color: var(--ink);
+}
+
+.vm-arrow.is-path line {
+  stroke-width: 1.7;
+  stroke-dasharray: 4 3.5;
+}
+
+.vm-arrow.is-hint line {
+  stroke-width: 2;
+  stroke-dasharray: 2 5;
+}
+
+.vm-label {
+  fill: var(--ink-soft);
+  font-size: 11px;
+  font-weight: 620;
+  paint-order: stroke;
+  stroke: var(--panel-muted);
+  stroke-width: 3.5px;
+  stroke-linejoin: round;
+}
+
+.vm-label.is-accent {
+  fill: var(--vm-accent-ink);
+}
+
+.vm-label.is-ink {
+  fill: var(--ink);
+}
+
+.vm-label.is-quiet {
+  fill: var(--muted);
+  font-weight: 560;
+}
+
+.vm-label.is-size {
+  fill: color-mix(in srgb, var(--vm-size) 82%, var(--ink));
+}
+
+.vm-label.is-alive {
+  fill: color-mix(in srgb, var(--vm-alive) 82%, var(--ink));
+}
+
+.vm-label.is-gradient {
+  fill: color-mix(in srgb, var(--gradient) 82%, var(--ink));
+}
+
+.vm-word__dot {
+  fill: var(--ink);
+  stroke: var(--panel-muted);
+  stroke-width: 1.5;
+}
+
+.vm-word__name {
+  fill: var(--ink-soft);
+  font-size: 11px;
+  font-weight: 560;
+  paint-order: stroke;
+  stroke: var(--panel-muted);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+.vm-word.is-dim .vm-word__dot {
+  fill: var(--muted);
+}
+
+.vm-word.is-dim .vm-word__name {
+  fill: var(--muted);
+}
+
+.vm-word.is-picked .vm-word__dot {
+  fill: var(--module-accent);
+}
+
+.vm-word.is-picked .vm-word__name {
+  fill: var(--vm-accent-ink);
+  font-weight: 720;
+}
+
+.vm-word.is-ghost .vm-word__dot {
+  fill: var(--panel-muted);
+  stroke: var(--muted);
+  stroke-width: 1.2;
+  stroke-dasharray: 2 1.6;
+}
+
+.vm-word.is-target .vm-word__dot {
+  fill: color-mix(in srgb, var(--module-accent) 10%, var(--panel-muted));
+  stroke: var(--module-accent);
+  stroke-width: 1.6;
+  stroke-dasharray: 3 2;
+}
+
+.vm-word.is-flag .vm-word__dot {
+  fill: var(--loss);
+}
+
+.vm-word.is-flag .vm-word__name {
+  fill: color-mix(in srgb, var(--loss) 82%, var(--ink));
+  font-weight: 720;
+}
+
+.vm-word.is-off .vm-word__dot {
+  fill: var(--panel-muted);
+  stroke: var(--ink-soft);
+  stroke-width: 1.5;
+}
+
+.vm-word.is-off .vm-word__name {
+  fill: var(--muted);
+  font-style: italic;
+}
+
+.vm-word.is-clickable {
+  cursor: pointer;
+}
+
+.vm-word__hit {
+  fill: transparent;
+}
+
+.vm-leg {
+  fill: none;
+  stroke-width: 2;
+}
+
+.vm-leg.is-size {
+  stroke: var(--vm-size);
+}
+
+.vm-leg.is-alive {
+  stroke: var(--vm-alive);
+  stroke-dasharray: 6 3;
+}
+
+.vm-ring {
+  fill: none;
+  stroke: var(--module-accent);
+  stroke-width: 1.6;
+  stroke-dasharray: 3 3;
+}
+
+.vm-ring.is-flag {
+  stroke: var(--loss);
+  stroke-width: 2;
+  stroke-dasharray: none;
+}
+
+.vm-line {
+  stroke: var(--muted);
+  stroke-width: 1;
+  stroke-dasharray: 2 4;
+}
+
+.vm-drop {
+  stroke: var(--gradient);
+  stroke-width: 1.5;
+  stroke-dasharray: 1.5 3.5;
+  stroke-linecap: round;
+}
+
+.vm-shadow {
+  stroke: color-mix(in srgb, var(--gradient) 55%, transparent);
+  stroke-width: 7;
+  stroke-linecap: round;
+}
+
+.vm-shadow__foot {
+  fill: var(--gradient);
+}
+
+.vm-arc {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.2;
+}
+
+.vm-moved-grid line {
+  stroke: color-mix(in srgb, var(--module-accent) 34%, transparent);
+  stroke-width: 1;
+}
+
+.vm-square {
+  fill: color-mix(in srgb, var(--module-accent) 16%, transparent);
+  stroke: var(--module-accent);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+
+.vm-square.is-other {
+  fill: none;
+  stroke: var(--ink-soft);
+  stroke-dasharray: 5 4;
+}
+
+.vm-trail {
+  stroke: var(--muted);
+  stroke-width: 1;
+  stroke-dasharray: 1 3;
+  stroke-linecap: round;
+}
+
+.vm-miss {
+  stroke: var(--loss);
+  stroke-width: 1.3;
+  stroke-dasharray: 3 3;
+}
+
+.vm-handle__ring {
+  fill: var(--panel-solid);
+  stroke: var(--module-accent);
+  stroke-width: 2.6;
+  pointer-events: none;
+}
+
+.vm-handle__hit {
+  fill: transparent;
+  cursor: grab;
+  touch-action: none;
+}
+
+.vm-handle__hit:active {
+  cursor: grabbing;
+}
+
+/* ── beside and under the plane ── */
+.vm-list {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel-muted);
+  font-family: "JetBrains Mono Variable", monospace;
+  gap: 0.3rem;
+}
+
+.vm-list__name {
+  width: 100%;
+  color: var(--muted);
+  font-family: var(--font-ui);
+  font-size: 0.6875rem;
+  font-weight: 610;
+}
+
+.vm-list__bracket,
+.vm-list__comma {
+  color: var(--muted);
+  font-size: 1.35rem;
+  line-height: 1.2;
+}
+
+.vm-list__cell {
+  display: grid;
+  min-width: 3.2rem;
+  justify-items: center;
+}
+
+.vm-list__cell b {
+  font-size: 1.35rem;
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+.vm-list__cell small {
+  font-family: var(--font-ui);
+  font-size: 0.6875rem;
+  font-weight: 600;
+}
+
+.vm-list__cell.is-size,
+.vm-sum .is-size,
+.vm-worked .is-size,
+.vm-matrix__head.is-size b {
+  color: color-mix(in srgb, var(--vm-size) 82%, var(--ink));
+}
+
+.vm-list__cell.is-alive,
+.vm-sum .is-alive,
+.vm-worked .is-alive,
+.vm-matrix__head.is-alive b {
+  color: color-mix(in srgb, var(--vm-alive) 82%, var(--ink));
+}
+
+.vm-effect,
+.vm-note {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.vm-note {
+  margin-top: 0.75rem;
+  color: var(--muted);
+}
+
+.vm-button {
+  min-height: 2rem;
+  padding: 0.35rem 0.7rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  background: var(--panel-solid);
+  font-size: 0.75rem;
+  font-weight: 580;
+  line-height: 1.3;
+  text-align: left;
+}
+
+.vm-button:hover {
+  border-color: var(--module-accent);
+}
+
+.vm-button[aria-pressed="true"] {
+  border-color: var(--module-accent);
+  box-shadow: inset 0 0 0 1px var(--module-accent);
+}
+
+.vm-button.is-primary {
+  flex: none;
+  border-color: var(--module-accent);
+  color: var(--panel-solid);
+  background: var(--module-accent);
+}
+
+.vm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.vm-sum {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 0.75rem;
+}
+
+.vm-sum th,
+.vm-sum td {
+  padding: 0.22rem 0.35rem;
+  text-align: right;
+}
+
+.vm-sum tbody th {
+  color: var(--ink-soft);
+  font-family: var(--font-ui);
+  font-weight: 560;
+  text-align: left;
+}
+
+.vm-sum thead th {
+  font-family: var(--font-ui);
+  font-size: 0.6875rem;
+}
+
+.vm-sum .is-step th,
+.vm-sum .is-step td {
+  color: color-mix(in srgb, var(--gradient) 82%, var(--ink));
+}
+
+.vm-sum .is-result th,
+.vm-sum .is-result td {
+  border-top: 1.5px solid var(--line-strong);
+  color: var(--vm-accent-ink);
+  font-weight: 700;
+}
+
+/* Signed bars: right of the centre line is positive, left (and hatched) is negative. */
+.vm-products,
+.vm-cosine {
+  display: grid;
+  margin-top: 0.8rem;
+  padding: 0.65rem 0.8rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  gap: 0.4rem;
+}
+
+.vm-products__title {
+  margin: 0 0 0.1rem;
+  color: var(--ink-soft);
+  font-size: 0.75rem;
+  font-weight: 620;
+}
+
+.vm-bar,
+.vm-bar__axis {
+  display: grid;
+  align-items: center;
+  grid-template-columns: 5.6rem 6.4rem minmax(0, 1fr) 3.3rem;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+}
+
+.vm-bar__name {
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+
+.vm-bar__working,
+.vm-bar__value {
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 0.71rem;
+}
+
+.vm-bar__working {
+  color: var(--muted);
+}
+
+.vm-bar__value {
+  text-align: right;
+}
+
+.vm-bar__track {
+  position: relative;
+  height: 1.05rem;
+  border-radius: 0.2rem;
+  background: var(--panel-muted);
+}
+
+.vm-bar__track::after {
+  position: absolute;
+  top: -0.2rem;
+  bottom: -0.2rem;
+  left: 50%;
+  width: 1px;
+  background: color-mix(in srgb, var(--ink) 45%, var(--line));
+  content: "";
+}
+
+.vm-bar__track i {
+  position: absolute;
+  top: 0.14rem;
+  bottom: 0.14rem;
+  min-width: 2px;
+  border: 1px solid currentColor;
+  border-radius: 0.12rem;
+  background: currentColor;
+  transition: width 140ms ease-out;
+}
+
+.vm-bar__track i.is-negative {
+  background: repeating-linear-gradient(135deg, currentColor 0 2px, transparent 2px 5px);
+}
+
+.vm-bar.is-size .vm-bar__track i {
+  color: var(--vm-size);
+}
+
+.vm-bar.is-alive .vm-bar__track i {
+  color: var(--vm-alive);
+}
+
+.vm-bar.is-sum .vm-bar__track i {
+  color: var(--module-accent);
+}
+
+.vm-bar.is-sum {
+  padding-top: 0.35rem;
+  border-top: 1px solid var(--line);
+}
+
+.vm-bar.is-sum .vm-bar__name,
+.vm-bar.is-sum .vm-bar__value {
+  color: var(--ink);
+  font-weight: 720;
+}
+
+.vm-bar__axis {
+  color: var(--muted);
+  font-size: 0.66rem;
+}
+
+.vm-bar__axis span:nth-child(1) {
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: start;
+}
+
+.vm-bar__axis span:nth-child(2) {
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: center;
+  padding: 0 0.25rem;
+  background: var(--panel-solid);
+}
+
+.vm-bar__axis span:nth-child(3) {
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: end;
+}
+
+.vm-cosine__track {
+  position: relative;
+  height: 0.4rem;
+  margin: 1.5rem 0.6rem 0.1rem;
+  border-radius: 1rem;
+  background: var(--panel-strong);
+}
+
+.vm-cosine__zero {
+  position: absolute;
+  top: -0.25rem;
+  bottom: -0.25rem;
+  left: 50%;
+  width: 1px;
+  background: color-mix(in srgb, var(--ink) 45%, var(--line));
+}
+
+.vm-cosine__track b {
+  position: absolute;
+  top: 50%;
+  width: 0.85rem;
+  height: 0.85rem;
+  border: 0.16rem solid var(--panel-solid);
+  border-radius: 50%;
+  background: var(--gradient);
+  box-shadow: 0 0 0 1px var(--gradient);
+  transform: translate(-50%, -50%);
+  transition: left 140ms ease-out;
+}
+
+.vm-cosine__track b span {
+  position: absolute;
+  bottom: 1rem;
+  left: 50%;
+  color: var(--ink);
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 0.72rem;
+  font-weight: 700;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.vm-cosine__ends {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 0.66rem;
+}
+
+.vm-side .vm-cosine {
+  margin-top: 0;
+}
+
+.vm-cosine__verdict {
+  margin: 0.15rem 0 0;
+  color: var(--ink);
+  font-size: 0.75rem;
+  font-weight: 620;
+}
+
+/* The four numbers of a matrix, as sliders and as a written grid. */
+.vm-matrix {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem 0.7rem;
+}
+
+.vm-matrix__head {
+  display: grid;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.66rem;
+  line-height: 1.3;
+}
+
+.vm-matrix__head b {
+  font-size: 0.72rem;
+}
+
+.vm-matrix__cell {
+  padding-left: 0.5rem;
+  border-left: 0.2rem solid var(--vm-size);
+}
+
+.vm-matrix__cell.is-alive {
+  border-left-color: var(--vm-alive);
+  border-left-style: double;
+}
+
+.vm-matrix .range-control > span {
+  font-size: 0.7rem;
+}
+
+.vm-box {
+  display: inline-grid;
+  margin: 0;
+  justify-items: center;
+  gap: 0.25rem;
+}
+
+.vm-box__grid {
+  display: grid;
+  padding: 0.2rem 0.55rem;
+  border-right: 2px solid var(--ink-soft);
+  border-left: 2px solid var(--ink-soft);
+  border-radius: 0.3rem;
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  grid-template-columns: auto auto;
+  gap: 0.1rem 0.85rem;
+  text-align: right;
+}
+
+.vm-box__grid .is-size {
+  color: color-mix(in srgb, var(--vm-size) 82%, var(--ink));
+}
+
+.vm-box__grid .is-alive {
+  color: color-mix(in srgb, var(--vm-alive) 82%, var(--ink));
+}
+
+.vm-box figcaption {
+  max-width: 9rem;
+  color: var(--muted);
+  font-size: 0.6875rem;
+  line-height: 1.3;
+  text-align: center;
+}
+
+.vm-box.is-result .vm-box__grid {
+  border-color: var(--module-accent);
+  background: color-mix(in srgb, var(--module-accent) 9%, var(--panel-solid));
+}
+
+.vm-box.is-result figcaption {
+  color: var(--vm-accent-ink);
+  font-weight: 650;
+}
+
+.vm-box.is-other .vm-box__grid {
+  border-right-style: dashed;
+  border-left-style: dashed;
+}
+
+.vm-chain {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  margin-top: 0.85rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  gap: 0.6rem 0.75rem;
+}
+
+.vm-chain__op {
+  padding-top: 0.75rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.vm-chain__op--gap {
+  margin-left: auto;
+}
+
+.vm-worked {
+  width: 100%;
+  margin-top: 0.85rem;
+  border-collapse: collapse;
+  font-size: 0.75rem;
+}
+
+.vm-worked caption {
+  padding-bottom: 0.3rem;
+  color: var(--ink-soft);
+  font-size: 0.75rem;
+  font-weight: 620;
+  text-align: left;
+}
+
+.vm-worked th,
+.vm-worked td {
+  padding: 0.38rem 0.5rem;
+  border-top: 1px solid var(--line);
+  font-family: "JetBrains Mono Variable", monospace;
+  font-weight: 500;
+  text-align: left;
+  vertical-align: baseline;
+}
+
+.vm-worked th {
+  color: var(--ink-soft);
+  font-family: var(--font-ui);
+  font-weight: 620;
+  white-space: nowrap;
+}
+
+.vm-worked b {
+  font-weight: 700;
+}
+
+.vm-worked .vm-worked__result {
+  color: var(--ink);
+  font-weight: 720;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.vm-worked .is-columns th,
+.vm-worked .is-columns td {
+  border-top-style: dashed;
+  border-top-color: var(--line-strong);
+}
+
+.vm-callout {
+  margin: 0.8rem 0 0;
+  padding: 0.55rem 0.75rem;
+  border-left: 0.2rem solid var(--module-accent);
+  color: var(--ink-soft);
+  background: color-mix(in srgb, var(--module-accent) 6%, var(--panel-solid));
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.vm-callout.is-loss {
+  border-left-color: var(--loss);
+  color: var(--ink);
+  background: color-mix(in srgb, var(--loss) 9%, var(--panel-solid));
+}
+
+/* ── the table built from pieces ── */
+.vm-pieces {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+@container (max-width: 35rem) {
+  .vm-pieces {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.vm-piece {
+  display: grid;
+  margin: 0;
+  justify-items: start;
+  gap: 0.35rem;
+}
+
+.vm-piece__grid {
+  display: grid;
+  width: 100%;
+  max-width: 10rem;
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 10px;
+  grid-template-columns: 1.35rem repeat(8, minmax(0, 1fr));
+  gap: 1px;
+}
+
+.vm-piece__grid > * {
+  display: grid;
+  aspect-ratio: 1;
+  place-items: center;
+}
+
+.vm-piece__corner {
+  color: var(--faint);
+}
+
+.vm-piece__row,
+.vm-piece__col {
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+
+.vm-piece__col {
+  aspect-ratio: auto;
+  justify-items: end;
+  padding-right: 0.15rem;
+}
+
+.vm-piece__grid i.is-plus {
+  background: color-mix(in srgb, var(--forward) var(--vm-depth, 60%), var(--panel-solid));
+}
+
+.vm-piece__grid i.is-minus {
+  background:
+    repeating-linear-gradient(135deg, color-mix(in srgb, var(--panel-solid) 55%, transparent) 0 1.5px, transparent 1.5px 4px),
+    color-mix(in srgb, var(--loss) var(--vm-depth, 60%), var(--panel-solid));
+}
+
+.vm-piece:nth-child(1) { --vm-depth: 78%; }
+.vm-piece:nth-child(2) { --vm-depth: 58%; }
+.vm-piece:nth-child(3) { --vm-depth: 42%; }
+.vm-piece:nth-child(4) { --vm-depth: 30%; }
+
+.vm-piece figcaption {
+  color: var(--ink-soft);
+  font-size: 0.6875rem;
+  line-height: 1.35;
+}
+
+.vm-piece figcaption span {
+  display: block;
+  color: var(--positive);
+  font-weight: 650;
+}
+
+.vm-piece.is-dropped .vm-piece__grid {
+  opacity: 0.42;
+}
+
+.vm-piece.is-dropped figcaption span {
+  color: var(--muted);
+}
+
+.vm-pieces__control {
+  max-width: 24rem;
+  margin-top: 0.8rem;
+}
+
+.vm-tables {
+  display: flex;
+  flex-wrap: wrap;
+  margin-top: 0.85rem;
+  gap: 0.9rem 1.4rem;
+}
+
+.vm-table {
+  margin: 0;
+}
+
+.vm-table figcaption {
+  margin-bottom: 0.3rem;
+  color: var(--ink-soft);
+  font-size: 0.75rem;
+  font-weight: 620;
+}
+
+.vm-table table {
+  border-collapse: separate;
+  border-spacing: 1px;
+}
+
+.vm-table td {
+  width: 2.1rem;
+  height: 1.6rem;
+  padding: 0;
+  border-radius: 0.15rem;
+  color: var(--ink);
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 0.6875rem;
+  font-weight: 560;
+  text-align: center;
+}
+
+.vm-table td.is-zero { background: var(--panel-muted); }
+.vm-table td.is-plus.is-l1 { background: color-mix(in srgb, var(--forward) 14%, var(--panel-solid)); }
+.vm-table td.is-plus.is-l2 { background: color-mix(in srgb, var(--forward) 28%, var(--panel-solid)); }
+.vm-table td.is-plus.is-l3 { background: color-mix(in srgb, var(--forward) 44%, var(--panel-solid)); }
+.vm-table td.is-plus.is-l4 { background: color-mix(in srgb, var(--forward) 60%, var(--panel-solid)); }
+.vm-table td.is-minus.is-l1 { background: color-mix(in srgb, var(--loss) 14%, var(--panel-solid)); }
+.vm-table td.is-minus.is-l2 { background: color-mix(in srgb, var(--loss) 28%, var(--panel-solid)); }
+.vm-table td.is-minus.is-l3 { background: color-mix(in srgb, var(--loss) 44%, var(--panel-solid)); }
+.vm-table td.is-minus.is-l4 { background: color-mix(in srgb, var(--loss) 60%, var(--panel-solid)); }
+
+.vm-card .vm-metrics {
+  flex-wrap: wrap;
+}
+
+.vm-card .vm-metrics .metric {
+  flex: 1 1 7rem;
+}
+
+/* ── the challenge ── */
+.vm-win {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 0.7rem;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid var(--positive);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--positive) 8%, var(--panel-solid));
+  gap: 0.8rem;
+}
+
+.vm-win p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.vm-win strong {
+  color: var(--ink);
+}
+
+:root[data-motion="reduced"] .vm-bar__track i,
+:root[data-motion="reduced"] .vm-cosine__track b {
   transition: none;
 }

@@ -25,10 +25,10 @@ const definition: ModuleDefinition = {
   slug: "classical-machine-learning",
   title: "Classical machine learning",
   group: "groundwork",
-  order: 4,
+  order: 6,
   icon: "Split",
   accent: "#c46a2d",
-  prerequisites: ["module-31-data-features-representation"],
+  prerequisites: ["module-31-data-features-representation", "module-60-probability-surprise"],
   estimatedMinutes: 16,
   steps: ["Switch the algorithm", "Change k or depth", "Place a probe", "Read what it stored"],
   stepInstructions: [

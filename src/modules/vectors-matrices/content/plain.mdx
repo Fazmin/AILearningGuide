@@ -1,0 +1,547 @@
+---
+objectives: ["Read a list of numbers as an arrow, and say what its length and its direction each tell you","Add two vectors and multiply one by a number, and predict where the result lands","Work out a dot product by hand and explain why cosine similarity ignores length","Read a matrix by its columns and work out where it sends any vector","Explain why the order of two matrices matters and what a matrix loses when it flattens the map","Count the numbers a low-rank table needs and say why that makes LoRA cheap"]
+terms: ["Vector","Embedding","Length","Vector addition and scaling","Dot product","Cosine similarity","Projection","Matrix","Linear map","Matrix product","Determinant","Rank","Low-rank matrix"]
+sections: {"How do you do arithmetic on a word?":"overview","Build the map, one idea at a time":"mechanism","Your turn: aim the map":"lab","What this picture leaves out":"limits","Where you will meet these ideas again":"next"}
+---
+
+## How do you do arithmetic on a word?
+
+Which is more like a cat: a dog or a bicycle? You answered before you finished reading the
+question, and you managed it without doing any arithmetic at all.
+
+A computer program has nothing except arithmetic to work with. A language model, the kind of
+program behind a chatbot, can add numbers and multiply numbers, and almost everything else it does
+is assembled from those two operations. So how could a program like that ever decide that a cat is
+closer to a dog than to a bicycle?
+
+The answer is one of the oldest ideas in the field, and this lab is about that idea. You describe
+each thing with a short list of numbers, and you choose the lists so that similar things receive
+similar lists. After that, a question about meaning becomes a question about numbers, which is
+exactly the kind of question a program can answer.
+
+### The plan
+
+Here is the plan: in the lab beside this lesson you will build a tiny map of eight everyday words,
+where each word is described by only two numbers. Then you will learn four operations on that map,
+and each operation answers a question that the one before it leaves open.
+
+First you will turn a list of numbers into an arrow, so that you can actually see it. Then you
+will add arrows together and stretch them, which are the only two things anyone ever does to them.
+Next you will measure how alike two arrows are, and you will discover that there are two different
+ways of measuring it which do not always agree.
+
+After that comes the part that gives the lab the second half of its name. A small grid of numbers,
+called a **matrix**, can move every arrow on the map at the same moment. You will stretch the map,
+rotate it and flip it over, and then perform two of these moves one after the other. Finally you
+will squash the map so flat that two different words become one word and can never be separated
+again.
+
+Hold on to one question while you work, because it returns near the end. If a matrix can destroy
+information permanently, why would anyone build a model out of matrices that do this deliberately?
+
+### What you will be able to do
+
+By the end of the lab you will be able to do six things, each of which a later lab relies on:
+
+- read a list of numbers as an arrow, and explain what its length tells you and what its direction
+  tells you about the thing it describes;
+- add two arrows together, multiply an arrow by a number, and predict where the result will land
+  before you look at the picture;
+- work out by hand the score called a dot product, and explain why a second score, called cosine
+  similarity, pays no attention to how long the arrows are;
+- look at the two columns of a matrix and say where that matrix will send any arrow you choose;
+- explain why applying two matrices in a different order gives a different result, and what
+  information disappears when a matrix flattens the map;
+- count how many numbers are needed to store a large table that is built from a few simple pieces,
+  and say why that makes a method called LoRA inexpensive.
+
+### What the lab is, and what it is not
+
+Before you begin, be clear about one thing: every number on this map was typed in by hand for this
+lesson. Nobody measured how alive a horse is, and no model was consulted. The numbers were chosen
+so that the arithmetic comes out cleanly and the pictures are easy to read.
+
+A real model does not keep two numbers for each word, because it keeps hundreds or even thousands, which it discovers by itself during training. The later lab *Tokens & embeddings* shows real examples. The operations you practise here are exactly the operations performed on those long
+lists, which is why two numbers are enough to learn them properly.
+
+Everything the lab displays is calculated from those typed-in numbers with exact arithmetic.
+Nothing is estimated and nothing is random, so the numbers on your screen will match the numbers in
+this lesson every time you open it.
+
+## Build the map, one idea at a time
+
+The lab holds eight cards and shows one at a time. The **Next** button under each card opens the
+following one, and the step bar above the lab jumps to any of them.
+
+### A word as two numbers
+
+Begin with the card **A word as two numbers**, which describes every word using two invented
+scores. The first score is **size**, where a value above zero means the thing is bigger than a
+person and a value below zero means it is smaller. The second score is **alive**, where a value
+above zero means a living thing and a value below zero means a machine.
+
+The lab opens on the word horse, whose two scores are 0.9 and 1.2. A horse is somewhat bigger than
+a person, which explains the 0.9, and it is certainly a living thing, which explains the 1.2. We
+write the pair as (0.9, 1.2), always with size first and alive second.
+
+A list of numbers kept in a fixed order is called a **vector**, and when it stands for a word inside a model, people also call it an **embedding**. The order is important, because
+(0.9, 1.2) and (1.2, 0.9) would describe two different things.
+
+Now for the picture, which works like the directions on a treasure map that say “walk 0.9 steps east, then 1.2 steps north”. You start at the centre of the map, follow the directions, and mark
+the spot where you finish. The lab draws that walk with a solid blue line running 0.9 to the right, a dashed purple line running 1.2 upward, and a green arrow from the centre to the finish.
+
+So a single vector is two things at once, a list such as (0.9, 1.2) and also an arrow. The list is
+what a computer stores, while the arrow is what allows you to see it. The treasure map is a fair
+comparison as long as there are only two numbers. It stops working for a real model, whose lists
+are hundreds of numbers long, because nobody can draw a map with hundreds of separate directions.
+The arithmetic stays the same however long the list becomes, and only the picture is lost.
+
+#### How long is the arrow?
+
+The two coloured lines and the green arrow together form a triangle with a square corner. For any triangle of that kind there is an ancient rule for finding the longest side: square the two shorter sides, add the squares together, and take the square root.
+
+For horse, 0.9 squared is 0.81 and 1.2 squared is 1.44, which add up to 2.25, and the square root
+of 2.25 is 1.5. The card writes out this calculation in the box underneath the map, and the readout
+**How much: length** displays 1.50.
+
+**Pause and predict:** drag the round handle on the arrow tip directly outward, along the line the
+arrow already follows, until the list reads (1.8, 2.4). Two readouts sit beside each other, **How
+much: length** and **What kind: direction**. Which of them do you expect to change?
+
+Only the first one changes. The length doubles to 3.00 because both numbers doubled, while the
+direction readout still says “big, living” because the arrow is still pointing the same way. This
+is the idea to remember from the first card: **direction says what kind of thing it is, and length
+says how much**.
+
+Now press **Put the arrow back on horse** and then choose mouse in the row **Word to read**. Its
+list is (−1.6, 1.0), so it sits to the left of the centre and its direction reads “small, living”.
+Its length is 1.89, which is actually longer than the arrow for horse. A mouse is not “more” than a
+horse in any everyday sense. It simply sits further from the middle of this particular map, because
+being extremely small is just as far from average as being extremely large.
+
+To recap, a vector is both a list of numbers and an arrow, whose direction tells you what kind of thing it describes and whose length tells you how strongly. Now that words have become
+arrows, what can we actually do with them?
+
+### Add and stretch
+
+There are only two things you can do with arrows, and the card **Add and stretch** demonstrates
+both of them in a single picture.
+
+The first operation is addition, and to add two vectors you add their first numbers together and then
+add their second numbers together. The lab starts from horse, (0.9, 1.2), and adds a step called
+“bigger”, which is the vector (1, 0). The first numbers give 0.9 + 1 = 1.9 and the second numbers
+give 1.2 + 0 = 1.2, so the result is (1.9, 1.2). The small table beside the map sets out the same calculation.
+
+In the picture, adding means placing the tail of the step on the tip of the word. The black arrow
+is horse, the magenta arrow is the step, and the green arrow runs from the centre to wherever you
+finish. A dashed ring marks the word nearest to the result, and the readout says “whale, 0.32
+away”. That makes a rough kind of sense, because something with a horse’s alive score and
+additional size is closer to the whale than to anything else on the map.
+
+The second operation is multiplying a vector by a single number, which the slider **Times** applies
+to the step. Multiplying by 2 doubles both numbers, so the step becomes twice as long, while
+multiplying by 0.5 makes it half as long. Multiplying by a negative number reverses the step so
+that it points the opposite way. Notice that the step never turns toward a new direction, because
+multiplication can only slide it backward and forward along its own line.
+
+**Pause and predict:** the list for cat is (−0.8, 1.2). You are starting from horse at (0.9, 1.2),
+and the step is still “bigger”. Which number on the **Times** slider will make the result land
+exactly on cat?
+
+**Try this:** slide **Times** to the left until it reads × −1.7. The step reverses and stretches,
+the table shows 0.9 − 1.7 = −0.8 for size, and the readout says “cat (right on it)”. The alive
+score did not move at all, because the step contains a zero in that position.
+
+So on this map, horse minus 1.7 lots of “bigger” equals cat. That is arithmetic performed on
+meanings, using nothing except addition and multiplication. Real models show the same behaviour
+with the lists they learn for themselves. In one famous result, researchers took the list for
+“king”, subtracted the list for “man” and added the list for “woman”, and the answer lay very close to “queen”.
+
+Experiment with the other two steps as well, beginning with “more alive”, which is (0, 1) and moves a word directly up the map. The step “bigger and less alive” is (1, −1), which moves a word downward and
+to the right simultaneously, because a single step is able to change both numbers together.
+
+To recap, addition places one arrow on the end of another, and multiplying by a number stretches,
+shrinks or reverses an arrow along its own line. We keep saying that a result lands “near” a
+particular word, so it is time to measure that nearness properly.
+
+### How alike are two arrows?
+
+Open the card **How alike are two arrows?**, which compares horse, the first arrow, with whale, the
+second. Here is the simplest score you could possibly invent: multiply the two sizes, multiply the
+two alive scores, and add the two answers together.
+
+For horse, (0.9, 1.2), and whale, (2.0, 0.9), the sizes give 0.9 × 2.0 = 1.80 and the alive scores
+give 1.2 × 0.9 = 1.08, which add up to 2.88. This score is called the **dot product**, and it is written with a dot between the two names, as in a · b, which you read aloud as “a dot b”.
+
+The card draws each product as a horizontal bar, where a bar that grows toward the right is positive and a striped bar that grows toward the left is negative. The green bar at the bottom is their total, the dot product itself.
+
+Why should this score measure agreement? The explanation appears when you consider one pair of numbers at a time. Both sizes are
+positive, since the horse and the whale are both large, and two positive numbers always multiply to
+give a positive number. The two words agree about size, so that bar points to the right, and they
+agree about being alive in the same way.
+
+Now choose bus in the row **Second arrow**, whose list is (1.6, −1.2). The sizes still agree and give 0.9 × 1.6 = +1.44, but the alive scores disagree, since one is alive and the other is a machine, and give 1.2 × −1.2 = −1.44. The two bars are equally long and point in opposite
+directions, so the dot product is exactly 0. On the map the two arrows meet at a square corner, and
+the angle between them reads 90°. A dot product of zero means that, taken overall, the two arrows
+neither agree nor disagree.
+
+Choose whale again, and answer the question in the dashed box at the top of the card before you
+continue reading.
+
+**Pause and predict:** the dot product of horse and whale is +2.88. You are about to rotate the
+whale’s arrow by half a turn, so that it points in the opposite direction. Will the dot product
+stay the same, fall to zero, or become negative?
+
+Set **Turn the second arrow** to 180°. Half a turn changes the sign of both of the whale’s numbers,
+so each product changes sign and their total changes sign as well, which makes the dot product
+−2.88. Zero was only a value you passed through on the way round, at the moment when the two arrows
+met at a square corner.
+
+#### The shadow
+
+The map shows one more thing, drawn as a thick magenta bar. Imagine a light shining straight down
+onto the line that the second arrow lies along. The first arrow would cast a shadow on that line,
+and the magenta bar is that shadow. It shows how far horse reaches in the whale’s direction, and
+its proper name is the **projection**.
+
+With the turn set back to 0°, the shadow is 1.31 long. Multiply it by the length of the whale’s
+arrow, which is 2.19, and you get 2.88 again once you allow for rounding. So the dot product equals
+the shadow multiplied by the length of the arrow it falls on. When you rotated the whale, the
+shadow fell behind the centre, on the far side from the arrowhead, which is why it counted as
+negative.
+
+#### Two scores that disagree
+
+**A common mix-up:** it is tempting to believe that a bigger dot product always means two things
+are more alike. Test that belief with the slider **Stretch the second arrow** by moving it from
+× 1.0 to × 1.5. The whale’s arrow becomes longer without turning, and the dot product jumps from
+2.88 to 4.32. The two words are no more alike than they were a moment ago, because the score
+increased only as a result of one arrow getting longer.
+
+So the dot product combines two separate things, how much and what kind. To keep only what kind,
+you divide the dot product by the length of each arrow. For horse and whale that means dividing
+2.88 by 1.50 and then by 2.19, which comes to 0.88. This second score is called the **cosine
+similarity**, or simply the cosine.
+
+Stretch the second arrow again while you watch the round marker on the cosine scale. It remains at
++0.88 while the dot product changes, because the additional length is divided straight back out
+again.
+
+The cosine always lies between −1 and +1. It equals +1 when two arrows point in the same direction,
+0 when they meet at a square corner, and −1 when they point in opposite directions. The name comes
+from the mathematics of triangles, but you do not need any of that here, and it is enough to treat
+the cosine as a score for direction.
+
+To recap, the dot product multiplies matching numbers and adds the results, so it grows with both agreement and length, whereas the cosine divides the lengths out and keeps only direction. So
+far we have handled one or two arrows at a time. A model has to move all of its arrows together,
+and that requires a new tool.
+
+### A matrix moves every arrow at once
+
+The card **A matrix moves every arrow at once** introduces that tool. A **matrix** is a small grid
+of numbers, and on this card it has two rows and two columns, which makes four numbers that each
+have their own slider.
+
+The card opens on a matrix whose top row is 1.0 and 0.5 and whose bottom row is 0.0 and 1.0. A
+matrix is a recipe for turning any arrow into a new arrow, and you already know how to follow the
+recipe, because it consists of two dot products.
+
+Take horse, (0.9, 1.2), as the example, and for its new size use the top row of the matrix, which
+gives 1.0 × 0.9 + 0.5 × 1.2 = 1.50. For its new alive score, use the bottom row, which gives
+0.0 × 0.9 + 1.0 × 1.2 = 1.20. So this matrix sends horse from (0.9, 1.2) to (1.5, 1.2), and the
+table underneath the map sets out both lines of the calculation.
+
+That method is correct, but it does not help you picture what the matrix does to the map as a
+whole. For that purpose there is a better way of reading the same four numbers.
+
+#### Read the columns
+
+Ask where the matrix sends the two simplest arrows on the map. One is the size arrow, (1, 0), which
+is a single step to the right, and the other is the alive arrow, (0, 1), which is a single step
+upward.
+
+Work it out and you discover something remarkably neat. The size arrow lands on (1.0, 0.0), which
+is the left-hand column of the matrix, and the alive arrow lands on (0.5, 1.0), which is the
+right-hand column. That is true for every matrix: **the first column is where the size arrow lands,
+and the second column is where the alive arrow lands.** The lab draws these as a thick blue arrow
+and a thick purple arrow, and it leaves grey dashed arrows behind to show where they started.
+
+Every other arrow then follows from those two, because before the move horse was 0.9 of the size arrow
+plus 1.2 of the alive arrow. After the move, it is 0.9 of the first column plus 1.2 of the second
+column, and the black dashed path on the map walks exactly that route.
+
+The pale green lines show the grid of the map after the move, and the shaded shape shows what has
+happened to a single grid square. This particular matrix leans everything over to one side, like a
+stack of paper pushed sideways at the top, and a move of that kind is called a shear.
+
+**Pause and predict:** the top-right number is the one responsible for the lean. Before you move
+the slider **Top right** from 0.5 up to 1.0, decide which of the eight words are going to slide
+toward the right.
+
+Only the five animals slide to the right, while the three machines slide to the left. The top-right
+number multiplies each word’s alive score and adds the answer to its size. Animals have a positive
+alive score, so they gain size, whereas machines have a negative one and therefore lose it. Horse
+moves to (2.1, 1.2), and bicycle moves from (−0.8, −1.0) to (−1.8, −1.0).
+
+#### Six ready-made matrices
+
+Now press each of the six buttons under **Ready-made matrices**, and read the two columns every
+time before you look at what happened on the map.
+
+- **leave alone** has the columns (1, 0) and (0, 1), so both axis arrows stay where they are and
+  nothing on the map moves.
+- **stretch** has the columns (1.5, 0) and (0, 1), so every size is multiplied by 1.5 while every
+  alive score is left unchanged.
+- **rotate** has the columns (0, 1) and (−1, 0), so the whole map makes a quarter turn to the left and horse lands on (−1.2, 0.9).
+- **shear** is the leaning matrix that the card opened on, with the columns (1, 0) and (0.5, 1).
+- **flip** has the columns (−1, 0) and (0, 1), so every size changes its sign, exactly as it would
+  in a mirror.
+- **squash** has the columns (1, 0) and (0, 0.4), so every alive score shrinks to 0.4 of its
+  previous value.
+
+Whatever you do with the four sliders, two things never change: the grid lines remain straight and
+evenly spaced, and the centre of the map stays exactly where it is. A move with those two
+properties is called a **linear map**, and it is the only kind of move a matrix is able to make. A
+matrix can never bend the map or shift its centre.
+
+The note beneath the sliders also reports the area of the shaded square. For the shear it is 1.00,
+because leaning a square over does not change its area, and for the stretch it is 1.50. That area
+has a name, the **determinant**, and it becomes very important two cards from now.
+
+To recap, a matrix is a grid of numbers that moves every arrow together. Each new number is a dot product with one row, and the two columns show where the two axis arrows land. A model does
+not stop at a single matrix, however, because it applies one after another. Does it matter which
+of them comes first?
+
+### One after another
+
+The card **One after another** applies two matrices in a row, where step 1 is the rotate button from the previous card and step 2 is the stretch. Answer the question in the dashed box before going any further.
+
+**Pause and predict:** step 1 rotates the map by a quarter turn, and step 2 stretches it sideways.
+If you swap the two steps, will the words finish in the same places?
+
+Follow horse through both orders to find out. If you rotate first, horse travels from (0.9, 1.2) to
+(−1.2, 0.9), and then the stretch multiplies the first number by 1.5, which gives (−1.8, 0.9). If
+you stretch first, horse travels to (1.35, 1.2), and then the rotation turns it to (−1.2, 1.35),
+which is a different place altogether.
+
+Press **Swap the order** and read the tile **Words that land elsewhere if you swap**. It says 8 of
+8, which means that every word on the map finishes somewhere different. The hollow marks and the
+dashed outline show where the other order would have placed everything.
+
+The reason is that the stretch always pulls along the left-to-right direction. Once the map has rotated, the quantity lying from left to right is the old alive score, but before the rotation that quantity is still size. The same stretch therefore ends up
+stretching two different things.
+
+Getting dressed works in the same way, because socks followed by shoes is not the same as shoes followed by socks, even though you performed the same two actions. The comparison
+only goes so far, since some pairs of matrices do give the same result in either order. Set step 1
+to stretch and step 2 to flip, and the tile drops to 0 of 8, because both moves act along the same two axes.
+
+#### One matrix that does both
+
+Use the buttons under **Show the map** to step through the starting map, the map after step 1, and
+the map after both steps. Then look at the row of small grids underneath the map.
+
+Two moves in a row can always be replaced by a single matrix. To find it, follow the two axis
+arrows through both steps and write down where they finish, because those two finishing spots are
+its columns. With rotate followed by stretch, the size arrow goes from (1, 0) to (0, 1) and stays
+there, so the first column is (0, 1). The alive arrow goes to (−1, 0) and then to (−1.5, 0), which is the second column. The single matrix therefore has a top row of 0.0 and −1.5 and a bottom row of 1.0 and 0.0.
+
+With the order swapped, the single matrix has a top row of 0.0 and −1.0 and a bottom row of 1.5 and
+0.0. The same four numbers appear in different positions, and this single matrix is called the **matrix product** of the two steps.
+
+This is precisely what happens inside a model that has many layers. Each layer applies its own
+matrix to whatever the previous layer produced, and the order of those layers is part of what the
+model has learned.
+
+To recap, two matrices in a row behave like a single matrix, and swapping their order usually
+changes the answer. Every move so far could be reversed by some other move, but is that always
+true?
+
+### When a matrix forgets
+
+The card **When a matrix forgets** has a single slider, **Multiply every alive number by**, which
+controls a very plain matrix. This matrix leaves every size alone and multiplies every alive score
+by the number shown on the slider.
+
+Slide it down to × 0.50, and every word moves halfway toward the horizontal line through the centre, while the tile **Area of the shaded square** reads 0.50. The tile **Words with their own spot** still
+reads 8 of 8, so the map has been squashed but no information has been lost.
+
+Continue all the way down to × 0.00, where every alive score is zero and the entire map lies flat
+along one line, so the area reads 0.00. The second tile has dropped to 7 of 8, and a red ring marks
+the reason. Cat was (−0.8, 1.2) and bicycle was (−0.8, −1.0), so they always had the same size, and
+the alive score was the only thing that distinguished them. Now both of them are (−0.8, 0.0), and nothing distinguishes them at all.
+
+**Pause and predict:** cat and bicycle are sitting on the same spot. What second matrix would
+separate them again? Answer in the dashed box on the card before you read any further.
+
+No matrix can do it, as you will see if you choose **stretch it back** under **Then**. At × 0.00 nothing moves, and the
+card explains why: undoing the squeeze would require dividing by zero, and zero multiplied by any
+number is still zero. A matrix produces one output for each input, so two inputs that have become
+the same list will remain the same through every matrix that follows.
+
+Now drag the slider up to × 0.20 with **stretch it back** still selected, and every word returns to its original place, because multiplying by 5 reverses multiplying by 0.20.
+Even at × 0.05, where the words appear to be touching, a stretch of 20 would still rescue them, and only an area of exactly zero is beyond repair.
+
+There is a name for what was lost, because the **rank** of a matrix is the number of separate directions it
+preserves. Every matrix before this one preserved both directions, so its rank was 2, whereas the squashing matrix at zero preserves only the size line and has rank 1.
+
+What gets forgotten depends on the matrix. Cat and horse share an alive score of 1.2, so a matrix
+that erased size and preserved alive would merge those two instead, leaving cat and bicycle far
+apart. You can confirm this on the previous card by pressing **leave alone** and then setting **Top
+left** to 0.
+
+Now return to the question from the beginning, which asked why a model would want a matrix that forgets. The
+reason is that forgetting is how you ignore whatever does not matter. A matrix that discards size
+and preserves alive makes it simple to separate the animals from the machines, and no later step can be distracted by how large each one is. Real models squeeze and widen their vectors constantly, and the cost is that whatever lay along the forgotten direction has disappeared
+for every later layer.
+
+To recap, a matrix that flattens the map to zero area has lost a direction, and no later matrix can
+recover it. That sounds like nothing except a cost, but the final card shows that it has another
+side.
+
+### A table from a few pieces
+
+The card **A table from a few pieces** moves to a bigger matrix with 8 rows and 8 columns, which
+therefore contains 64 numbers. It no longer acts on our map of words, so think of it as one of the large tables of numbers inside a real model, greatly reduced.
+
+This table has a secret, which is that it was constructed from four simple pieces. Look at the
+first small picture at the top of the card. Down its left side runs a column of eight numbers, each
+of them either 8 or −8, and along its top runs a row of eight plus and minus signs. Every cell
+inside is the number on the left multiplied by the sign above it, exactly as in a school
+multiplication table. So a single **piece** is one column multiplied by one row.
+
+A piece like that has rank 1, the same as the squashed map, because every one of its columns is
+the same column multiplied by either +1 or −1. The full table is the four pieces added together,
+cell by cell, and it has rank 4.
+
+**Pause and predict:** a piece is a column of 8 numbers multiplied by a row of 8 numbers. How many
+numbers would you need to write down in order to keep 2 pieces? Answer on the card first.
+
+You need 32, because a single piece costs 8 + 8 = 16 numbers, the column and the row, and not 8 × 8 = 64. All 64 cells of a piece can be calculated from those 16. Two pieces therefore cost 32
+numbers, which is half the cost of storing the table directly.
+
+Now move the slider **Pieces kept** and compare two tiles each time, **Numbers stored** and
+**Average miss per cell**. The second tile reports how far the rebuilt table on the right is from
+the full table on the left.
+
+- With 1 piece you store 16 numbers, and each cell of the rebuilt table is wrong by 4 on average.
+- With 2 pieces you store 32 numbers, and the average miss for each cell falls to 2.
+- With 3 pieces you store 48 numbers, and the average miss for each cell falls to 1.
+- With 4 pieces the rebuilt table is exact, but you are storing 64 numbers, the same as the table.
+
+Each piece was made half as strong as the one before it, so every piece you add halves whatever is
+still missing. The final line carries a warning as well: pieces are a bargain only when there are
+few of them compared with the size of the table.
+
+#### Why this matters at full size
+
+At full size the bargain is enormous, as you can see by picturing a table inside a model with 4,096 rows and 4,096
+columns, which contains 16,777,216 numbers. Eight pieces of that table cost 8 × (4,096 + 4,096) =
+65,536 numbers, which is less than half of one percent of the full table.
+
+That is the entire idea behind a method called **LoRA**, which teaches a large model something new without altering the model’s enormous tables directly. It learns a small change to each table
+instead, written as a few pieces, and a table that can be written as a few pieces is called a
+**low-rank matrix**.
+
+One thing about this card is too neat, and you should know about it. This table was deliberately
+constructed from four pieces, so four pieces rebuild it exactly, whereas most tables of numbers are not made that way. LoRA is a bet that the *change* a model needs is simple enough to fit into a few
+pieces, and that bet does not always succeed.
+
+To recap, a table constructed from a few column-times-row pieces can be stored using far fewer
+numbers than it has cells. The low rank that made a matrix forget is the very same property that
+makes it inexpensive.
+
+## Your turn: aim the map
+
+You now have every idea you need for the final card, **Challenge: aim the map**, and this time
+nobody is going to give you the matrix.
+
+Dashed hollow marks show where each of the eight words is supposed to land. The words begin in
+their usual places, and red dashed lines connect each word to its own target. Your task is to set
+the four sliders so that every word sits inside its mark. The bar underneath, **Average distance
+from the targets**, tells you how far away you are, and it turns green when the distance reaches
+zero.
+
+There are two ways of playing, and both of them are worth trying.
+
+The first way is to reason it out. In round 1 every target lies on the same side of the centre as
+its word, but further out sideways and closer in from the top and bottom. That describes a stretch in one direction and a squash in the other, so only two of the
+four numbers need to change. Decide which two before you touch anything.
+
+If you cannot see the answer, press **Hint: show where the two axis arrows should land**. Two
+dashed arrows appear, and the text beside the map gives the lists they point to. Remember what the
+columns of a matrix represent, and you can read the answer directly from the hint.
+
+The second way is not to reason at all, but to move one slider a little while you watch the bar underneath. If the number falls, keep going in that direction, and if it rises, go back the other way, and when that slider stops helping, move on to the next one. You will reach the target this way as well, only
+more slowly.
+
+Round 2 is a rotation, and round 3 is a shear combined with a flip. If you become stuck, the hint gives you the two columns. In round 2 they are (0, −1) and (1, 0), and in round 3 they are (−1, 0)
+and (0.5, 1).
+
+### What you just did
+
+Look back at the second way of playing, in which you had some inputs, which were the words, and the places where those inputs were supposed to finish. You adjusted the numbers in a matrix a little at
+a time, and you kept every change that made the miss smaller.
+
+That is what training a layer of a model means, although the real process differs in scale, since it adjusts
+millions of numbers where you adjusted four. It also differs in how it chooses each small change,
+because a model does not guess. It calculates, for every number simultaneously, which way to move
+that number in order to shrink the miss. How it manages that is the subject of the next lab,
+*Slopes & gradients*.
+
+## What this picture leaves out
+
+### What the lab simplifies
+
+Some of what you saw is true of this lab but not of real models, so here is a plain list of the
+differences.
+
+- The map contains eight words with two numbers each, all typed in by hand, whereas real models learn hundreds or thousands of numbers for every one of their word pieces.
+- The two numbers have names, size and alive, which is the most misleading part of the toy, because in a real model nobody decides what each number means.
+- The numbers were adjusted to make the arithmetic clean: horse has a length of exactly 1.5, and horse and bus meet at an exact square corner.
+- Every matrix here has four numbers and nothing else, whereas a real layer also adds a fixed amount to each output, called a bias, which slides the whole map.
+- The 8 by 8 table was constructed from four pieces written for this lesson, so that the misses
+  come out as whole numbers, and nothing about it was measured.
+- The targets in the challenge were produced by matrices that the sliders can reach exactly,
+  whereas real training almost never reaches a miss of zero.
+
+### Where the real ideas run into trouble
+
+The ideas themselves also have limits, even when the numbers are real ones.
+
+**A high cosine does not guarantee likeness.** In this lab, two arrows that point the same way
+describe similar things because the map was drawn that way. In a real model the cosine means only
+what training caused it to mean. Researchers have demonstrated cases where the cosine between learned vectors gives arbitrary answers, because training left the model free to rescale its numbers without changing its results.
+
+**Arithmetic on words works sometimes, not always.** The result with “king” and “queen” is genuine,
+but it is a tendency and not a law, and many word sums that look sensible land nowhere useful.
+
+**Meaning does not sit on labelled axes.** In real models a useful meaning is usually a direction
+that mixes many numbers together. Models can also pack more meanings into a vector than the vector
+has numbers, with the meanings overlapping one another. A single number from a real vector, read on
+its own, usually tells you very little.
+
+**A matrix cannot bend.** Every matrix keeps straight lines straight, so if a model were built from matrices alone, the whole stack would collapse into a single matrix, just as two steps became one. That is why real networks place a simple bending step between their matrices, which
+later labs introduce.
+
+**Low rank is a bet.** Storing a change as a few pieces saves an enormous amount of space, but it
+is exact only when the change really is that simple. When it is not, part of the change is lost,
+just as it was when you kept 2 pieces out of 4.
+
+## Where you will meet these ideas again
+
+Nothing in this lab stays in this lab, so here is where each idea returns.
+
+- *Data, features, and representation* treats every example in a collection of data as a point
+  described by a list of numbers, and compares examples by the distance between their points.
+- *Tokens & embeddings* shows the vectors that a real model learned for real word pieces, and uses
+  the cosine to discover which of them are close together.
+- *A single neuron* multiplies each input by a weight and adds the results together, and that weighted sum is the dot product you met on the third card.
+- *Attention* gives every word a query vector and a key vector, and scores each pair with a dot
+  product to decide which words should read from which.
+- *LoRA & adapters* stores the change made to an enormous table as a few column-times-row pieces,
+  which is the bargain from the seventh card.
+- *Model merging* treats everything a model learned for one task as a single enormous vector, and
+  adds those vectors together the way you added a step to a word.
+
+The very next lab, *Slopes & gradients*, continues from the point where the challenge stopped,
+because it answers the question of how a model knows which way to move each number.

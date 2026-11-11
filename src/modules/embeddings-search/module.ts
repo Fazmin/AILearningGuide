@@ -55,7 +55,7 @@ const definition: ModuleDefinition = {
   slug: "embeddings-search",
   title: "Embeddings for search and retrieval",
   group: "building-with-models",
-  order: 22,
+  order: 24,
   icon: "Search",
   accent: "#4a6ec8",
   prerequisites: ["module-01-tokens-embeddings"],

@@ -1,0 +1,212 @@
+---
+objectives: ["Read a list of numbers as an arrow, and say what its length and its direction each tell you","Add two vectors and multiply one by a number, and predict where the result lands","Work out a dot product by hand and explain why cosine similarity ignores length","Read a matrix by its columns and work out where it sends any vector","Explain why the order of two matrices matters and what a matrix loses when it flattens the map","Count the numbers a low-rank table needs and say why that makes LoRA cheap"]
+terms: ["Vector","Embedding","Length","Vector addition and scaling","Dot product","Cosine similarity","Projection","Matrix","Linear map","Matrix product","Determinant","Rank","Low-rank matrix"]
+sections: {"How do you do arithmetic on a word?":"overview","Build the map, one idea at a time":"mechanism","Your turn: aim the map":"lab","What this picture leaves out":"limits","Where you will meet these ideas again":"next"}
+---
+
+## How do you do arithmetic on a word?
+
+Is a cat more like a dog or a bicycle? You know at once, but a language model can only add and
+multiply. The way out is to represent each thing as a **vector**, an ordered list of numbers,
+chosen so that similar things get similar lists. Questions about meaning then become questions
+about geometry, and geometry is arithmetic.
+
+### Where it shows up
+
+Everything a neural network handles is a vector: a token’s **embedding**, the activations of a
+layer, the gradient of the loss. Everything a network does to a vector between its nonlinearities
+is multiplication by a **matrix**. This lab builds both objects in two dimensions, where they can
+be drawn.
+
+### What you will be able to explain
+
+By the end you can read a vector as an arrow and separate its length (how much) from its direction
+(what kind). You can add and scale vectors and predict the result. You can compute a dot product by
+hand and say why cosine similarity discards length. You can read a matrix by its columns, explain
+why matrix products do not commute and what a rank-deficient matrix destroys, and count the
+parameters of a low-rank factorization, which is the saving LoRA exploits.
+
+### What the lab shows
+
+Eight words, each given two hand-written coordinates, *size* and *alive*. Nothing is learned or
+measured: every readout is exact arithmetic on those sixteen authored numbers, on 2×2 matrices you
+set with sliders, and on one 8×8 table built from four authored rank-one pieces. Real embeddings
+have hundreds to thousands of dimensions with no named axes; *Tokens & embeddings* shows those.
+
+Keep one question in mind: if a matrix can destroy information irreversibly, why would a model use
+such matrices on purpose?
+
+## Build the map, one idea at a time
+
+The lab has eight cards, one idea each, and shows one per step; **Next** under a card opens the
+following one.
+
+### A word as two numbers
+
+The card opens on horse = (0.9, 1.2): 0.9 along the size axis, 1.2 along the alive axis. The list
+and the arrow from the origin to that point are the same object. Its **length**, or Euclidean norm,
+is ‖v‖ = √(0.9² + 1.2²) = √(0.81 + 1.44) = √2.25 = 1.5, which the card prints as 1.50.
+
+**Pause and predict:** drag the tip straight outward to (1.8, 2.4). Which readout changes, **How
+much: length** or **What kind: direction**?
+
+Only the length changes, to 3.00; the direction still reads “big, living”. Scaling a vector by a
+positive number changes its norm and leaves its direction alone. Mouse, (−1.6, 1.0), is longer than
+horse at 1.89: length here measures distance from the middle of the map, not importance.
+
+### Add and stretch
+
+Vectors support two operations, and linear algebra is the study of what follows from them.
+Addition is componentwise, drawn tip to tail: horse + (1, 0) = (1.9, 1.2), which the card reports
+as 0.32 from whale. Scalar multiplication multiplies every component, so it stretches, shrinks, or
+(for a negative scalar) reverses an arrow along its own line.
+
+**Pause and predict:** which multiple of the step “bigger”, (1, 0), takes horse to cat,
+(−0.8, 1.2)?
+
+Set **Times** to × −1.7: (0.9, 1.2) − 1.7·(1, 0) = (−0.8, 1.2), exactly cat. Learned embeddings show
+the same structure. Mikolov, Yih and Zweig reported that the offset between word vectors encodes
+relations, with “King − Man + Woman” landing very close to “Queen”, and Ilharco and colleagues add
+and negate whole fine-tuning updates as “task vectors”.
+
+### How alike are two arrows?
+
+The **dot product** multiplies matching components and adds: horse · whale = 0.9×2.0 + 1.2×0.9 =
+1.80 + 1.08 = 2.88. Each product is positive when the two vectors agree in sign on that axis. With
+bus, (1.6, −1.2), the terms are +1.44 and −1.44, so the dot product is 0 and the arrows are
+orthogonal (90°).
+
+**Pause and predict:** turn the second arrow by 180°. What happens to the dot product?
+
+It becomes −2.88: negating a vector negates every term. Geometrically, a · b = ‖a‖‖b‖cos θ, which
+is also the signed length of the **projection** of a onto b (the shadow, 1.31 here) times ‖b‖
+(2.19).
+
+The dot product therefore confounds agreement with magnitude. Move **Stretch the second arrow**
+from × 1.0 to × 1.5 and it rises from 2.88 to 4.32 with no change in direction. **Cosine
+similarity** divides both norms out: 2.88 / (1.50 × 2.19) = 0.88, invariant to either stretch and
+bounded in [−1, 1].
+
+### A matrix moves every arrow at once
+
+A 2×2 **matrix** maps a vector to a vector; each output component is the dot product of one row
+with the input. The card opens on the shear with rows (1.0, 0.5) and (0.0, 1.0), which sends horse
+to (1.0×0.9 + 0.5×1.2, 0.0×0.9 + 1.0×1.2) = (1.5, 1.2).
+
+The column view is the one to keep. The matrix sends the basis vector (1, 0) to its first column
+and (0, 1) to its second. Since horse = 0.9·(1, 0) + 1.2·(0, 1), its image is 0.9 × first column +
+1.2 × second column, drawn tip to tail on the card. That works because the map is **linear**: it
+preserves addition and scaling, so grid lines stay straight, parallel and evenly spaced, and the
+origin stays fixed.
+
+**Pause and predict:** raise **Top right** from 0.5 to 1.0. Which words move right?
+
+Only the five animals. That entry multiplies each word’s alive coordinate into its size, so words
+with negative alive move left: horse goes to (2.1, 1.2) and bicycle to (−1.8, −1.0). The presets
+give the standard maps by their columns. Rotate is (0, 1), (−1, 0), a quarter turn sending horse to
+(−1.2, 0.9); stretch is (1.5, 0), (0, 1); flip is (−1, 0), (0, 1); squash is (1, 0), (0, 0.4).
+
+The card also reports the area of the image of the unit square, |det M|, where the **determinant**
+of a 2×2 matrix is ad − bc: 1.00 for the shear and 1.50 for the stretch.
+
+### One after another
+
+Applying A and then B is a single linear map, the **matrix product** BA; its columns are the
+images of the basis vectors under both steps. Order matters. Rotate then stretch sends horse to
+(−1.2, 0.9) and then (−1.8, 0.9), and the product has rows (0.0, −1.5) and (1.0, 0.0). Stretch then
+rotate sends horse to (1.35, 1.2) and then (−1.2, 1.35), with rows (0.0, −1.0) and (1.5, 0.0).
+**Swap the order** shows 8 of 8 words landing elsewhere.
+
+Non-commutativity is the general case, not a rule without exceptions: stretch and flip are both
+diagonal, and swapping them moves 0 of 8 words. A deep network is a composition of such maps with
+nonlinearities between them, so the order of its layers is part of what it computes.
+
+### When a matrix forgets
+
+The matrix diag(1, s) multiplies alive by s. At s = 0.50 the area is 0.50 and all eight words stay
+distinct. At s = 0 the determinant is 0, the image is the size axis, and cat, (−0.8, 1.2), and
+bicycle, (−0.8, −1.0), both map to (−0.8, 0.0): 7 of 8 distinct points remain.
+
+**Pause and predict:** which matrix separates cat and bicycle again?
+
+None. A function gives one output per input, so no later map can split two equal vectors. At
+s = 0.20 the inverse exists (multiply alive by 5) and **stretch it back** restores every word. At
+s = 0 it would require 1/0. The **rank** of a matrix is the dimension of its image; it has fallen
+from 2 to 1, and what lay along the null space (here the alive axis) is unrecoverable.
+
+That answers the opening question. Discarding a direction is how a model becomes invariant to it:
+drop size and keep alive, and animals separate from machines regardless of how large they are.
+Projection to fewer dimensions is routine in real models, and its cost is exactly this loss.
+
+### A table from a few pieces
+
+A rank-one matrix is an outer product, one column times one row. The 8×8 table on this card is the
+sum of four such pieces with strengths 8, 4, 2 and 1, so it has rank 4. Storing one piece takes
+8 + 8 = 16 numbers, not 64.
+
+**Pause and predict:** how many numbers store 2 pieces?
+
+Thirty-two. **Pieces kept** trades storage against error: 16, 32, 48 and 64 numbers stored for an
+average miss per cell of 4, 2, 1 and 0. At four pieces the factorization costs as much as the
+table, so low rank pays only when r is small relative to the dimensions.
+
+The pieces were authored with mutually orthogonal column patterns and row patterns, so the sum is
+a singular value decomposition in disguise. By the Eckart–Young theorem, keeping the r strongest
+pieces is then the best rank-r approximation, not merely a convenient one.
+
+At scale the saving is large. A 4,096 × 4,096 weight matrix has 16,777,216 entries, while a rank-8
+update costs 8 × (4,096 + 4,096) = 65,536, about 0.4% of that. **LoRA** freezes the pretrained
+matrix and trains only such a low-rank update, on the hypothesis that the change fine-tuning needs
+has low intrinsic rank.
+
+## Your turn: aim the map
+
+On **Challenge: aim the map**, dashed marks show where each word should land, and you set the four
+entries until **Average distance from the targets** reaches zero. Round 1 is a diagonal scaling,
+round 2 a rotation, round 3 a shear composed with a flip.
+
+You can solve each round by reading the columns: the hint draws the two target basis images, which
+are (0, −1) and (1, 0) in round 2, and (−1, 0) and (0.5, 1) in round 3. Or you can adjust one entry
+at a time and keep any change that lowers the distance.
+
+The second strategy is a coordinate-by-coordinate search that lowers the average distance, and it
+is what training a linear layer amounts to: find the matrix that carries inputs onto targets. Real training differs in
+scale and in using the gradient to choose every adjustment at once, which *Slopes & gradients*
+takes up next.
+
+## What this picture leaves out
+
+### What the lab simplifies
+
+- The sixteen word coordinates are authored and tuned (‖horse‖ = 1.5 exactly, horse ⟂ bus exactly),
+  and the axes have names. Learned embeddings have no privileged, labelled basis.
+- Every map is 2×2 with no bias term. A real layer is affine, Wx + b, followed by a nonlinearity.
+- The 8×8 table is exactly rank 4 by construction, with orthogonal pieces, so truncation errors are
+  whole numbers. Real weight matrices have a full spectrum of singular values.
+- The challenge targets are exactly reachable; real objectives are not driven to zero.
+
+### Where the real ideas run into trouble
+
+- **Cosine similarity can mislead.** Steck, Ekanadham and Kallus show that for embeddings learned
+  under some regularization schemes the cosine can be arbitrary, because training leaves a free
+  rescaling of the dimensions.
+- **Analogy arithmetic is a tendency.** GloVe reports 75% on one word-analogy benchmark, far from
+  every case, and results depend on the benchmark.
+- **Features are not axes.** Meaning usually lies along directions that mix many coordinates, and
+  networks can store more sparse features than they have dimensions, in superposition.
+- **Linear maps cannot bend.** A stack of matrices collapses to one matrix, as two steps did here,
+  which is why networks interleave nonlinearities.
+- **Low rank is a hypothesis.** A rank-r update is exact only if the needed change has rank at most
+  r; otherwise the remainder is lost, as it was when you kept 2 of 4 pieces.
+
+## Where you will meet these ideas again
+
+- *Data, features, and representation* treats each example as a point in feature space and compares
+  examples by distance.
+- *Tokens & embeddings* shows learned word vectors and ranks neighbours by cosine similarity.
+- *A single neuron* computes w · x + b: a dot product of weights and inputs, plus a bias.
+- *Attention* scores every query vector against every key vector with a scaled dot product.
+- *LoRA & adapters* trains the low-rank update from the seventh card in place of full matrices.
+- *Model merging* adds and scales task vectors, the weight-space version of the second card.
+
+Next in order, *Slopes & gradients* explains how a model finds which way to move each number.

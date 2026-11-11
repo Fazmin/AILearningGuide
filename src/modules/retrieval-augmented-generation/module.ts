@@ -56,7 +56,7 @@ const definition: ModuleDefinition = {
   slug: "retrieval-augmented-generation",
   title: "Retrieval-augmented generation",
   group: "building-with-models",
-  order: 23,
+  order: 25,
   icon: "Library",
   accent: "#8b5a2b",
   prerequisites: ["module-38-embeddings-search"],

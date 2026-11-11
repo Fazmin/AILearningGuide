@@ -126,6 +126,26 @@ keyed on the controls, store only controls and seeds in module state, and quote 
 values in the lesson rather than expected ones. If a measurement contradicts the standard
 result, say so in the content and explain why the toy differs.
 
+### Teaching pieces
+
+Three SDK pieces carry the predict-then-check habit the lessons ask for. The three math labs
+(`vectors-matrices`, `slopes-gradients`, `probability-surprise`) are the worked examples.
+
+- `PredictCheck` asks for a guess before the lab shows the answer, then marks it and explains.
+  Keep the picked index in module state, with `-1` for "not answered yet", so a guess survives a
+  reload and a shared link. Ask about something a newcomer would plausibly get wrong.
+- `GoalMeter` shows progress toward the goal of a closing challenge, with a mark at the target and
+  a done state said in words.
+- `StepPager` is the foot of a lab that shows one step's cards at a time. A lab pages when its
+  cards build one idea on the last; render only the cards for `currentStep`, and put
+  `<StepPager steps={steps} current={currentStep} goToStep={goToStep} />` under them. The shell
+  passes `steps` and `goToStep` to every `Explore`; both are optional, so a test harness may leave
+  them out. In a paged lab, make each card's heading the step's scroll target, give every card a
+  lab scene with its `step`, and have tests render every step, because one render shows one page.
+
+A lab whose folder is renamed lists its old slug in `formerSlugs`, and links made under the old
+slug keep opening it. Keep the `id` as it was.
+
 ## Card explanations
 
 Every `LabSurface` carries an info icon that opens a detailed explanation of that one

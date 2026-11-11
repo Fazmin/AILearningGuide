@@ -233,6 +233,147 @@ export function FormulaWithValues({
   );
 }
 
+/**
+ * Ask for a guess before the lab shows the answer. The reader picks one option; only then does
+ * the card mark it and explain. Keep `picked` in module state (use -1 for "not answered yet") so
+ * a guess survives a reload and a shared link.
+ */
+export function PredictCheck({
+  prompt,
+  options,
+  answer,
+  picked,
+  onPick,
+  explanation,
+}: {
+  prompt: string;
+  options: ReadonlyArray<string>;
+  /** Index into `options` of the right answer. */
+  answer: number;
+  /** Index the reader picked, or -1 (or null) before they have. */
+  picked: number | null;
+  onPick: (index: number) => void;
+  /** Shown once the reader has picked: why the right answer is right, tied to what the lab now shows. */
+  explanation: ReactNode;
+}) {
+  const answered = picked !== null && picked >= 0 && picked < options.length;
+  const correct = answered && picked === answer;
+  return (
+    <div className={`viz-predict ${answered ? (correct ? "is-correct" : "is-wrong") : ""}`.trim()}>
+      <p className="viz-predict__prompt">
+        <span>Predict first</span>
+        {prompt}
+      </p>
+      <div className="viz-predict__options" role="group" aria-label={prompt}>
+        {options.map((option, index) => (
+          <button
+            type="button"
+            key={option}
+            aria-pressed={picked === index}
+            className={
+              !answered ? "" : index === answer ? "is-answer" : picked === index ? "is-miss" : ""
+            }
+            onClick={() => onPick(index)}
+          >
+            {option}
+            {answered && index === answer && <span className="sr-only"> (right answer)</span>}
+          </button>
+        ))}
+      </div>
+      {answered && (
+        <p className="viz-predict__reveal" role="status">
+          <strong>{correct ? "Right." : "Not this time."}</strong> {explanation}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The foot of a lab that shows one step's cards at a time: where the reader is, and a button to
+ * the next step, so they never have to hunt for the step bar after finishing a card. Without
+ * `goToStep` (a test harness, or an older shell) it says where the step bar is.
+ */
+export function StepPager({
+  steps,
+  current,
+  goToStep,
+  lastNote = "That is the last step. Every earlier step is still there in the step bar above the lab.",
+}: {
+  steps: ReadonlyArray<string>;
+  current: number;
+  goToStep?: (index: number) => void;
+  lastNote?: string;
+}) {
+  const total = steps.length;
+  const step = Math.min(Math.max(0, total - 1), Math.max(0, Math.floor(Number.isFinite(current) ? current : 0)));
+  const next = steps[step + 1];
+  return (
+    <nav className="viz-step-pager" aria-label="Lab steps">
+      <span className="viz-step-pager__where">
+        Step {step + 1} of {total}
+      </span>
+      {goToStep && step > 0 && (
+        <button type="button" className="viz-step-pager__back" onClick={() => goToStep(step - 1)}>
+          <span aria-hidden="true">← </span>Back
+        </button>
+      )}
+      {next === undefined ? (
+        <span className="viz-step-pager__note">{lastNote}</span>
+      ) : goToStep ? (
+        <button type="button" className="viz-step-pager__next" onClick={() => goToStep(step + 1)}>
+          Next: {next}
+          <span aria-hidden="true"> →</span>
+        </button>
+      ) : (
+        <span className="viz-step-pager__note">
+          Next: {next}. Use the <span aria-hidden="true">›</span> arrow in the step bar above the lab.
+        </span>
+      )}
+    </nav>
+  );
+}
+
+/**
+ * Progress toward a goal the reader is steering at, for a challenge card: a bar that fills to a
+ * marked target and says so in words when the goal is met.
+ */
+export function GoalMeter({
+  label,
+  value,
+  target,
+  display,
+  done,
+  doneText,
+  hint,
+}: {
+  label: string;
+  /** How far along, from 0 to 1. */
+  value: number;
+  /** Where on the bar the goal sits, from 0 to 1. */
+  target: number;
+  /** The reading in the lab's own units, such as "0.12 bits to go". */
+  display: string;
+  done: boolean;
+  doneText: string;
+  hint?: string;
+}) {
+  const clamp = (number: number) => Math.min(1, Math.max(0, Number.isFinite(number) ? number : 0));
+  return (
+    <div className={`viz-goal ${done ? "is-done" : ""}`.trim()} role="status">
+      <div className="viz-goal__head">
+        <span>{label}</span>
+        <strong>{done ? doneText : display}</strong>
+      </div>
+      <i className="viz-goal__track" aria-hidden="true">
+        <b style={{ width: `${clamp(value) * 100}%` }} />
+        <em style={{ left: `${clamp(target) * 100}%` }} />
+      </i>
+      {hint && !done && <p className="viz-goal__hint">{hint}</p>}
+    </div>
+  );
+}
+
 export function StepThroughController({
   label,
   steps,

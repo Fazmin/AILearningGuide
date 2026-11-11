@@ -16,7 +16,7 @@ const definition: ModuleDefinition = {
   slug: "multimodal-models",
   title: "Multimodal models",
   group: "building-with-models",
-  order: 26,
+  order: 28,
   icon: "Images",
   accent: "#9a4a8a",
   prerequisites: ["module-35-architecture-zoo", "module-08-attention", "module-09-transformer-block", "module-38-embeddings-search"],

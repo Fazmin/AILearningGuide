@@ -9,7 +9,7 @@ const definition: ModuleDefinition = {
   slug: "optimizers",
   title: "Optimizers in practice",
   group: "pretraining",
-  order: 41,
+  order: 43,
   icon: "Gauge",
   accent: "#2c7d8c",
   prerequisites: ["module-19-hyperparameters-schedules"],

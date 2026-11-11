@@ -53,10 +53,10 @@ const definition: ModuleDefinition = {
   slug: "backpropagation",
   title: "Backpropagation",
   group: "foundations",
-  order: 11,
+  order: 13,
   icon: "GitBranch",
   accent: "#d04f78",
-  prerequisites: ["module-04-loss-gradient-descent"],
+  prerequisites: ["module-04-loss-gradient-descent", "module-59-slopes-gradients"],
   estimatedMinutes: 20,
   steps: [
     "Run the forward pass",

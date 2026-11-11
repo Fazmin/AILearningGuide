@@ -7,7 +7,7 @@ const definition: ModuleDefinition = {
   slug: "moe-training",
   title: "Training a mixture of experts",
   group: "pretraining",
-  order: 45,
+  order: 47,
   icon: "Route",
   accent: "#2f7a45",
   prerequisites: ["module-20-train-tiny-lm", "module-35-architecture-zoo", "module-52-parallel-training"],
