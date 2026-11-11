@@ -59,7 +59,7 @@ const LEARN_OVERLAY_QUERY = "(max-width: 1050px)";
 function builtInReply(module: RegisteredModule, message: string, currentStep: number) {
   const normalized = message.toLowerCase();
   if (normalized.includes("break") || normalized.includes("limit")) {
-    return `A useful limit to test: ${module.content ? checkpointQuestions(module)[0].explanation : module.tagline} Open “Where it breaks” in the Learn panel, then push one control to an extreme.`;
+    return `A useful limit to test: ${module.content ? checkpointQuestions(module)[0].explanation : module.tagline} Open the section on where it breaks in the Learn panel, then push one control to an extreme.`;
   }
   if (normalized.includes("what") || normalized.includes("explain")) {
     return `${module.tagline} Right now you’re on “${module.steps[currentStep]}.” Change one control at a time and name what stayed fixed.`;

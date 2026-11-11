@@ -4,7 +4,7 @@ import { sameSection } from "@app/lib/learn-sections";
 /**
  * Bookmarks and reading positions for the Learn panel, kept pure so they can be tested without the store.
  *
- * A bookmark names a section by its heading. The seven lesson sections share their headings across
+ * A bookmark names a section by its heading. A lesson's top-level sections share their headings across
  * the three reading modes, but subsections do not, so a bookmark also records the mode it was made in
  * and the top-level section it sits under: opening it uses the mode only when the current one has no
  * such heading, and lands on the top-level section when the heading has gone altogether.

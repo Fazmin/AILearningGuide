@@ -7,7 +7,8 @@ import { ModuleWorkspace } from "./ModuleWorkspace";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-const attention = modulesBySlug.get("attention")!;
+// A lab that keeps the seven-section lesson shape (MODULE_AUTHORING.md).
+const lab = modulesBySlug.get("next-token-prediction")!;
 const state = () => useAppStore.getState();
 
 let container: HTMLDivElement;
@@ -16,7 +17,7 @@ let scrolled: string[];
 
 const mount = () => {
   act(() => {
-    root.render(createElement(ModuleWorkspace, { module: attention }));
+    root.render(createElement(ModuleWorkspace, { module: lab }));
   });
 };
 // Waits on animation frames rather than a timeout: jsdom stops its frame timer whenever no callback
@@ -42,7 +43,7 @@ beforeEach(() => {
   useAppStore.setState({
     onboarded: true,
     view: "module",
-    activeModuleId: attention.id,
+    activeModuleId: lab.id,
     mode: "plain",
     learnOpen: true,
     learnExpanded: false,
@@ -91,31 +92,31 @@ describe("Learn panel contents", () => {
 describe("Bookmarks", () => {
   it("bookmarks a subsection from its heading, under its section", () => {
     mount();
-    const toggle = heading("Why divide by 8?")!.parentElement!.querySelector<HTMLButtonElement>(".learn-heading__bookmark");
+    const toggle = heading("Where generation stops")!.parentElement!.querySelector<HTMLButtonElement>(".learn-heading__bookmark");
     expect(toggle?.getAttribute("aria-pressed")).toBe("false");
     click(toggle);
     expect(state().bookmarks).toMatchObject([
-      { moduleId: attention.id, mode: "plain", section: "Why divide by 8?", parent: "What it is" },
+      { moduleId: lab.id, mode: "plain", section: "Where generation stops", parent: "What it is" },
     ]);
     expect(toggle?.getAttribute("aria-pressed")).toBe("true");
     // The heading itself still reads as just its title.
-    expect(heading("Why divide by 8?")!.textContent).toBe("Why divide by 8?");
+    expect(heading("Where generation stops")!.textContent).toBe("Where generation stops");
   });
 
   it("opens the bookmarks panel from the dock and lists this lab's bookmarks", () => {
-    state().toggleBookmark({ moduleId: attention.id, mode: "plain", section: "Why divide by 8?", parent: "What it is" });
+    state().toggleBookmark({ moduleId: lab.id, mode: "plain", section: "Where generation stops", parent: "What it is" });
     mount();
     click(container.querySelector('[aria-label="Bookmarks"]'));
     const panel = container.querySelector('[role="dialog"][aria-label="Bookmarks"]');
     expect(panel).not.toBeNull();
     expect(panel!.textContent).toContain("This lab");
-    expect(panel!.textContent).toContain("Why divide by 8?");
+    expect(panel!.textContent).toContain("Where generation stops");
   });
 
   it("switches to the bookmark's reading mode only when the current one lacks the heading", async () => {
-    // "Words as lists of numbers" is a Plain subsection with no Standard counterpart.
-    state().toggleBookmark({ moduleId: attention.id, mode: "plain", section: "Words as lists of numbers", parent: "What it is" });
-    state().toggleBookmark({ moduleId: attention.id, mode: "plain", section: "Where it breaks", parent: "Where it breaks" });
+    // "One step, repeated" is a Plain subsection with no Standard counterpart.
+    state().toggleBookmark({ moduleId: lab.id, mode: "plain", section: "One step, repeated", parent: "What it is" });
+    state().toggleBookmark({ moduleId: lab.id, mode: "plain", section: "Where it breaks", parent: "Where it breaks" });
     useAppStore.setState({ mode: "standard" });
     mount();
 
@@ -126,34 +127,34 @@ describe("Bookmarks", () => {
     expect(scrolled.at(-1)).toBe("Where it breaks");
 
     click(container.querySelector('[aria-label="Bookmarks"]'));
-    click([...container.querySelectorAll(".bookmark-list button")].find((button) => button.textContent?.startsWith("Words as lists")));
+    click([...container.querySelectorAll(".bookmark-list button")].find((button) => button.textContent?.startsWith("One step, repeated")));
     await frames();
     expect(state().mode).toBe("plain");
-    expect(scrolled.at(-1)).toBe("Words as lists of numbers");
+    expect(scrolled.at(-1)).toBe("One step, repeated");
     expect(state().searchFocus).toBeNull();
   });
 });
 
 describe("Picking up where you left off", () => {
   it("offers the saved section and goes there", () => {
-    state().setReadingPosition(attention.id, { mode: "plain", section: "The one-way rule", parent: "What it is" });
+    state().setReadingPosition(lab.id, { mode: "plain", section: "From scores to odds", parent: "What it is" });
     mount();
     const prompt = container.querySelector(".learn-resume");
-    expect(prompt?.textContent).toContain("What it is · The one-way rule");
+    expect(prompt?.textContent).toContain("What it is · From scores to odds");
     click(prompt!.querySelector(".learn-resume__go"));
-    expect(scrolled).toEqual(["The one-way rule"]);
+    expect(scrolled).toEqual(["From scores to odds"]);
     expect(container.querySelector(".learn-resume")).toBeNull();
   });
 
   it("lands on the section when the subsection is not in the current mode", () => {
-    state().setReadingPosition(attention.id, { mode: "plain", section: "Words as lists of numbers", parent: "What it is" });
+    state().setReadingPosition(lab.id, { mode: "plain", section: "One step, repeated", parent: "What it is" });
     useAppStore.setState({ mode: "standard" });
     mount();
     expect(container.querySelector(".learn-resume")?.textContent).toContain("What it is");
   });
 
   it("stays quiet when the learner was still at the start", () => {
-    state().setReadingPosition(attention.id, { mode: "plain", section: "The big picture", parent: "The big picture" });
+    state().setReadingPosition(lab.id, { mode: "plain", section: "The big picture", parent: "The big picture" });
     mount();
     expect(container.querySelector(".learn-resume")).toBeNull();
   });

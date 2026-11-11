@@ -70,6 +70,21 @@ describe.each(withScenes.map((module) => [module.slug, module] as const))("%s la
     }
   });
 
+  // A lab with its own lesson shape has no shared seven headings to fall back on (MODULE_AUTHORING.md).
+  const ownShape = explanationModes.some((mode) =>
+    /^sections:/m.test(readFileSync(path.join(modulesRoot, slug, "content", `${mode}.mdx`), "utf8")),
+  );
+  it.runIf(ownShape)("open from a heading every reading mode has, in a lab with its own lesson shape", () => {
+    for (const scene of module.scenes) {
+      for (const { mode, headings } of lessons) {
+        expect(
+          scene.sections.some((section) => headings.includes(normalizeHeading(section))),
+          `${scene.id}: ${mode} has none of its headings`,
+        ).toBe(true);
+      }
+    }
+  });
+
   it("set real steps and settings the lab keeps as they are", () => {
     for (const scene of module.scenes) {
       if (scene.step !== undefined) {

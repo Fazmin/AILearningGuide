@@ -21,6 +21,7 @@ const requiredSections = [
   "Where it breaks",
   "Going deeper",
 ];
+const lessonRoles = ["overview", "mechanism", "lab", "limits", "next"];
 
 for (const folder of folders) {
   const directory = path.join(modulesRoot, folder);
@@ -126,6 +127,7 @@ for (const folder of folders) {
     failures.push(`${folder}: glossary needs at least 6 terms, found ${glossaryTerms.length}`);
   }
 
+  const shapes = new Map();
   for (const mode of ["standard", "plain", "simple"]) {
     let content = "";
     try {
@@ -134,14 +136,38 @@ for (const folder of folders) {
       continue;
     }
     if (!content.startsWith("---\n")) failures.push(`${folder}/${mode}.mdx: frontmatter is required`);
-    for (const section of requiredSections) {
-      if (!content.includes(`## ${section}`)) failures.push(`${folder}/${mode}.mdx: missing "${section}" section`);
-    }
-    // Every mode opens with an overview before the six shared sections (CONTENT_STYLE_GUIDE.md).
     const headings = [...content.matchAll(/^## (.+)$/gm)].map((match) => match[1].trim());
-    const expected = ["The big picture", ...requiredSections];
-    if (headings.join("\n") !== expected.join("\n")) {
-      failures.push(`${folder}/${mode}.mdx: sections must be exactly, in order: ${expected.join(" / ")}`);
+    const sectionsSource = content.match(/^sections:\s*(\{.*\})\s*$/m)?.[1];
+    if (sectionsSource) {
+      // A lab with its own lesson shape meets the seven sections' obligations under its own headings (MODULE_AUTHORING.md).
+      shapes.set(mode, sectionsSource);
+      let declared;
+      try {
+        declared = JSON.parse(sectionsSource);
+      } catch {
+        failures.push(`${folder}/${mode}.mdx: "sections" frontmatter must be a JSON object on one line`);
+        declared = {};
+      }
+      const roles = Object.values(declared).map((value) => String(value).split("+"));
+      if (headings.join("\n") !== Object.keys(declared).join("\n")) {
+        failures.push(`${folder}/${mode}.mdx: "##" headings must be exactly, in order, the "sections" keys`);
+      }
+      for (const role of roles.flat()) {
+        if (!lessonRoles.includes(role)) failures.push(`${folder}/${mode}.mdx: unknown section role "${role}"`);
+      }
+      if (!roles[0]?.includes("overview")) failures.push(`${folder}/${mode}.mdx: the first section must be the overview`);
+      for (const role of lessonRoles) {
+        if (!roles.some((list) => list.includes(role))) failures.push(`${folder}/${mode}.mdx: no section has the "${role}" role`);
+      }
+    } else {
+      for (const section of requiredSections) {
+        if (!content.includes(`## ${section}`)) failures.push(`${folder}/${mode}.mdx: missing "${section}" section`);
+      }
+      // Every mode opens with an overview before the six shared sections (CONTENT_STYLE_GUIDE.md).
+      const expected = ["The big picture", ...requiredSections];
+      if (headings.join("\n") !== expected.join("\n")) {
+        failures.push(`${folder}/${mode}.mdx: sections must be exactly, in order: ${expected.join(" / ")}`);
+      }
     }
     if (mode !== "standard") {
       if (!content.includes("**Try this:**")) failures.push(`${folder}/${mode}.mdx: needs a "Try this" nudge`);
@@ -159,6 +185,10 @@ for (const folder of folders) {
     if (glossarySource && JSON.stringify(frontmatterTerms) !== JSON.stringify(glossaryTerms)) {
       failures.push(`${folder}/${mode}.mdx: "terms" frontmatter must match the module glossary exactly`);
     }
+  }
+  // Bookmarks and scenes find a top-level heading by name in every mode, so the shape is shared.
+  if (shapes.size > 0 && (shapes.size !== 3 || new Set(shapes.values()).size !== 1)) {
+    failures.push(`${folder}: all three modes must declare the same "sections" frontmatter`);
   }
 
   // Every lab surface needs an info explanation, keyed by its exact label.

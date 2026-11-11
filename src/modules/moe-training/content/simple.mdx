@@ -1,168 +1,165 @@
 ---
 objectives: ["Explain top-k routing: how router scores pick k experts and how gate values weight their outputs","Recognise expert collapse as a rich-get-richer loop, and spot it in the load readouts","Compare an auxiliary balancing loss with bias-update balancing, including what each costs in loss","Predict the share of tokens a capacity factor drops, and why a cap does not balance the router","Read what the experts specialise in, and what the router's input lets it tell apart","Count total against active parameters, and connect them to memory and expert parallelism"]
 terms: ["Mixture of experts","Router","Top-k routing","Gate value","Expert load","Expert collapse","Effective experts","Auxiliary load-balancing loss","Auxiliary-loss-free balancing","Capacity factor","Dropped token","Active parameters","Expert parallelism","Specialisation"]
+sections: {"A big model that runs like a small one":"overview","Meet the router":"mechanism","Press train and watch it fall apart":"lab+mechanism","Three repairs, and what each one costs":"lab","So what did the experts learn?":"lab+limits","Counting the bill":"lab+next","Where the toy and the real thing part ways":"limits","Where this goes next":"next"}
 ---
 
-## The big picture
+## A big model that runs like a small one
 
-Most AI models do all their maths on every piece of text they read. Their stored numbers are called **weights**, and every weight helps with every guess.
+Here is a number that should puzzle you. Mixtral 8x7B is a well-known AI model with 46.7 billion stored weights. Yet it uses only 12.9 billion of them for each token it reads. How can a model leave most of itself switched off and still work?
 
-A **mixture of experts** works in a different way. It keeps several small networks, called **experts**, side by side. A small decision-maker, called the **router**, sends each piece of text to just one or two of them.
+You need two words first. A **weight** is one of the stored numbers a model does its maths with. A **token** is the piece of text a model reads at one time.
 
-The model stores every expert, but each piece of text only runs through the chosen ones. So the model can hold many more weights than it uses on any one piece of text. That is the whole appeal of the design.
+Real models use whole words or parts of words as tokens. In this lab, every token is a single character, so the lab's readouts talk about tokens.
 
-This module trains a small mixture of experts for real. It also shows the big problem that comes with it. Left alone, the router sends every piece of text to the same single expert. The other experts never learn anything at all.
+Most AI models use every weight on every token, and people call these **dense** models. So a bigger dense model is also slower on every word it reads.
 
-You can fix that, but every fix has a cost. The lab lets you measure each cost for yourself.
+A **mixture of experts** breaks that link, because it keeps several small networks side by side. These networks are called **experts**. A little decision-maker, called the **router**, sends each token to only one or two of them.
 
-### Where you have met it
-
-Several well-known AI models are built this way. Their published numbers show how big the gap can get.
-
-- Mixtral 8x7B is built from stacked stages called layers, with 8 experts in every layer.
-- Mixtral sends each piece of text to 2 of its 8 experts.
-- It stores 46.7 billion weights but uses only 12.9 billion for each piece of text.
-- DeepSeek-V3 has 256 experts in each of these layers, plus 1 shared expert that all text uses.
-- It picks 8 of the 256 each time, using 37 billion of its 671 billion weights.
-- OLMoE shares all its code and data, and it picks 8 of its 64 experts each time.
-- It stores 7 billion weights and uses about 1 billion for each piece of text.
-- Switch Transformer, an earlier design from Google, sends each piece of text to just one expert.
-
-The idea is older than all of these. In 1991, researchers built a set of small networks with a "gating" network. The gating network learned which small network should handle each example.
-
-### Why it matters
-
-When nothing stops it, the router picks the same few experts again and again. Researchers built an early big mixture of experts in 2017. They said this problem feeds itself. The experts that get picked a lot learn faster, so they get picked even more.
-
-The unused experts still take up memory. Memory is one of the most costly parts of running a big model.
-
-There are fixes, but none of them is free. One fix adds a penalty that fights with the model's main goal. Another fix limits each expert, and that throws some text away. Big models also spread their experts across many computer chips. A lopsided router leaves some chips idle while others are swamped.
-
-### What you will be able to explain
-
-By the end of this lesson, you should be able to explain these six things:
-
-- How the router picks a few experts for each piece of text.
-- How a number called a gate value decides how much each chosen expert counts.
-- Why the router tends to hand everything to one expert, and how to spot that in the lab.
-- How two fixes push the router back toward sharing, and what each fix costs.
-- How much text gets thrown away when each expert has a fixed number of seats.
-- Why those seats alone do not fix the router.
-- What the experts end up handling here, and what the router can tell apart at all.
-- How the weights a model stores differ from the weights one piece of text uses.
-- Why that difference shapes how big models are spread across computer chips.
-
-### What the lab lets you do
-
-Every loss, share and dropped count in the lab comes from real training. The weight counts come from simple sums. One row about Mixtral holds published numbers that were typed in.
-
-The lab trains a small mixture of experts on 1,181 pairs of neighbouring characters. The pairs come from three short practice texts. The model's job is to guess each character from the one before it.
-
-Each piece of text a model reads at one time is called a **token**. Real models use whole words or parts of words as tokens. In this lab, every token is a single character, so the lab's readouts talk about tokens.
-
-By default, the model trains for 30 rounds. Each round is one pass through all of the pairs. The model looks at 16 pairs at a time, then nudges its weights. That adds up to 2,220 nudges over the whole run.
-
-The lab has six cards, and each one shows a different part of the story:
-
-- **Router and experts** holds the main settings: **Experts**, **Top-k**, **Epochs** and **Seed**.
-- It also shows how the trained router treats one **Example character**.
-- **Expert load over training** draws how much text each expert got after every round.
-- Its readouts are **Effective experts**, **Loss** and **Dense baseline**.
-- **Balancing** turns on one of the two fixes and compares it with a copy that has no fix.
-- **Capacity and dropped tokens** gives each expert a few seats and counts the text thrown away.
-- **Specialisation** shows which characters, and which texts, each expert gets.
-- **Total vs active parameters** counts the weights stored against the weights used.
-- Its numbers for this lab come from simple sums, and its Mixtral row is a published figure.
-
-Each time you move a control, the lab retrains three models from scratch. One uses your settings and one is the same with no fix. The third is a plain model with just one expert, for comparison.
-
-## What it is
+Researchers who study how models grow treat these as two separate dials. One dial is the number of weights, and the other is the work done for each token. A mixture of experts lets you turn up the first dial without the second, and that explains Mixtral's number.
 
 ### A help desk for text
 
-Picture a homework help centre with four tutors and one person at the front desk. Each student walks up, and the desk sends them to one tutor. That tutor works out an answer to the student's question.
+Picture a homework help centre with four tutors and one person at the front desk. Each student walks up, and the desk sends them to one tutor for an answer.
 
 The desk then passes the answer on, louder or quieter. How loud depends on how much the desk trusts that tutor for this student.
 
-In the lab, each student is one character of text. The tutors are the experts, and the front desk is the router. The answer is a guess about which character comes next.
+The centre could hire more tutors, and no student would wait longer. Each student still sees only one tutor, and that is the promise of a mixture of experts.
 
-The picture stops matching in two places. Real tutors already know things, but every expert here starts as random numbers. An expert learns only from the text it is sent.
+In the lab, each student is one character of text, and the tutors are the experts. The front desk is the router, and the answer is a guess about the next character.
 
-Also, the desk's trust is not a feeling. It is a number worked out from the router's scores, as the next part explains.
+The picture stops matching in two places, and both matter later. Real tutors already know things, but every expert here starts as random numbers. An expert learns only from the text it is sent. Also, the desk's trust is not a feeling, because it is a number worked out from the router's scores.
 
-### The router and its gates
+### The catch
 
-The model reads one character and guesses the next one. First it turns the character into a short list of five numbers, called **h**. Four of them are learned numbers that describe the character. The fifth number is always 1.
+In The architecture zoo, the Sparse experts card had a router that never trained. Here the router trains alongside the experts, and within one round of training, something goes wrong. It can be fixed, but every fix has a price, and you will measure each one.
 
-Then three things happen in order:
+The lab trains a small mixture of experts for real. It learns from 1,181 pairs of neighbouring characters, taken from three short practice texts. Its job is to guess each character from the one before it.
 
-- The **router** gives every expert a score, using its own weights and the five numbers.
+It looks at 16 pairs at a time, then nudges its weights. One full round through all the pairs is called an **epoch**. Each epoch takes 74 nudges, so the default 30 epochs add up to 2,220 nudges.
+
+Every loss, share and count of dropped text comes from that real training. The weight counts come from simple sums, and one row about Mixtral was typed in from its makers.
+
+Each time you move a control, the lab retrains three models from scratch. One uses your settings, and one is the same with no fix. The third is a plain model with one expert, for comparison.
+
+Here is the plan for this lesson. We watch the design fail and work out why it happens. Then we try three repairs, check what the experts learned, and count the bill. By the end you'll be able to:
+
+- explain how the router picks a few experts for each token;
+- explain how a number called a gate value decides how much each chosen expert counts;
+- spot the rich-get-richer loop called expert collapse in the lab's load readouts;
+- compare two fixes and say what each one costs in how well the model guesses;
+- predict how much text gets thrown away when each expert has a fixed number of seats;
+- say why those seats alone do not fix the router;
+- read what the experts handle, and say what the router can tell apart at all;
+- count the weights a model stores against the weights one token uses;
+- connect that gap to memory and to spreading experts across computer chips.
+
+## Meet the router
+
+So how does the front desk decide? The router is the short part of this story, so we will keep it brief.
+
+The model reads one character and turns it into a short list of five numbers, called **h**. Four of them are learned numbers that describe the character, and the fifth number is always 1. Hold on to that 1, because it comes back later.
+
+Then three things happen, one after another:
+
+- The router gives every expert a score, using its own weights and the five numbers.
 - A higher score means the router thinks that expert suits this character better.
 - Next, the scores become shares that add up to 1, and higher scores get bigger shares.
-- Each expert's share is called its **gate value**.
+- Each expert's share is called its **gate value**, and it plays the part of the desk's trust.
 - Last, only the experts with the top scores run, and the rest are skipped.
 - Picking the top one or two like this is called **top-k routing**.
-- Here k is how many experts run, and the lab's **Top-k** control sets it to 1 or 2.
+- Here k is how many experts run, and the **Top-k** control sets it to 1 or 2.
 
-Each expert is a small table of weights. It turns the five numbers into a score for each of the 30 possible next characters. The model adds up the chosen experts' scores, each one times its gate value.
+Each expert is a small table of weights that scores each of the 30 possible next characters. The model adds up the chosen experts' scores, each one times its gate value. So an expert with a gate of 0.9 counts nine times as much as one with 0.1.
 
-So an expert with a gate of 0.9 counts nine times as much as one with 0.1.
+The idea is older than today's big models. In 1991, researchers built a set of small networks with a "gating" network. The gating network learned which small network should handle each example.
 
-Here is an example from the lab's starting settings. For the letter t, the router gives expert E3 a score of 4.74. The other three experts all score below −1.6.
+### Scores, gates and top-k
 
-Turned into shares, that gives E3 a gate value of 1.00, and almost nothing for the rest. So only E3 runs for t. Its top guess for the next letter is h, with a 39% chance. That fits English well.
+Let's follow one character through the router and see what happens. The **Router and experts** card holds the main settings: **Experts**, **Top-k**, **Epochs** and **Seed**. Its **Example character** control picks one character to look at. Its table lists every expert's score, bias and gate, and it marks the experts that run.
 
-There is one more number, called a **bias**. The router adds it to each expert's score, but only while picking experts. It stays at 0 unless you turn on a fix, and it never changes a gate value.
+Here is an example from the lab's starting settings. For the letter t, the router gives E3 a score of 4.74, and the other three score below −1.6.
+
+Turned into shares, that gives E3 a gate value of 1.00, and almost nothing for the rest. So only E3 runs for the letter t. Its top guess for the next letter is h, with a 39% chance, and that fits English well.
+
+The table shows one more number for each expert, called a **bias**. The router adds it to an expert's score, but only while picking experts. It stays at 0 unless you turn on a fix, and it never changes a gate value.
+
+So a bias can change which expert runs, but not how much that expert's answer counts. That detail matters later, in Repair 2.
+
+**Try this:** pick t as the **Example character**, with **Balancing** on None. Read the gate of the expert that runs. Then switch **Balancing** to Bias update with **Bias step** at 0.03. The bias column fills in, but the chosen expert's gate still comes from its score alone.
+
+So the router does three small things: it scores, it shares and it picks. Nothing here looks dangerous, and the danger only shows up once we start training.
+
+## Press train and watch it fall apart
+
+Now we train the whole thing and watch how the work gets shared. Set **Balancing** to None, **Experts** to 4 and **Top-k** to 1, then find **Expert load over training**.
+
+That card draws each expert's share of the router's choices after every epoch. This share is called the expert's **expert load**.
+
+**Pause and predict:** at seed 1, before any training, the router spreads the text out. The four experts get 12%, 23%, 42% and 23% of it. Picture one epoch, which is 74 nudges, and ask what the split will look like after it. Make your guess before you look at the lines.
+
+### Watch it collapse
+
+Now look at the lines. E3's line has shot up to 100% after the first epoch. The other three have dropped to nothing, and they stay there for the rest of the run. This is called **expert collapse**, and it took a single epoch.
+
+The card sums up the split as **Effective experts**. This one number says how many experts are really in use. Four equal shares would read 4.00, and one expert taking everything reads 1.00.
+
+The 12-23-42-23 start read 3.66, because it was uneven but used all four experts. Now the readout says 1.00.
+
+**Pause and predict:** three of the four experts now do nothing. So how much worse should this model guess than a model with one expert? Two readouts on the same card will tell you.
+
+**Loss** measures how wrong the guesses are, so lower is better. A model that knew nothing at all would score 3.401. **Dense baseline** is the same training with only one expert.
+
+Here is the surprise: **Loss** reads 2.197 and **Dense baseline** reads 2.199, so they are almost the same. That makes sense once you see it. The collapsed model is really a one-expert model with three spare experts that never run. Collapse costs memory, not accuracy.
+
+**How sure is this?** It is not a fluke of seed 1. Collapse happens in all six seeds the lab offers, with 2, 4 or 8 experts. Each time, the loss lands within 0.04 of the dense baseline.
+
+So why worry, if the guesses are fine? The idle experts still use memory, and memory is one of the costliest parts of running a big model.
+
+Big models also spread their experts across many computer chips. So a lopsided router leaves some chips idle while others are swamped. We built a big model and got a small one that still needs a big one's memory.
 
 ### Why one expert wins
 
-The fifth number in h, the one that is always 1, matters a lot. It gives every expert a starting guess that it uses for every character it gets. It also gives the router a starting score for each expert, which counts for every character.
+Why would training do this to the router? E3 started with the biggest share, 42%, but that was far from all of it. Training turned a small lead into everything, and the help desk shows how.
 
-Together these two make a loop, a bit like a snowball rolling downhill:
+Think about the busy tutor who gets a few more students early on. That tutor gets more practice, so they get better at helping. Because they are better, the desk sends them more students, and that gives them even more practice.
 
-- An expert that wins a few more characters early on practises on more of them.
-- With that practice, its starting guess gets better.
-- Now it cuts the error more whenever it is chosen.
+Meanwhile, the other tutors get fewer students and barely practise at all. The loop keeps going round until one tutor has everyone.
+
+In the model, the constant 1 in h is the path this loop runs through. It gives every expert a starting guess that it uses for every character it gets. It also gives the router a starting score for each expert, which counts for every character.
+
+Together these make a loop, a bit like a snowball rolling downhill:
+
+- An expert that wins a few more characters early practises on more of them.
+- With that practice, the expert's starting guess gets better.
+- Now it cuts the error more whenever the router chooses it.
 - So the router learns to raise that expert's starting score.
-- The higher score wins it even more characters, and the loop goes round again.
+- That score counts for every character, so the expert wins even more of them.
+- Then the loop goes round again, and the winner pulls further ahead.
 
-You can watch this happen in the lab. At seed 1, before any training, the router splits its choices 12%, 23%, 42% and 23%. Just one round later, expert E3 gets 100% of them. This is called **expert collapse**.
+This is where the help desk stops matching. A real tutor gets better at the subjects they actually see. Here, what improves first is a starting guess the expert uses for every character. The router's starting score also lifts that expert for every character at once. That is how one expert can take all the text in a single epoch.
 
-The lab describes the split in two ways. An expert's **expert load** is its share of the router's choices.
+Researchers built an early big mixture of experts in 2017, and they said this problem feeds itself. The experts that get picked a lot learn faster, so they get picked even more.
 
-**Effective experts** turns all the shares into one number: how many experts are really in use. Four equal shares read 4.00, and one expert taking everything reads 1.00. The uneven 12-23-42-23 split before training reads 3.66.
+So collapse is a loop of more work, more practice and more work. A router trained only to guess well feeds that loop, so we have to push back.
 
-## Why it’s here
+## Three repairs, and what each one costs
 
-In an ordinary model, often called a dense model, every weight works on every piece of text. So a bigger model is also slower on every word it reads.
+A working mixture of experts needs three extra things. It needs a way to keep the router sharing and a limit on each expert's work. It also needs a plan for spreading experts across chips.
 
-A mixture of experts breaks that link. More experts means more stored weights. But each piece of text still runs through just k of them. So the work for each piece of text stays about the same.
+Repairs 1 and 2 are two ways to keep the router sharing, and Repair 3 is the limit. The plan for chips belongs to the bill at the end.
 
-Researchers who study how models grow treat these as two separate dials. One dial is the number of weights. The other is the work done for each piece of text. A mixture of experts lets you turn up the first dial without the second.
+Every repair has a price, so we will write it down after each one. At the end, we collect all three prices in a ledger.
 
-Training a mixture of experts brings a problem that a dense model never has. The router decides which weights get to learn. If it collapses onto one expert, the other experts are memory that does nothing.
+Most of this happens on the **Balancing** card, which turns on one fix. It compares your run with a copy that has no fix, and with the dense baseline.
 
-So a mixture of experts needs three extra things. It needs a way to keep the router sharing, and a limit on each expert's work. It also needs a plan for spreading experts across chips.
+Its table reads **Effective experts**, **Loss** and **Mean gate**. **Mean gate** is the average gate of the experts that ran.
 
-This lab picks up where The architecture zoo left off. Its Sparse experts card had a router that never trained. Here the router trains, so you can watch what training does to it.
+### Repair 1: a penalty for lopsided work
 
-## How to play with it
+Normally, training works by lowering one number, the loss. The first repair adds a second, extra number to it, called an **auxiliary load-balancing loss**.
 
-### 1. Watch it collapse
-
-Leave **Balancing** on None, **Experts** at 4 and **Top-k** at 1. Look at **Expert load over training**. The line for E3 jumps to 100% after the first round and stays there. **Effective experts** reads 1.00.
-
-Now compare **Loss** with **Dense baseline**. **Loss** measures how wrong the guesses are, so lower is better. **Dense baseline** is the same training with just one expert. A model that knew nothing at all would score 3.401.
-
-**Loss** reads 2.197 and **Dense baseline** reads 2.199, so they are almost the same. That makes sense when you think about it. The collapsed model is really a one-expert model with three spare experts that never run.
-
-Collapse wastes memory, not accuracy. It happens in all six seeds the lab offers, with 2, 4 or 8 experts. Each time, the loss lands within 0.04 of the dense baseline.
-
-### 2. Add a balancing loss
-
-Switch **Balancing** to Auxiliary loss. Normally, training works by lowering one number, the loss. This fix adds a second, extra number to it. That extra number is called an **auxiliary load-balancing loss**.
-
-The extra number is smallest when the experts share the work evenly. So lowering the total now means lowering both numbers.
+The extra number is smallest when the experts share the work evenly. So lowering the total now means guessing well and sharing well.
 
 Here is how the extra number works for each group of 16 pairs:
 
@@ -171,198 +168,280 @@ Here is how the extra number works for each group of 16 pairs:
 - It adds those results up for all the experts.
 - Then it multiplies the total by the number of experts.
 
-The lab shows the answer as **Balance term N·Σ f·P**. It reads 1 when the work is shared evenly. It equals the number of experts when one expert takes everything.
+The card shows the answer as **Balance term N·Σ f·P**. In it, N is the number of experts and f is the share of first choices. P is the average gate. The answer reads 1 when the work is shared evenly. It equals the number of experts when one expert takes everything.
 
-For the collapsed run at seed 1, E3 gets every first choice. So the sum is 4 times 1 times E3's average gate, which comes to 3.75.
+For the collapsed run at seed 1, E3 gets every first choice. So the sum is 4 times 1 times E3's average gate, which comes to 3.75. **Aux weight** sets how much this extra number counts.
 
-**Aux weight** sets how much this extra number counts. Step it through three values:
+**Pause and predict:** Switch Transformer is an earlier design from Google that sends each token to one expert. It used an **Aux weight** of 0.01. Switch **Balancing** to Auxiliary loss, and think about three settings: 0.01, 0.1 and 1. Which one is too weak, which is about right, and which goes too far?
 
-- At **Aux weight** 0.01, the value Switch Transformer used, the router still collapses.
-- It reads 1.00 effective experts and a loss of 2.196, and it collapses fully in five of six seeds.
-- At 0.1 the work spreads out to 3.89 effective experts.
-- The loss drops to 2.131, which beats the dense baseline.
-- In all six seeds, 0.1 ends between 3.59 and 3.96 effective experts and beats its dense baseline.
-- At 1 the work stays shared at 3.84 effective experts, but the loss rises to 2.216.
-- That is worse than the dense baseline, and **Mean gate** falls from 0.84 to 0.57.
+Start at 0.01, where the router still collapses. It reads 1.00 effective experts and a loss of 2.196, so Switch's weight is too weak here.
 
-**Mean gate** is the average gate of the experts that ran. Its fall shows the price of this fix. At weight 1 the push to share is so strong that the router spreads its trust evenly. So each chosen expert's answer gets turned down.
+Now try 0.1, and the work spreads out to 3.89 effective experts. **Balance term N·Σ f·P** drops to 1.04, which is close to the even value of 1.
 
-In all six seeds, weight 1 ends worse than weight 0.1.
+Better still, the loss falls to 2.131, which beats the dense baseline. So here, sharing the work also makes the guesses better. In this lab, the window that works starts about 10 times higher than Switch's 0.01. The last part of the lesson explains why that happens.
+
+**How sure is this?** At 0.01 the router collapses fully in five of six seeds. At 0.1, all six seeds end between 3.59 and 3.96 effective experts. Every one of them also beats its own dense baseline.
 
 **Try this:** set **Aux weight** to 0.1, then move **Seed** through all six of its values. Watch **Effective experts** and **Loss** in the **Balancing** table. Check that the balanced run beats **Dense baseline** every time.
 
-### 3. Nudge with a bias
+**Price tag:** the penalty pulls against the model's main goal of guessing well. So it only helps inside a window. With too little, the router collapses anyway. Too much costs you loss, as the next part shows.
 
-Switch **Balancing** to Bias update. This fix adds no extra loss at all. That is why it is called **auxiliary-loss-free balancing**.
+### Too much of a good thing
 
-Instead, each expert gets a bias, a bonus number added to its score. The router uses the bonus only while picking experts.
+**Pause and predict:** a weight of 0.1 helped, so will a weight of 1 help even more? Before you move the dial, guess what happens to **Effective experts** and **Loss**.
 
-After every group of 16 pairs, each bias moves by a small fixed amount. You set that amount with **Bias step**. An expert that got fewer than its fair share has its bias raised. An expert that got more has its bias lowered. Its gate value still comes from the score alone, without the bias.
+At **Aux weight** 1, the work stays shared at 3.84 effective experts, but the loss rises to 2.216. That is worse than the dense baseline, so the model now guesses worse than one lone expert.
+
+The clue is **Mean gate**, which falls from 0.84 at weight 0.1 to 0.57 at weight 1.
+
+Here is what happened to the gates. The push to share is now so strong that the router spreads its trust evenly. Each gate shrinks, so each chosen expert's answer gets turned down.
+
+In the help-desk picture, the desk is so busy being fair that it speaks quietly. It passes every tutor's answer on softly, even the good ones.
+
+**How sure is this?** In all six seeds, a weight of 1 ends worse than a weight of 0.1.
+
+So the penalty works, but only inside a window, because it fights the main goal. What if we could steer the desk without changing how loudly it speaks?
+
+### Repair 2: a thumb on the scale
+
+Remember the bias from Meet the router, which helps pick experts but never enters a gate? The second repair uses it, so switch **Balancing** to Bias update.
+
+This fix adds no extra loss at all, and that is why it is called **auxiliary-loss-free balancing**.
+
+After every group of 16 pairs, each bias moves by a small fixed amount. You set that amount with **Bias step**. An expert that got fewer than its fair share has its bias raised. An expert that got more has its bias lowered, but its gate still comes from the score alone.
 
 In the help-desk picture, the bias is like a sticky note on each tutor's door. It might say "send me a few more" or "send me a few fewer". The desk reads the note when it picks a tutor. But the note does not change how much the desk trusts that tutor's answer.
 
-Now step **Bias step** from slow to fast:
+**Pause and predict:** DeepSeek-V3 is a large real model, and it used a **Bias step** of 0.001. Set **Bias step** to 0.001. Can a step that small rescue a run of 2,220 nudges?
 
-- At 0.001, the value DeepSeek-V3 used, the bias moves far too slowly for 2,220 nudges.
-- The run stays on one expert from round 1 to round 21.
-- It ends at 1.63 effective experts, with a loss of 2.275.
-- That is worse than the dense baseline.
-- The expert that finally gets some characters has had only a few rounds to learn them.
-- At 0.03 the work spreads out to 4.00 effective experts, and the loss is 2.131.
-- The bias bars end at +3.30, +1.59, +2.52 and +3.87.
-- All four are positive, but only the gaps between them matter.
-- Adding the same amount to every expert would not change any choice.
-- **Mean gate** stays at 0.89, because the bias never touches a gate.
+It cannot, because the bias moves far too slowly. The run stays on one expert from epoch 1 to epoch 21. It ends at 1.63 effective experts, with a loss of 2.275.
 
-### 4. Cap each expert
+That loss is worse than the dense baseline. The expert that finally gets some characters has had only a few epochs to learn them.
 
-Set **Capacity factor** to 1.25. Now each expert has a fixed number of seats in every group of 16 pairs.
+Now raise **Bias step** to 0.03, and the work spreads out to 4.00 effective experts. The loss is 2.131. That step is 30 times bigger than DeepSeek-V3's, because this run is only 2,220 nudges long. Real runs take hundreds of thousands.
+
+The bias bars on the card end at +3.30, +1.59, +2.52 and +3.87. All four are positive, but only the gaps between them matter. Adding the same amount to every expert would not change any choice.
+
+Meanwhile, **Mean gate** stays at 0.89, because the bias never enters a gate. Compare that with the 0.57 that the heavy penalty left behind. The sticky note steers the desk without making it speak quietly.
+
+**How sure is this?** Over all six seeds, the average loss at Bias step 0.03 is 2.138. At Aux weight 0.1 the average is 2.129, and the bias wins in only two seeds. That gap is smaller than the change from seed to seed. So the lab cannot pick a winner.
+
+**Price tag:** there is no extra loss, but the step has to suit the length of the run. A step that is too small cannot catch up, so the run collapses anyway and loses accuracy.
+
+### Repair 3: a seat limit
+
+The first two repairs push the router toward sharing, but the third one does not even try. Instead, it limits how much work any expert can take. You can watch it on the **Capacity and dropped tokens** card.
+
+Set **Balancing** back to None and **Capacity factor** to 1.25. Now each expert has a fixed number of seats in every group of 16 pairs.
 
 With 4 experts and top-1, a fair share is 16 ÷ 4 = 4 seats each. A factor of 1.25 raises that to 5 seats. The lab writes the sum as 1.25 × 16 × 1 ÷ 4, rounded up, which gives 5.
 
-Every character's first choice gets a seat before any second choice does. They take seats in the order they arrive.
+Every character's first choice gets a seat before any second choice does. The characters take their seats in the order they arrive.
 
-A choice that finds its expert full becomes a **dropped token**. That expert never runs for it. A character that loses every expert it chose gets no answer at all. Then the model guesses all 30 characters equally, which costs a loss of 3.401.
+A choice that finds its expert full becomes a **dropped token**, and that expert never runs for it. A character that loses every expert it chose gets no answer at all. Then the model guesses all 30 characters equally, which costs a loss of 3.401.
 
-Here is what the cap does at seed 1:
+**Pause and predict:** with no balancing, the router wants to send everything to one expert. That expert has 5 seats for every 16 characters. What share of the router's choices will be dropped?
 
-- With **Balancing** on None, 40% of choices are dropped, and **Loss** jumps to 2.651.
-- If one expert took every character, it could serve only 5 of every 16.
-- Then 11 of every 16 would be dropped, which is 69%.
-- Seed 4 does exactly that, and across the six seeds the share runs from 40% to 69%.
-- With Auxiliary loss at 0.1, only 11% are dropped, and **Loss** is 2.306.
-- Bias update at 0.03 drops 6%, with a loss of 2.210.
+Start with the worst case first. If one expert took every character, it could serve only 5 of every 16. Then 11 of every 16 would be dropped, which is 69%, and seed 4 does exactly that.
 
-**A common mix-up:** a seat limit does not balance the router. When an expert is full, the dropped character is not sent to another expert. It is simply skipped. The limit stops one expert from doing all the work. But the router never learns to share, so the waste shows up as dropped text.
+At seed 1, the router keeps two experts in use. So **Dropped tokens** reads 40%, and **Loss** jumps to 2.651.
 
-### 5. Read the specialists
+Now pair the cap with a repair that does push toward sharing. With Auxiliary loss at 0.1, only 11% are dropped, and **Loss** is 2.306. Bias update at 0.03 drops 6%, with a loss of 2.210. Even a balanced router drops a few, because a group of 16 never splits exactly evenly.
 
-Set **Balancing** to Auxiliary loss at 0.1, then look at **Specialisation**. Set **Grid** to By previous character. Each row is one character, and the number beside it counts its pairs. The shading shows which expert gets that character, and every row has one dark square.
+**How sure is this?** With no balancing, the dropped share across the six seeds runs from 40% to 69%.
 
-At seed 1, the experts split the characters like this:
+**A common mix-up:** a seat limit does not balance the router. A dropped character is skipped, and it is not sent to another expert. The limit stops one expert from doing all the work. But the router never learns to share, so the waste shows up as dropped text.
+
+**Price tag:** the limit caps the work, but it throws text away and teaches the router nothing.
+
+### The ledger
+
+Here are the three repairs side by side. Each one fixes something, costs something, and is used in real models.
+
+- **A penalty for lopsided work** is the Auxiliary loss setting.
+- It pulls the router toward sharing, and at 0.1 it beat the dense baseline.
+- Its cost is a narrow window, because it fights the main loss.
+- At weight 1, it flattened the gates and made the guesses worse.
+- Switch Transformer used it with a weight of 0.01, and OLMoE trains with 0.01 too.
+- **A thumb on the scale** is the Bias update setting.
+- It changes which experts get picked, with no extra loss and no change to the gates.
+- Its cost is time, because the step must suit the length of the run.
+- DeepSeek-V3 uses it, with a step of 0.001 for its first 14.3 trillion tokens.
+- **A seat limit** is the Capacity factor setting, and it caps the work each expert can take.
+- Its cost is dropped text, and it teaches the router nothing.
+- Switch Transformer and GShard both use seat limits in their designs.
+- They pass an overflowing token on to the next stage unchanged, so it is not lost.
+
+No repair is free. The two that push toward sharing tie in this lab. The seat limit limits the damage, but it does not cure the router.
+
+## So what did the experts learn?
+
+With a repair in place, all four experts get work. So what has each one become an expert in?
+
+Set **Balancing** to Auxiliary loss at 0.1, then look at **Specialisation** with **Grid** on By previous character. Each row is one character, and the number beside it counts its pairs. The shading shows which expert gets that character.
+
+### Who gets which letters
+
+**Pause and predict:** will each character's pairs be shared among several experts, or go to only one? And will the groups of letters make sense to you?
+
+Every row has one dark square, so each character goes to exactly one expert. At seed 1, the groups even look meaningful:
 
 - E2 takes the vowels a, e, o and u, plus w and z.
 - E4 takes the space between words and nothing else.
 - E1 takes b, c, d, f, h, m, p, s, t, v, y and the full stop.
-- E3 takes g, i, k, l, n, q and r.
+- E3 takes the letters g, i, k, l, n, q and r.
 
-Now switch **Grid** to By corpus. A corpus is one of the three practice texts. Each text's split across the experts lands within ±0.01 of the overall split. So the three texts are shared out almost the same way.
+A vowel expert and a space expert look like a real discovery. Now switch **Grid** to By corpus, where a corpus is one of the three practice texts.
 
-Neither result is a real discovery about the experts. The router only ever sees the previous character. So every copy of a character must go the same way. A text can only follow the mix of characters it contains.
+Each text's split across the experts lands within ±0.01 of the overall split. So the three texts are shared out almost the same way. That looks like a second discovery, as if the experts treat every text alike.
+
+### What the router could see
+
+Before you believe either result, ask a sceptic's question: what could the router actually see? It sees only the previous character.
+
+So every copy of a character must go the same way. The clean rows were certain from the start. At Top-k 1, **Top expert's share per character** reads 100% whatever the training does.
+
+The even split by text is forced too. The router never learns which text a pair came from. So a text can only follow the mix of characters it contains.
 
 In the help-desk picture, the desk sees only the first letter of each student's name. So it cannot possibly sort students by school subject.
 
-### 6. Count what runs
+What training did decide is which characters share an expert. Even that is a pattern in one run, not a law. A different **Seed** gives different groups. A grouping only counts as a finding if the router could have grouped things another way.
 
-Raise **Experts** from 1 to 8 with **Top-k** at 1. Then set **Top-k** to 2.
+Real routers can do that, because a real router sees what the nearby text means. So what experts learn is a real question in big models.
 
-**Total parameters** counts every weight stored, and it goes from 275 to 1,360. **Active per token** counts the weights one character actually uses. It goes from 275 to 310, then to 460 at top-2. Those used weights are called **active parameters**.
+- Mixtral's researchers found no clear sorting by topic in their model.
+- Instead, Mixtral's choices followed grammar more than subject.
+- Another study, ST-MoE, found experts for punctuation, verbs and names.
+- It found them in one half of its model, but not in the other half.
+- OLMoE found one expert that takes nearly all the text from science papers on arXiv.
 
-Here is where the counts come from at the starting settings:
+So the clean rows here tell you about the router's input, not about the experts. That leaves one more question: what did all of this cost to store?
+
+## Counting the bill
+
+We have paid in loss, in tuning and in dropped text. The last bill is memory, and it brings us back to Mixtral's number.
+
+### Stored against used
+
+Open **Total vs active parameters**, where **Total parameters** counts every weight the model stores. **Active per token** counts the weights one character actually uses. Those used weights are called **active parameters**.
+
+Start this part with **Experts** at 1 and **Top-k** at 1.
+
+**Pause and predict:** raise **Experts** from 1 to 8. The total will grow, but how much will **Active per token** grow?
+
+**Total parameters** climbs from 275 to 1,360, while **Active per token** goes only from 275 to 310. Now set **Top-k** to 2, and the active count rises to 460. Each character now runs two experts.
+
+Here is where the counts come from at the starting settings, with 4 experts:
 
 - The four learned numbers for each of the 30 characters make 120 weights.
 - The router has 5 weights for each of the 4 experts, which is 20.
-- Each expert has 5 × 30 = 150 weights.
+- Each expert has 5 × 30 = 150 weights of its own.
 - Storing all four experts gives 120 + 20 + 600 = 740 weights in total.
 - One character uses only 120 + 20 + 150 = 290 of them.
 
-Set **Balancing** to Auxiliary loss at 0.1 and compare **Loss**. It is 2.170 with 8 experts and 2.123 at top-2. With 4 experts it is 2.131.
+The **Mixtral 8x7B** row shows the same split at a huge scale. Mixtral stores 46.7 billion weights and uses 12.9 billion for each token. So each token uses 28% of the model. That row is a published figure typed into the lab, not something the lab measured.
 
-The **Mixtral 8x7B** row shows the same split at a huge scale. Mixtral stores 46.7 billion weights and uses 12.9 billion for each piece of text. So each piece of text uses 28% of the model.
+Other real models stretch the gap further. DeepSeek-V3 stores 671 billion weights and uses 37 billion for each token. OLMoE shares all its code and data, and it picks 8 of its 64 experts each time. It stores 7 billion weights but uses about 1 billion for each token.
 
-## What to notice
+### More experts isn't free
 
-- Collapse is fast: at seed 1 it takes a single round, which is 74 nudges.
-- A collapsed model guesses about as well as the one-expert model does.
-- The waste is memory, held by the experts that never run at all.
-- **Balance term N·Σ f·P** reads 3.75 when the router has collapsed at seed 1.
-- At Aux weight 0.1 it reads 1.04, which is close to the even value of 1.
-- The balancing weight only works inside a window of values, and the window is narrow.
-- At 0.01 the router collapses, and at 0.1 it shares and guesses better.
-- At 1 it still shares the work, but now it guesses worse than the dense baseline.
-- Here the window starts about 10 times higher than Switch's value of 0.01.
-- The bias fix balances the work without ever touching the gate values.
-- Over all six seeds, its average loss at Bias step 0.03 is 2.138.
-- At Aux weight 0.1 the average is 2.129, which is a very small gap.
-- The gap is smaller than the change from seed to seed, so the lab cannot pick a winner.
-- More experts is not always better, even when every expert gets some of the work.
-- At Aux weight 0.1, 8 experts end worse than 4 in five of six seeds.
-- With Bias step 0.03, 8 experts end worse than 4 in all six seeds.
-- Each expert now sees only about an eighth of the pairs, so it gets less practice.
-- Researchers call this the shrinking batch problem, because each expert's batch of text shrinks.
-- At seed 1, top-2 with 8 experts guesses a little better than top-1 with 4.
-- But it pays for that by running twice as many expert weights for every character.
+**Pause and predict:** put **Top-k** back to 1, with **Balancing** on Auxiliary loss at 0.1. Will 8 experts guess better than 4?
 
-## Where it breaks
+They do not, at least not here. **Loss** is 2.170 with 8 experts, against 2.131 with 4. Each expert now sees only about an eighth of the pairs, so it gets less practice. Researchers call this the shrinking batch problem.
+
+Setting **Top-k** to 2 brings the loss down to 2.123, slightly better than 4 experts at top-1. But it pays for that by running twice as many expert weights for every character.
+
+**How sure is this?** At Aux weight 0.1, 8 experts end worse than 4 in five of six seeds. With Bias step 0.03, they end worse in all six.
+
+### Memory follows the total
+
+Here is the real bill. The work for each token follows the active count, but memory has to hold every expert.
+
+Switch-Base has 7.4 billion weights and needs 8 to 10 chips only to hold them in training. A dense model with 0.74 billion weights fits on a single chip.
+
+So big models spread their experts across many chips, which is called **expert parallelism**. Each token travels to the chip that holds its chosen experts, then back again. That brings the collapse back as a hardware problem. A lopsided router leaves some chips idle while others are swamped.
+
+The **Splitting training across GPUs** lab shows how experts are placed on different chips. It also shows the traffic that carries each token there and back.
+
+That is the whole trade: a big model that runs like a small one. But you must keep the router sharing, limit the overflow and pay for the memory.
+
+## Where the toy and the real thing part ways
+
+You have watched real training, but of a toy model. Here is what each shortcut would change about what you saw.
 
 ### In this lab
-
-The lab trains a real model, but that model is much simpler than a real one:
 
 - Each expert is a small table of weights, not a full network.
 - There is only one layer, without the other parts a real model has.
 - So a dropped character gets no answer and costs a loss of 3.401.
 - A real model would pass that text along unchanged.
-- The router sees only the previous character, so the clean rows on **Specialisation** are guaranteed.
-- The even spread across the three texts is forced by the design, not discovered.
+- So the jump to 2.651 in Repair 3 is far bigger than a real model would pay.
+- The router sees only the previous character, so the clean rows on **Specialisation** were certain.
+- The even spread across the three texts was forced by the design, not discovered.
 - **Loss** is measured on the same 1,181 pairs the model trained on.
-- So it shows how well the model fits this text, not how it does on new text.
+- So a balanced run that beats the dense baseline only fits this text better.
+- The lab cannot show how either model would do on new text.
 - The gate values here are shares of all the experts' scores.
-- DeepSeek-V3 works them out a different way.
+- DeepSeek-V3 works them out a different way from this lab.
 - Mixtral shares them out between only its two chosen experts.
+- So the gates on **Router and experts** follow this lab's rule, not theirs.
 - This lab needs a balancing weight 10 to 30 times bigger than Switch's 0.01.
 - It also needs a bias step 30 times bigger than DeepSeek-V3's 0.001.
-- That is because it trains for 2,220 nudges, not hundreds of thousands.
+- That is because it trains for only 2,220 nudges, not hundreds of thousands.
+- So the winning settings here belong to a short run.
+- DeepSeek-V3's 0.001 failed here because the bias had no time to catch up.
 - How fully the lab collapses depends on its starting numbers.
 - Say each character's four learned numbers start twice as large.
 - Then a router with no fix keeps 1.5 to 1.9 effective experts in five of six seeds.
+- So the clean 100% you watched is partly a result of that starting scale.
 - The bias fix does not beat the balancing loss here.
 - Its average loss over six seeds is 2.138, against 2.129, and it wins in only two seeds.
 - The bias fix's inventors found the opposite in a model with a billion weights.
 - On a score called perplexity, where lower is better, the bias fix scored 9.50.
 - The balancing loss scored 9.56, and the bias fix also spread the work far more evenly.
-- The Mixtral row is a published number typed into the lab, not something it measured.
+- So the tie you saw in Repair 2 is this toy's result, not the final word.
+- The Mixtral row is a published number typed into the lab, not a measurement.
+- The weight counts are sums over a toy that fits in any memory.
+- So nothing here measures the memory or chip traffic that experts really cost.
 
 ### In the real mechanism
 
 Real mixtures of experts have their own limits, separate from this lab's:
 
-- A real router sees what the nearby text means, not just one character.
-- So it can sort text in ways this router cannot.
-- Even so, Mixtral's researchers found no clear sorting by topic.
-- Mixtral's choices followed grammar more than subject.
-- Another study, ST-MoE, found experts for punctuation, verbs and names.
-- It found them in one half of its model, but not in the other half.
-- OLMoE found one expert that takes nearly all the text from science papers on arXiv.
-- Memory has to hold every expert, even the ones that sit idle most of the time.
-- Switch-Base has 7.4 billion weights and needs 8 to 10 chips just to hold them in training.
-- A dense model with 0.74 billion weights fits on a single chip.
-- Big models spread their experts across many chips, which is called **expert parallelism**.
-- Each piece of text travels to the chip holding its chosen experts, then back again.
-- A lopsided router leaves some chips idle while others are swamped.
+- A real router sees what the nearby text means, so it can sort text in new ways.
+- What experts learn there has to be tested, and the answers differ from model to model.
+- Mixtral showed little sorting by topic, while OLMoE found an expert for one kind of text.
+- Load measures choices, not quality, so an even split can still hide useless experts.
+- Those experts may have learned nothing different from each other.
+- A router can also drift after it looks balanced.
+- So the 4.00 effective experts from Repair 2 does not prove each expert is useful.
+- Memory has to hold every expert, so the bill grows with the total.
+- Spreading experts across chips adds traffic between the chips.
+- It also turns uneven load into idle chips that waste time.
 - Big routers can also become unstable, with scores that grow too large.
 - ST-MoE adds another small extra loss to keep those scores in check.
 
-## Going deeper
+## Where this goes next
 
 ### Many small experts
 
-Newer designs split each expert into several smaller ones. They pick more of them for each piece of text.
+Newer designs, starting with DeepSeekMoE, split each expert into several smaller ones. Then they pick more of these small experts for each token.
 
-They also keep a few shared experts that every piece of text uses. That leaves the other experts free to specialise.
+They also keep a few shared experts that every token uses. That leaves the other experts free to specialise in their own kinds of text.
 
-DeepSeek-V3 picks 8 of its 256 experts, plus its 1 shared expert, in every one of these layers. It balances with a bias step of 0.001 for its first 14.3 trillion tokens. It never drops any text.
+DeepSeek-V3 has 256 experts in each of these layers, plus 1 shared expert. It picks 8 of the 256 for each token, and it never drops any text.
 
 ### Training without dropping
 
-Seat limits exist because chips work fastest when every expert gets the same amount of work. A system called MegaBlocks rewrites the expert maths in a new way. Then experts can take uneven amounts of work without wasting space or dropping text.
+Seat limits exist because chips work fastest when every expert gets the same amount of work. A system called MegaBlocks does the expert maths in a new way. Then experts can take uneven amounts of work without wasting space or dropping text.
 
 OLMoE also trains without dropping any text, and it uses a balancing weight of 0.01.
 
-### Where to go next
+### Neighbouring labs
 
 - **Splitting training across GPUs** shows how experts are placed on different chips.
-- It also shows the traffic that carries each piece of text to the right chip and back.
+- It also shows the traffic that carries each token to the right chip and back.
 - **The architecture zoo** has an untrained version of this router on its Sparse experts card.
 - **Train one from scratch** fits the same character pairs with a single dense model.
-- **Scaling laws** covers the other side of the trade: how training work affects how good a model gets.
+- **Scaling laws** covers the other side of the trade from this lab.
+- It shows how the amount of training work affects how good a model gets.

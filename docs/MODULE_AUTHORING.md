@@ -209,8 +209,8 @@ Vitest caches transformed files on disk, and a cached `registry.ts` does not see
 
 ## Content
 
-Both MDX files share `objectives` and `terms` frontmatter and contain exactly these seven `##`
-sections, in this order:
+All three MDX files share `objectives` and `terms` frontmatter. Unless the lab declares its own
+lesson shape (below), they contain exactly these seven `##` sections, in this order:
 
 1. The big picture
 2. What it is
@@ -219,6 +219,25 @@ sections, in this order:
 5. What to notice
 6. Where it breaks
 7. Going deeper
+
+### Lesson shape
+
+A lab may replace the seven headings with its own, so that each lesson can follow the arc its topic
+needs. Declare them in a one-line JSON `sections` frontmatter key that maps each `##` heading, in
+order, to the obligation it meets:
+
+```yaml
+sections: {"A word that needs another word":"overview","Build it yourself, one fix at a time":"mechanism","What an attention picture can't tell you":"limits","Where this goes next":"next"}
+```
+
+The roles are `overview`, `mechanism`, `lab`, `limits` and `next`; join two with `+` when one
+heading carries both, as in `"lab+limits"`. The first heading must be the `overview`, every role
+must appear at least once, and all three modes must declare the same `sections` and use exactly
+those `##` headings, because bookmarks and lab scenes find a top-level heading by its name in every
+mode. A `###` heading that a scene opens from must also appear in every mode. The writing for each
+role follows the matching section of `CONTENT_STYLE_GUIDE.md`, and the `limits` section still
+separates the lab’s limits from the mechanism’s. `attention` and `moe-training` are the worked
+examples.
 
 Plain mode is written at a grade 8 to 10 reading level, and additionally requires an analogy, a bold `Try this:` nudge, and a bold `A common mix-up:` correction. See "Plain mode" in `CONTENT_STYLE_GUIDE.md`. Simple mode rewrites the Plain lesson so an 8th grader can follow it, in sentences under 20 words, and keeps the same three extras; see "Simple mode". `npm run check:readability` measures both reading levels.
 

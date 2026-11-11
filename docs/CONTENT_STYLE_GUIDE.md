@@ -13,7 +13,42 @@ Every explanation helps a learner predict the interactive, test that prediction,
 - Never describe sampling temperature as knowledge, intelligence, or creativity.
 - Never treat an attention map or feature label as a complete explanation.
 
+## Teaching voice
+
+A lesson is someone teaching, not a report on the lab. Read each paragraph as if you were saying it
+to one student sitting beside the lab, and rewrite any you could not say out loud.
+
+- **Open with a question the reader can feel**, not a definition: a puzzle, a surprise, or a promise
+  with a catch. The overview still states every objective, but as what the reader will be able to
+  do once the puzzle is solved.
+- **Predict, then look.** Before a reveal, ask for a guess with a bold **Pause and predict:** marker
+  and send the reader to the control. The answer goes in the next paragraph, never the same one.
+- **Each section answers the question the last one raised.** End a beat on the new problem (“…but
+  now every word is equally loud. We need a way to choose.”), so the next heading is the reply.
+- **Talk to one person.** “You” is the learner and “we” is working it out together. Signpost the
+  route: “Here is the plan”, “Hold on to this; it comes back.”
+- **Name the wrong idea you expect, then break it.** **A common mix-up:** is one place for this;
+  the lab’s surprises are the others.
+- **One number per point.** Quote the figure that makes the point in the sentence that makes it.
+  Seed ranges and secondary readouts go in a short **How sure is this?** note, not in every line.
+- **Recap a beat in one sentence** before moving on.
+- **Be honest out loud**: “this is where the comparison stops working”, “the lab can’t show you this
+  part.”
+- **The shape follows the topic.** Choose the arc from what the topic is: a mechanism you can
+  derive, a failure you debug, a trade-off you weigh, a claim you test. Do not reuse the previous
+  module’s arc. A lesson declares its own headings (see *Lesson shape* in `MODULE_AUTHORING.md`)
+  and only has to meet the obligations below somewhere, in its own order.
+
+Before merging, ask of every section: could a teacher say this aloud? Does it open from a question
+the reader now has? Is there a prediction before each reveal? Is any paragraph only a list of
+numbers?
+
 ## The seven sections
+
+Labs that have not declared their own lesson shape use these seven headings, in this order. A lab
+with its own shape meets the same obligations under its own headings: the `overview` role is The
+big picture, `mechanism` covers What it is and Why it’s here, `lab` covers How to play with it and
+What to notice, `limits` is Where it breaks, and `next` is Going deeper.
 
 **The big picture** opens every lesson, in every mode, before `## What it is`. It gives a complete
 overview: what the module is about, where the mechanism shows up, why it matters, what the reader

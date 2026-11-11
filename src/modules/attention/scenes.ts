@@ -8,7 +8,7 @@ import type { LabScene } from "@app/module-sdk";
 const scenes: LabScene[] = [
   {
     id: "follow-one-word",
-    sections: ["Follow one word", "How to play with it"],
+    sections: ["Follow one word"],
     title: "Follow one word",
     look: "“it” is the query. Thicker arcs carry more weight, and the strip under the arcs names its strongest route.",
     step: 0,
@@ -16,7 +16,7 @@ const scenes: LabScene[] = [
   },
   {
     id: "five-stages",
-    sections: ["The five stages", "How the five stages fit together"],
+    sections: ["The five buttons are the five steps you just built"],
     title: "The five stages",
     look: "Press Query, Keys, Score, Softmax and Mix under the arcs, and the inspector card shows each stage in turn.",
     step: 0,
@@ -25,7 +25,7 @@ const scenes: LabScene[] = [
   },
   {
     id: "heads-layers",
-    sections: ["Heads and layers"],
+    sections: ["Many heads, many questions"],
     title: "Eight heads, one sentence",
     look: "Switch Layer and move the Attention head slider at the top of this card. The sentence stays the same while the routes change.",
     step: 0,
@@ -52,7 +52,7 @@ const scenes: LabScene[] = [
   },
   {
     id: "edit-key",
-    sections: ["Edit a key"],
+    sections: ["Shares compete"],
     title: "Edit a key",
     look: "Type a new number into one of the K boxes, then watch every bar under the word chips move, not only the one you edited.",
     step: 1,
@@ -61,7 +61,7 @@ const scenes: LabScene[] = [
   },
   {
     id: "no-scaling",
-    sections: ["Switch off the scaling", "Divide, or don't"],
+    sections: ["Switch off the scaling"],
     title: "Scaling switched off",
     look: "Read Largest weight and Saturated rows, then set Score scaling back to ÷ √64 and read them again.",
     step: 2,
@@ -70,7 +70,7 @@ const scenes: LabScene[] = [
   },
   {
     id: "zero-values",
-    sections: ["Empty the packets", "Zero the values"],
+    sections: ["Zero the values"],
     title: "Every value set to zero",
     look: "The weights and arcs stay where they were, while the Mixed value chip and Mix length drop to zero.",
     step: 3,
@@ -88,7 +88,7 @@ const scenes: LabScene[] = [
   },
   {
     id: "mask-lifted",
-    sections: ["Lift the one-way rule", "Lift the mask"],
+    sections: ["Lift the one-way rule"],
     title: "Mask lifted",
     look: "Layer 2 head 4 with the mask lifted: shares appear above the diagonal, and the strip under the arcs adds on later characters.",
     step: 4,
@@ -97,7 +97,7 @@ const scenes: LabScene[] = [
   },
   {
     id: "previous-char",
-    sections: ["A route that is not what it looks like", "Test a route before you believe it"],
+    sections: ["A route that is not what it looks like"],
     title: "A look-one-back head",
     look: "Layer 1 head 3 in the Characters view: the dark stripe just below the diagonal means each character reads the one before it.",
     step: 5,
@@ -106,12 +106,21 @@ const scenes: LabScene[] = [
   },
   {
     id: "repeated-name",
-    sections: ["A route that follows the content"],
+    sections: ["Move the content, see if the route follows"],
     title: "A route that follows the name",
     look: "Layer 2 head 3 with the second Mark as the query: its thick arc goes to Jones. Then press Name moved earlier.",
     step: 5,
     state: { text: "Mark Jones met Anna Blake and then Mark", selected: 7, inspected: 1, layer: 1, head: 2 },
     focus: "Model attention routing diagram",
+  },
+  {
+    id: "repeat-period",
+    sections: ["Copying or habit? Change the period"],
+    title: "A pattern that repeats every 8",
+    look: "Layer 2 head 2 in the Characters view: the stripes sit where the next character of the pattern is. Then press Repeats every 9 and see whether they move.",
+    step: 5,
+    state: { text: "zqxjkvbwzqxjkvbwzqxjkvbwzqxjkvbw", selected: 0, inspected: 0, layer: 1, head: 1, matrixView: "characters" },
+    focus: "Attention matrix",
   },
 ];
 

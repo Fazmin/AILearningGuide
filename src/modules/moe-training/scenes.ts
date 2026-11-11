@@ -8,7 +8,7 @@ import type { LabScene } from "@app/module-sdk";
 const scenes: LabScene[] = [
   {
     id: "router-gates",
-    sections: ["The router and its gates", "What it is"],
+    sections: ["Scores, gates and top-k"],
     title: "Scores, biases and gates",
     look: "The table lists each expert's score, bias and gate for the letter t, and the highlighted row is the expert that runs.",
     step: 2,
@@ -26,7 +26,7 @@ const scenes: LabScene[] = [
   },
   {
     id: "watch-collapse",
-    sections: ["1. Watch it collapse"],
+    sections: ["Watch it collapse"],
     title: "Watch it collapse",
     look: "One line climbs to 100%, Effective experts reads 1.00, and Loss sits right next to Dense baseline.",
     step: 0,
@@ -34,7 +34,7 @@ const scenes: LabScene[] = [
   },
   {
     id: "balancing-loss",
-    sections: ["2. Add a balancing loss"],
+    sections: ["Repair 1: a penalty for lopsided work"],
     title: "A balancing loss",
     look: "At Aux weight 0.1 every expert gets work, so step Aux weight down to 0.01 and up to 1 and compare Loss with Dense baseline.",
     step: 1,
@@ -43,7 +43,7 @@ const scenes: LabScene[] = [
   },
   {
     id: "bias-nudge",
-    sections: ["3. Nudge with a bias"],
+    sections: ["Repair 2: a thumb on the scale"],
     title: "A bias on each expert",
     look: "Each bar is one expert's bias after training, so lower Bias step to 0.001 and watch most tokens go back to one expert.",
     step: 2,
@@ -52,7 +52,7 @@ const scenes: LabScene[] = [
   },
   {
     id: "cap-experts",
-    sections: ["4. Cap each expert"],
+    sections: ["Repair 3: a seat limit"],
     title: "Five seats each",
     look: "With no balancing many choices find their expert full, so switch Balancing to Auxiliary loss and watch Dropped tokens fall.",
     step: 3,
@@ -61,7 +61,7 @@ const scenes: LabScene[] = [
   },
   {
     id: "read-specialists",
-    sections: ["5. Read the specialists"],
+    sections: ["Who gets which letters"],
     title: "Who gets which letters",
     look: "Each row shows where one character's tokens go, so switch Grid to By corpus and see every corpus spread its tokens the same way.",
     step: 4,
@@ -70,7 +70,7 @@ const scenes: LabScene[] = [
   },
   {
     id: "count-what-runs",
-    sections: ["6. Count what runs"],
+    sections: ["Stored against used"],
     title: "Stored against used",
     look: "Raise Experts and watch Total parameters climb while Active per token barely moves, then read the Mixtral 8x7B row.",
     step: 5,
@@ -79,7 +79,7 @@ const scenes: LabScene[] = [
   },
   {
     id: "too-strong",
-    sections: ["What to notice"],
+    sections: ["Too much of a good thing"],
     title: "Balanced, but worse",
     look: "At Aux weight 1 every expert stays busy, but Loss sits above Dense baseline and Mean gate drops.",
     step: 1,
@@ -88,7 +88,7 @@ const scenes: LabScene[] = [
   },
   {
     id: "corpus-blind",
-    sections: ["In this lab", "Where it breaks"],
+    sections: ["What the router could see"],
     title: "A router that cannot see the text",
     look: "The three corpus rows look almost the same, because the router never learns which text a pair came from.",
     step: 4,
