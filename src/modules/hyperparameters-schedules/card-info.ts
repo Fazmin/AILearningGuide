@@ -7,9 +7,10 @@ const cardInfo: ModuleCardInfo = {
       "The learning rate each of the four schedules would use at every point in the run, given the peak rate and warmup fraction you set, with the selected schedule's phases shaded and one epoch inspected. This chart is the formula, not the training result — the loss chart is the result.",
     whatYouSee: [
       "A kicker `Schedule editor` and a badge repeating the current peak learning rate.",
-      "A `Schedule` control with four options: Constant, Cosine decay, Warmup + decay, One cycle. The selected schedule is drawn solid and thick in the module colour; the other three are thin, grey, and dashed or dotted.",
+      "A `Schedule` control with four options: Constant, Cosine decay, Warmup + decay, One cycle. The selected schedule is drawn solid and thick; the other three are thin and dashed or dotted. Each keeps the colour it has on the loss chart.",
       "A chart whose x axis is epoch 0 to 25 (progress through the run) and whose y axis is learning rate from 0 to just above the peak. Shaded bands mark the selected schedule's phases: a warmup band with its length in steps, then a decay band labelled with where it ends, such as `linear decay to 5% of peak (0.030)`.",
       "A dashed guide and dot at the `Inspect epoch` position, labelled with the rate at that step, and a note restating the schedule and its warmup length in steps.",
+      "Under the chart, one row per schedule with its rate at that epoch, drawn as a bar against the peak so the four step sizes can be compared.",
     ],
     howItWorks: [
       "Every curve is `peak × scheduleFactor(schedule, progress, warmup)`. Constant returns 1, so it is a flat line at the peak no matter what warmup is.",
@@ -44,6 +45,7 @@ const cardInfo: ModuleCardInfo = {
       "A kicker with the epoch and step count, and a badge with the batch size.",
       "A chart of epoch against whole-corpus loss in nats per token. Four series — Constant solid, Cosine decay dashed, Warmup + decay dotted, One cycle dash-dot, each in its own colour — with the selected schedule drawn thicker, and a dotted `knows nothing` line at ln 30 = 3.401.",
       "A guide at the `Inspect epoch` position with a dot on every curve. The legend prints each schedule's loss at that epoch and at the end.",
+      "A strip under the legend with one row per schedule and its final loss as a dot on one zoomed axis, lower to the left. With five seeds it adds a dot for every seed and a band from the lowest to the highest, so bands that overlap are easy to spot.",
       "Three metrics: the selected schedule's final loss (or `diverged`), `Best schedule here`, and that winner's final loss.",
       "A `Seeds` control: `Seed 1 only` or `Five seeds`. With five, each schedule gets a shaded band from its lowest to its highest loss across the seeds at each epoch, the legend adds `seeds low–high` for the final loss, and a table lists the final loss of every seed with a `Spread` column (highest minus lowest).",
       "Under the table, a callout that compares the two best schedules by their five-seed mean, and the two closest, each with the wider of their spreads, and says whether the gap is inside or outside the band.",
@@ -116,7 +118,7 @@ const cardInfo: ModuleCardInfo = {
     summary:
       "The batch-gradient norm at every step of the selected run drawn against the clip threshold, a peak gradient-norm reading across all four runs, whether the clip is binding, and a count of schedules that finished worse than a uniform guess.",
     whatYouSee: [
-      "A trace with one dot per optimizer step: x is the step, y the norm of that step's batch gradient before clipping, from 0 to 1.5. A dotted line marks the √2 bound; with `Gradient clip` on, a dashed line marks the threshold and steps above it are drawn darker and larger. A caption counts them.",
+      "A trace with one dot per optimizer step: x is the step, from 0 to the last one, y the norm of that step's batch gradient before clipping, from 0 to 1.5. A dotted line marks the √2 bound; with `Gradient clip` on, a dashed line marks the threshold and steps above it are drawn darker and larger. A caption counts them.",
       "`Peak gradient norm` — the largest batch-gradient L2 seen in any of the four runs.",
       "`Clip` reading `off`, `N · binding`, or `N · never binds`, depending on whether the threshold is set and whether any recorded norm exceeded it.",
       "`Worse than chance` as `K / 4`, counting runs whose final loss is non-finite or greater than `ln 30 ≈ 3.401`.",
@@ -152,7 +154,8 @@ const cardInfo: ModuleCardInfo = {
       "A closed-form model of a gradient passed back through a stack of layers. Every layer multiplies the gradient by the same gain, so with a gain above 1 the early layers see an exploding gradient, with a gain below 1 a vanishing one, and a global-norm clip can shorten the first but not lengthen the second. It is arithmetic, not a trained network.",
     whatYouSee: [
       "Three sliders: `Layers` from 2 to 48, `Gain per layer` from 0.70 to 1.40, and `Depth clip` from `off` to `total ≤ 10.0`.",
-      "A chart whose x axis is the layer, from layer 1 (the input side) on the left to the output layer on the right, and whose y axis is gradient length on a log scale from 1e-8 to 1e8. A solid line is the gradient length at each layer before clipping, and with a clip set a dashed line shows it after. A dotted line marks the clip threshold, which applies to the total.",
+      "A chart whose x axis is the layer, from layer 1 (the input side) on the left to the output layer on the right, and whose y axis is gradient length on a log scale from 1e-8 to 1e8. A solid line is the gradient length at each layer before clipping, with its input and output ends labelled, and with a clip set a dashed line shows it after. A dashed line marks the clip threshold, which applies to the total.",
+      "A strip of bars under the chart with the same lengths drawn to scale, one bar per layer and the longest at full height. When the clip binds, the bars before the clip turn to outlines and solid bars show the lengths after it.",
       "A table of the same numbers: the output layer, the middle layer, the input layer, and the whole gradient, before and after the clip.",
       "Three metrics: `Input ÷ output gradient`, the length at layer 1 over the length at the output; `Whole gradient length`; and `Clip`, which reads `off`, `never binds`, or `binding` with the factor it scales by. A callout names the case: exploded, clipped, vanished, or ordinary.",
     ],

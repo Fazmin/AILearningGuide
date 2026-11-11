@@ -251,10 +251,14 @@ export function MatrixPlane({
         />
         <circle className="gw-dot" cx={px(wx.x)} cy={py(wx.y)} r="3" />
       </g>
-      <text className="gw-label" x={px(v[0]) + 5} y={py(v[1]) + 14}>
+      <text className="gw-label myn-halo" x={px(v[0]) - 4} y={py(v[1]) + (out.y >= v[1] ? 15 : -7)} textAnchor="end">
         x
       </text>
-      <text className="gw-label is-forward" x={Math.min(size - 40, px(out.x) + 6)} y={Math.max(14, py(out.y) - 6)}>
+      <text
+        className="gw-label is-forward myn-halo"
+        x={Math.min(size - 40, px(out.x) + 7)}
+        y={Math.min(size - 8, Math.max(14, py(out.y) + (out.y >= v[1] ? -6 : 14)))}
+      >
         Wx+b
       </text>
       {outside && (
@@ -651,6 +655,15 @@ export function GaussianPlot({
   const density = gaussianPdf(x, mean, variance);
   const bandLeft = Math.max(-4, mean - sigma);
   const bandRight = Math.min(4, mean + sigma);
+  // The area under the curve between μ − σ and μ + σ: the 68% the note talks about.
+  const area =
+    `M${xs(bandLeft).toFixed(2)} ${bottom}` +
+    Array.from({ length: 41 }, (_, index) => {
+      const value = bandLeft + ((bandRight - bandLeft) * index) / 40;
+      return `L${xs(value).toFixed(2)} ${ys(gaussianPdf(value, mean, variance)).toFixed(2)}`;
+    }).join("") +
+    `L${xs(bandRight).toFixed(2)} ${bottom}Z`;
+  const peak = gaussianPdf(mean, mean, variance);
   return (
     <svg
       className="gw-plot myn-plot"
@@ -689,20 +702,53 @@ export function GaussianPlot({
         density
       </text>
       <g clipPath={`url(#${id}-clip)`}>
-        <rect className="myn-image" x={xs(bandLeft)} y={top} width={Math.max(0, xs(bandRight) - xs(bandLeft))} height={bottom - top} />
+        <path className="myn-area" d={area} />
+        {[bandLeft, bandRight].map((edge) => (
+          <line
+            key={edge}
+            className="myn-area-edge"
+            x1={xs(edge)}
+            x2={xs(edge)}
+            y1={ys(gaussianPdf(edge, mean, variance))}
+            y2={bottom}
+          />
+        ))}
         <path className="gw-curve" d={curve} />
         <line className="gw-gradient is-dashed" x1={xs(mean)} x2={xs(mean)} y1={top} y2={bottom} />
       </g>
-      <text className="gw-note" x={xs(mean) + 4} y={top + 10}>
+      <text className="gw-note is-gradient myn-halo" x={xs(mean) + 4} y={top + 10}>
         μ = {fmt(mean)}
       </text>
-      <text className="gw-note" x={xs(bandLeft) + 3} y={bottom - 5}>
-        μ ± σ
+      <text
+        className="myn-area-name myn-halo"
+        x={Math.min(right - 4, Math.max(left + 4, xs(mean)))}
+        y={Math.min(bottom - 26, Math.max(top + 22, ys(peak) - 6))}
+        textAnchor={xs(mean) > right - 60 ? "end" : xs(mean) < left + 60 ? "start" : "middle"}
+      >
+        ≈68% of the area
+      </text>
+      <text
+        className="gw-note is-forward myn-halo"
+        x={xs(bandLeft) - 4}
+        y={Math.max(top + 9, ys(gaussianPdf(bandLeft, mean, variance)) - 3)}
+        textAnchor="end"
+      >
+        μ − σ
+      </text>
+      <text
+        className="gw-note is-forward myn-halo"
+        x={xs(bandRight) + 4}
+        y={Math.max(top + 9, ys(gaussianPdf(bandRight, mean, variance)) - 3)}
+      >
+        μ + σ
       </text>
       <line className="myn-run" x1={xs(x)} x2={xs(x)} y1={ys(density)} y2={bottom} />
       <circle className="gw-dot is-loss" cx={xs(x)} cy={ys(density)} r="4" />
       {sample.map((value) => (
-        <line key={value} className="gw-loss" x1={xs(value)} x2={xs(value)} y1={bottom} y2={bottom - 8} />
+        <g key={value}>
+          <line className="gw-loss" x1={xs(value)} x2={xs(value)} y1={bottom + 1} y2={bottom - 9} />
+          <circle className="gw-dot is-loss" cx={xs(value)} cy={bottom - 9} r="2.4" />
+        </g>
       ))}
     </svg>
   );
@@ -711,11 +757,11 @@ export function GaussianPlot({
 /** The sigmoid curve, with the current logit marked and the log-odds line for reference. */
 export function SigmoidPlot({ z }: { z: number }) {
   const width = 340;
-  const height = 220;
+  const height = 228;
   const left = 34;
   const right = width - 10;
-  const top = 14;
-  const bottom = height - 28;
+  const top = 24;
+  const bottom = height - 32;
   const xs = scale(-6, 6, left, right);
   const ys = scale(0, 1, bottom, top);
   const curve = Array.from({ length: 121 }, (_, index) => {
@@ -746,11 +792,11 @@ export function SigmoidPlot({ z }: { z: number }) {
       ))}
       <line className="gw-axis" x1={left} x2={right} y1={bottom} y2={bottom} />
       <line className="gw-axis" x1={xs(0)} x2={xs(0)} y1={top} y2={bottom} />
-      <text className="gw-label" x={right} y={bottom + 24} textAnchor="end">
-        logit z
+      <text className="gw-label" x={(left + right) / 2} y={bottom + 27} textAnchor="middle">
+        logit gap z = A − B
       </text>
-      <text className="gw-label" x={left - 4} y={11}>
-        σ(z) = P
+      <text className="gw-label" x={left - 4} y={12}>
+        σ(z) = P(A)
       </text>
       <path className="gw-curve" d={curve} />
       <line className="myn-run" x1={xs(clamped)} x2={xs(clamped)} y1={ys(p)} y2={bottom} />
@@ -760,5 +806,232 @@ export function SigmoidPlot({ z }: { z: number }) {
         z = {fmt(z, 1)}, P = {fmt(p, 3)}
       </text>
     </svg>
+  );
+}
+
+/**
+ * Bayes' rule as areas. The square is every case: its width is split by the prior, and each column is filled
+ * up to that class's likelihood of x = 1. The two filled areas are the joint weights; the bar on the right
+ * keeps only those and rescales them to 1, and the y = 1 share of that bar is the posterior.
+ */
+export function BayesArea({
+  prior,
+  likePositive,
+  likeNegative,
+}: {
+  prior: number;
+  likePositive: number;
+  likeNegative: number;
+}) {
+  const id = useId().replace(/:/g, "");
+  const width = 440;
+  const height = 232;
+  const x0 = 50;
+  const x1 = 262;
+  const y0 = 30;
+  const y1 = 184;
+  const side = y1 - y0;
+  const split = x0 + prior * (x1 - x0);
+  const jointPositive = prior * likePositive;
+  const jointNegative = (1 - prior) * likeNegative;
+  const evidence = jointPositive + jointNegative;
+  const posterior = jointPositive / evidence;
+  const heightPositive = likePositive * side;
+  const heightNegative = likeNegative * side;
+  const barX = 346;
+  const barW = 42;
+  const cut = y1 - posterior * side;
+  return (
+    <svg
+      className="gw-plot myn-plot myn-bayes"
+      viewBox={`0 0 ${width} ${height}`}
+      role="img"
+      aria-label={`Bayes' rule drawn as areas. A unit square is split by the prior: ${fmt(prior)} of its width is class y = 1 and ${fmt(
+        1 - prior,
+      )} is class y = 0. The y = 1 column is filled to ${fmt(likePositive)} of its height and the y = 0 column to ${fmt(
+        likeNegative,
+      )}, the shares of each class with x = 1. The filled areas are ${fmt(jointPositive, 3)} and ${fmt(
+        jointNegative,
+        3,
+      )}. Rescaled to add to 1, the y = 1 share is the posterior, ${fmt(posterior, 3)}.`}
+    >
+      <defs>
+        <pattern id={`${id}-hatch`} width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <rect className="myn-bayes__neg-base" width="6" height="6" />
+          <line className="myn-bayes__neg-line" x1="0" y1="0" x2="0" y2="6" />
+        </pattern>
+      </defs>
+      <text className="gw-label" x={x0} y={14}>
+        every case, split by class
+      </text>
+      <text className="gw-label" x={barX + barW / 2} y={14} textAnchor="middle">
+        only x = 1
+      </text>
+      <rect className="myn-bayes__all" x={x0} y={y0} width={x1 - x0} height={side} />
+      <rect className="myn-bayes__pos" x={x0} y={y1 - heightPositive} width={split - x0} height={heightPositive} />
+      <rect
+        x={split}
+        y={y1 - heightNegative}
+        width={x1 - split}
+        height={heightNegative}
+        fill={`url(#${id}-hatch)`}
+        className="myn-bayes__neg"
+      />
+      <line className="myn-bayes__split" x1={split} x2={split} y1={y0 - 4} y2={y1 + 4} />
+      <text className="gw-tick is-forward" x={x0 - 5} y={y1 - heightPositive + 3.5} textAnchor="end">
+        {fmt(likePositive)}
+      </text>
+      <text className="gw-tick is-attention" x={x1 + 5} y={y1 - heightNegative + 3.5}>
+        {fmt(likeNegative)}
+      </text>
+      <text className="gw-tick" x={x0 - 5} y={y0 + 3.5} textAnchor="end">
+        1
+      </text>
+      <text className="gw-tick" x={x0 - 5} y={y1 + 3.5} textAnchor="end">
+        0
+      </text>
+      <text className="gw-note" x={x0 - 38} y={(y0 + y1) / 2} transform={`rotate(-90 ${x0 - 38} ${(y0 + y1) / 2})`} textAnchor="middle">
+        share with x = 1
+      </text>
+      {split - x0 > 46 && heightPositive > 30 && (
+        <text className="myn-bayes__value" x={(x0 + split) / 2} y={y1 - heightPositive / 2 + 4} textAnchor="middle">
+          {fmt(jointPositive, 3)}
+        </text>
+      )}
+      {x1 - split > 46 && heightNegative > 18 && (
+        <text className="myn-bayes__value is-neg myn-halo" x={(split + x1) / 2} y={y1 - heightNegative / 2 + 4} textAnchor="middle">
+          {fmt(jointNegative, 3)}
+        </text>
+      )}
+      {split - x0 > 46 && side - heightPositive > 26 && (
+        <text className="gw-note" x={(x0 + split) / 2} y={y0 + 16} textAnchor="middle">
+          x = 0
+        </text>
+      )}
+      {x1 - split > 46 && (
+        <text className="gw-note" x={(split + x1) / 2} y={y0 + 16} textAnchor="middle">
+          x = 0
+        </text>
+      )}
+      <text className="gw-label is-forward" x={x0} y={y1 + 17}>
+        y = 1
+      </text>
+      <text className="gw-note" x={x0} y={y1 + 30}>
+        prior {fmt(prior)}
+      </text>
+      <text className="gw-label is-attention" x={x1} y={y1 + 17} textAnchor="end">
+        y = 0
+      </text>
+      <text className="gw-note" x={x1} y={y1 + 30} textAnchor="end">
+        1 − prior {fmt(1 - prior)}
+      </text>
+      <path className="myn-bayes__flow" d={`M${x1 + 34} ${(y0 + y1) / 2}H${barX - 12}m-6 -4l6 4l-6 4`} />
+      <text className="gw-note" x={(x1 + 34 + barX - 12) / 2} y={(y0 + y1) / 2 - 20} textAnchor="middle">
+        keep the
+      </text>
+      <text className="gw-note" x={(x1 + 34 + barX - 12) / 2} y={(y0 + y1) / 2 - 8} textAnchor="middle">
+        filled parts
+      </text>
+      <text className="gw-note" x={(x1 + 34 + barX - 12) / 2} y={(y0 + y1) / 2 + 17} textAnchor="middle">
+        rescale
+      </text>
+      <text className="gw-note" x={(x1 + 34 + barX - 12) / 2} y={(y0 + y1) / 2 + 29} textAnchor="middle">
+        to 1
+      </text>
+      <rect x={barX} y={y0} width={barW} height={cut - y0} fill={`url(#${id}-hatch)`} className="myn-bayes__neg" />
+      <rect className="myn-bayes__pos" x={barX} y={cut} width={barW} height={y1 - cut} />
+      <rect className="myn-bayes__frame" x={barX} y={y0} width={barW} height={side} />
+      <text
+        className="gw-label is-forward"
+        x={barX + barW + 6}
+        y={Math.min(y1 - 14, Math.max(y0 + 34, (cut + y1) / 2))}
+      >
+        y = 1
+      </text>
+      <text
+        className="myn-bayes__value is-out"
+        x={barX + barW + 6}
+        y={Math.min(y1 - 1, Math.max(y0 + 47, (cut + y1) / 2 + 13))}
+      >
+        {fmt(posterior, 3)}
+      </text>
+      <text className="gw-note is-attention" x={barX + barW + 6} y={y0 + 10}>
+        y = 0
+      </text>
+      <text className="gw-label" x={barX + barW / 2} y={y1 + 17} textAnchor="middle">
+        posterior
+      </text>
+      <text className="gw-note" x={barX + barW / 2} y={y1 + 30} textAnchor="middle">
+        P(y=1|x=1)
+      </text>
+    </svg>
+  );
+}
+
+/** Two logits on one number line with the gap between them bracketed: the only thing two-class softmax reads. */
+export function LogitGap({ a, b }: { a: number; b: number }) {
+  const width = 340;
+  const height = 74;
+  const left = 34;
+  const right = width - 10;
+  const axis = 46;
+  const xs = scale(0, 6, left, right);
+  const low = Math.min(a, b);
+  const high = Math.max(a, b);
+  const close = Math.abs(xs(a) - xs(b)) < 16;
+  return (
+    <svg
+      className="gw-plot myn-plot myn-gap"
+      viewBox={`0 0 ${width} ${height}`}
+      role="img"
+      aria-label={`Logit A = ${fmt(a, 1)} and Logit B = ${fmt(b, 1)} on one number line. The gap between them is z = ${fmt(
+        a - b,
+        1,
+      )}. Moving both by the same amount leaves the gap unchanged.`}
+    >
+      <line className="gw-axis" x1={left} x2={right} y1={axis} y2={axis} />
+      {[0, 1, 2, 3, 4, 5, 6].map((value) => (
+        <g key={value}>
+          <line className="gw-axis" x1={xs(value)} x2={xs(value)} y1={axis} y2={axis + 4} />
+          <text className="gw-tick" x={xs(value)} y={axis + 15} textAnchor="middle">
+            {value}
+          </text>
+        </g>
+      ))}
+      <text className="gw-label" x={6} y={13}>
+        the two logits
+      </text>
+      {high - low > 0.05 && (
+        <>
+          <path className="myn-gap__brace" d={`M${xs(low)} ${axis - 16}v-6H${xs(high)}v6`} />
+          <rect className="myn-gap__span" x={xs(low)} y={axis - 4} width={xs(high) - xs(low)} height={8} />
+        </>
+      )}
+      <text className="myn-gap__z" x={(xs(low) + xs(high)) / 2} y={axis - 27} textAnchor="middle">
+        gap z = A − B = {fmt(a - b, 1)}
+      </text>
+      <circle className="gw-dot is-forward" cx={xs(a)} cy={axis} r="5" />
+      <circle className="gw-dot is-attention" cx={xs(b)} cy={axis} r="5" />
+      <text className="gw-label is-forward myn-halo" x={xs(a) + (close ? (a >= b ? 8 : -8) : 0)} y={axis - 9} textAnchor={close ? (a >= b ? "start" : "end") : "middle"}>
+        A
+      </text>
+      <text className="gw-label is-attention myn-halo" x={xs(b) + (close ? (a >= b ? -8 : 8) : 0)} y={axis - 9} textAnchor={close ? (a >= b ? "end" : "start") : "middle"}>
+        B
+      </text>
+    </svg>
+  );
+}
+
+/** A table row's cases drawn as marks: filled for the counted outcome, hollow for the other. */
+export function CountMarks({ filled, hollow, label }: { filled: number; hollow: number; label: string }) {
+  return (
+    <span className="myn-marks" role="img" aria-label={label}>
+      {Array.from({ length: hollow }, (_, index) => (
+        <i key={`h-${index}`} />
+      ))}
+      {Array.from({ length: filled }, (_, index) => (
+        <i key={`f-${index}`} className="is-on" />
+      ))}
+    </span>
   );
 }

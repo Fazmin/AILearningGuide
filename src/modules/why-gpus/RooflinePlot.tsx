@@ -84,7 +84,18 @@ export function RooflinePlot({
   const bound = current.intensity < ridge ? "memory-bound" : "compute-bound";
   const currentLabel = operation === "matmul" ? `matmul, ${batch} row${batch === 1 ? "" : "s"}` : "add";
   const peakY = yAt(peakTflops);
-  const ridgeLabelEnd = ridgeX > RIGHT - 90;
+  // The ridge label sits right of the ridge unless the plot edge or the current dot is in the way.
+  const dotBesideRidge = current.intensity >= ridge && currentPoint.x - ridgeX < 84;
+  const ridgeLabelEnd = ridgeX > RIGHT - 90 || dotBesideRidge;
+  const attained = roofAt(current.intensity);
+  const share = attained / peakTflops;
+  const shareLabel = share >= 0.9995 ? "100%" : `${(share * 100).toFixed(share < 0.1 ? 2 : 1)}%`;
+  const gap = currentPoint.y - peakY;
+  const labelEnd = currentPoint.x > RIGHT - 170;
+  const onFlatRoof = bound === "compute-bound";
+  /** Baseline of the dot's own label, kept inside the plot when the dot sits near the floor. */
+  const labelDy = onFlatRoof ? 32 : labelEnd ? 46 : Math.min(currentPoint.y + 20, BOTTOM - 22) - currentPoint.y;
+  const labelDx = labelEnd ? Math.min(50, RIGHT - currentPoint.x) : 11;
 
   const xTicks = Array.from({ length: X_DECADES[1] - X_DECADES[0] + 1 }, (_, index) => X_DECADES[0] + index);
   const yTicks = Array.from({ length: Y_DECADES[1] - Y_DECADES[0] + 1 }, (_, index) => Y_DECADES[0] + index);
@@ -116,14 +127,14 @@ export function RooflinePlot({
         ))}
         <line className="wg-roofline__axis" x1={LEFT} x2={RIGHT} y1={BOTTOM} y2={BOTTOM} />
         <line className="wg-roofline__axis" x1={LEFT} x2={LEFT} y1={TOP} y2={BOTTOM} />
-        {ridgeX > LEFT + 90 && (
-          <text className="wg-roofline__zone-label" x={LEFT + 8} y={peakY + 18}>
-            memory-bound
+        {ridgeX > LEFT + 110 && (
+          <text className="wg-roofline__zone-label" x={Math.min(RIGHT, ridgeX) - 8} y={BOTTOM - 8} textAnchor="end">
+            ← memory-bound
           </text>
         )}
-        {ridgeX < RIGHT - 90 && (
-          <text className="wg-roofline__zone-label" x={RIGHT - 8} y={BOTTOM - 8} textAnchor="end">
-            compute-bound
+        {ridgeX < RIGHT - 110 && (
+          <text className="wg-roofline__zone-label" x={ridgeX + 8} y={BOTTOM - 8}>
+            compute-bound →
           </text>
         )}
         <line className="wg-roofline__ridge" x1={ridgeX} x2={ridgeX} y1={peakY} y2={BOTTOM} />
@@ -160,8 +171,23 @@ export function RooflinePlot({
             {operation === "matmul" ? "add" : `matmul ×${batch}`}
           </text>
         </g>
-        <g className={`wg-roofline__current wg-roofline__current--${bound === "memory-bound" ? "memory" : "compute"}`}>
+        {gap > 30 && (
+          <g className="wg-roofline__gap">
+            <line x1={currentPoint.x} x2={currentPoint.x} y1={peakY + 2} y2={currentPoint.y - 9} />
+            <path d={`M ${currentPoint.x - 3.5} ${peakY + 7} L ${currentPoint.x} ${peakY + 1.5} L ${currentPoint.x + 3.5} ${peakY + 7}`} />
+            <text x={currentPoint.x - 7} y={peakY + gap / 2 + 1} textAnchor="end">
+              {shareLabel} of peak
+            </text>
+          </g>
+        )}
+        <g className={`wg-roofline__current wg-roofline__current--${onFlatRoof ? "compute" : "memory"}`}>
           <circle cx={currentPoint.x} cy={currentPoint.y} r={6.5} />
+          <text x={currentPoint.x + labelDx} y={currentPoint.y + labelDy} textAnchor={labelEnd ? "end" : "start"}>
+            <tspan className="wg-roofline__current-name">now: {currentLabel}</tspan>
+            <tspan x={currentPoint.x + labelDx} dy={13}>
+              {attained.toPrecision(3)} {unit}
+            </tspan>
+          </text>
         </g>
         <text className="wg-roofline__axis-label" x={(LEFT + RIGHT) / 2} y={HEIGHT - 8} textAnchor="middle">
           Arithmetic intensity, operations per byte (log scale)
@@ -172,7 +198,6 @@ export function RooflinePlot({
       </svg>
       <figcaption className="wg-roofline__legend">
         <span><i className="wg-key wg-key--roof" /> Roof = min(peak, bandwidth × intensity)</span>
-        <span><i className="wg-key wg-key--current" /> Current operation</span>
         {operation === "matmul" && <span><i className="wg-key wg-key--trail" /> Same matmul at 1–4096 rows</span>}
         <span><i className="wg-key wg-key--other" /> {operation === "matmul" ? "Elementwise add, same shape" : "Matmul, same shape"}</span>
       </figcaption>

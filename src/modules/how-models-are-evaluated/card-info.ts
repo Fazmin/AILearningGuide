@@ -8,7 +8,7 @@ const cardInfo: ModuleCardInfo = {
     whatYouSee: [
       "A kicker with the number of scored rows and how many are truly positive, and a title that names the population.",
       "Population with two segments, 1 in 100 (rare) and 1 in 5 (about 20%); Baseline with three segments; Decision threshold from 0.00 to 1.00; and Scored split with all 100, train, val, and test.",
-      "A score strip: every row as a dot at its detector score, stacked where scores repeat. Positives are diamonds and negatives are circles, so the classes differ by shape and not only by colour. On 1 in 100, row 99 is the diamond at 0.42 and row 12 a ringed circle at 0.88. The shaded side of the t line is what the rule predicts positive; rows outside the scored split are faded.",
+      "A score strip: every row as a dot at its detector score, stacked where scores repeat. Positives are diamonds and negatives are circles, so the classes differ by shape and not only by colour. On 1 in 100, row 99 is the diamond at 0.42 and row 12 a ringed circle at 0.88. The shaded side of the t line is what the rule predicts positive, and each side prints its two counts: TN and FN on the left, FP and TP on the right. A missed positive is a hollow diamond and a false alarm a ringed, coloured circle; rows outside the scored split are faded.",
       "A note that says what fires at the current setting and describes the population.",
     ],
     howItWorks: [
@@ -36,9 +36,10 @@ const cardInfo: ModuleCardInfo = {
     summary:
       "A 100-cell strip: train, val, test. Choose t using picks which slice searches for a threshold that maximizes accuracy, recall, or F1. Set t from that slice writes the threshold. Doing that on test marks the holdout leaked. A table then compares the intact path (t from val) with the leaked path (t from test) on the test slice and on 400 fresh rows from the same scoring process.",
     whatYouSee: [
-      "A 100-cell strip. Train, val, and test use different fills. Positives are outlined; on 1 in 100, row 99 and row 12 have extra marks.",
+      "A 100-cell strip in one line, with train, val, and test in different fills and a bracket naming each slice. A diamond sits above each positive; on 1 in 100, row 99 and row 12 are labelled. Under the strip, one pointer marks the slice t is chosen on and another the test slice the claim is scored on; when both are test, the note reads leaked.",
       "Choose t using (train / val / test), Maximize (accuracy / recall / F1), and a Set t button that prints the winning threshold.",
       "Metrics t chosen, the goal's value on the tuning slice at that t, Test accuracy, recall, or F1, and Holdout? intact or leaked.",
+      "A two-row plot on a 0–100% scale: a dot for each path's test claim, a diamond for the same threshold on fresh rows, and a bar between them that is the overstatement.",
       "A two-row table. Each row gives its threshold, its Test claim (the reading you would publish), its Fresh rows reading, and Claim − fresh, the amount the claim exceeds what fresh rows show. A metric prints Leak inflation: leaked minus intact test reading.",
     ],
     howItWorks: [
@@ -65,18 +66,18 @@ const cardInfo: ModuleCardInfo = {
   "Confusion matrix": {
     title: "Four counts the scalars are made from",
     summary:
-      "A 2×2 of true class versus predicted class. The heatmap shows each cell as a share of the scored rows so the rare positive does not disappear visually, and the table prints the raw TN, FP, FN, and TP counts.",
+      "A 2×2 of true class versus predicted class. Each cell prints its raw count, TN, FP, FN, or TP, and its share of the scored rows, and draws its rows one mark each, so a single missed positive stays visible beside 99 negatives.",
     whatYouSee: [
-      "A heatmap with rows true 0 / true 1 and columns pred 0 / pred 1, values as percents of the scored set.",
-      "A table of the same four cells with integer counts. The true-1 row highlights when the positives are all missed.",
+      "One grid with rows True 0 / True 1 and columns Pred 0 / Pred 1. Each cell gives its integer count, a plain name (quiet and right, false alarm, missed, caught), and its percent of the scored set.",
+      "The rows of each cell drawn with the score strip's marks: circles for negatives, diamonds for positives. The two error cells are hatched with a dashed edge, and the FN cell gets a heavy edge when the positives are all missed.",
       "A note that every scalar on the next card is a reading of this table.",
     ],
     howItWorks: [
       "TN, FP, FN, and TP are tallied from the current baseline, threshold, and split.",
-      "Heatmap values are those counts divided by the number of scored rows, so they sum to one.",
+      "The printed shares are those counts divided by the number of scored rows, so they sum to one.",
     ],
     controls: [
-      "This card has no controls. The previous cards rewrite every cell.",
+      "This card has no controls. The Threshold and baseline card, and the Set t button on Train, val, test, rewrite every cell.",
       "Comparison worth running: always negative versus always positive on all 100, and watch which off-diagonal fills. Then, on 1 in 5, slide the threshold and watch FP drain into TN before TP drains into FN.",
     ],
     notice: [
@@ -94,12 +95,12 @@ const cardInfo: ModuleCardInfo = {
     summary:
       "Accuracy is (TP+TN)/N. Precision is TP/(TP+FP). Recall is TP/(TP+FN). F1 is 2PR/(P+R) = 2TP/(2TP+FP+FN). A reading whose denominator is 0 prints n/a. On 1 in 100, always negative prints 99% accuracy and 0% recall; on 1 in 5 it prints 80% and 0%. Two further readings hold the detector fixed and change only the share of positives.",
     whatYouSee: [
-      "Four metrics: Accuracy, Precision, Recall, and F1, each as a percent or n/a.",
+      "Four bars: Accuracy, Precision, Recall, and F1, each as a percent or n/a. A bar's whole length is that reading's denominator, cut into the matrix cells it uses; the solid part counts for the reading and the hatched part against it.",
       "A note that names the never-found case, the n/a case, or the two fractions.",
       "A threshold sweep: accuracy (solid), precision (dashed), recall (dotted), and F1 (dash-dot) for every t from 0 to 1 on the scored rows, with labelled dots where the current t crosses each line.",
       "An ROC plot: true positive rate against false positive rate as t falls, the shaded area under it, the dashed chance diagonal, and a dot at the current t. Metrics AUC (ranking) and what it means for this slice.",
-      "Two base-rate metrics: Precision if 1 row in 5 is positive and Precision if 1 row in 100 is positive, for the rule currently selected.",
-      "A note that these scalars are not the training loss.",
+      "Two base-rate bars: Precision if 1 row in 5 is positive and Precision if 1 row in 100 is positive, for the rule currently selected, each split into real positives and false alarms out of every 100 alarms.",
+      "Two notes that open when clicked: what AUC grades and what it does not, and why these scalars are not the training loss.",
     ],
     howItWorks: [
       "The scalars are computed from the same TP, FP, TN, FN as the matrix. When TP+FP = 0, precision is 0/0 and has no value; when TP+FN = 0, recall is 0/0 and has no value. The card prints n/a instead of pretending either is 0% or 100%.",
@@ -159,7 +160,7 @@ const cardInfo: ModuleCardInfo = {
       "The 100 rows are cut into five contiguous folds of 20. Held-out fold chooses which slice is scored. The rule is always negative. On 1 in 100 four folds print 100% accuracy and fold 4 prints 95%, the fold that contains row 99. On 1 in 5 every fold holds four positives and prints 80%.",
     whatYouSee: [
       "Held-out fold, a slider from 0 to 4 that names the row range.",
-      "A strip that marks the held-out fold, a five-row table of always-negative accuracy, recall, and positives in each fold, and metrics for this fold, the CV mean, and this fold's recall.",
+      "A five-row table, one row per fold. Each row draws its fold's twenty rows as cells with a diamond for each positive, then gives always-negative accuracy as a bar and a percent, recall, and positives in the fold. The held-out fold is highlighted. Metrics give this fold, the CV mean, and this fold's recall.",
     ],
     howItWorks: [
       "Fold i is rows 20i through 20i+19. Always negative is the constant rule from the first card.",
@@ -185,7 +186,7 @@ const cardInfo: ModuleCardInfo = {
     summary:
       "Five points and the identity model ŷ = x. Outlier y moves the fifth point. MAE is the mean absolute residual; MSE is the mean square. The outlier dominates MSE and barely moves MAE in comparison.",
     whatYouSee: [
-      "Outlier y from 3 to 16, a plot of ŷ = x with a residual tick at each point and the outlier labelled, and a five-row table of residual, absolute residual, and squared residual.",
+      "Outlier y from 3 to 16, a plot of ŷ = x with a residual tick at each point and the outlier labelled, three bars for MAE, RMSE, and MSE on one fixed scale from 0 to 30, and a five-row table of residual, absolute residual, and squared residual.",
       "Metrics MAE, MSE, RMSE, and the outlier's share of the summed squared error.",
     ],
     howItWorks: [

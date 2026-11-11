@@ -6,10 +6,10 @@ const cardInfo: ModuleCardInfo = {
     summary:
       "A real, tiny transformer block running in the page: width 8, two causal attention heads of width 4, a GELU MLP of width 32, and LayerNorm. Each row shows the actual vector for one token at that stage, and the residual stream runs down the left rail.",
     whatYouSee: [
-      "Rows in data order. Rows on the rail are the residual stream itself; indented dashed rows are sublayers that read a copy of the stream and write back at the next `+`.",
-      "Each row's 8-dimensional vector as diverging bars (positive up, negative down) on one shared scale, plus its Euclidean norm.",
+      "Rows in data order. Rows on the solid rail are the residual stream itself. A dotted path taps a copy of the stream, runs through the indented dashed sublayer rows, and writes back at the next `+`.",
+      "Each row's 8-dimensional vector as diverging bars (positive up, negative down) on one shared scale, plus its Euclidean norm as a number and a bar. Bar colour names the source: the stream, a normalised copy in grey, the attention write, or the MLP write.",
       "On the Self-attention row, both heads' weights from the selected token to every earlier token, as percentages that sum to 100 per head.",
-      "On the MLP row, how many of the 32 hidden GELU units are positive for this token.",
+      "On the MLP row, a strip of the 32 hidden GELU units for this token: positive units are filled bars, the rest are hollow, and the count is printed.",
       "An `on`/`off` pill on each switchable row. Switched-off rows fade and write zeros.",
     ],
     howItWorks: [
@@ -43,7 +43,7 @@ const cardInfo: ModuleCardInfo = {
       "One token's residual vector decomposed dimension by dimension into the input and the two sublayer writes. In a pre-norm block the output is exactly their sum, which is what makes the stream a shared, additive channel.",
     whatYouSee: [
       "Eight rows, one per dimension d0–d7, on a shared horizontal axis centred at zero.",
-      "Three lanes per row: the top lane runs from 0 to the input value, the middle lane adds the attention write, and the bottom lane adds the MLP write, each starting where the previous one ended.",
+      "Three lanes per row: the top lane runs from 0 to the input value, the middle lane adds the attention write, and the bottom lane adds the MLP write, each starting where the previous one ended. Each lane is an arrow that points the way that step moves the value.",
       "A diamond at the block's output value for that dimension.",
       "Input scale, and metrics for the input, attention write, MLP write, and output norms, the cosine between output and input, and how far this token's output moves if the other five words change.",
     ],
@@ -75,7 +75,7 @@ const cardInfo: ModuleCardInfo = {
       "Weight counts for one block at a chosen width, split into attention, MLP, and norms, compared with the 12·d² rule of thumb, and multiplied by the layer count. Presets reproduce GPT-2 small's and Llama 2 7B's published totals.",
     whatYouSee: [
       "Preset buttons, Model width, Layers, and choices of MLP and Norm.",
-      "A bar split by parameter share: attention, MLP (hatched), and a sliver for the norms.",
+      "A bar split by parameter share: attention, MLP (hatched), and a sliver for the norms. Under it the same bar is cut into its matrices, Q, K, V and out, then the MLP's, above a ruler of 12 squares of d × d.",
       "Formula rows with the exact counts, the block total against 12·d², and metrics for all blocks, the MLP share, and the toy block's 840 parameters.",
     ],
     howItWorks: [
@@ -105,7 +105,7 @@ const cardInfo: ModuleCardInfo = {
     summary:
       "The same six words are run through the lab's block in their original order and in a reordering, with every word allowed to read every other. Without position information each word gets the same output in both orders, so the block cannot tell the sentences apart. With it, the outputs differ.",
     whatYouSee: [
-      "`Word order`: Original, `Swap cat ↔ mat` (the cat sat on the mat becomes the mat sat on the cat), or `Shuffle all` (mat on cat the the sat). Two rows of numbered chips show both sentences, with the slot of each word.",
+      "`Word order`: Original, `Swap cat ↔ mat` (the cat sat on the mat becomes the mat sat on the cat), or `Shuffle all` (mat on cat the the sat). Two rows of numbered chips show both sentences, with the slot of each word. A line joins each word's two slots: solid if its output changed, dashed if it did not.",
       "`Position information`: Off feeds the block each word's own vector; On feeds it the same vector plus a sinusoidal position vector, exactly the input the other cards use.",
       "A table with one row per word of the original sentence: its slot before and after (`1 → 5`), the output shift (the distance between that word's block output in the two orders, with a bar), and a text verdict, `same output` or `different output`.",
       "Metrics for how many of the six words changed output and the largest shift. A note below states the result in words.",

@@ -97,6 +97,8 @@ const cardInfo: ModuleCardInfo = {
     summary:
       "All three models read the same 66-symbol vocabulary and come from the same Tiny Shakespeare text. The bigram sees one character, the GRU sees everything through a fixed-size state, and the transformer attends directly to the last 64. The columns compare their next-character guesses and their measured loss, and the training behind each number.",
     whatYouSee: [
+      "A strip under each model's name with one segment per character on the tape, filled where that model can read: the last segment for the bigram, every segment for the GRU with the old end drawn fainter, and the last 64 for the transformer.",
+      "A bar above each number in bits, all on one scale from 0 to 6.04 bits (a uniform guess over 66 characters), and rows that line up across the three columns.",
       "One column per model, the selected one outlined: what it sees, its top three next characters, the entropy of its next-character distribution, and its mean surprisal on the tape's text.",
       "Held-out loss and Whole-corpus loss, in bits per character, from language-models.metadata.json: consecutive non-overlapping 64-character windows over the last 10% of the corpus and over all of it. The note under each says what that model trained on.",
       "Size and training: 66 × 66 table entries, the parameter counts from the metadata file, and the number of training steps.",
@@ -126,7 +128,7 @@ const cardInfo: ModuleCardInfo = {
       "The path from characters to one sampled character: ids, embeddings plus position, two transformer layers, a final norm and unembedding, softmax, a draw. The logit lens applies the model's own last two steps to the stream after the embeddings, after layer 1 and after layer 2, so you can see what each stage would predict.",
     whatYouSee: [
       "A numbered strip of the seven steps with their sizes. Three carry a lens reads here tag: after the embeddings, after layer 1 and after layer 2.",
-      "Three panels, one per tap. Each lists the five most likely next characters with their probabilities as text and as bars (all panels share one scale, so a full bar is 100%), the entropy of that readout in bits, and the rank and probability it gives the character the finished model ranks first.",
+      "Three panels, one per tap. Each lists the five most likely next characters with their probabilities as text and as bars (all panels share one scale, so a full bar is 100%), the entropy of that readout in bits, and the rank and probability it gives the character the finished model ranks first. Those last two each have a bar, so the entropy bar shrinks and the final choice's bar grows from panel to panel.",
       "A sentence and four metrics: the finished model's first choice, the first stage at which it heads the list, the entropy at each stage, and how many characters the model read.",
     ],
     howItWorks: [

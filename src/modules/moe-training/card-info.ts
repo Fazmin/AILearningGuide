@@ -7,7 +7,8 @@ const cardInfo: ModuleCardInfo = {
       "A mixture-of-experts layer trained live on character pairs. A router scores every expert for the previous character, the top k by score plus balancing bias run, and each chosen expert's 30 next-character scores are scaled by its gate, the softmax of the router scores.",
     whatYouSee: [
       "Experts (1 to 8), Top-k (1 or 2), Epochs (1 to 40) and Seed (1 to 6). The kicker repeats them, and the badge counts optimizer steps: 74 per epoch.",
-      "Example character picks one input. The table shows, for every expert, the trained router score z, the balancing bias b, z + b, the gate p, and whether the expert runs; the caption prints h, the character's four learned numbers and the constant 1.",
+      "Example character picks one input. A picture follows it through the router: one row per expert with a bar for its pick score z + b and a bar for its gate p, the experts that run outlined and joined to the likeliest next characters, the rest marked skipped. A tick marks z alone once a bias is in play.",
+      "The table under the picture lists the same numbers: for every expert, the trained router score z, the balancing bias b, z + b, the gate p, and whether the expert runs; the caption prints h, the character's four learned numbers and the constant 1.",
       "A formula row sums the chosen experts' outputs, each times its gate, and names the model's top guess for the next character with its probability.",
     ],
     howItWorks: [
@@ -35,7 +36,8 @@ const cardInfo: ModuleCardInfo = {
     summary:
       "Each expert's share of the router's choices at every epoch boundary, measured on the saved weights over all 1,181 pairs. With no balancing one line climbs to 100% within the first epoch and stays there: the router has handed every token to one expert.",
     whatYouSee: [
-      "One line per expert, E1 to E8; the first four solid in four colours, the next four dashed, and a dotted line at the even share 1/N. The legend prints each line's final share.",
+      "One line per expert, E1 to E8; the first four solid in four colours, the next four dashed, and a dotted line at the even share 1/N. The legend prints each line's final share, and a marker names the epoch by which the router is down to k experts, if it ever is.",
+      "Two stacked bars on one scale: the split of the router's choices before training and after the last epoch, each with its effective-expert count, and notches where an even split would cut.",
       "Metrics Effective experts, Loss and Dense baseline, and a callout that names a collapsed or idle expert, or the busiest and quietest when all are in use.",
       "A badge with the effective-expert count, marked as a warning when the run has collapsed.",
     ],
@@ -65,7 +67,7 @@ const cardInfo: ModuleCardInfo = {
       "An auxiliary loss adds α · N · Σ f·P to every batch, so its gradient pulls the router's scores toward balance, at a cost to the main loss when α is large. Bias update adds a per-expert bias only when choosing experts and steps it against each expert's load after every batch, leaving the gates alone.",
     whatYouSee: [
       "Balancing: None, Auxiliary loss or Bias update. Aux weight (0.001 to 1) appears with Auxiliary loss, Bias step (0.001 to 0.1) with Bias update.",
-      "A table comparing the same settings with no balancing, the current balancing and the dense baseline: Effective experts, Loss and Mean gate, the average gate of the experts that ran.",
+      "A table comparing the same settings with no balancing, the current balancing and the dense baseline: Effective experts, Loss and Mean gate, the average gate of the experts that ran. Each number has a bar under it; the bar under Loss starts at the dense baseline and grows left when the loss is lower, right when it is higher.",
       "Metrics Balance term N·Σ f·P and Aux loss, and bars of each expert's bias after training, positive to the right.",
     ],
     howItWorks: [
@@ -96,7 +98,7 @@ const cardInfo: ModuleCardInfo = {
     whatYouSee: [
       "Capacity factor: off, 1.00, 1.25, 1.50 or 2.00, and a formula row with the seats per expert when a cap is on.",
       "Metrics Dropped tokens, the share of the router's choices that found their expert full, Unserved tokens, the share of tokens that lost every expert they chose, and Loss. At Top-k 1 the two shares are the same.",
-      "Bars of each expert's share of the router's choices, with the share its seats can serve; an expert that wants more than its room is coloured as a loss.",
+      "With a cap on, one bar that splits all the router's choices into served and dropped. Then a bar for each expert's share of the router's choices: a line marks the share its seats can serve, and the part of a bar past the line is hatched and labelled over seats.",
     ],
     howItWorks: [
       "Within each batch every token's first choice is seated before any second choice, each in batch order, as in GShard. The last batch of each epoch holds 13 pairs and gets ⌈factor × 13 × k ÷ N⌉ seats.",
@@ -122,8 +124,8 @@ const cardInfo: ModuleCardInfo = {
     summary:
       "A grid of the router's choices: each row is a previous character or a corpus, each column an expert, and each cell the share of that row's choices sent to that expert. Character rows are clean by construction; corpus rows can only mirror their characters, because the router never sees which corpus a pair came from.",
     whatYouSee: [
-      "Grid: By previous character (one row per character, with its pair count) or By corpus (Harbor, Recipes, Proverbs). Each row sums to 100%; darker cells hold more, and a cell's percentage shows on hover or focus.",
-      "By previous character: Top expert's share per character, the pair-weighted average of each row's largest cell, and a list of the characters each expert receives. At Top-k 2 every character appears under two experts.",
+      "Grid: By previous character (one row per character, with its pair count, in two blocks side by side) or By corpus (Harbor, Recipes, Proverbs, and a last row for all three together). Each row sums to 100%; darker cells hold more, and a cell's percentage shows on hover or focus.",
+      "By previous character: Top expert's share per character, the pair-weighted average of each row's largest cell, and a list of the characters each expert receives, one tile per character, darker for a character that starts more pairs. At Top-k 2 every character appears under two experts.",
       "By corpus: Largest gap from the overall split, the biggest difference between any corpus's share for an expert and that expert's overall share.",
     ],
     howItWorks: [
@@ -150,8 +152,9 @@ const cardInfo: ModuleCardInfo = {
       "Total parameters count everything stored: the embedding, the router and every expert. Active per token counts what one token uses: the embedding, the router and its k experts. Adding experts grows the total; only Top-k grows the active count.",
     whatYouSee: [
       "Metrics Total parameters, Active per token and Loss for the current run.",
+      "Three bars on one scale that ends at the 1,360 weights of 8 experts: everything stored, what one token runs, and the dense baseline. Each is cut into embedding, router and experts; a stored expert the example character skips is hatched.",
       "Formula rows that add up both counts from the embedding (30 × 4), router (5 × N) and experts (N or k times 5 × 30).",
-      "A table with this lab, the one-expert dense baseline and Mixtral 8x7B, with each model's active share; the Mixtral row is published, not computed.",
+      "A table with this lab, the one-expert dense baseline and Mixtral 8x7B, with each model's active share drawn as a bar; the Mixtral row is published, not computed.",
     ],
     howItWorks: [
       "Total = 30·4 + 5·N + N·5·30 and active = 30·4 + 5·N + k·5·30: 740 and 290 at the defaults, 275 for one expert, and 1,360 with 460 active at 8 experts and top-2.",

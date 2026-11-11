@@ -6,7 +6,9 @@ const cardInfo: ModuleCardInfo = {
     summary:
       "harbor-lm-7b is authored for this lab, but every field is one a real model card should make you read. Three release choices, License, Training code, and Data information, decide which kind of release it is. Two fields are computed from the card's own numbers: the evaluation error and the training energy.",
     whatYouSee: [
+      "The release drawn as a box. License sits on the lid as the rules printed on the box, and Weights, Inference code, Training code, and Data information are tiles marked ✓ in the box or ✗ held back.",
       "Rows for base model, fine-tunes, weights, training code, data information, license, evaluation harness, and training energy. Red and green text marks what is missing or present.",
+      "In the Evaluation harness row, 40 dots with the 28 right answers filled, then the 70% score on a 0–100% line with a thick bar for one standard error and a thin line for the 95% interval. In the Training energy row, three linked boxes: compute, GPU-hours, MWh.",
       "License (Research only, Custom community, Apache-2.0), Training code (not released or released), and Data information (not published or published).",
       "A badge naming the release tier, and a note listing what is still missing for the Open Source AI Definition.",
     ],
@@ -35,7 +37,8 @@ const cardInfo: ModuleCardInfo = {
       "Columns are categories of release, from API-only to open-source AI as the Open Source Initiative defines it. Rows are what you might need. The column this card falls into is highlighted and moves as you change License, Training code, and Data information.",
     whatYouSee: [
       "A table with columns API only, Open weights with a restricted license, Open weights with a permissive license, and Open source AI (OSAID 1.0 components). The current card's column is shaded and marked this card.",
-      "Cells read yes, no, limited, required, not required, or not always required, colored and worded so color is never the only signal.",
+      "Above the columns, a road from less open to more open with a gate before each stop. Under each gate is what the card needs to pass it, marked ✓ or ✗, and the large dot is where the card has got to.",
+      "Each cell pairs a mark with its word: a filled ✓ for yes or required, a half-filled disc for limited or per terms of service, a dashed ring for not required or not always required, and ✗ for no. Color is never the only signal.",
     ],
     howItWorks: [
       "OSAID 1.0 (Open Source Initiative, October 2024) requires the model parameters, the complete code used to train and run the system, and data information detailed enough that a skilled person could build a substantially equivalent system, under terms that allow any purpose.",
@@ -62,7 +65,9 @@ const cardInfo: ModuleCardInfo = {
       "Each intended use needs one or more permissions. The lab looks up each needed clause in the card's license and reports the strictest outcome. A separate readout keeps what the license cannot answer, where the data came from, in view.",
     whatYouSee: [
       "Intended use: Research paper, Hosted product, Fine-tune and ship, or Train on its outputs.",
-      "One row per clause the use needs, marked ✓ allowed, ◐ allowed with conditions, or ✗ not allowed, with the clause text.",
+      "Under Permission, the license's five clauses in a column. Each clause the use needs is a row marked ✓ allowed, ◐ allowed with conditions, or ✗ not allowed, with the clause text; the others read not needed for this use.",
+      "A line that runs down through the marks. It is solid until a ◐, dashed after it, and dotted after a ✗, so what reaches the bottom is the strictest mark.",
+      "Under Provenance, Data sources and Consent, each marked ? while it is unknown.",
       "License match, Clauses checked, and Still unknown.",
     ],
     howItWorks: [

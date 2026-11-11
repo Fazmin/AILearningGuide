@@ -9,7 +9,8 @@ const cardInfo: ModuleCardInfo = {
       "The horizontal axis is the slope `w` from −1.6 to 3.6; the vertical axis is the intercept `b` from −2 to 2. Both use the same scale, so a right angle on screen is a right angle in (w, b).",
       "Contour lines at loss 0.03, 0.06, 0.12, 0.25, 0.5, 1, 2, 4, 8, 16, and 32, with 0.5, 2, and 8 labelled. Shading deepens toward higher loss. The green × is the least-squares minimum: loss 0.0205 at w = 1.443, b = −0.542.",
       "A dashed ring marks the start. The solid blue line and dots are the steps taken so far; the dashed blue line is the whole 80-step run at the current settings. The orange ball is the current step.",
-      "The pink arrow is −∇L at the current point, drawn at a fixed length. Its direction is the claim; `∂L/∂w` and `∂L/∂b` below give its size.",
+      "The pink arrow is −∇L at the current point, drawn at a fixed length. Its direction is the claim; `∂L/∂w` and `∂L/∂b` below give its size. A dotted pink line carries that direction on to the edge of the map.",
+      "A black dashed ellipse runs through the current point: every (w, b) with the same loss as this step. A small square at the point marks the right angle between it and the arrow. The grey dotted line through the minimum is the valley floor.",
       "Metrics `Step`, `Loss L`, `∂L/∂w`, and `∂L/∂b`. At the default start (w −1, b 1.2) they read 0, 2.511, −3.039, and −1.403. The badge names the regime: one-sided, overshoots, or diverges.",
     ],
     howItWorks: [
@@ -71,7 +72,8 @@ const cardInfo: ModuleCardInfo = {
       "Loss against step on a log scale for the current run: solid up to the current step, dashed for the rest of the 80 steps, with the minimum loss drawn as a floor. The metrics say whether the run settles and why.",
     whatYouSee: [
       "The horizontal axis is step 0 to 80. The vertical axis is loss on a log scale from 0.01 to 100, so each gridline is ten times the one below. The green dashed line is the minimum, 0.0205.",
-      "The solid orange line is the steps taken, the dashed line is the rest of the run, and the ball on the dotted marker is the current step. A red note appears when the loss passes 100; the curve is pinned to the top from there.",
+      "The solid orange line is the steps taken, the dashed line is the rest of the run, and the ball on the dotted marker is the current step, labelled with its loss. A red note appears when the loss passes 100; the curve is pinned to the top from there.",
+      "Two small cross-sections of the valley: `Across the valley` along the steep axis and `Along the valley` along the shallow one. Each curve is the loss along that axis with the floor at its lowest point, the dashed ring is the start, each dot is one step's distance from the floor, and the ball is the current step. A step that lands on the far wall is drawn on the far wall.",
       "`Regime`; `Settles by`, the first step after which the loss stays within 0.01 of the minimum; `Steep axis ×`, the per-step factor across the valley; and `Shallow axis ×`, the factor along it. The note below explains the regime in numbers.",
     ],
     howItWorks: [
@@ -101,7 +103,7 @@ const cardInfo: ModuleCardInfo = {
       "The eight points, the line at the current step, the residual from each point to that line, and the squared residuals whose mean is the loss. This is the error that the surface summarizes for every (w, b) at once.",
     whatYouSee: [
       "Top: x from 0 to 2 and y from −1.5 to 3. Blue dots are the eight fixed points. The purple line is ŷ = w·x + b at the current step, and the green dotted line is the least-squares line at the minimum. Orange vertical segments are the residuals ŷᵢ − yᵢ.",
-      "Bottom: one bar per point with height rᵢ² and its value printed beneath, plus a dashed line at their mean; the legend prints that mean as L. At the default start the bars read 2.04, 1.00, 0.02, 0.16, 1.37, 2.31, 5.06, and 8.12, with mean 2.511.",
+      "Bottom: one bar per point with height rᵢ² and its value printed beneath, plus a dashed line at their mean; the label on that line and the legend print the mean as L. At the default start the bars read 2.04, 1.00, 0.02, 0.16, 1.37, 2.31, 5.06, and 8.12, with mean 2.511.",
     ],
     howItWorks: [
       "`rᵢ = w·xᵢ + b − yᵢ` and `L = (1/8) Σ rᵢ²`. Squaring counts misses above and below the same, and lets large misses dominate: one miss of 2 costs as much as four misses of 1.",

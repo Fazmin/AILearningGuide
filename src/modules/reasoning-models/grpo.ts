@@ -84,10 +84,22 @@ export interface GrpoPoint {
   flatSoFar: number;
 }
 
+/** One sampled group, kept only so the lab can draw it: `groups[i]` turned `history[i]` into `history[i + 1]`. */
+export interface GrpoGroup {
+  lengths: number[];
+  /** 1 when the checker passed that trace, 0 when it failed. */
+  passed: number[];
+  advantages: number[];
+  /** Every reward in the group was equal, so the update moved nothing. */
+  flat: boolean;
+}
+
 export interface GrpoRun {
   history: GrpoPoint[];
   /** Iterations whose sampled group had identical rewards, so produced no update. */
   flatGroups: number;
+  /** The group sampled at each iteration, in order. */
+  groups: GrpoGroup[];
 }
 
 /** How the lab prints a probability, so tests can pin exactly what the tiles show. */
@@ -175,6 +187,7 @@ export function trainGroupRelative(options: GrpoOptions): GrpoRun {
   const random = tinyRandom(seed);
   let centre = INITIAL_CENTRE;
   const history: GrpoPoint[] = [];
+  const groups: GrpoGroup[] = [];
   let flatGroups = 0;
 
   for (let iteration = 0; iteration <= iterations; iteration += 1) {
@@ -184,6 +197,7 @@ export function trainGroupRelative(options: GrpoOptions): GrpoRun {
 
     const lengths: number[] = [];
     const rewards: number[] = [];
+    const passes: number[] = [];
     for (let sample = 0; sample < group; sample += 1) {
       let draw = random();
       let length = MAX_LENGTH;
@@ -196,11 +210,14 @@ export function trainGroupRelative(options: GrpoOptions): GrpoRun {
       }
       const passed = random() < passProbability(length, k) ? 1 : 0;
       lengths.push(length);
+      passes.push(passed);
       rewards.push(passed - (cost ? LENGTH_COST * length : 0));
     }
 
     const advantages = groupAdvantages(rewards);
-    if (advantages.every((value) => Math.abs(value) < 1e-9)) flatGroups += 1;
+    const flat = advantages.every((value) => Math.abs(value) < 1e-9);
+    if (flat) flatGroups += 1;
+    groups.push({ lengths, passed: passes, advantages, flat });
     let gradient = 0;
     for (let sample = 0; sample < group; sample += 1) {
       gradient += advantages[sample] * ((lengths[sample] - point.meanLength) / SIGMA ** 2);
@@ -208,5 +225,5 @@ export function trainGroupRelative(options: GrpoOptions): GrpoRun {
     centre = Math.min(CENTRE_LIMITS.max, Math.max(CENTRE_LIMITS.min, centre + (rate / group) * gradient));
   }
 
-  return { history, flatGroups };
+  return { history, flatGroups, groups };
 }

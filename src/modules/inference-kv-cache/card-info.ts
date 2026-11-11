@@ -9,7 +9,7 @@ const cardInfo: ModuleCardInfo = {
       "A square grid with one row and one column per position. Prompt positions read `t1`, `t2`…; generated ones read `+1`, `+2`… in the accent colour, split from the prompt by a dashed line. Cells above the diagonal are faint outlines: the causal mask forbids a query from seeing later keys.",
       "Solid accent cells are computed in the pass being shown, and the outlined row is the newest position. Pale cells were computed by an earlier pass; their scores were used and discarded, since only keys and values are stored. Dashed red cells are the same products computed again.",
       "Two rows under the triangle, `K` and `V`, one slot per position: solid blue is written this pass, pale blue is read from the cache, dashed red is recomputed and then dropped.",
-      "Readouts: `New Q, K, V` (positions projected this pass), `Q·K this pass`, `K/V read`, and `Q·K whole run`, the products summed over prefill and every decode step so far.",
+      "Readouts: `New Q, K, V` (positions projected this pass), `Q·K this pass`, `K/V read`, and `Q·K whole run`, the products summed over prefill and every decode step so far. Two bars under them show that whole-run total both ways, `Use cache` against `Recompute`, on one scale.",
     ],
     howItWorks: [
       "Prefill over P prompt tokens computes P(P+1)/2 products and writes P key/value slots. Decode step g feeds token +g at position n = P + g: with the cache it projects one position and computes n products against the stored keys; without it, it projects all n positions and computes n(n+1)/2.",
@@ -64,7 +64,7 @@ const cardInfo: ModuleCardInfo = {
       "Real arithmetic for a named model: Llama 3 8B in bf16 on an 80 GB accelerator. The weights take a fixed 16.1 GB. The cache takes 131,072 bytes per token per sequence, so it grows with both context length and the number of sequences served at once.",
     whatYouSee: [
       "`Context length`, stepping by powers of two from 512 to 131,072 tokens, and `Concurrent sequences` from 1 to 64.",
-      "A bar split into weights (solid) and KV cache (hatched), with a marker at 80 GB. If the two exceed it, the cache segment turns red and runs past the marker.",
+      "A bar split into weights (solid) and KV cache (hatched), with a marker at 80 GB. Thin dividers cut the cache into one slice per sequence, and the free space says how many more would fit. If the two exceed 80 GB, the cache segment turns red and runs past the marker.",
       "`KV per token`, `KV cache total`, `Memory left` or `Over by`, and `Sequences that fit` at this context length.",
     ],
     howItWorks: [
@@ -92,7 +92,7 @@ const cardInfo: ModuleCardInfo = {
     summary:
       "A roofline estimate of three passes at the context length and sequence count from Memory budget. For each pass, the arithmetic time is FLOPs ÷ peak FLOP/s and the memory time is bytes ÷ bandwidth; the larger one sets the modeled time. It is a model built from spec-sheet peaks, not a measurement.",
     whatYouSee: [
-      "Three panels: prefill of one prompt, one cached decode step for all sequences, and one recompute decode step. Each has an `arithmetic` bar and a `memory` bar on a log time axis, with the binding one drawn solid and a `compute-bound` or `memory-bound` tag.",
+      "Three panels: prefill of one prompt, one cached decode step for all sequences, and one recompute decode step. Each has an `arithmetic` bar and a `memory` bar on a log time axis from 10 µs to 10 s, ticked every tenfold, with the binding one drawn solid and a `compute-bound` or `memory-bound` tag.",
       "Under each panel: FLOPs, bytes moved, arithmetic intensity in FLOP per byte, and for cached decode the total and per-sequence tokens per second.",
     ],
     howItWorks: [
@@ -121,7 +121,7 @@ const cardInfo: ModuleCardInfo = {
       "A weak draft model proposes `Draft length` characters. The target scores all of them in one pass and keeps a proposal when a random draw falls under p ÷ q; the first one it refuses is replaced by a sample from the probability the target had left over, and a pass that keeps everything adds one more token of its own. The card reports tokens per pass from the SDK's closed form and from a seeded simulation on toy distributions.",
     whatYouSee: [
       "`Draft length` from 1 to 8 proposals per pass, `Draft quality` from 0.20 to 1.00, and `Seed` from 1 to 999.",
-      "Six pass lines written as text: what the draft proposed, how many the target kept and which characters, which one it refused and what it wrote instead (or the extra character it wrote when it kept all of them), and the tokens that pass added. Spaces are drawn as ␣.",
+      "Six pass lines. Each starts with a row of character chips: the draft's guesses the target kept, then the first one it refused, struck through, an arrow to the character the target wrote instead, and any later guesses faded because they were thrown away. When every guess is kept, a plus sign leads to the extra character the target wrote. The same pass is written as text underneath, with the tokens it added at the right. Spaces are drawn as ␣.",
       "The text those six passes wrote after the prompt `the␣`.",
       "Four readouts: `Acceptance rate α`, `Closed form, tokens per pass`, `Simulated, tokens per pass` with its standard error, and `Without drafting`, which is always 1. A note gives the simulation minus the closed form in tokens and in standard errors.",
       "A chart of tokens per verification pass against draft length 1 to 8: the closed form solid, the simulation dashed, no drafting dotted. The legend repeats each last value.",

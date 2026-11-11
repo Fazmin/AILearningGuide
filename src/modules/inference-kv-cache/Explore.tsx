@@ -238,7 +238,7 @@ function PhaseBars({ label, cost, detail }: { label: string; cost: PassCost; det
             style={{ width: timePct(cost.computeSeconds) }}
           />
         </i>
-        <em>{formatSeconds(cost.computeSeconds)}</em>
+        <em className={cost.bound === "compute" ? "is-binding" : ""}>{formatSeconds(cost.computeSeconds)}</em>
         <span>memory</span>
         <i>
           <b
@@ -246,7 +246,7 @@ function PhaseBars({ label, cost, detail }: { label: string; cost: PassCost; det
             style={{ width: timePct(cost.memorySeconds) }}
           />
         </i>
-        <em>{formatSeconds(cost.memorySeconds)}</em>
+        <em className={cost.bound === "memory" ? "is-binding" : ""}>{formatSeconds(cost.memorySeconds)}</em>
       </div>
       <small>{detail}</small>
     </div>
@@ -260,14 +260,28 @@ const visible = (text: string) => text.replace(/ /g, "␣");
 
 function PassLine({ index, pass, gamma }: { index: number; pass: PassRecord; gamma: number }) {
   const kept = pass.proposed.slice(0, pass.accepted);
+  const refused = pass.rejected !== null;
+  const chip = (text: string, status: "kept" | "refused" | "dropped" | "target", key: string) => (
+    <span key={key} className={`kv-chip kv-chip--${status}`}>
+      {visible(text)}
+    </span>
+  );
   return (
     <li>
       <b>Pass {index + 1}</b>
-      <span>
-        draft proposed <code>{visible(pass.proposed)}</code>
-      </span>
-      <span>
-        target kept {pass.accepted} of {gamma}
+      {/* The draft's proposals in order: kept, then the first refusal with the target's own token, then the rest unused. */}
+      <div className="kv-spec-chips" aria-hidden="true">
+        {[...kept].map((character, position) => chip(character, "kept", `k${position}`))}
+        {refused && chip(pass.proposed[pass.accepted] ?? pass.rejected ?? "", "refused", "refused")}
+        <i>{refused ? "→" : "+"}</i>
+        {chip(pass.fromTarget, "target", "target")}
+        {[...pass.proposed.slice(pass.accepted + 1)].map((character, position) => chip(character, "dropped", `d${position}`))}
+      </div>
+      <strong>
+        +{pass.produced} token{pass.produced === 1 ? "" : "s"}
+      </strong>
+      <span className="kv-spec-words">
+        draft proposed <code>{visible(pass.proposed)}</code>; target kept {pass.accepted} of {gamma}
         {pass.accepted > 0 ? (
           <>
             : <code>{visible(kept)}</code>
@@ -283,7 +297,6 @@ function PassLine({ index, pass, gamma }: { index: number; pass: PassRecord; gam
           </>
         )}
       </span>
-      <strong>+{pass.produced} token{pass.produced === 1 ? "" : "s"}</strong>
     </li>
   );
 }
@@ -327,6 +340,11 @@ export default function Explore({ state, setState }: ModuleContext) {
   const capacity = H100_SXM.memoryBytes;
   const barMax = Math.max(capacity, budget.weights + budget.cache) * 1.02;
   const pct = (bytes: number) => `${(bytes / barMax) * 100}%`;
+  // One sequence's cache as a share of the bar. Slices are drawn only while each is wide enough to see.
+  const perSequence = budget.cache / sequences;
+  const sliceVisible = perSequence / barMax >= 0.006;
+  const room = Math.max(0, capacity - budget.weights - budget.cache);
+  const moreSequences = Math.max(0, budget.maxSequences - sequences);
 
   const caption = pass.isPrefill
     ? `Prefill: t1…t${prompt} go through the model together in one pass, and its last row predicts +1.`
@@ -400,6 +418,30 @@ export default function Explore({ state, setState }: ModuleContext) {
             label="Q·K whole run"
             value={`${useCache ? pass.runTotalCached : pass.runTotalRecompute}`}
           />
+        </div>
+        <div
+          className="kv-run"
+          role="img"
+          aria-label={`Query-key products over prefill and ${generated} decode step${generated === 1 ? "" : "s"}: ${pass.runTotalCached} with the cache, ${pass.runTotalRecompute} when recomputing.`}
+        >
+          <p>Q·K over the whole run so far, both ways</p>
+          {[
+            { id: "cache", name: "Use cache", value: pass.runTotalCached, current: useCache },
+            { id: "recompute", name: "Recompute", value: pass.runTotalRecompute, current: !useCache },
+          ].map((row) => (
+            <div key={row.id} className={`kv-run__row kv-run__row--${row.id} ${row.current ? "is-current" : ""}`}>
+              <span>{row.name}</span>
+              <i>
+                <b style={{ width: `${(row.value / Math.max(1, pass.runTotalRecompute)) * 100}%` }} />
+              </i>
+              <em>{row.value}</em>
+            </div>
+          ))}
+          <small>
+            {pass.runTotalRecompute > pass.runTotalCached
+              ? `Recomputing does ${(pass.runTotalRecompute / pass.runTotalCached).toFixed(1)}× the work, and the gap widens with every generated token.`
+              : "Prefill costs the same either way. The gap opens at the first generated token."}
+          </small>
         </div>
         <p className="lab-note">
           Counts are per head per layer; {model.name} repeats them across {model.queryHeads} query heads and{" "}
@@ -494,12 +536,30 @@ export default function Explore({ state, setState }: ModuleContext) {
             className={`kv-mem kv-mem--cache ${budget.fits ? "" : "is-over"}`}
             style={{ width: pct(budget.cache) }}
           >
+            {sliceVisible && (
+              <i className="kv-mem__slices" style={{ backgroundSize: `${100 / sequences}% 100%` }} aria-hidden="true" />
+            )}
             <span>KV {formatBytes(budget.cache)}</span>
           </b>
+          {budget.fits && room > 0 && (
+            <b className="kv-mem kv-mem--room" style={{ width: pct(room) }} aria-hidden="true">
+              {sliceVisible && moreSequences > 0 && (
+                <i className="kv-mem__slices" style={{ backgroundSize: `${(perSequence / room) * 100}% 100%` }} />
+              )}
+              <span>{moreSequences > 0 ? `room for ${moreSequences} more` : "no room for another"}</span>
+            </b>
+          )}
           <i className="kv-capacity" style={{ left: pct(capacity) }}>
             <span>80 GB</span>
           </i>
         </div>
+        <p className="kv-memory-caption">
+          KV cache = {sequences} sequence{sequences === 1 ? "" : "s"} × {formatBytes(perSequence)} each
+          {sliceVisible ? ", one slice per sequence" : ""}.{" "}
+          {budget.fits
+            ? `${moreSequences} more would fit under ${formatBytes(capacity)}.`
+            : `That is past the ${formatBytes(capacity)} line.`}
+        </p>
         <div className="metric-row">
           <Metric
             label="KV per token"
@@ -533,6 +593,17 @@ export default function Explore({ state, setState }: ModuleContext) {
           title="Each pass is limited by arithmetic or by memory traffic, whichever takes longer"
         />
         <div className="kv-phases">
+          <div className="kv-time-axis" aria-hidden="true">
+            <span>log scale</span>
+            <i>
+              {["10 µs", "100 µs", "1 ms", "10 ms", "100 ms", "1 s", "10 s"].map((label, index) => (
+                <b key={label} style={{ left: `${(index / 6) * 100}%` }}>
+                  {label}
+                </b>
+              ))}
+            </i>
+            <em>each tick is 10× longer; the longer bar sets the time</em>
+          </div>
           <PhaseBars
             label={`Prefill, one ${realContext.toLocaleString("en-US")}-token prompt`}
             cost={prefill}
@@ -594,6 +665,20 @@ export default function Explore({ state, setState }: ModuleContext) {
             <PassLine key={index} index={index} pass={entry} gamma={specGamma} />
           ))}
         </ol>
+        <ul className="kv-spec-key" aria-hidden="true">
+          <li>
+            <span className="kv-chip kv-chip--kept">a</span>draft&apos;s guess, kept
+          </li>
+          <li>
+            <span className="kv-chip kv-chip--refused">a</span>first guess the target refused
+          </li>
+          <li>
+            <span className="kv-chip kv-chip--target">a</span>written by the target
+          </li>
+          <li>
+            <span className="kv-chip kv-chip--dropped">a</span>later guesses, thrown away
+          </li>
+        </ul>
         <p className="kv-spec-output">
           <span>Text those passes wrote, after the prompt “{visible(PROMPT)}”</span>
           <code>{visible(spec.run.text)}</code>

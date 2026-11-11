@@ -7,6 +7,8 @@ export interface MapMark {
   index: number;
   word: string;
   role: MarkRole;
+  /** For a neighbour: whether it is also among the query's nearest dots on this flat map. */
+  kept?: boolean;
 }
 
 const MARGIN = 26;
@@ -223,7 +225,16 @@ export function ProjectionMap({
             .map((mark) => {
               const from = at(query.index);
               const to = at(mark.index);
-              return <line key={`spoke-${mark.index}`} className="te-map__spoke" x1={from.x} y1={from.y} x2={to.x} y2={to.y} />;
+              return (
+                <line
+                  key={`spoke-${mark.index}`}
+                  className={`te-map__spoke${mark.kept ? " is-kept" : ""}`}
+                  x1={from.x}
+                  y1={from.y}
+                  x2={to.x}
+                  y2={to.y}
+                />
+              );
             })}
         {mode === "analogy" && a && b && (
           <line
@@ -263,7 +274,7 @@ export function ProjectionMap({
         {labels.map(({ mark, point }) => (
           <circle
             key={`dot-${mark.index}`}
-            className={`te-map__mark te-map__mark--${mark.role}`}
+            className={`te-map__mark te-map__mark--${mark.role}${mark.role === "neighbour" && mark.kept === false ? " is-lost" : ""}`}
             cx={point.x}
             cy={point.y}
             r={mark.role === "query" || mark.role === "result" ? 5.5 : 4}
@@ -287,6 +298,24 @@ export function ProjectionMap({
           ↑ {axisNames[1]}
         </text>
       </svg>
+      {mode === "neighbours" && query && (
+        <ul className="te-map__key" aria-hidden="true">
+          <li>
+            <svg viewBox="0 0 34 12">
+              <line className="te-map__spoke is-kept" x1="1" y1="6" x2="24" y2="6" />
+              <circle className="te-map__mark te-map__mark--neighbour" cx="28" cy="6" r="4" />
+            </svg>
+            still one of its ten nearest dots here ({marks.filter((mark) => mark.kept === true).length})
+          </li>
+          <li>
+            <svg viewBox="0 0 34 12">
+              <line className="te-map__spoke" x1="1" y1="6" x2="24" y2="6" />
+              <circle className="te-map__mark te-map__mark--neighbour is-lost" cx="28" cy="6" r="4" />
+            </svg>
+            pulled apart by the map ({marks.filter((mark) => mark.kept === false).length})
+          </li>
+        </ul>
+      )}
       <p className="te-map__caption">
         {cloud.shown.toLocaleString("en-US")} of {(points.length / 2).toLocaleString("en-US")} words in view · one scale on both
         axes, no units

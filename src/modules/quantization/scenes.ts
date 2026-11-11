@@ -80,7 +80,7 @@ const scenes: LabScene[] = [
     id: "file-by-role",
     sections: ["Weigh the file you downloaded"],
     title: "The file, part by part",
-    look: "With Group tensors by on Role in the network, each bar is one part of the model with its own bits per weight, and the costly parts show a warning colour.",
+    look: "With Group tensors by on Role in the network, each block is one part of the model with its own bits per weight, and the costly parts show a striped top.",
     step: 5,
     state: { fileGroup: "role" },
     focus: "The file you downloaded",

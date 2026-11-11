@@ -330,7 +330,7 @@ The same rule works for 900 numbers: square each one, add up all the squares, an
 square root of the total. You cannot draw an arrow that needs 900 numbers to describe it, but its
 length, and the angle between two such arrows, still work exactly as they do on paper.
 
-The lab prints each task vector’s length under its map as `‖τ‖`, where the double bars mean “length
+The lab prints each task vector’s length above its map as `‖τ‖`, where the double bars mean “length
 of”, and both lengths are about 10. The badge on **Task vectors** reads cosine 0.34, where the
 **cosine** is a score for how closely two arrows point the same way.
 
@@ -430,7 +430,7 @@ Under the maps, **Recipe specialist, recipes** shows 2.123 and **Proverb special
 counts the cells that both fine-tunes changed, and the badge above the maps reads cosine 0.34.
 
 **Sign conflicts** reads 96 (13%), so about 1 in 8 of those shared cells were pushed in opposite
-directions by the two fine-tunes. Look for the cells with a thin diagonal line through them, because
+directions by the two fine-tunes. Look for the cells with a small dark dot in them, because
 those are the 96 conflicts, and they are marked on both maps.
 
 Then drag **Recipe epochs** down to 0, and watch the slider change to read `untrained · τ = 0` as the
@@ -456,7 +456,7 @@ cross for `two separate models`. That cross sits at each specialist’s score on
 what you would get by keeping both models.
 
 The large filled circle is the merge you picked, while small hollow circles show the other four
-methods, each tagged with a short name: Lin, TA, TIES, DARE or SL. If a point would fall off the edge of the plot, it is drawn at the
+methods, each labelled with its method’s name. If a point would fall off the edge of the plot, it is drawn at the
 edge with a dashed outline and labelled with its true losses.
 
 In the table below the plot, the `Linear blend` row shows 2.257 on recipes and 2.330 on proverbs.

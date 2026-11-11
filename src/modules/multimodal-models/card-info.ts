@@ -8,7 +8,7 @@ const cardInfo: ModuleCardInfo = {
     whatYouSee: [
       "An 8×8 pad: filled cells are ink, heavy lines are patch borders, tinted cells are the selected patch, and a dashed outline marks Selected pixel.",
       "Patch size (2×2, 4×4 or 8×8) and Selected patch.",
-      "Metrics Patch tokens and Pixels per patch, and the selected patch flattened into a strip of p² cells.",
+      "Metrics Patch tokens and Pixels per patch, and the selected patch drawn as p rows, then the same rows laid end to end as the flattened strip of p² cells.",
     ],
     howItWorks: [
       "Patch tokens = (8 / p)². Patch k covers rows ⌊k / (8/p)⌋·p to +p and the matching columns; x lists its pixels row-major.",
@@ -34,7 +34,7 @@ const cardInfo: ModuleCardInfo = {
       "The patch vector x is multiplied by a 4 × p² matrix W. Each row of W is a filter; its output is that filter dotted with the patch. A position code is added so the token remembers where its tile was.",
     whatYouSee: [
       "The selected patch x, then four filters drawn as p×p grids of + (blue) and − (red) weights, each with its output W·x.",
-      "A table: each row of W, its W·x, the position value, and the resulting token.",
+      "A table: each row of W, its W·x, the position value, and the resulting token, with a bar for each token number on a line from −1 to +1.",
     ],
     howItWorks: [
       "Filters: ink = 1/p² everywhere; left − right and top − bottom = ±2/p² by half; ╲ − ╱ = ±1/p on the two diagonals. All but ink sum to zero.",
@@ -86,6 +86,7 @@ const cardInfo: ModuleCardInfo = {
       "The same cut at production sizes, computed from Image side and Encoder patch. The pipeline shows each stage's tensor shape for the chosen connector: a CLIP-style contrastive head, a LLaVA-style projector, or a Flamingo-style resampler with cross-attention.",
     whatYouSee: [
       "Image side (224, 336, 448 px), Encoder patch (14, 16, 32), CLS token, and Connector.",
+      "The image drawn to scale as a square with its patch grid, inside a dashed 448px outline. Beside it, bars compare the patch tokens at the three image sides, and one bar shows how much of a 4,096-token context the image tokens take.",
       "Five stages with a shape and a note each, from pixels to where the image ends up.",
       "Metrics: Patch tokens, Encoder sequence, Values per patch, and the share of a 4,096-token context the image takes.",
     ],
@@ -112,9 +113,10 @@ const cardInfo: ModuleCardInfo = {
     summary:
       "Three images and three captions, each a short hand-authored vector. The card computes every image–caption cosine similarity, divides by a temperature, and applies a softmax across each row (which caption fits this image?) and each column (which image fits this caption?). The contrastive loss is the average −log of the labelled match's share, so it is small only when the labelled pairs score highest.",
     whatYouSee: [
-      "A 3 × 3 table: rows are images, columns are captions. Each cell shows the cosine similarity in bold, the share that caption gets in its row, the share that image gets in its column, and the words labelled match on the pair the labels call a match.",
+      "A 3 × 3 table: rows are images, columns are captions. Each cell shows the cosine similarity in bold, the share that caption gets in its row, the share that image gets in its column, a thin bar as long as the row share, and the words labelled match on the pair the labels call a match.",
+      "A loss meter from 0 to 3: a marker at the current loss and a dashed line at the chance loss, with the better-than-chance side shaded green.",
       "Metrics: Contrastive loss, its two directions (Image → caption and Caption → image), the chance loss ln 3, and how many images and captions rank their labelled match first.",
-      "A second table listing the six hand-authored vectors over four named topics: vehicle, animal, sky and structure.",
+      "A second table listing the six hand-authored vectors over four named topics: vehicle, animal, sky and structure. Each number is shaded as a bar, so matching vectors show matching shapes.",
     ],
     howItWorks: [
       "cos(a, b) = a·b / (|a||b|), and logit = cos / τ. A row share is the softmax of one image's three logits; a column share is the softmax of one caption's three logits.",

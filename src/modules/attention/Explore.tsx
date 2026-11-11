@@ -33,7 +33,8 @@ import {
   wordSpans,
   zeroValues,
 } from "./attention-math";
-import { CharacterHeatmap, SoftmaxStrip } from "./AttentionCharts";
+import { CharacterHeatmap } from "./AttentionCharts";
+import { DotProductBars, PayloadStrip, SoftmaxStrip } from "./AttentionStrips";
 import {
   DEFAULT_TEXT,
   EDIT_DIMENSIONS,
@@ -186,6 +187,9 @@ export default function Explore({
   const mixed = mixRow(activeRow, values);
   const modelMixed = mixRow(activeRow, headData.v);
   const mixLength = vectorLength(mixed);
+  // Drawn only: what each key hands to the mix, with the model's own values as the comparison.
+  const payload = activeRow.map((weight, position) => weight * vectorLength(values[position] ?? []));
+  const modelPayload = activeRow.map((weight, position) => weight * vectorLength(headData.v[position] ?? []));
 
   const spaces = whitespaceShare(activeRow.slice(0, visibleCount), characters);
   const later = causal ? 0 : laterShare(activeRow, qPos);
@@ -516,6 +520,20 @@ export default function Explore({
               />
             </div>
 
+            <div className="atn-part atn-part--strip">
+              <SoftmaxStrip
+                characters={characters}
+                scaledScores={recomputed.scaledScores}
+                weights={recomputed.weights}
+                queryPosition={qPos}
+                keyPosition={kPos}
+                keySpan={keySpan}
+                queryWord={querySpan?.text}
+                causal={causal}
+                scaled={useScale}
+              />
+            </div>
+
             <div className="atn-stage__grid">
               <div className="atn-stage__col">
                 <div className="vector-workbench">
@@ -556,16 +574,12 @@ export default function Explore({
                   </button>
                 )}
 
-                <div className="atn-part atn-part--strip">
-                  <SoftmaxStrip
-                    characters={characters}
-                    scaledScores={recomputed.scaledScores}
-                    weights={recomputed.weights}
-                    queryPosition={qPos}
-                    keyPosition={kPos}
-                    keySpan={keySpan}
-                    causal={causal}
-                    scaled={useScale}
+                <div className="atn-part atn-part--score">
+                  <DotProductBars
+                    query={query.slice(0, EDIT_DIMENSIONS)}
+                    keyVector={keys[kPos]?.slice(0, EDIT_DIMENSIONS) ?? []}
+                    score={score}
+                    dimensions={headWidth}
                   />
                 </div>
               </div>
@@ -636,7 +650,11 @@ export default function Explore({
                     />
                   </div>
                 </div>
+              </div>
+            </div>
 
+            <div className="atn-mix-grid">
+              <div className="atn-stage__col">
                 <div className="atn-view-control atn-value-control">
                   <SegmentedControl
                     label="Value vectors (V)"
@@ -670,6 +688,18 @@ export default function Explore({
                     label={`Mixed value · first ${EDIT_DIMENSIONS} of ${mixed.length} dims`}
                     values={mixed.slice(0, EDIT_DIMENSIONS)}
                     tone="forward"
+                  />
+                </div>
+              </div>
+              <div className="atn-stage__col">
+                <div className="atn-part atn-part--mix">
+                  <PayloadStrip
+                    characters={characters}
+                    payload={payload}
+                    modelPayload={modelPayload}
+                    visibleCount={visibleCount}
+                    keyPosition={kPos}
+                    keySpan={keySpan}
                   />
                 </div>
                 <p className="vector-edit-note">

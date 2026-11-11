@@ -8,6 +8,7 @@ const cardInfo: ModuleCardInfo = {
     whatYouSee: [
       "Deployment, four segments.",
       "A ledger: For on the left, Against on the right. Each entry shows its number, theme, who bears it, and a tag: on a leaderboard, partly measurable, or not on a leaderboard. Clicking an entry selects that claim.",
+      "A map titled What a benchmark number can reach: one row per deployment, one mark per claim. A filled mark is on a leaderboard, a half-filled mark is partly measurable, and a hollow mark is not on a leaderboard. The row for the deployment you chose is outlined.",
       "For claims, Against claims, A benchmark speaks to (how many claims a benchmark covers fully, and how many partly), and Score: none.",
     ],
     howItWorks: [
@@ -37,7 +38,8 @@ const cardInfo: ModuleCardInfo = {
     whatYouSee: [
       "Claim, a segmented control labeled by number and side.",
       "The claim text, bordered green for For and red for Against, with the side also written in the heading.",
-      "Three tags: Theme, Who bears it, and Can a benchmark measure it, with yes, partly, or no and a one-line reason.",
+      "Three tags: Theme, Who bears it, and Can a benchmark measure it, with no, partly, and yes drawn as three steps, the claim's step filled in, and a one-line reason.",
+      "A map titled Where the five claims land: one row for each party in this deployment, with a numbered For or Against badge for every claim that party bears. The rows and badge of the claim you chose are highlighted.",
     ],
     howItWorks: [
       "Claim is an integer index into the deployment's list; the text and tags are string constants.",
@@ -63,9 +65,10 @@ const cardInfo: ModuleCardInfo = {
       "A synthetic triage model is evaluated on a holdout where 10% of patients are in group B, whose notes the labels under-represent. Group B share of patients moves the population the model will actually serve. Accuracy is a weighted average of the two groups, so it barely moves, while missed urgent cases pile up in group B.",
     whatYouSee: [
       "Group B share of patients, from 0% to 60%.",
-      "Four stacked bars per 1,000 patients: patients in the holdout, patients at your share, missed urgent cases in the holdout, and missed urgent cases at your share. Group A is the left segment and group B the right, each labeled with its count.",
+      "Two boxes, one for the holdout and one for your share. Each box is the 200 urgent patients in every 1,000. A column's width is that group's share of patients, and the full-colour slice on top is the urgent cases the model misses: 10% of group A's and 45% of group B's. The count of missed cases is written above each box.",
+      "Six stacked bars, a holdout row and a row at your share under each of three headings: Patients per 1,000, Accuracy, and Missed urgent cases per 1,000. Group A is the left, solid segment and group B the right, hatched one, each labeled with its count.",
+      "A chart of the model's rates in each group on a 0 to 100% scale: the true-positive rate for each group (90% and 55%) with the Equal-opportunity gap between them (35 points), and the false-positive rate for each group (5% and 7%) with the False-positive gap (2 points). These are properties of the model, so they do not move with the share.",
       "Accuracy on the holdout, accuracy at your share, and missed urgent cases per 1,000, holdout → yours.",
-      "A second row of four readouts: the true-positive rate for each group (90% and 55%), the Equal-opportunity gap between them (35 points), the false-positive rate for each group (5% and 7%), and the False-positive gap (2 points). These are properties of the model, so they do not move with the share.",
     ],
     howItWorks: [
       "Both groups have 20% urgent cases. Group A: sensitivity 0.90, specificity 0.95, accuracy 94.0%. Group B: sensitivity 0.55, specificity 0.93, accuracy 85.4%.",
@@ -96,6 +99,7 @@ const cardInfo: ModuleCardInfo = {
       "Parameters (1B to 405B), Training tokens (0.5T to 15T), and Tokens served per day (1M to 1T, on a log scale).",
       "Training, once; Serving, per day; and Days to break even.",
       "A chart of one training run's compute (dashed, flat) and serving's cumulative compute (solid, rising), with a guide at the break-even day.",
+      "A strip titled When serving has cost as much as training: a log-scale calendar from 1 day to 1,000 years with a mark at the break-even time. The mark slides when Training tokens or Tokens served per day change, and stays put when Parameters changes. The hatched part is past the ten years the chart covers.",
     ],
     howItWorks: [
       "Training FLOP = 6·N·D. Serving FLOP per day = 2·N·T. Break-even days = 6ND ÷ 2NT = 3D ÷ T, so N cancels.",

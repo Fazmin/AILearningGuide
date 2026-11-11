@@ -36,6 +36,7 @@ const cardInfo: ModuleCardInfo = {
     whatYouSee: [
       "Retriever (BM25, Dense or Hybrid) and Top-k from 1 to 4. The kicker shows what the active retriever reads: the analysed query terms for BM25, the words the encoder knows and ignores for Dense, and both for Hybrid.",
       "The five best chunks, or the top-k if that is more, with prompt number [n] if retrieved (or rank #n if not), document, word range, score, and the chunk text with answer-span words highlighted.",
+      "A bar per scored chunk on one shared scale, cut into the pieces that add up to its score, and a dashed line between the chunks that go into the prompt and the ones left out.",
       "A detail line per chunk: each term's BM25 weight; the cosine and the chunk's BM25 rank for Dense; and for Hybrid each list's rank turned into 1/(60 + rank).",
       "A note with the active formula and how many chunks scored zero.",
     ],
@@ -67,7 +68,7 @@ const cardInfo: ModuleCardInfo = {
       "The retrieved chunks are numbered and pasted between a fixed instruction and the question. This string is everything a generator would see: no other chunks, no document dates unless they are in the text, and no record of what was left out.",
     whatYouSee: [
       "A word count and the number of passages in the kicker.",
-      "The literal prompt: a system instruction, numbered context lines with document and word range, the question, and “Answer:”.",
+      "The literal prompt in three tagged parts: a system instruction, numbered context lines with document and word range, then the question and “Answer:”. The retrieved passages keep their tint from Retrieval, with answer-span words highlighted.",
     ],
     howItWorks: [
       "Context lines are the retrieved chunks in rank order. If nothing matched, the context says so.",
@@ -120,7 +121,7 @@ const cardInfo: ModuleCardInfo = {
       "For every question under each retriever, using the chunk size, overlap, index and Top-k you set, the card computes context recall, a support check and correctness. A wrong answer is blamed on retrieval when the evidence did not reach the prompt, and on the reader when it did.",
     whatYouSee: [
       "A table with one row per question and one column per retriever. The selected retriever's column and the current question's row are marked.",
-      "Each cell names the outcome (correct, retrieval failure, reader failure, wrong because no answer exists, correct abstention, or wrong abstention), then the context recall and whether the quote is supported by the passage it cites. A column header also shows its retriever's abstention threshold when the Grounding check has one set.",
+      "Each cell carries a mark (✓ answered right, ✕ answered wrong, – abstained) and names the outcome (correct, retrieval failure, reader failure, wrong because no answer exists, correct abstention, or wrong abstention), then the context recall, also drawn as a small bar, and whether the quote is supported by the passage it cites. A column header also shows its retriever's abstention threshold when the Grounding check has one set.",
       "Footer rows: mean context recall over the answerable questions, quotes supported out of quotes produced, answers correct out of answerable, the count of retrieval failures against reader failures, wrong answers stated with confidence out of all five questions, and questions handled correctly (a right answer or a right abstention) out of all five.",
     ],
     howItWorks: [
@@ -151,7 +152,7 @@ const cardInfo: ModuleCardInfo = {
       "The check sits between retrieval and the reader. If nothing was retrieved, or the best retrieved chunk scores below the threshold you set, the pipeline abstains instead of quoting. It is a card of its own because it needs a control, an outcome for every question and a trade-off curve, and it feeds the Score the pipeline card.",
     whatYouSee: [
       "Abstain below: a threshold on the selected retriever's own score scale, from off (0) up. Each retriever keeps its own setting, so choosing another Retriever in Retrieval shows that retriever's slider.",
-      "A table with one row per question: the best retrieved chunk's score, what the reader alone would do, and the outcome with the check: answered correctly, answered wrongly with confidence, correctly abstained, or wrongly abstained, each with a short reason.",
+      "A table with one row per question: the best retrieved chunk's score as a bar on the slider's scale with the threshold drawn as one line down the column, what the reader alone would do, and the outcome with the check: answered correctly, answered wrongly with confidence, correctly abstained, or wrongly abstained, each with a short reason.",
       "Metrics: Coverage (questions answered out of five), Precision (right answers out of those answered) and Handled correctly (right answers plus right abstentions).",
       "A chart of coverage (dashed) and precision (solid) at every slider position, with a marker at the current threshold.",
     ],

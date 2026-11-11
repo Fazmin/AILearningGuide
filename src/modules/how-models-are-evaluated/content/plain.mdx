@@ -96,7 +96,7 @@ Here is a handy way to read the names: the second word is what the alarm said, a
 
 Count the rows in each group and lay the four counts out in a two-by-two grid, and you have a **confusion matrix**. It is a table of what each row really was against what the rule predicted, and it is named for showing where the detector mixes the two classes up. On the **Confusion matrix** card, the grid’s two lines across are labelled True 0 and True 1, which say what each scored example really was. Its two columns, Pred 0 and Pred 1, say what the rule predicted, since “pred” is short for predicted.
 
-Here is a real example from the lab: set Population to 1 in 5, Baseline to score ≥ threshold and Decision threshold to 0.50. The matrix then reads 16 TP and 7 FP in the Pred 1 column, which holds the rows where the alarm rang. The Pred 0 column holds 4 FN and 73 TN, the rows where it stayed quiet, and together the four counts cover every row. The coloured grid beside the table shows the same four cells, each shaded by what share of the scored rows it holds.
+Here is a real example from the lab: set Population to 1 in 5, Baseline to score ≥ threshold and Decision threshold to 0.50. The matrix then reads 16 TP and 7 FP in the Pred 1 column, which holds the rows where the alarm rang. The Pred 0 column holds 4 FN and 73 TN, the rows where it stayed quiet, and together the four counts cover every row. Each cell also draws its rows as small marks, so you can see at a glance how full it is.
 
 ### Four readings of one table
 

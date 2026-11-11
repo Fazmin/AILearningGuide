@@ -7,7 +7,7 @@ const cardInfo: ModuleCardInfo = {
       "The batch the trainer draws next at the chosen step, scored with the weights of that step. Every query is compared with every candidate, each row goes through a softmax after dividing by τ, and the loss is −log of the answer's share. The cells are the shares, which is also how hard each wrong candidate gets pushed.",
     whatYouSee: [
       "Batch size, Temperature τ, Negatives and Skip known duplicates: the four training choices this card controls. Changing any of them retrains the whole run in the page.",
-      "A table with one row per training query (the first 8 when the batch is larger) and one column per candidate passage. Each cell prints the candidate's share of the row and its cosine with the query.",
+      "A table with one row per training query (the first 8 when the batch is larger) and one column per candidate passage. Each cell prints the candidate's share of the row and its cosine with the query, and is shaded by the square root of the share so small shares still show. A key under the table gives the shading, the outlined answer and the dashed duplicate.",
       "Text tags, not only shading: answer marks the labelled passage, mined marks the row's own mined negative, duplicate · false negative marks the answer's twin counted as wrong, and duplicate · skipped marks it left out of the softmax. A final column sums any candidates not shown.",
       "Metrics: Starting loss (ln B), Loss at step 0, Loss at this step, and two run averages over every step's batch, Answer's share and Closest wrong cosine.",
     ],
@@ -39,7 +39,7 @@ const cardInfo: ModuleCardInfo = {
       "Training step, Width, Seed and Rerank top 5.",
       "A line chart of Recall@1, Recall@5 and MRR over training, with BM25's Recall@1 as a flat dashed line and a marker at the chosen step.",
       "Recall@1, Recall@5, MRR and Scoring passes per query for the current pipeline: the bi-encoder at this step, reranked when Rerank top 5 is on.",
-      "A table setting BM25, the untrained bi-encoder and the trained one side by side, with hits at rank 1 split into 20 paraphrases, 5 typos and 5 queries with unseen words.",
+      "A table setting BM25, the untrained bi-encoder and the trained one side by side, with hits at rank 1 split into 20 paraphrases, 5 typos and 5 queries with unseen words. A bar beside each number draws it on one scale per column, so the rows compare at a glance.",
     ],
     howItWorks: [
       "Recall@k here is the hit rate: the share of queries with at least one relevant passage in the top k, which DPR calls top-k retrieval accuracy. A query whose answer has a duplicate has two relevant passages, and either counts.",
@@ -65,7 +65,8 @@ const cardInfo: ModuleCardInfo = {
     summary:
       "Every passage and held-out query vector at the chosen step, projected onto the two directions that hold the most of the passages' squared length. Every vector has length 1, so every point lands inside the circle; a tight clump means the vectors point nearly the same way.",
     whatYouSee: [
-      "Dots for the 41 passages with each topic's name printed at the centre of its passages, small squares for held-out queries, and a thin line from each query to its labelled answer.",
+      "Two maps side by side. The left one is the untrained space at step 0, kept as a reference with only the dots and the selected query. The right one is the chosen step.",
+      "On the right map, dots for the 41 passages with each topic's name printed at the centre of its passages, small squares for held-out queries, and a thin line from each query to its labelled answer.",
       "The selected query from Query inspector as a larger square, with lines to its answer and to the answer's duplicate, both circled and named.",
       "Metrics: Mean cosine between passages, Duplicate-pair cosine, Alignment and Uniformity. The heading says how much squared length the two axes hold.",
     ],
@@ -94,8 +95,8 @@ const cardInfo: ModuleCardInfo = {
       "Pick any held-out query and see where its relevant passages rank before training, after training, under BM25 and after reranking the top 5, along with the passages from the answer's topic, so you can watch confusable passages move.",
     whatYouSee: [
       "Query: 30 held-out questions grouped as paraphrases, typos and unseen words. The heading names the labelled answer and, where there is one, its duplicate.",
-      "A table giving the rank of the first relevant passage and the top passage under each ranker.",
-      "A table of every passage in the answer's topic plus the current top three, with ranks at step 0 and now, the cosine now and the BM25 rank; the answer and its duplicate are tagged.",
+      "A table giving the rank of the first relevant passage and the top passage under each ranker. A track from #1 to #41 carries a dot at that rank, so the four rankers line up.",
+      "A table of every passage in the answer's topic plus the current top three, with ranks at step 0 and now, the cosine now and the BM25 rank; the answer and its duplicate are tagged. Each row's track joins a hollow dot at the step 0 rank to a filled dot at the rank now, and a bar draws the cosine.",
       "Metrics: Margin over the closest wrong passage, the closest wrong passage itself, Recall@1 from the first 4 numbers of each vector, and how many training queries share this answer.",
     ],
     howItWorks: [

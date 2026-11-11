@@ -87,11 +87,14 @@ const pick = <T extends string>(value: string, allowed: readonly T[], fallback: 
 
 /* Chart geometry in viewBox units. */
 const W = 560;
-const H = 246;
 const L = 50;
 const R = 540;
 const T = 24;
 const B = 204;
+/** The filmstrip under the axis: one small transition table per generation, centred on its tick. */
+const FILM_TOP = B + 22;
+const FILM_SIZE = 40;
+const H = FILM_TOP + FILM_SIZE + 22;
 
 export default function Explore({ state, setState, narrate }: ModuleContext) {
   const regime = pick(asString(state, "regime", "replace"), ["replace", "accumulate"], "replace");
@@ -159,6 +162,49 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
   }, ${sampleSize} characters per generation. Mean of eight runs at generation ${generation}: synthetic only ${spec.format(
     value(meanReplace),
   )}, real plus synthetic ${spec.format(value(meanAccumulate))}. Generation 0 is ${spec.format(value(seedStats))}.`;
+
+  // One path per generation and state for the filmstrip: every seed transition as a dot, present or lost.
+  const filmCell = FILM_SIZE / GRID_IDS.length;
+  const film = firstRun.counts.map((table, g) => {
+    let present = "";
+    let lost = "";
+    let lostCount = 0;
+    const x0 = xAt(g) - FILM_SIZE / 2;
+    for (let r = 0; r < GRID_IDS.length; r += 1) {
+      for (let c = 0; c < GRID_IDS.length; c += 1) {
+        const index = GRID_IDS[r] * V + GRID_IDS[c];
+        if (SEED_COUNTS[index] === 0) continue;
+        const square = `M${(x0 + c * filmCell).toFixed(2)},${(FILM_TOP + r * filmCell).toFixed(2)}h${filmCell.toFixed(2)}v${filmCell.toFixed(2)}h-${filmCell.toFixed(2)}z`;
+        if (table[index] > 0) present += square;
+        else {
+          lost += square;
+          lostCount += 1;
+        }
+      }
+    }
+    return { present, lost, lostCount };
+  });
+  // Name each mean line at its right-hand end: the higher one above its line, the lower one below.
+  const endReplace = yAt(value(families.replace.mean[GENERATIONS]));
+  const endAccumulate = yAt(value(families.accumulate.mean[GENERATIONS]));
+  const endLabelY = (own: number, other: number) => {
+    const lower = own > other;
+    // The lower line is named beneath itself and the higher one above, unless that would leave the plot.
+    if (lower) return own + 14 > B - 4 ? own - 7 : own + 14;
+    return own - 7 < T + 9 ? own + 14 : own - 7;
+  };
+  let labelReplace = endLabelY(endReplace, endAccumulate);
+  let labelAccumulate = endReplace === endAccumulate ? endAccumulate - 7 : endLabelY(endAccumulate, endReplace);
+  if (Math.abs(labelReplace - labelAccumulate) < 12) {
+    // Lines that end together: stack the two names instead of printing one over the other.
+    if (endReplace > endAccumulate) labelReplace = labelAccumulate + 13;
+    else labelAccumulate = labelReplace + 13;
+    const overflow = Math.max(labelReplace, labelAccumulate) - (B - 4);
+    if (overflow > 0) {
+      labelReplace -= overflow;
+      labelAccumulate -= overflow;
+    }
+  }
 
   const seedTotal = tails.reduce((sum, bucket) => sum + bucket.total, 0);
   const lostTotal = tails.reduce((sum, bucket) => sum + bucket.lost, 0);
@@ -229,7 +275,29 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
               ))}
             </g>
           ))}
-          <text className="syn-axis-label" x={L} y={H - 4}>
+          <text className="syn-end-label syn-end-label--replace" x={R - 6} y={labelReplace} textAnchor="end">
+            synthetic only
+          </text>
+          <text className="syn-end-label syn-end-label--accumulate" x={R - 6} y={labelAccumulate} textAnchor="end">
+            real + synthetic
+          </text>
+          <g aria-hidden="true">
+            {film.map((frame, g) => (
+              <g key={g} className={`syn-film${g === generation ? " is-current" : ""}`}>
+                <rect
+                  className="syn-film__frame"
+                  x={xAt(g) - FILM_SIZE / 2 - 1.5}
+                  y={FILM_TOP - 1.5}
+                  width={FILM_SIZE + 3}
+                  height={FILM_SIZE + 3}
+                  rx={2}
+                />
+                <path className="syn-film__lost" d={frame.lost} />
+                <path className="syn-film__present" d={frame.present} />
+              </g>
+            ))}
+          </g>
+          <text className="syn-axis-label" x={L - FILM_SIZE / 2} y={H - 5}>
             generation (0 = fitted to the human seed)
           </text>
           <text className="syn-axis-label" x={L - 40} y={11}>
@@ -247,6 +315,15 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           </span>
           <span className="syn-legend__note">
             Thick line: mean of 8 sampling seeds. Thin lines: each seed. Values at generation {generation}.
+          </span>
+          <span className="syn-legend__note syn-legend__film">
+            <span>Squares under the axis: run 1's transition table at each generation.</span>
+            <span>
+              <i className="syn-key syn-key--kept" /> seed transition still present
+            </span>
+            <span>
+              <i className="syn-key syn-key--gone" /> lost ({film[generation].lostCount} at generation {generation})
+            </span>
           </span>
         </div>
         <div className="syn-generation-control">
@@ -282,99 +359,26 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
         </div>
       </LabSurface>
 
-      <LabSurface label="Which transitions survive" className="syn-grid-card">
-        <SurfaceHeading
-          kicker={`Run 1 · generation ${generation} · ${REGIMES.find((entry) => entry.value === regime)?.short}`}
-          title={`${seedTotal - lostTotal} of the seed's ${seedTotal} transitions remain`}
-        />
-        <TransitionGrid counts={counts} generation={generation} />
-        <div className="syn-tails">
-          {tails.map((bucket) => (
-            <div key={bucket.id}>
-              <span>{bucket.label}</span>
-              <div className="syn-tails__bar" aria-hidden="true">
-                <i style={{ width: `${bucket.total === 0 ? 0 : (bucket.lost / bucket.total) * 100}%` }} />
-              </div>
-              <b>
-                {bucket.lost} / {bucket.total} lost
-              </b>
-            </div>
-          ))}
-        </div>
-      </LabSurface>
-
       <div className="tg-column">
-        <LabSurface label="Generator and filter" className="syn-generator-card">
-          <SurfaceHeading kicker="How each generation drafts its text" title="Choose the writer, sharpen, verify, and size" />
-          <div className="syn-generator-control">
-            <SegmentedControl
-              label="Generator"
-              value={generator}
-              options={[
-                { value: "self", label: "The model itself" },
-                { value: "teacher", label: "A stronger teacher" },
-              ]}
-              onChange={(next) => {
-                setState({ generator: next });
-                narrate(
-                  next === "teacher"
-                    ? "A fixed stronger teacher, trained on about four times as much harbor text, now writes every generation's data."
-                    : "Each generation's data is written by the model fitted in the previous round.",
-                );
-              }}
-            />
-          </div>
-          <RangeControl
-            label="Temperature"
-            min={0.5}
-            max={1.2}
-            step={0.1}
-            value={temperature}
-            format={(t) => `${t.toFixed(1)}${t < 1 ? " · sharper" : t > 1 ? " · flatter" : " · as fitted"}`}
-            onChange={(next) => setState({ temperature: Math.round(next * 10) / 10 })}
+        <LabSurface label="Which transitions survive" className="syn-grid-card">
+          <SurfaceHeading
+            kicker={`Run 1 · generation ${generation} · ${REGIMES.find((entry) => entry.value === regime)?.short}`}
+            title={`${seedTotal - lostTotal} of the seed's ${seedTotal} transitions remain`}
           />
-          <div className="syn-filter-control">
-            <SegmentedControl
-              label="Filter"
-              value={filter}
-              options={[
-                { value: "none", label: "No filter" },
-                { value: "words", label: "Real words only" },
-              ]}
-              onChange={(next) => {
-                setState({ filter: next });
-                narrate(
-                  next === "words"
-                    ? `Verifier on: only tokens that are one of the ${SEED_WORDS.size} words in the seed are kept.`
-                    : "Filter off: every drafted character is kept.",
-                );
-              }}
-            />
+          <TransitionGrid counts={counts} generation={generation} />
+          <div className="syn-tails">
+            {tails.map((bucket) => (
+              <div key={bucket.id}>
+                <span>{bucket.label}</span>
+                <div className="syn-tails__bar" aria-hidden="true">
+                  <i style={{ width: `${bucket.total === 0 ? 0 : (bucket.lost / bucket.total) * 100}%` }} />
+                </div>
+                <b>
+                  {bucket.lost} / {bucket.total} lost
+                </b>
+              </div>
+            ))}
           </div>
-          <SegmentedControl
-            label="Sample size"
-            value={String(sampleSize)}
-            options={[
-              { value: "250", label: "250 chars" },
-              { value: "500", label: "500 chars" },
-              { value: "2000", label: "2000 chars" },
-            ]}
-            onChange={(next) => setState({ sampleSize: Number(next) })}
-          />
-          <p className="lab-note">
-            Each model is the 30 × 30 bigram table fitted exactly, by counting what follows each
-            character. Sampling raises every probability to the power 1/T and renormalizes. The
-            verifier keeps only tokens that are one of the {SEED_WORDS.size} words in the seed.
-          </p>
-          {generator === "teacher" && (
-            <p className="lab-note">
-              The teacher is a bigram trained with the track's SGD trainer on the {SEED_IDS.length} seed characters plus{" "}
-              {encodeTinyText(TEACHER_EXTRA_TEXT).length.toLocaleString("en-US")} characters of extra harbor notes that the student never sees. It is
-              fixed, so nothing a student gets wrong can reach the next round. SGD leaves about {(teacherMass * 100).toFixed(1)}%
-              of its probability on pairs its data never contained, so a student can list more transitions than the teacher's
-              data held.
-            </p>
-          )}
         </LabSurface>
 
         <LabSurface label="What a generation writes" className="syn-sample-card">
@@ -383,18 +387,16 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             title={generation === 0 ? "The model fitted to the human seed" : `Generation ${generation}'s own writing`}
           />
           <p className="syn-sample" aria-label={`Sample from generation ${generation}: ${probe}`}>
-            {filter === "words"
-              ? tokens.map((entry, index) => (
-                  <span key={index} className={entry.real ? "is-real" : "is-rejected"}>
-                    {entry.token}{" "}
-                  </span>
-                ))
-              : probe}
+            {tokens.map((entry, index) => (
+              <span key={index} className={entry.real ? "is-real" : filter === "words" ? "is-rejected" : "is-made-up"}>
+                {entry.token}{" "}
+              </span>
+            ))}
           </p>
           <p className="lab-note">
             {filter === "words"
-              ? "Struck-through tokens are what the real-words verifier would throw away before this text trains the next generation."
-              : "With no filter, every character of text like this becomes the next generation's training data."}
+              ? "Bold tokens are real seed words. Struck-through tokens are what the real-words verifier would throw away before this text trains the next generation."
+              : "Bold tokens are real seed words; the rest are made up. With no filter, every character of text like this becomes the next generation's training data."}
           </p>
           <div className="metric-row">
             <Metric label="Real words here" value={`${(realWordShare(probe) * 100).toFixed(0)}%`} tone="forward" />
@@ -417,13 +419,93 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           </div>
         </LabSurface>
       </div>
+
+      <LabSurface label="Generator and filter" className="syn-generator-card">
+        <SurfaceHeading kicker="How each generation drafts its text" title="Choose the writer, sharpen, verify, and size" />
+        <GenerationLoop
+          generator={generator}
+          regime={regime}
+          temperature={temperature}
+          filter={filter}
+          sampleSize={sampleSize}
+        />
+        <div className="syn-generator-control">
+          <SegmentedControl
+            label="Generator"
+            value={generator}
+            options={[
+              { value: "self", label: "The model itself" },
+              { value: "teacher", label: "A stronger teacher" },
+            ]}
+            onChange={(next) => {
+              setState({ generator: next });
+              narrate(
+                next === "teacher"
+                  ? "A fixed stronger teacher, trained on about four times as much harbor text, now writes every generation's data."
+                  : "Each generation's data is written by the model fitted in the previous round.",
+              );
+            }}
+          />
+        </div>
+        <RangeControl
+          label="Temperature"
+          min={0.5}
+          max={1.2}
+          step={0.1}
+          value={temperature}
+          format={(t) => `${t.toFixed(1)}${t < 1 ? " · sharper" : t > 1 ? " · flatter" : " · as fitted"}`}
+          onChange={(next) => setState({ temperature: Math.round(next * 10) / 10 })}
+        />
+        <div className="syn-filter-control">
+          <SegmentedControl
+            label="Filter"
+            value={filter}
+            options={[
+              { value: "none", label: "No filter" },
+              { value: "words", label: "Real words only" },
+            ]}
+            onChange={(next) => {
+              setState({ filter: next });
+              narrate(
+                next === "words"
+                  ? `Verifier on: only tokens that are one of the ${SEED_WORDS.size} words in the seed are kept.`
+                  : "Filter off: every drafted character is kept.",
+              );
+            }}
+          />
+        </div>
+        <SegmentedControl
+          label="Sample size"
+          value={String(sampleSize)}
+          options={[
+            { value: "250", label: "250 chars" },
+            { value: "500", label: "500 chars" },
+            { value: "2000", label: "2000 chars" },
+          ]}
+          onChange={(next) => setState({ sampleSize: Number(next) })}
+        />
+        <p className="lab-note">
+          Each model is the 30 × 30 bigram table fitted exactly, by counting what follows each
+          character. Sampling raises every probability to the power 1/T and renormalizes. The
+          verifier keeps only tokens that are one of the {SEED_WORDS.size} words in the seed.
+        </p>
+        {generator === "teacher" && (
+          <p className="lab-note">
+            The teacher is a bigram trained with the track's SGD trainer on the {SEED_IDS.length} seed characters plus{" "}
+            {encodeTinyText(TEACHER_EXTRA_TEXT).length.toLocaleString("en-US")} characters of extra harbor notes that the student never sees. It is
+            fixed, so nothing a student gets wrong can reach the next round. SGD leaves about {(teacherMass * 100).toFixed(1)}%
+            of its probability on pairs its data never contained, so a student can list more transitions than the teacher's
+            data held.
+          </p>
+        )}
+      </LabSurface>
     </div>
   );
 }
 
 function TransitionGrid({ counts, generation }: { counts: Float64Array; generation: number }) {
   const cell = 9;
-  const pad = 12;
+  const pad = 21;
   const size = GRID_IDS.length * cell;
   let kept = 0;
   let lost = 0;
@@ -478,6 +560,12 @@ function TransitionGrid({ counts, generation }: { counts: Float64Array; generati
             </text>
           </g>
         ))}
+        <text className="syn-grid-title" x={pad} y={7}>
+          next character →
+        </text>
+        <text className="syn-grid-title" transform={`translate(7 ${pad + size}) rotate(-90)`}>
+          ← current character (top to bottom)
+        </text>
         <rect className="syn-grid-frame" x={pad} y={pad} width={size} height={size} />
         {cells}
       </svg>
@@ -490,5 +578,124 @@ function TransitionGrid({ counts, generation }: { counts: Float64Array; generati
         </span>
       </figcaption>
     </figure>
+  );
+}
+
+/**
+ * One round of the loop the controls set up: a writer drafts text, the filter keeps some of it, that becomes
+ * training text, and counting the pairs gives the next model. The arrow back to the top exists only when the
+ * model itself is the writer, and the human seed feeds the training text only under Real + synthetic.
+ */
+function GenerationLoop({
+  generator,
+  regime,
+  temperature,
+  filter,
+  sampleSize,
+}: {
+  generator: Generator;
+  regime: Regime;
+  temperature: number;
+  filter: FilterKind;
+  sampleSize: number;
+}) {
+  const width = 228;
+  const boxLeft = 58;
+  const boxRight = 190;
+  const centre = (boxLeft + boxRight) / 2;
+  const boxHeight = 34;
+  const gap = 30;
+  const rowY = (row: number) => 4 + row * (boxHeight + gap);
+  const self = generator === "self";
+  const keepsSeed = regime === "accumulate";
+  const boxes = [
+    {
+      title: self ? "The model itself" : "A stronger teacher",
+      note: self ? "the last generation" : "fixed, never retrained",
+      kind: self ? "is-self" : "is-teacher",
+    },
+    { title: "Draft text", note: `${sampleSize} synthetic chars`, kind: "" },
+    { title: "Training text", note: keepsSeed ? "seed + every draft" : "this draft only", kind: keepsSeed ? "is-seeded" : "" },
+    { title: "Next generation", note: "a new table of counts", kind: "" },
+  ];
+  const steps = [
+    `writes at T = ${temperature.toFixed(1)}`,
+    filter === "words" ? "filter: real words only" : "no filter: keep it all",
+    "count the pairs",
+  ];
+  const loopX = boxRight + 20;
+  const top = rowY(0) + boxHeight / 2;
+  const bottom = rowY(3) + boxHeight / 2;
+  const seedY = rowY(2) + boxHeight / 2;
+  return (
+    <svg
+      className="syn-loop"
+      viewBox={`0 0 ${width} ${rowY(3) + boxHeight + 4}`}
+      role="img"
+      aria-label={`One round: ${self ? "the previous generation's model" : "a fixed stronger teacher"} writes ${sampleSize} characters at temperature ${temperature.toFixed(1)}; ${filter === "words" ? "the real-words filter keeps only seed words" : "no filter, so all of it is kept"}; the training text is ${keepsSeed ? "the human seed plus every draft so far" : "this draft alone, with the human seed dropped"}; counting its pairs gives the next generation. ${self ? "That model writes the next round, which closes the loop." : "The teacher writes every round, so there is no loop."}`}
+    >
+      <defs>
+        <marker id="syn-loop-arrow" viewBox="0 0 8 8" refX="6.5" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0.8 L7,4 L0,7.2 z" className="syn-loop__head" />
+        </marker>
+        <marker id="syn-loop-arrow-back" viewBox="0 0 8 8" refX="6.5" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0.8 L7,4 L0,7.2 z" className="syn-loop__head is-back" />
+        </marker>
+        <marker id="syn-loop-arrow-seed" viewBox="0 0 8 8" refX="6.5" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0.8 L7,4 L0,7.2 z" className="syn-loop__head is-seed" />
+        </marker>
+      </defs>
+      {steps.map((label, index) => {
+        const y1 = rowY(index) + boxHeight;
+        const y2 = rowY(index + 1);
+        return (
+          <g key={label}>
+            <line className="syn-loop__flow" x1={centre} x2={centre} y1={y1} y2={y2 - 2} markerEnd="url(#syn-loop-arrow)" />
+            <text className="syn-loop__step" x={centre} y={(y1 + y2) / 2 + 2} textAnchor="middle">
+              {label}
+            </text>
+          </g>
+        );
+      })}
+      {boxes.map((box, index) => (
+        <g key={box.title} className={`syn-loop__box ${box.kind}`.trim()}>
+          <rect x={boxLeft} y={rowY(index)} width={boxRight - boxLeft} height={boxHeight} rx={5} />
+          <text className="syn-loop__title" x={centre} y={rowY(index) + 14} textAnchor="middle">
+            {box.title}
+          </text>
+          <text x={centre} y={rowY(index) + 27} textAnchor="middle">
+            {box.note}
+          </text>
+        </g>
+      ))}
+      {/* The human seed: feeds every round's training text only when real data is kept. */}
+      <g className={`syn-loop__seed${keepsSeed ? " is-kept" : ""}`}>
+        <rect x={1} y={seedY - 17} width={42} height={34} rx={5} />
+        <text className="syn-loop__title" x={22} y={seedY - 3} textAnchor="middle">
+          human
+        </text>
+        <text x={22} y={seedY + 10} textAnchor="middle">
+          seed
+        </text>
+        {keepsSeed ? (
+          <line className="syn-loop__seed-flow" x1={43} x2={boxLeft - 2} y1={seedY} y2={seedY} markerEnd="url(#syn-loop-arrow-seed)" />
+        ) : (
+          <path className="syn-loop__cut" d={`M${47},${seedY - 5} l8,10 M${55},${seedY - 5} l-8,10`} />
+        )}
+        <text className="syn-loop__seed-note" x={22} y={seedY + 31} textAnchor="middle">
+          {keepsSeed ? "kept" : "dropped"}
+        </text>
+      </g>
+      {/* The feedback: the new model becomes the writer. A fixed teacher breaks it. */}
+      <path
+        className={`syn-loop__back${self ? "" : " is-broken"}`}
+        d={`M${boxRight},${bottom} H${loopX} V${top} H${boxRight + 3}`}
+        markerEnd={self ? "url(#syn-loop-arrow-back)" : undefined}
+      />
+      {!self && <path className="syn-loop__cut" d={`M${loopX - 5},${(top + bottom) / 2 - 5} l10,10 M${loopX + 5},${(top + bottom) / 2 - 5} l-10,10`} />}
+      <text className={`syn-loop__back-label${self ? "" : " is-broken"}`} transform={`translate(${loopX + 13} ${(top + bottom) / 2}) rotate(-90)`} textAnchor="middle">
+        {self ? "it writes the next round" : "no loop: the teacher is fixed"}
+      </text>
+    </svg>
   );
 }

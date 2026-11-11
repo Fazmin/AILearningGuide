@@ -45,6 +45,7 @@ const cardInfo: ModuleCardInfo = {
       "Gradient norm: dark dots on steps the clip rescaled, a dashed green line at the clip threshold, and red triangles along the top on steps whose fp16 gradient overflowed.",
       "Update ÷ weight: a dashed line at 10⁻³, the rule of thumb for large networks.",
       "Markers on every panel: a red line and tinted zone after a halt, grey bars on skipped steps, an amber band on garbage batches, and a dashed green line at the checkpoint a rollback restarted from. With a rollback, a dotted amber line shows the whole-corpus loss without it.",
+      "A stronger tint between a line and its band wherever the signal is outside the normal range, and the word normal beside each band.",
       "A legend under the panels naming the reference run and every marker that is showing.",
     ],
     howItWorks: [
@@ -56,7 +57,8 @@ const cardInfo: ModuleCardInfo = {
       "The reference run is the healthy SGD run for Learning rate too high and fp16 overflow, the same Adam run with no garbage for Garbage batch, and Adam at 0.1 with no z-loss for Logit growth. With Fault on None the run is its own reference.",
     ],
     controls: [
-      "The panels have no controls of their own; they redraw whenever a setting on Fault and fixes changes.",
+      "`Steps shown` zooms all four panels to the first 40 steps or, for Garbage batch, to steps 380 to 440. It changes only the view; the panels redraw whenever a setting on Fault and fixes changes.",
+      "Pointing at any panel draws a line at that step on all four and prints each signal's value there.",
       "Comparison worth running: with Fault on Learning rate too high, compare Update ÷ weight and Gradient norm on the first steps. The update ratio starts at 0.310, about fifteen times the healthy first step, while the gradient norm does not rise above its band until step 6.",
     ],
     notice: [
@@ -76,6 +78,7 @@ const cardInfo: ModuleCardInfo = {
     summary:
       "The run's outcome in numbers, measured on this run: its final whole-corpus loss or the step it halted on, the largest gradient norm and logit it reached, and how many steps were clipped, skipped or overflowed, with a sentence naming the mechanism behind what happened and the next thing to try.",
     whatYouSee: [
+      "A scale from 1.5 to 4 nats with a dot for this run's final loss, a diamond for the clean reference run, and a dotted line at 3.401; the tinted stretch right of it is worse than a model that knows nothing. A halted run shows a cross instead of a dot.",
       "`Final loss` in nats per character, or `halted`; `Halted at`, a step number or `never`; and `Peak gradient norm`.",
       "`Clipped steps` out of the steps run, or `clip off`; `Skipped steps`; and `Overflow steps`, gradients that overflowed in fp16.",
       "`Peak max logit` and `Median update ÷ weight`, then one more readout that depends on the fault: `Loss scale` from start to end for fp16 overflow, `Spike` for Garbage batch, and `Median log-partition` otherwise.",
@@ -108,7 +111,8 @@ const cardInfo: ModuleCardInfo = {
       "A closed-form picture of three number formats on one log axis, fp32, bf16 and fp16, and of the narrow window of gradient values that survive the emulated fp16 cast at the current loss scale. With Fault on fp16 overflow it also outlines the range of this run's gradient norms against that window.",
     whatYouSee: [
       "Three bars on a log axis from 10⁻⁴⁶ to 10⁴⁰: the positive range of fp32, bf16 and fp16, with the lighter part on the left the subnormal range, where precision thins out.",
-      "A green `survives` bar: the gradient values that come through the fp16 cast at the current `Loss scale`. With fp16 overflow selected, a black outline marks the smallest to largest gradient norm of this run.",
+      "A green `survives` bar: the gradient values that come through the fp16 cast at the current `Loss scale`.",
+      "A closer view from 10⁻²⁰ to 10¹⁰ that repeats the fp16 and `survives` bars, with an arrow for the division by the loss scale and tinted zones for values that round to zero or become infinity. With fp16 overflow selected, a black outline there marks the smallest to largest gradient norm of this run.",
       "A table of exponent and fraction bits, the largest value, and the smallest normal value of each format.",
       "A note with the survival window in numbers, such as 2.8 × 10⁻¹⁴ to 0.062 at 2²⁰.",
     ],

@@ -38,8 +38,9 @@ const cardInfo: ModuleCardInfo = {
     whatYouSee: [
       "Learning object, a five-stage flow — Data, Hypothesis class, Loss, Optimization, Generalization — with each stage's formula under its name. Clicking a stage rewrites the paragraph below it.",
       "Sliders Weight w and Bias b and a Take a downhill step button.",
-      "Data space: the three points, the current line, a vertical residual at each point, and a shaded square on each residual whose area is proportional to (ŷ − y)².",
-      "Parameter space: contour ellipses of equal L over w from 0 to 2 and b from 0 to 2.4, each labelled with its L; the current (w, b) as a dot; an arrow to where the next downhill step lands; a dotted path of the steps taken; and a green × at the least-squares bottom.",
+      "Data space: the three points, the current line with its equation printed on it, a vertical residual at each point with its value beside it, and a shaded square on each residual whose area is proportional to (ŷ − y)².",
+      "Parameter space: contour ellipses of equal L over w from 0 to 2 and b from 0 to 2.4, each labelled with its L; the current (w, b) as a dot labelled your line; an arrow to where the next downhill step lands; a dotted path of the steps taken; and a green × labelled lowest L at the least-squares bottom.",
+      "A strip under the two plots, L after each press: one point for each downhill step on the current path, with a dashed green floor at the lowest possible L.",
       "A five-column table of x, y, ŷ, residual, and square, metrics L MSE, ∂L/∂w, ∂L/∂b, and Minimum L (the least-squares bottom), and a formula row that reprints the current line and the three squared residuals.",
     ],
     howItWorks: [
@@ -97,8 +98,9 @@ const cardInfo: ModuleCardInfo = {
     whatYouSee: [
       "A kicker `YEAR · title` and the heading What changed, and why it stalled.",
       "Era, a slider whose output prints the year and the stop's name.",
-      "Two metrics: Year and Key idea.",
-      "Two notes: Idea and Why it stalled, both authored for that stop.",
+      "A timeline drawn to scale by year, with the eleven stops in two lanes: neural nets above as circles, symbolic AI below as diamonds. The two winters are hatched spans, the second one left open on the right, and a vertical line marks the selected stop.",
+      "A heading for the selected stop with its year, its name, its thread, and its position out of eleven.",
+      "Two notes side by side: Idea and Why it stalled, both authored for that stop.",
     ],
     howItWorks: [
       "The slider stores the stop's year, one of 1956, 1958, 1969, 1974, 1980, 1986, 1987, 1997, 2012, 2017, or 2022. They are the Dartmouth workshop, the perceptron, the Perceptrons critique, the first AI winter, expert systems, backpropagation, the second AI winter, LSTM, AlexNet, the transformer, and assistants.",
@@ -106,7 +108,7 @@ const cardInfo: ModuleCardInfo = {
       "Early facts follow named sources: the 1955 Dartmouth proposal by McCarthy, Minsky, Rochester, and Shannon, reprinted in AI Magazine 27(4), 2006; the Wikipedia articles on the Lighthill report and on AI winters, which cite Lighthill's 1973 report and the 1987 collapse of the Lisp-machine market; and the Wikipedia article on XCON, which cites McDermott's 1980 paper. The winter dates are approximate: about 1974 to 1980 and from about 1987.",
     ],
     controls: [
-      "Move Era one stop at a time and read both notes before you move again.",
+      "Move Era one stop at a time, or click a stop on the timeline, and read both notes before you move again.",
       "Comparison worth running: 1980 versus 2012. Expert systems fit no parameters and stalled on maintenance; AlexNet fit millions and stalled on needing labeled data for each task.",
     ],
     notice: [
@@ -115,7 +117,7 @@ const cardInfo: ModuleCardInfo = {
       "2022 names post-training on a next-token model. Fluency is still not a truth check.",
     ],
     limits: [
-      "In this lab: eleven authored stops. Dates are landmarks, not a complete history, and the card shows two threads, symbolic AI and neural nets, not every approach. Nothing on the card trains a model from that year.",
+      "In this lab: eleven authored stops. Dates are landmarks, not a complete history, and the card shows two threads, symbolic AI and neural nets, not every approach. Which lane a stop sits in is a drawing choice, and the open end of the second winter is not a date. Nothing on the card trains a model from that year.",
       "In general: a method can stall for funding, data, compute, or a mathematical limit, and the winters were funding downturns as much as technical ones. The next architecture does not erase the earlier failure mode.",
     ],
   },
@@ -126,7 +128,8 @@ const cardInfo: ModuleCardInfo = {
       "Five leftover systems must be assigned to the tightest ring that still contains them. A wrong ring is stored, then corrected in the note, so the lesson is the subset test rather than a free-form label.",
     whatYouSee: [
       "A kicker `N of 5 in the tightest ring` and a badge unplaced, correct, or corrected for the selected leftover.",
-      "Leftover terms, a listbox of five buttons. Each row shows the term and whether it is unplaced, placed, or corrected.",
+      "Leftover terms, a listbox of five numbered buttons. Each row shows the term and whether it is unplaced, placed, or corrected.",
+      "Beside the list, the five rings as a sorting board. The band chosen under Place in ring is shaded. A placed term appears as its list number in its tightest ring, and a wrong guess leaves a dashed ghost in the guessed ring with an arrow to the right one.",
       "Place in ring, five segments, and a Place button that names the selected leftover.",
       "Three metrics: Placed, Tightest-ring matches, and Nesting depth of the selected term's correct ring.",
       "A note that either explains the correct ring or reports the correction.",
@@ -138,7 +141,7 @@ const cardInfo: ModuleCardInfo = {
       "Arrow keys move the listbox selection. Enter places the selected term. Drag onto Place in ring is optional and writes the same state.",
     ],
     controls: [
-      "Select a leftover in Leftover terms, choose Place in ring, then press Place.",
+      "Select a leftover in Leftover terms, choose Place in ring (or click a band on the board), then press Place.",
       "Comparison worth running: place Linear regression on house prices in DL, read the correction, then place it in ML.",
     ],
     notice: [
@@ -157,8 +160,8 @@ const cardInfo: ModuleCardInfo = {
       "Eight authored scenarios are sorted under the signal that trains the model: human labels (supervised), structure in raw data (unsupervised), labels made from the data itself (self-supervised), or a reward after acting (reinforcement). Each placement is checked at once and corrected with a reason. A separate readout names the output type, classification or regression, because the signal and the output type are different questions.",
     whatYouSee: [
       "A kicker `N of 8 sorted under the signal that trains them` and a badge unplaced, correct, or corrected for the selected scenario.",
-      "Four tiles, one per signal, each naming where the answer comes from. The signal names are text, so no meaning rests on colour.",
-      "Learning scenarios, a listbox of eight buttons. Each row shows a short name, a one-sentence description, and whether it is unplaced, placed, or corrected.",
+      "Four tiles, one per signal, each with a small sketch and a sentence naming where the answer comes from. The tile for the signal chosen under Learning signal is outlined. Under each tile's dashed line sit the scenarios sorted there so far: a tick for a right placement, and a dashed chip that says where a wrong one was moved from.",
+      "Learning scenarios, a listbox of eight buttons in two columns. Each row shows a short name, a one-sentence description, and whether it is unplaced, placed, or corrected.",
       "Learning signal, four segments, and a Place button that names the selected scenario.",
       "Three metrics: Placed, Signal matches, and Output type for the selected scenario.",
       "Two notes: the verdict with its reason, and a reminder that output type is a separate question from the signal.",

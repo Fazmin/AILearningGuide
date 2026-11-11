@@ -29,6 +29,7 @@ import {
   PRECISIONS,
   REFERENCE_DEVICE_BYTES,
 } from "./memory";
+import { BatchFigure, DatasetFigure, DeviceBoxes, ForwardFigure, LossFigure, RowsStrip } from "./RunViews";
 import { readState, STEPS_TAKEN_MAX } from "./state";
 import { pairLabel, STEP_LEARNING_RATE, stepFromCheckpoint } from "./step";
 
@@ -69,7 +70,8 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
     [epochs, batchSize],
   );
 
-  const tokens = useMemo(() => encodeTinyText(corpus.text).length, []);
+  const corpusIds = useMemo(() => encodeTinyText(corpus.text), []);
+  const tokens = corpusIds.length;
   const checkpointIndex = Math.max(
     0,
     Math.min(run.checkpoints.length - 1, readState(state).checkpoint),
@@ -180,7 +182,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
   ][stage];
 
   return (
-    <div className="tg-lab tg-lab--hero a10-lab">
+    <div className="tg-lab tg-lab--hero a10-lab tr-lab">
       <LabSurface label="One pass through the training loop" className="tg-loop-panel">
         <SurfaceHeading
           kicker={`Stage ${stage + 1} of ${stages.length}`}
@@ -201,6 +203,18 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           <strong>{stageReadout.title}</strong>
           <p>{stageReadout.note}</p>
         </div>
+        {stage === 0 && <DatasetFigure ids={corpusIds} pairs={run.tokens} />}
+        {stage === 1 && (
+          <BatchFigure
+            pairs={run.tokens}
+            batchSize={batchSize}
+            batchesPerEpoch={batchesPerEpoch}
+            epochs={epochs}
+            steps={run.steps}
+          />
+        )}
+        {stage === 2 && <ForwardFigure probabilities={Array.from(probeRow)} target={targetId} context={PROBE_CONTEXT} />}
+        {stage === 3 && <LossFigure loss={checkpoint.loss} baseline={UNIFORM_CROSS_ENTROPY} />}
         <div className="metric-row">
           {stageReadout.metrics.map((metric) => (
             <Metric key={metric.label} label={metric.label} value={metric.value} tone={metric.tone} />
@@ -396,8 +410,9 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
                 value={`${stepResult.weightsChanged} of ${TINY_VOCAB_SIZE * TINY_VOCAB_SIZE} · ${stepResult.rows.length} rows`}
               />
             </div>
+            <RowsStrip rows={stepResult.rows} size={TINY_VOCAB_SIZE} />
             <div className="tr-table-wrap">
-              <table className="tr-table">
+              <table className="tr-table tr-table--step">
                 <caption>
                   The {Math.min(TABLE_ROWS, stepResult.rows.length)} rows with the largest gradient
                   {stepResult.rows.length > TABLE_ROWS
@@ -421,7 +436,16 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
                     <tr key={row.row}>
                       <th scope="row">{TINY_VOCAB[row.row] === " " ? "␣" : TINY_VOCAB[row.row]}</th>
                       <td>{row.pairs}</td>
-                      <td>{row.gradientNorm.toFixed(3)}</td>
+                      <td>
+                        {row.gradientNorm.toFixed(3)}
+                        <i
+                          className="tr-cellbar"
+                          aria-hidden="true"
+                          style={{
+                            width: `${(row.gradientNorm / Math.max(1e-9, ...stepResult.rows.map((entry) => entry.gradientNorm))) * 100}%`,
+                          }}
+                        />
+                      </td>
                       <td>{TINY_VOCAB[row.target] === " " ? "␣" : TINY_VOCAB[row.target]}</td>
                       <td>
                         {row.logitBefore.toFixed(3)} → {row.logitAfter.toFixed(3)}
@@ -549,6 +573,12 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             </tbody>
           </table>
         </div>
+        <DeviceBoxes
+          total={memory.total}
+          device={REFERENCE_DEVICE_BYTES}
+          count={devicesNeeded(memory.total)}
+          deviceLabel={formatBytes(REFERENCE_DEVICE_BYTES)}
+        />
         <div className="metric-row">
           <Metric label="Bytes per parameter" value={`${memory.totalBytesPerParameter}`} tone="forward" />
           <Metric label="Optimizer state ÷ weights" value={`${(memory.optimizerState / memory.weights).toFixed(1)}×`} tone="gradient" />
@@ -583,10 +613,11 @@ function LossTimeline({
   epochs: number;
   batchesPerEpoch: number;
 }) {
-  const W = 440;
+  // Sized close to the card's real width beside the reading panel, so the 10px labels stay 10px.
+  const W = 384;
   const H = 236;
-  const L = 40;
-  const R = 432;
+  const L = 38;
+  const R = 376;
   const T = 20;
   const B = 204;
   const low = 1.5;
@@ -650,7 +681,8 @@ function LossTimeline({
       <text
         className="tr-dot-label"
         x={xAt(current.step) + (labelLeft ? -9 : 9)}
-        y={Math.max(T + 10, yAt(current.loss) - 14)}
+        // The curve falls to the right, so the clear space is below a label that sits left of the dot and above one to its right.
+        y={labelLeft ? Math.min(B - 8, yAt(current.loss) + 22) : Math.max(T + 10, yAt(current.loss) - 14)}
         textAnchor={labelLeft ? "end" : "start"}
       >
         step {current.step} · {current.loss.toFixed(3)} nats

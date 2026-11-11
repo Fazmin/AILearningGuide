@@ -57,6 +57,16 @@ const STAGES = [
 ];
 const STAGE_FOR_STEP = [1, 3, 4, 2];
 
+/** Running totals in percent, so a stacked bar and the ribbons between two bars share their edges. */
+const edges = (p: ReadonlyArray<number>) => {
+  const out = [0];
+  p.forEach((value) => out.push(out[out.length - 1] + value * 100));
+  return out;
+};
+/** A careful rater scores B, C and F high and A, D and E low; the lab draws the two groups differently. */
+const ratedHigh = (gold: number) => gold >= 0.5;
+const LONGEST = Math.max(...CANDIDATES.map((candidate) => wordCount(candidate.text)));
+
 export default function Explore({ state, setState, currentStep, narrate }: ModuleContext) {
   const sftSteps = clamp(Math.round(asNumber(state, "sftSteps", 3)), 0, MAX_SFT_STEPS);
   const beta = clamp(asNumber(state, "beta", 2), BETA_MIN, BETA_MAX);
@@ -90,6 +100,24 @@ export default function Explore({ state, setState, currentStep, narrate }: Modul
   const top = policy.indexOf(Math.max(...policy));
   const labeled = comparisons.length;
   const stage = STAGE_FOR_STEP[clamp(currentStep, 0, STAGE_FOR_STEP.length - 1)];
+
+  /* The three distributions as stacked bars, with ribbons showing where each response's share goes. */
+  const baseGold = expectation(base, gold);
+  const flowRows = [
+    { id: "base", name: "base", p: base, gold: baseGold, before: baseGold },
+    { id: "sft", name: "SFT", p: reference, gold: referenceGold, before: baseGold },
+    { id: "tuned", name: "tuned", p: policy, gold: expectedGold, before: referenceGold },
+  ];
+  const flowLinks = [
+    { name: "SFT", detail: `${sftSteps} step${sftSteps === 1 ? "" : "s"} toward ${SFT_DEMOS.join(" and ")}` },
+    { name: "reward model + KL leash", detail: `β ${formatBeta(beta)}` },
+  ];
+
+  /* The scorer's order beside the careful rater's order: every crossing is a pair they rank differently. */
+  const byReward = CANDIDATES.map((_, index) => index).sort((a, b) => rewards[b] - rewards[a]);
+  const byGold = CANDIDATES.map((_, index) => index).sort((a, b) => gold[b] - gold[a]);
+  const slopeY = (rank: number) => ((rank + 0.5) / CANDIDATES.length) * 100;
+  const unranked = rMax - rMin < 1e-9;
 
   const setLabel = (index: number, choice: "a" | "b") => {
     const next = [...labels];
@@ -134,6 +162,74 @@ export default function Explore({ state, setState, currentStep, narrate }: Modul
             onChange={(value) => setState({ sftSteps: value })}
           />
         </div>
+        <div
+          className="pt-flow"
+          role="img"
+          aria-label={`Share of probability on each response. ${flowRows
+            .map(
+              (row) =>
+                `${row.name}: ${CANDIDATES.map((candidate, index) => `${candidate.id} ${pct(row.p[index])}`).join(", ")}, average gold ${fmt(row.gold)}`,
+            )
+            .join(". ")}.`}
+        >
+          {flowRows.map((row, rowIndex) => {
+            const here = edges(row.p);
+            const above = rowIndex > 0 ? edges(flowRows[rowIndex - 1].p) : here;
+            const change = row.gold - row.before;
+            return (
+              <div key={row.id} className="pt-flow__stage">
+                {rowIndex > 0 && (
+                  <div className="pt-flow__link">
+                    <span className="pt-flow__via">
+                      <b>↓ {flowLinks[rowIndex - 1].name}</b> {flowLinks[rowIndex - 1].detail}
+                    </span>
+                    <div className="pt-flow__ribbons">
+                      {CANDIDATES.map((candidate, index) => (
+                        <i
+                          key={candidate.id}
+                          className={ratedHigh(candidate.gold) ? "is-high" : "is-low"}
+                          style={{
+                            clipPath: `polygon(${above[index]}% 0, ${above[index + 1]}% 0, ${here[index + 1]}% 100%, ${here[index]}% 100%)`,
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div className={`pt-flow__row pt-flow__row--${row.id}`}>
+                  <span className="pt-flow__name">{row.name}</span>
+                  <div className="pt-flow__bar">
+                    {CANDIDATES.map((candidate, index) => (
+                      <span
+                        key={candidate.id}
+                        className={`${ratedHigh(candidate.gold) ? "is-high" : "is-low"} ${row.id === "tuned" && index === top ? "is-top" : ""}`.trim()}
+                        style={{ width: `${row.p[index] * 100}%` }}
+                      >
+                        {row.p[index] >= 0.035 && <b>{candidate.id}</b>}
+                        {row.p[index] >= 0.1 && <em>{pct(row.p[index])}</em>}
+                      </span>
+                    ))}
+                  </div>
+                  <span
+                    className={`pt-flow__gold ${rowIndex > 0 && change < -0.005 ? "is-down" : rowIndex > 0 && change > 0.005 ? "is-up" : ""}`.trim()}
+                  >
+                    gold <b>{fmt(row.gold)}</b>
+                    {rowIndex > 0 && (change > 0.005 ? " ▲" : change < -0.005 ? " ▼" : "")}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+          <p className="pt-flow__key">
+            <span>
+              <i className="pt-flow__swatch is-high" /> solid: answers a careful rater scores high (B, C, F)
+            </span>
+            <span>
+              <i className="pt-flow__swatch is-low" /> hatched: answers it scores low (A, D, E)
+            </span>
+            <span>gold: each row’s average gold score</span>
+          </p>
+        </div>
         <div className="pt-candidates" role="list" aria-label="Six candidate responses with their probabilities">
           {CANDIDATES.map((candidate, index) => {
             const words = wordCount(candidate.text);
@@ -173,11 +269,19 @@ export default function Explore({ state, setState, currentStep, narrate }: Modul
                   ))}
                 </div>
                 <footer>
-                  <span>
-                    r <b>{fmt(rewards[index])}</b>
+                  <span className="pt-score pt-score--r">
+                    r
+                    <i aria-hidden="true">
+                      <u style={{ left: `${rescale(rewards[index]) * 100}%` }} />
+                    </i>
+                    <b>{fmt(rewards[index])}</b>
                   </span>
-                  <span>
-                    gold <b>{fmt(candidate.gold)}</b>
+                  <span className="pt-score pt-score--gold">
+                    gold
+                    <i aria-hidden="true">
+                      <u style={{ left: `${candidate.gold * 100}%` }} />
+                    </i>
+                    <b>{fmt(candidate.gold)}</b>
                   </span>
                 </footer>
               </article>
@@ -216,9 +320,18 @@ export default function Explore({ state, setState, currentStep, narrate }: Modul
                       onClick={() => setLabel(index, side)}
                     >
                       <strong>{candidate.id}</strong> {candidate.tag}
+                      <span className="pt-pair__len" aria-hidden="true">
+                        <i>
+                          <b style={{ width: `${(wordCount(candidate.text) / LONGEST) * 100}%` }} />
+                        </i>
+                        {wordCount(candidate.text)} words
+                      </span>
                     </button>
                   );
                 })}
+                <span className="pt-pair__split" aria-hidden="true">
+                  <i style={{ width: `${pA * 100}%` }} />
+                </span>
                 <span className="pt-pair__prob">
                   {label === "none" ? "unlabelled · " : ""}P({pair.a} ≻ {pair.b}) = {fmt(pA)}
                 </span>
@@ -273,6 +386,65 @@ export default function Explore({ state, setState, currentStep, narrate }: Modul
             detail: fit.weights[index] >= 0 ? "raises reward" : "lowers reward",
           }))}
         />
+        <div
+          className="pt-slope"
+          role="img"
+          aria-label={`The scorer ranks the responses ${byReward.map((index) => CANDIDATES[index].id).join(", ")} from highest reward to lowest. The gold score ranks them ${byGold.map((index) => CANDIDATES[index].id).join(", ")}. They agree on ${agreement.agree} of ${agreement.total} pairs.`}
+        >
+          <div className="pt-slope__head">
+            <span>scorer’s order, by r</span>
+            <span>careful rater’s order, by gold</span>
+          </div>
+          <div className="pt-slope__body">
+            <ol>
+              {byReward.map((index) => (
+                <li key={CANDIDATES[index].id}>
+                  <b>{fmt(rewards[index])}</b>
+                  <strong>{CANDIDATES[index].id}</strong>
+                </li>
+              ))}
+            </ol>
+            <span className="pt-slope__lines">
+              {unranked ? (
+                <em>No labels yet, so every r is 0.00 and the scorer has no order to compare.</em>
+              ) : (
+                <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                  {byReward.map((index, rank) => {
+                    const goldRank = byGold.indexOf(index);
+                    const drift = goldRank - rank;
+                    return (
+                      <line
+                        key={CANDIDATES[index].id}
+                        className={drift >= 2 ? "is-over" : drift <= -2 ? "is-under" : ""}
+                        x1="0"
+                        y1={slopeY(rank)}
+                        x2="100"
+                        y2={slopeY(goldRank)}
+                      />
+                    );
+                  })}
+                </svg>
+              )}
+            </span>
+            <ol>
+              {byGold.map((index) => (
+                <li key={CANDIDATES[index].id}>
+                  <strong>{CANDIDATES[index].id}</strong>
+                  <b>{fmt(CANDIDATES[index].gold)}</b>
+                </li>
+              ))}
+            </ol>
+          </div>
+          <p className="pt-slope__key">
+            <span className="is-over">
+              <i /> scorer ranks it 2 or more places too high
+            </span>
+            <span className="is-under">
+              <i /> 2 or more places too low
+            </span>
+            <span>Each crossing is a pair the two put in a different order.</span>
+          </p>
+        </div>
         <LineChart
           label="Bradley–Terry training loss"
           xLabel={`gradient step, 0 → ${RM_STEPS}`}

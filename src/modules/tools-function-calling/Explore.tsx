@@ -1,6 +1,17 @@
 import { useMemo, type ReactNode } from "react";
 import { LabSurface, Metric, SegmentedControl, SurfaceHeading, type ModuleContext } from "@app/module-sdk";
-import { presetById, PRESETS, REPAIR_IDS, runConversation, TOOLS, type StageStatus } from "./host";
+import {
+  presetById,
+  PRESETS,
+  REPAIR_IDS,
+  runConversation,
+  TOOLS,
+  type HostRun,
+  type Schema,
+  type StageStatus,
+  type ToolSpec,
+  type ValidationError,
+} from "./host";
 import { cappedText, DRAFT_MAX } from "./state";
 
 const asString = (state: ModuleContext["state"], key: string, fallback: string) =>
@@ -12,26 +23,191 @@ const COUNT_WORDS: Record<number, string> = { 4: "four", 6: "six" };
 
 const STATUS_MARK: Record<StageStatus, string> = { pass: "✓ pass", fail: "✕ fail", skipped: "– skipped" };
 
+const HOST_STAGE_NO = { parse: 4, lookup: 5, validate: 6, policy: 7, execute: 8 } as const;
+
 function Stage({
   number,
   title,
   status,
+  note,
+  noteTone,
   children,
 }: {
   number: number;
   title: string;
   status?: StageStatus;
+  /** A short tag at the right of the header, for a stage that carries no pass or fail mark. */
+  note?: string;
+  noteTone?: "error" | "ok";
   children?: ReactNode;
 }) {
   return (
-    <div className={`tool-stage${status ? ` is-${status}` : ""}`}>
+    <div className={`tool-stage${status ? ` is-gate is-${status}` : ""}${noteTone ? ` is-${noteTone}` : ""}`}>
       <header>
         <span className="tool-stage-no">{number}</span>
         <strong>{title}</strong>
         {status && <em>{STATUS_MARK[status]}</em>}
+        {!status && note && <em>{note}</em>}
       </header>
       {children && <div className="tool-stage-body">{children}</div>}
     </div>
+  );
+}
+
+/** One crossing of the wall: a slot with an arrow and the name of the text that goes through it. */
+function Crossing({ direction, carries }: { direction: "to-model" | "to-host"; carries: string }) {
+  return (
+    <div className={`tool-arrow${direction === "to-model" ? " is-left" : ""}`} aria-hidden="true">
+      <b>{direction === "to-model" ? "←" : "→"}</b>
+      <span>{carries}</span>
+    </div>
+  );
+}
+
+/** Which line of the printed schema a validation error breaks. */
+const ruleOf = (error: ValidationError) => {
+  if (error.message.startsWith("required")) return "required";
+  if (error.message.startsWith("property not allowed")) return "additional";
+  if (error.message.startsWith("expected")) return `type:${error.path}`;
+  if (error.message.startsWith("must be one of")) return `enum:${error.path}`;
+  if (error.message.startsWith("longer than")) return `maxLength:${error.path}`;
+  if (error.message.startsWith("does not match")) return `pattern:${error.path}`;
+  return "";
+};
+
+interface SchemaLine {
+  text: string;
+  rule?: string;
+}
+
+/** The schema as sent to the model, one rule per line so a broken rule can be marked on its own line. */
+function schemaLines(tool: ToolSpec): SchemaLine[] {
+  const lines: SchemaLine[] = [];
+  const pad = (depth: number) => "  ".repeat(depth);
+  const inline = (value: unknown) =>
+    Array.isArray(value) ? `[${value.map((item) => JSON.stringify(item)).join(", ")}]` : JSON.stringify(value);
+  lines.push({ text: "{" });
+  lines.push({ text: `${pad(1)}"name": ${JSON.stringify(tool.name)},` });
+  lines.push({ text: `${pad(1)}"description": ${JSON.stringify(tool.description)},` });
+  lines.push({ text: `${pad(1)}"parameters": {` });
+  lines.push({ text: `${pad(2)}"type": "object",` });
+  lines.push({ text: `${pad(2)}"properties": {` });
+  const properties = Object.entries(tool.parameters.properties ?? {});
+  properties.forEach(([key, schema], index) => {
+    lines.push({ text: `${pad(3)}${JSON.stringify(key)}: {` });
+    const rules = Object.entries(schema).filter(([, value]) => value !== undefined);
+    rules.forEach(([rule, value], position) => {
+      lines.push({
+        text: `${pad(4)}${JSON.stringify(rule)}: ${inline(value)}${position < rules.length - 1 ? "," : ""}`,
+        rule: `${rule}:/${key}`,
+      });
+    });
+    lines.push({ text: `${pad(3)}}${index < properties.length - 1 ? "," : ""}` });
+  });
+  lines.push({ text: `${pad(2)}},` });
+  lines.push({ text: `${pad(2)}"required": ${inline(tool.parameters.required ?? [])},`, rule: "required" });
+  lines.push({
+    text: `${pad(2)}"additionalProperties": ${JSON.stringify(tool.parameters.additionalProperties ?? true)}`,
+    rule: "additional",
+  });
+  lines.push({ text: `${pad(1)}}` });
+  lines.push({ text: "}" });
+  return lines;
+}
+
+const ruleWords = (schema: Schema) =>
+  [
+    schema.type,
+    schema.maxLength !== undefined ? `at most ${schema.maxLength} characters` : "",
+    schema.pattern ? "must match the pattern" : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+/** The call's arguments laid against the schema: one row per field the schema names or the call sent. */
+function ArgumentCheck({ tool, run }: { tool: ToolSpec; run: HostRun }) {
+  const sent = run.parsed?.arguments ?? {};
+  const properties = tool.parameters.properties ?? {};
+  const required = tool.parameters.required ?? [];
+  const errorsAt = (key: string) => run.errors.filter((error) => error.path === `/${key}`);
+  const known = Object.keys(properties);
+  const extra = Object.keys(sent).filter((key) => !(key in properties));
+  const placed = new Set([...known, ...extra].map((key) => `/${key}`));
+  const loose = run.errors.filter((error) => !placed.has(error.path));
+  const show = (value: unknown) => JSON.stringify(value);
+
+  return (
+    <ul className="tool-errors" aria-label="Each argument checked against the schema">
+      {known.map((key) => {
+        const schema = properties[key];
+        const present = key in sent;
+        const errors = errorsAt(key);
+        const ok = errors.length === 0;
+        return (
+          <li key={key} className={ok ? "is-ok" : "is-bad"}>
+            <span className="tool-check-mark">{ok ? "✓" : "✕"}</span>
+            <span className="tool-check-field">
+              <code>{key}</code>
+              {required.includes(key) && <small>required</small>}
+            </span>
+            <span className={`tool-check-sent${present ? "" : " is-absent"}`}>
+              {present ? show(sent[key]) : "not sent"}
+            </span>
+            <span className="tool-check-rule">
+              {schema.enum ? (
+                <>
+                  {schema.type} · one of{" "}
+                  {schema.enum.map((option) => (
+                    <i key={String(option)} className={present && sent[key] === option ? "is-match" : ""}>
+                      {String(option)}
+                    </i>
+                  ))}
+                </>
+              ) : (
+                ruleWords(schema)
+              )}
+            </span>
+            {errors.map((error) => (
+              <span key={error.message} className="tool-check-error">
+                <code>{error.path}</code> {error.message}
+              </span>
+            ))}
+          </li>
+        );
+      })}
+      {extra.map((key) => (
+        <li key={key} className="is-bad">
+          <span className="tool-check-mark">✕</span>
+          <span className="tool-check-field">
+            <code>{key}</code>
+            <small>not in the schema</small>
+          </span>
+          <span className="tool-check-sent">{show(sent[key])}</span>
+          {errorsAt(key).map((error) => (
+            <span key={error.message} className="tool-check-error">
+              <code>{error.path}</code> {error.message}
+            </span>
+          ))}
+        </li>
+      ))}
+      {loose.map((error) => (
+        <li key={`${error.path}-${error.message}`} className="is-bad">
+          <span className="tool-check-mark">✕</span>
+          <span className="tool-check-error">
+            <code>{error.path}</code> {error.message}
+          </span>
+        </li>
+      ))}
+      {run.errors.length === 0 && (
+        <li className="is-empty">
+          {run.stages.validate === "pass"
+            ? "No validation errors."
+            : run.stages.validate === "skipped"
+              ? "Validation did not run because an earlier check failed."
+              : ""}
+        </li>
+      )}
+    </ul>
   );
 }
 
@@ -57,6 +233,7 @@ export default function Explore({ state, setState }: ModuleContext) {
   const failedAt = (Object.entries(stages).find(([, value]) => value === "fail")?.[0] ?? null) as
     | keyof typeof stages
     | null;
+  const brokenRules = new Set(run.errors.map(ruleOf));
   const failLabel: Record<keyof typeof stages, string> = {
     parse: "parse",
     lookup: "tool lookup",
@@ -154,7 +331,7 @@ export default function Explore({ state, setState }: ModuleContext) {
           <div className="tool-lane-head is-host">Host program — runs code</div>
 
           <Stage number={2} title="Reads the tool list in its prompt" />
-          <div className="tool-arrow is-left" aria-hidden="true">←</div>
+          <Crossing direction="to-model" carries="tool list" />
           <Stage number={1} title={`Sends ${TOOLS.length} tool schemas with the request`}>
             {TOOLS.map((tool) => tool.name).join(" · ")}
           </Stage>
@@ -162,20 +339,25 @@ export default function Explore({ state, setState }: ModuleContext) {
           <Stage number={3} title="Writes a call as text">
             <code className="tool-snippet">{shownCall || "(empty)"}</code>
           </Stage>
-          <div className="tool-arrow" aria-hidden="true">→</div>
+          <Crossing direction="to-host" carries="call text" />
           <Stage number={4} title="Parse the text as JSON" status={stages.parse}>
             {run.parseError ? run.parseError : run.parsed ? `name = ${run.parsed.name}` : null}
           </Stage>
 
-          <div className="tool-lane-gap" />
+          <div className="tool-lane-wait">
+            <strong>The model is not running</strong>
+            <span>
+              Stages 4–8 are host code. The model cannot see them or change them. It learns the outcome only from the
+              tool message.
+            </span>
+          </div>
           <div className="tool-wall-line" aria-hidden="true" />
           <Stage number={5} title="Look up the tool name" status={stages.lookup}>
             {stages.lookup === "fail" ? `no tool named ${toolName}` : run.tool ? `${run.tool.name}: ${run.tool.effect}` : null}
           </Stage>
 
-          <div className="tool-lane-gap" />
           <div className="tool-wall-line" aria-hidden="true" />
-          <Stage number={6} title="Validate arguments against the schema" status={stages.validate}>
+          <Stage number={6}title="Validate arguments against the schema" status={stages.validate}>
             {stages.validate === "fail"
               ? `${run.errors.length} error${run.errors.length === 1 ? "" : "s"}: ${run.errors.map((item) => item.path).join(", ")}`
               : stages.validate === "pass"
@@ -183,9 +365,8 @@ export default function Explore({ state, setState }: ModuleContext) {
                 : null}
           </Stage>
 
-          <div className="tool-lane-gap" />
           <div className="tool-wall-line" aria-hidden="true" />
-          <Stage number={7} title="Apply host policy" status={stages.policy}>
+          <Stage number={7}title="Apply host policy" status={stages.policy}>
             {run.tool
               ? `${stages.policy === "skipped" ? "not reached · " : ""}${
                   run.tool.policy === "approval"
@@ -197,7 +378,6 @@ export default function Explore({ state, setState }: ModuleContext) {
               : null}
           </Stage>
 
-          <div className="tool-lane-gap" />
           <div className="tool-wall-line" aria-hidden="true" />
           <Stage number={8} title="Execute" status={stages.execute}>
             {run.sideEffect ?? (executed ? "read-only lookup; nothing changed" : null)}
@@ -206,8 +386,13 @@ export default function Explore({ state, setState }: ModuleContext) {
           <Stage number={10} title="Next turn reads the tool message">
             and nothing else about what the host did
           </Stage>
-          <div className="tool-arrow is-left" aria-hidden="true">←</div>
-          <Stage number={9} title="Append the result as a tool message">
+          <Crossing direction="to-model" carries="tool message" />
+          <Stage
+            number={9}
+            title="Append the result as a tool message"
+            note={failedAt ? `error from stage ${HOST_STAGE_NO[failedAt]}` : executed ? "result of stage 8" : undefined}
+            noteTone={failedAt ? "error" : executed ? "ok" : undefined}
+          >
             <code className="tool-snippet">{run.result}</code>
           </Stage>
         </div>
@@ -243,32 +428,54 @@ export default function Explore({ state, setState }: ModuleContext) {
           title="The contract the arguments must meet"
         />
         {shownTool ? (
-          <pre className="tool-schema" aria-label={`${shownTool.name} JSON schema`}>
-            {JSON.stringify({ name: shownTool.name, description: shownTool.description, parameters: shownTool.parameters }, null, 2)}
-          </pre>
+          <div className="tool-contract">
+            <figure className="tool-contract-side">
+              <figcaption>The schema, as sent to the model</figcaption>
+              <pre className="tool-schema" aria-label={`${shownTool.name} JSON schema`}>
+                {schemaLines(shownTool).map((line, index) => {
+                  const broken = line.rule !== undefined && brokenRules.has(line.rule);
+                  return (
+                    <span key={index} className={`tool-schema-line${broken ? " is-broken" : ""}`}>
+                      {line.text}
+                      {broken && <b> ✕ broken</b>}
+                      {"\n"}
+                    </span>
+                  );
+                })}
+              </pre>
+            </figure>
+            <figure className="tool-contract-side">
+              <figcaption>
+                The call’s arguments, checked against it
+                {conversation.second ? ` (turn ${turn})` : ""}
+              </figcaption>
+              <ArgumentCheck tool={shownTool} run={run} />
+            </figure>
+          </div>
         ) : (
-          <p className="lab-note">
-            {run.parseError
-              ? `The host could not read a tool name: ${run.parseError}.`
-              : `The host advertises only ${TOOLS.map((tool) => tool.name).join(", ")}. “${toolName}” is not one of them.`}
-          </p>
+          <>
+            <ul className="tool-offered" aria-label="Tools the host advertises">
+              {TOOLS.map((tool) => (
+                <li key={tool.name}>
+                  <code>{tool.name}</code>
+                </li>
+              ))}
+              {run.parsed && (
+                <li className="is-unknown">
+                  <code>{toolName}</code> ✕ not offered
+                </li>
+              )}
+            </ul>
+            <p className="lab-note">
+              {run.parseError
+                ? `The host could not read a tool name: ${run.parseError}.`
+                : `The host advertises only ${TOOLS.map((tool) => tool.name).join(", ")}. “${toolName}” is not one of them.`}
+            </p>
+            <ul className="tool-errors">
+              <li className="is-empty">Validation did not run because an earlier check failed.</li>
+            </ul>
+          </>
         )}
-        <ul className="tool-errors">
-          {run.errors.length === 0 && (
-            <li className="is-empty">
-              {stages.validate === "pass"
-                ? "No validation errors."
-                : stages.validate === "skipped"
-                  ? "Validation did not run because an earlier check failed."
-                  : ""}
-            </li>
-          )}
-          {run.errors.map((error) => (
-            <li key={`${error.path}-${error.message}`}>
-              <code>{error.path}</code> {error.message}
-            </li>
-          ))}
-        </ul>
       </LabSurface>
 
       <LabSurface label="Transcript" className="tool-transcript-card">
@@ -277,36 +484,56 @@ export default function Explore({ state, setState }: ModuleContext) {
           title={conversation.second ? "Messages, in order, across both turns" : "Messages, in order"}
         />
         <ol className="tool-transcript">
-          <li>
-            <b>system</b>
+          <li className="is-host">
+            <b>
+              system<small>by the host</small>
+            </b>
             <span>Tools available: {TOOLS.map((tool) => tool.name).join(", ")} (schemas attached)</span>
           </li>
-          <li>
-            <b>user</b>
+          <li className="is-person">
+            <b>
+              user<small>by a person</small>
+            </b>
             <span>{preset.user}</span>
           </li>
-          <li>
-            <b>assistant</b>
+          <li className="is-model">
+            <b>
+              assistant<small>by the model{conversation.second ? " · turn 1" : ""}</small>
+            </b>
             <code>{draft || "(empty)"}</code>
           </li>
-          <li className={conversation.first.stages.execute === "pass" ? "" : "is-error"}>
-            <b>tool</b>
+          <li className={`is-host${conversation.first.stages.execute === "pass" ? "" : " is-error"}`}>
+            <b>
+              tool
+              <small>
+                by the host{conversation.first.stages.execute === "pass" ? "" : " · error"}
+              </small>
+            </b>
             <code>{conversation.first.result}</code>
           </li>
           {conversation.second && (
             <>
-              <li>
-                <b>assistant</b>
+              <li className="is-model">
+                <b>
+                  assistant<small>by the model · turn 2</small>
+                </b>
                 <code>{retry || "(empty)"}</code>
               </li>
-              <li className={conversation.second.stages.execute === "pass" ? "" : "is-error"}>
-                <b>tool</b>
+              <li className={`is-host${conversation.second.stages.execute === "pass" ? "" : " is-error"}`}>
+                <b>
+                  tool
+                  <small>
+                    by the host{conversation.second.stages.execute === "pass" ? "" : " · error"}
+                  </small>
+                </b>
                 <code>{conversation.second.result}</code>
               </li>
             </>
           )}
           <li className="is-next">
-            <b>assistant</b>
+            <b>
+              assistant<small>not written yet</small>
+            </b>
             <span>next call: generated from the {COUNT_WORDS[conversation.second ? 6 : 4]} messages above</span>
           </li>
         </ol>

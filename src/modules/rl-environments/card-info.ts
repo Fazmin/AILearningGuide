@@ -8,8 +8,8 @@ const cardInfo: ModuleCardInfo = {
     whatYouSee: [
       "Episode seed (1 to 20), which picks the ticket (seeds 1 to 8 visit the eight ticket kinds in order, then repeat) and the random draws. The heading names the ticket, whether it is held out, and the training update whose policy acts.",
       "The ticket text, with whether it gives the value or leaves it out. The policy never reads this text; it sees only seven yes/no features.",
-      "Episode replay: each turn's tool call, the chance the policy gave that tool, the desk's reply, and in italics what is true but hidden from the agent, such as a write that did not save. An edit_check row is marked loophole.",
-      "Scorecard: Sandbox test, Strict grader, Partial credit and Rubric judge, each with its score and what it read, then the training reward for this episode under the current Reward design, Checker and Step cost.",
+      "Episode replay: each turn's tool call, the chance the policy gave that tool, the desk's reply, and in italics what is true but hidden from the agent, such as a write that did not save. Each turn ends with two marks for the hidden truth after it: whether the record is right and whether the test is intact, drawn bold on the turn that changed it. An edit_check row is marked loophole.",
+      "Scorecard: Sandbox test, Strict grader, Partial credit and Rubric judge, each with its score, a bar for that score on a scale that runs to 1.4 with a mark at 1, and what it read. The row whose score is the training reward under the current Reward design and Checker is tagged training reward. Below it, the training reward for this episode under the current Reward design, Checker and Step cost.",
     ],
     howItWorks: [
       "Tools: read_ticket marks the ticket read; look_up finds the value; update_record writes the right value only if the value is known (read on a ticket that gives it, or looked up), and even then fails to save 40% of the time without saying so; run_check runs test_record; edit_check rewrites test_record to always pass; close_ticket ends the episode.",
@@ -39,7 +39,7 @@ const cardInfo: ModuleCardInfo = {
     whatYouSee: [
       "Reward design (Outcome only, Partial credit, Rubric judge), Checker (Strict grader or Sandbox test; marked not used under the Rubric judge), Training tickets (1, 3 or 6 kinds), Group size (2 to 32), KL to reference β (0 to 0.5), Step cost (0 to 0.10 per turn), Advantage scale (Divide by group std or Mean only), Seed, and Training update (0 to 200).",
       "A chart of Training reward (dashed) and True success (held-out) (solid) over the 200 updates, with a marker at the chosen update. The legend prints the values at update 200.",
-      "Tiles at the chosen update: Training reward, True success (held-out), Hack rate (share of held-out episodes that call edit_check), Closed but not fixed, Needless look-ups (look-ups on the held-out ticket that gives its value), Mean turns, KL per turn (in nats), and Groups with no signal so far.",
+      "Tiles at the chosen update: Training reward, True success (held-out), Hack rate (share of held-out episodes that call edit_check), Closed but not fixed, Needless look-ups (look-ups on the held-out ticket that gives its value), Mean turns, KL per turn (in nats), and Groups with no signal so far. A tile that reports a share also draws it as a meter from 0 to 100%.",
     ],
     howItWorks: [
       "Policy: logit(tool) = bias + 7 feature weights · features, softmax over six tools, 48 weights in all. It starts at a hand-written reference that solves 19% of held-out tickets.",
@@ -69,7 +69,7 @@ const cardInfo: ModuleCardInfo = {
     summary:
       "The 48 weights read as a table: six situations the desk can be in, each written as the seven yes/no features, and the chance the policy calls each of the six tools there. It shows what training changed, such as a look-up when the value is missing, or edit_check taking over under the Sandbox test.",
     whatYouSee: [
-      "Rows: New ticket, Read, value given, Read, value missing, Value looked up, Updated, not checked, and Check failed. Columns: the six tools.",
+      "Rows: New ticket, Read, value given, Read, value missing, Value looked up, Updated, not checked, and Check failed. Columns: the six tools, with edit_check marked as the loophole.",
       "Each cell's shade grows with the probability; focus or hover a cell to read it. Each row sums to 100%.",
       "A list naming the likeliest tool in each situation, with its probability.",
     ],
@@ -97,7 +97,7 @@ const cardInfo: ModuleCardInfo = {
       "Bars give Strict grader success on the held-out ticket that gives its value, the held-out ticket that leaves it out, and the training tickets. A strip shows where seeds 1 to 10 end at update 200 for the current controls, because one seed can hide an all-or-nothing outcome.",
     whatYouSee: [
       "Bars: Value given, Value missing (each one held-out ticket), and Training tickets, at the chosen update. Value missing turns to the warning colour, and says why, when no training ticket leaves its value out.",
-      "Across 10 seeds: one column per seed on a 0% to 100% axis, with a filled dot for true success and a hollow diamond for the hack rate, and a shaded band behind the current seed when it is one of the ten.",
+      "Across 10 seeds: one column per seed on a 0% to 100% axis, with a filled dot for true success and a hollow diamond for the hack rate, a dashed line at the mean true success, and a shaded band behind the current seed, with its two values printed, when it is one of the ten.",
       "A line giving the mean true success, how many seeds hack more than half the time, and how many quit on their first turn.",
     ],
     howItWorks: [

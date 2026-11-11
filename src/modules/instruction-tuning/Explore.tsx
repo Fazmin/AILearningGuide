@@ -86,12 +86,22 @@ function LossMaskStrip({
     if (startsNew) groups.push([index]);
     else groups[groups.length - 1].push(index);
   });
+  // Where grading starts: the first graded character that also starts a word or marker. With the
+  // loss on every character there is no boundary to flag.
+  const firstGraded = sequence.findIndex((_, index) => index > 0 && inLoss(sequence, index, mask));
+  const flagGroup = contextCount > 0 ? groups.findIndex((group) => group[0] === firstGraded) : -1;
+  const scored = Math.max(1, gradedCount + contextCount);
   const label = `Loss mask over the first example, ${sequence.length} characters. ${gradedCount} are graded, averaging ${(gradedTotal / Math.max(1, gradedCount)).toFixed(2)} nats of surprise; ${contextCount} are context only, averaging ${(contextTotal / Math.max(1, contextCount)).toFixed(2)} nats.`;
   return (
     <div className="sft-strip">
       <div className="sft-strip__cells" role="img" aria-label={label}>
-        {groups.map((group) => (
+        {groups.map((group, groupIndex) => (
           <span className="sft-word" key={group[0]}>
+            {groupIndex === flagGroup && (
+              <span className="sft-flag" aria-hidden="true">
+                graded from here
+              </span>
+            )}
             {group.map((index) => {
               const entry = sequence[index];
               const graded = inLoss(sequence, index, mask);
@@ -130,6 +140,23 @@ function LossMaskStrip({
         <span><i className="sft-key sft-key--user" />user</span>
         <span><i className="sft-key sft-key--assistant" />assistant</span>
       </div>
+      <div
+        className="sft-share"
+        role="img"
+        aria-label={`Of ${scored} predicted characters, ${contextCount} are context only and ${gradedCount} are graded.`}
+      >
+        <span className="sft-share__title">What the loss counts, of {scored} predicted characters</span>
+        <span className="sft-share__bar">
+          {contextCount > 0 && (
+            <i className="is-context" style={{ flexGrow: contextCount }}>
+              <b>{contextCount} read as context, not graded</b>
+            </i>
+          )}
+          <i className="is-graded" style={{ flexGrow: gradedCount }}>
+            <b>{gradedCount} graded</b>
+          </i>
+        </span>
+      </div>
       <div className="metric-row sft-metrics">
         <Metric label="Graded characters" value={`${gradedCount} of ${Math.max(0, sequence.length - 1)}`} tone="forward" />
         <Metric label="Mean −log p, graded" value={`${(gradedTotal / Math.max(1, gradedCount)).toFixed(2)} nats`} tone="forward" />
@@ -140,6 +167,39 @@ function LossMaskStrip({
         />
       </div>
     </div>
+  );
+}
+
+/**
+ * A sampled continuation with its markers picked out. With `cut`, everything from the first marker
+ * on is faded: that is where a decoder watching for a marker would stop.
+ */
+function SampleText({ text, cut = false }: { text: string; cut?: boolean }) {
+  const stop = cut ? firstMarkerAt(text) : -1;
+  const pieces = (part: string, offset: number) =>
+    part.split(/([<>])/).map((piece, index) =>
+      piece === "<" || piece === ">" ? (
+        <b className="sft-sample__marker" key={`${offset}-${index}`}>
+          {piece}
+        </b>
+      ) : (
+        piece
+      ),
+    );
+  if (stop < 0) {
+    return (
+      <p className="sft-sample">
+        {pieces(text, 0)}
+        {cut && <em className="sft-sample__stop is-missing">no marker · keeps going</em>}
+      </p>
+    );
+  }
+  return (
+    <p className="sft-sample">
+      {pieces(text.slice(0, stop), 0)}
+      <em className="sft-sample__stop">stop</em>
+      <span className="sft-sample__rest">{pieces(text.slice(stop), stop)}</span>
+    </p>
   );
 }
 
@@ -271,7 +331,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
   const percent = (value: number) => `${(value * 100).toFixed(0)}%`;
 
   return (
-    <div className="tg-lab tg-lab--hero">
+    <div className="tg-lab tg-lab--hero sft-lab">
       <LabSurface label="Chat template editor" className="tg-template-panel">
         <SurfaceHeading
           kicker={`${templatedChars} characters of templated training text`}
@@ -373,26 +433,26 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
         <div className="tg-diff">
           <div className="tg-sample">
             <span>Templated model continues the prompt · markers shown</span>
-            <p>
-              {sampleTinyText(runs.templated.weights, {
+            <SampleText
+              text={sampleTinyText(runs.templated.weights, {
                 prompt: promptOnly,
                 length: 70,
                 temperature: 0.6,
                 seed: 17,
                 allowReserved: true,
               })}
-            </p>
+            />
           </div>
           <div className="tg-sample">
             <span>Plain model continues the same words</span>
-            <p>
-              {sampleTinyText(runs.plain.weights, {
+            <SampleText
+              text={sampleTinyText(runs.plain.weights, {
                 prompt: plainPrompt,
                 length: 70,
                 temperature: 0.6,
                 seed: 17,
               })}
-            </p>
+            />
           </div>
         </div>
       </LabSurface>
@@ -438,6 +498,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             kicker={`After the ${boundaryLabel} that ends a reply`}
             title="Does the model know a turn just ended?"
           />
+          <p className="sft-list-label">Templated model · next character after the {boundaryLabel}</p>
           <BarList
             label="Templated model, next character after the turn boundary"
             items={templatedNext.map((entry, index) => ({
@@ -450,6 +511,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             }))}
             max={1}
           />
+          <p className="sft-list-label">Plain model · next character after the same {boundaryLabel}</p>
           <BarList
             label="Plain model, next character after the same boundary"
             items={plainNext.map((entry, index) => ({
@@ -501,12 +563,12 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
         <div className="sft-serve-grid">
           <div className="tg-sample">
             <span>Templated model continues · markers shown</span>
-            <p>{serve.templatedSample}</p>
+            <SampleText text={serve.templatedSample} cut />
             <small>{stopNote(serve.templatedSample)}</small>
           </div>
           <div className="tg-sample">
             <span>Plain model continues · markers shown</span>
-            <p>{serve.plainSample}</p>
+            <SampleText text={serve.plainSample} cut />
             <small>{stopNote(serve.plainSample)}</small>
           </div>
         </div>

@@ -39,6 +39,7 @@ const cardInfo: ModuleCardInfo = {
     summary:
       "For the inspected cell, each row evaluates Q(s, a) = Σ P(s′|s,a)·(r + γ·V(s′)) with the current V. The largest Q is exactly what the next sweep writes into that cell. The chart shows how fast the largest change across the grid shrinks.",
     whatYouSee: [
+      "A cross of five tiles: the inspected cell in the middle, with its value now and the value the next sweep writes, and one tile per move with that move's Q and the cell it tries to enter. The best move is outlined in green and marked max.",
       "A four-row table: the action, the expectation written out with the live probabilities, rewards, γ, and neighbour values, and the resulting Q. The best row is marked max.",
       "A formula card repeating the winning action's terms, its value, and the number the next sweep writes into this cell.",
       "A line chart of the measured residual max_s |V_k(s) − V_{k−1}(s)| for k = 1 to 60, a dotted γ^(k−1) × first-residual reference, and a guide at the current sweep.",
@@ -68,6 +69,7 @@ const cardInfo: ModuleCardInfo = {
       "The bars are this episode's rewards r₁, r₂, … in order. The inner bars are the same rewards multiplied by γᵗ, which is what the discounted return adds up. With no slip and a converged V, G₀ equals V(S) exactly.",
     whatYouSee: [
       "Outer bars: raw rewards, +1 up to −1. Inner bars: γᵗ·r, green above zero and red below. Bars left of the cursor are counted in Return so far.",
+      "A line for the return so far, moving one step at a time, with a dot and its value at Episode step, and a dashed level at V(S).",
       "Episode step (0 to the episode length) and Episode seed (1–20, which draws a different sequence of slips).",
       "Reward this step, Return so far, Full return G₀, and V(S) at the current sweep.",
     ],
@@ -95,7 +97,7 @@ const cardInfo: ModuleCardInfo = {
     summary:
       "Four arms pay 1 with probabilities 0.30, 0.55, 0.45, and 0.70. The agent does not know them. It keeps a sample-average estimate per arm, pulls the best estimate, and with probability ε pulls a random arm instead. Without exploration it keeps the first arm that happens to pay.",
     whatYouSee: [
-      "Bars: how many of 400 pulls each arm got in one seeded run, with its final estimate and its true mean.",
+      "Bars: how many of 400 pulls each arm got in one seeded run, with its final estimate and its true mean. Under each bar a line runs from 0 to 1, with a dot at the agent's estimate and a tick at the true mean. An arm that was never pulled has no dot.",
       "A line chart of mean reward so far, averaged over 300 seeded runs, for your ε and for ε = 0, with the best arm's 0.70 as a dotted ceiling.",
       "Best-arm share for this run, averaged over 300 runs, and the same average for ε = 0.",
     ],
@@ -123,7 +125,7 @@ const cardInfo: ModuleCardInfo = {
       "The same four Bernoulli arms, but the agent now keeps a softmax policy instead of value estimates. Each pull samples an arm from the policy and a reward from the arm, then nudges the policy toward arms that paid more than a baseline expects. The charts average 300 seeded runs; the bars show one run.",
     whatYouSee: [
       "`Learning rate α` (0.02 to 1.00), `Baseline` (off, so b = 0, or on, so b is the running average reward), and `Policy seed` (1 to 20).",
-      "Bars: the policy's probability on each arm after 400 pulls in one seeded run, with the arm's true mean and how often it was pulled. Every arm starts at 25%.",
+      "Bars: the policy's probability on each arm after 400 pulls in one seeded run, with the arm's true mean and how often it was pulled. Every arm starts at 25%, and a dashed tick on each bar marks that start.",
       "Two charts over 300 seeded runs, baseline on solid and off dashed: the probability on the best arm before each pull, and the mean reward so far with the best arm's 0.70 as a dotted ceiling. Their legends print the final values.",
       "Three metrics: the best-arm probability in this run, its average over 300 runs for your Baseline setting, and how many of the 300 runs end with less than half their probability on the best arm.",
     ],

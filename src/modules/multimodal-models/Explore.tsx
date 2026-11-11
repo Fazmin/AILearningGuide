@@ -33,6 +33,7 @@ import {
   VIT_PATCHES,
   type Connector,
   type Patch,
+  type Scale,
 } from "./patches";
 
 const asString = (state: ModuleContext["state"], key: string, fallback: string) =>
@@ -75,6 +76,136 @@ function FilterTile({ weights, p, name, value }: { weights: number[]; p: number;
         <code>{f2(value)}</code>
       </figcaption>
     </figure>
+  );
+}
+
+/** The image square to scale against a 448px outline, with its patch grid, plus the token count it costs. */
+function ScalePicture({
+  side,
+  vitPatch,
+  cls,
+  connector,
+  scale,
+}: {
+  side: number;
+  vitPatch: number;
+  cls: boolean;
+  connector: Connector;
+  scale: Scale;
+}) {
+  const full = 150;
+  const unit = full / SIDES[SIDES.length - 1];
+  const size = Math.min(full + 8, scale.padded * unit);
+  const cell = size / scale.perSide;
+  const lines = Array.from({ length: scale.perSide - 1 }, (_, index) => (index + 1) * cell);
+  const bySide = SIDES.map((option) => ({ option, tokens: realScale(option, vitPatch, cls, connector).patchTokens }));
+  const most = Math.max(...bySide.map((entry) => entry.tokens));
+  const share = scale.contextShare;
+  const fmt = (value: number) => value.toLocaleString("en-US");
+  return (
+    <div className="mm-scale-picture">
+      <figure className="mm-scale-figure">
+        <svg
+          className="mm-scale-grid"
+          viewBox="0 0 166 166"
+          role="img"
+          aria-label={`A ${side} pixel image cut into ${scale.perSide} by ${scale.perSide} patches of ${vitPatch} pixels: ${fmt(scale.patchTokens)} patch tokens. The dashed outline is a 448 pixel image at the same scale.`}
+        >
+          <rect className="mm-scale-ghost" x="4" y="4" width={full} height={full} />
+          <g transform={`translate(4 ${4 + full - Math.min(size, full)})`}>
+            <rect className="mm-scale-image" width={size} height={size} />
+            {lines.map((at) => (
+              <path key={at} className="mm-scale-line" d={`M ${at} 0 V ${size} M 0 ${at} H ${size}`} />
+            ))}
+            <rect className="mm-scale-one" width={cell} height={cell} />
+          </g>
+        </svg>
+        <figcaption>
+          <b>
+            {scale.perSide} × {scale.perSide} tiles = {fmt(scale.patchTokens)} patch tokens
+          </b>
+          <span>
+            drawn to scale; the dashed square is a 448px image, and the filled tile is one {vitPatch}×{vitPatch} patch
+          </span>
+        </figcaption>
+      </figure>
+      <div className="mm-scale-side">
+        <div
+          className="mm-side-bars"
+          role="img"
+          aria-label={`Patch tokens by image side at ${vitPatch} pixel patches: ${bySide
+            .map((entry) => `${entry.option} pixels ${fmt(entry.tokens)}`)
+            .join(", ")}.`}
+        >
+          <span className="mm-mini-title">
+            Patch tokens by image side, at {vitPatch}×{vitPatch}
+          </span>
+          {bySide.map((entry) => (
+            <div key={entry.option} className={entry.option === side ? "is-current" : ""} aria-hidden="true">
+              <span>{entry.option}px</span>
+              <i>
+                <b style={{ width: `${(entry.tokens / most) * 100}%` }} />
+              </i>
+              <code>{fmt(entry.tokens)}</code>
+            </div>
+          ))}
+        </div>
+        <div className="mm-context">
+          <span className="mm-mini-title">Room taken in a {fmt(CONTEXT)}-token context</span>
+          <div
+            className="mm-context-bar"
+            role="img"
+            aria-label={`${fmt(scale.llmImageTokens)} of ${fmt(CONTEXT)} context tokens are image tokens, ${(share * 100).toFixed(1)} percent.`}
+          >
+            <i style={{ width: `${Math.min(1, share) * 100}%` }} />
+          </div>
+          <div className="mm-context-labels" aria-hidden="true">
+            <b>
+              {fmt(scale.llmImageTokens)} image tokens · {(share * 100).toFixed(1)}%
+            </b>
+            <span>{fmt(CONTEXT - scale.llmImageTokens)} left for text</span>
+          </div>
+          {connector !== "llava" && (
+            <small>
+              {connector === "clip"
+                ? "CLIP ends in one vector per image, scored against captions. Nothing enters a language model."
+                : "The 64 resampled vectors are read through cross-attention, so they take no places in the sequence."}
+            </small>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Where the contrastive loss sits between 0 and 3, against the loss an even guess would score. */
+function LossMeter({ loss, chance }: { loss: number; chance: number }) {
+  const top = 3;
+  const at = (value: number) => Math.min(1, Math.max(0, value / top)) * 100;
+  const side = (value: number) => (at(value) < 18 ? " is-start" : at(value) > 82 ? " is-end" : "");
+  return (
+    <div
+      className="mm-loss-meter"
+      role="img"
+      aria-label={`Contrastive loss ${loss.toFixed(3)}, ${loss > chance ? "above" : "below"} the chance loss of ${chance.toFixed(3)}. Lower is better.`}
+    >
+      <div className="mm-loss-track" aria-hidden="true">
+        <i className="mm-loss-good" style={{ width: `${at(chance)}%` }} />
+        <b className={`mm-loss-now${loss > chance ? " is-bad" : ""}${side(loss)}`} style={{ left: `${at(loss)}%` }}>
+          <span>
+            loss {loss.toFixed(3)}
+            {loss > top ? " →" : ""}
+          </span>
+        </b>
+        <b className="mm-loss-chance" style={{ left: `${at(chance)}%` }}>
+          <span>an even guess · ln 3</span>
+        </b>
+      </div>
+      <div className="mm-loss-ends" aria-hidden="true">
+        <span>0 · labels and scores agree</span>
+        <span>3</span>
+      </div>
+    </div>
   );
 }
 
@@ -197,12 +328,35 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             </div>
             <div className="mm-flat">
               <span>patch #{selected + 1} flattened, row by row: x</span>
-              <div className="mm-flat-strip" role="img" aria-label={`Patch ${selected + 1} pixels: ${current.x.join(" ")}`}>
-                {current.x.map((bit, index) => (
-                  <i key={index} className={bit ? "is-on" : ""} />
-                ))}
+              <div className="mm-unroll" role="img" aria-label={`Patch ${selected + 1} pixels: ${current.x.join(" ")}`}>
+                <span className="mm-unroll-grid" aria-hidden="true">
+                  {Array.from({ length: p }, (_, row) => (
+                    <span key={row}>
+                      {current.x.slice(row * p, row * p + p).map((bit, index) => (
+                        <i key={index} className={bit ? "is-on" : ""} />
+                      ))}
+                    </span>
+                  ))}
+                </span>
+                <span className="mm-unroll-arrow" aria-hidden="true">
+                  →
+                </span>
+                <span className={`mm-unroll-strip is-p${p}`} aria-hidden="true">
+                  {Array.from({ length: p }, (_, row) => (
+                    <span key={row}>
+                      <small>row {row + 1}</small>
+                      <span>
+                        {current.x.slice(row * p, row * p + p).map((bit, index) => (
+                          <i key={index} className={bit ? "is-on" : ""} />
+                        ))}
+                      </span>
+                    </span>
+                  ))}
+                </span>
               </div>
-              <code>{current.x.length} numbers</code>
+              <code>
+                {p} rows of {p} = {current.x.length} numbers
+              </code>
             </div>
           </div>
         </div>
@@ -238,6 +392,9 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
                 <th scope="col">W·x</th>
                 <th scope="col">+ position</th>
                 <th scope="col">= token</th>
+                <th scope="col" className="mm-token-bar-head">
+                  −1 · token · +1
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -247,6 +404,16 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
                   <td>{f2(current.wx[index])}</td>
                   <td>{f2(current.position[index])}</td>
                   <td>{f2(current.token[index])}</td>
+                  <td className="mm-token-bar" aria-hidden="true">
+                    <span>
+                      <i
+                        style={{
+                          left: `${current.token[index] >= 0 ? 50 : 50 - Math.min(50, Math.abs(current.token[index]) * 45)}%`,
+                          width: `${Math.min(50, Math.abs(current.token[index]) * 45)}%`,
+                        }}
+                      />
+                    </span>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -336,6 +503,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             />
           </div>
         </div>
+        <ScalePicture side={side} vitPatch={vitPatch} cls={cls} connector={connector} scale={scale} />
         <ol className="mm-stages">
           {scale.stages.map((stage, index) => (
             <li key={stage.name}>
@@ -428,6 +596,9 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
                           row {Math.round(pairs.rowShares[row][column] * 100)}% · column{" "}
                           {Math.round(pairs.columnShares[row][column] * 100)}%
                         </small>
+                        <span className="mm-pair-share" aria-hidden="true">
+                          <i style={{ width: `${pairs.rowShares[row][column] * 100}%` }} />
+                        </span>
                         {isMatch && <em>labelled match</em>}
                       </td>
                     );
@@ -437,6 +608,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             </tbody>
           </table>
         </div>
+        <LossMeter loss={pairs.loss} chance={CHANCE_LOSS} />
         <div className="metric-row">
           <Metric
             label="Contrastive loss"
@@ -470,7 +642,9 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
                   <tr key={key}>
                     <th scope="row">{name}</th>
                     {item.vector.map((value, index) => (
-                      <td key={TOPICS[index]}>{f2(value)}</td>
+                      <td key={TOPICS[index]} style={{ "--mm-v": Math.min(1, Math.max(0, value)) } as CSSProperties}>
+                        {f2(value)}
+                      </td>
                     ))}
                   </tr>
                 ),

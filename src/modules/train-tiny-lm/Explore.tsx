@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   encodeTinyText,
   LabSurface,
@@ -18,7 +18,7 @@ import {
   UNIFORM_CROSS_ENTROPY,
   type ModuleContext,
 } from "@app/module-sdk";
-import { BOILERPLATE_LINES, buildScrape, cleanScrape, encodedLength, scrapeText, splitCorpus } from "./data";
+import { BOILERPLATE_LINES, buildScrape, cleanScrape, encodedLength, scrapeText, splitCorpus, type ScrapeLine, type Verdict } from "./data";
 import { describeRecipe, formatRecipe, parseRecipe, RECIPE_MAX_LENGTH } from "./recipe";
 import {
   BATCH_LADDER,
@@ -244,6 +244,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
                 );
               }}
             />
+            <ScrapeStrip scrape={scrape} verdicts={cleaning.verdicts} raw={data === "raw"} />
             <p className="lab-note tl-recipe-funnel">
               The scrape is {scrape.length} lines and {encodedLength(rawText)} characters. Cleaning removes{" "}
               {cleaning.removed.boilerplate} boilerplate, {cleaning.removed.short} too-short,{" "}
@@ -380,6 +381,26 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
               narrate(`Rank ${value}, which is ${2 * value * TINY_VOCAB_SIZE} trainable weights.`);
             }}
           />
+          <div
+            className="tl-weights"
+            role="img"
+            aria-label={`The rank ${rank} model keeps ${2 * rank * TINY_VOCAB_SIZE} weights; the full table keeps ${TINY_VOCAB_SIZE * TINY_VOCAB_SIZE}.`}
+          >
+            <div className="tl-weights__row">
+              <span>factored, rank {rank}</span>
+              <em>
+                <i style={{ width: `${((2 * rank * TINY_VOCAB_SIZE) / (TINY_VOCAB_SIZE * TINY_VOCAB_SIZE)) * 100}%` }} />
+              </em>
+              <b>{2 * rank * TINY_VOCAB_SIZE}</b>
+            </div>
+            <div className="tl-weights__row is-full">
+              <span>full table</span>
+              <em>
+                <i style={{ width: "100%" }} />
+              </em>
+              <b>{TINY_VOCAB_SIZE * TINY_VOCAB_SIZE}</b>
+            </div>
+          </div>
           <RangeControl
             label="Epochs"
             min={1}
@@ -466,6 +487,64 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
   );
 }
 
+/** The rendered width of an element, so the chart is drawn at its real size. */
+function useWidth<T extends HTMLElement>(fallback: number) {
+  const ref = useRef<T>(null);
+  const [width, setWidth] = useState(fallback);
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (!element || typeof ResizeObserver === "undefined") return;
+    const read = () => {
+      const next = Math.round(element.getBoundingClientRect().width);
+      if (next > 0) setWidth((current) => (Math.abs(current - next) > 1 ? next : current));
+    };
+    read();
+    const observer = new ResizeObserver(read);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  return [ref, width] as const;
+}
+
+const VERDICT_NAMES: Record<Verdict, string> = {
+  kept: "kept",
+  boilerplate: "boilerplate",
+  short: "too short",
+  duplicate: "repeated",
+  near: "near-repeated",
+};
+const VERDICT_ORDER: Verdict[] = ["kept", "boilerplate", "short", "duplicate", "near"];
+
+/** Every scraped line in order, as wide as it is long, marked with what cleaning does to it. */
+function ScrapeStrip({ scrape, verdicts, raw }: { scrape: ReadonlyArray<ScrapeLine>; verdicts: ReadonlyArray<Verdict>; raw: boolean }) {
+  const count = (verdict: Verdict) => verdicts.filter((entry) => entry === verdict).length;
+  return (
+    <figure className="tl-scrape" data-mode={raw ? "raw" : "cleaned"}>
+      <div
+        className="tl-scrape__lines"
+        role="img"
+        aria-label={`The ${scrape.length} scraped lines in order, each as wide as it is long: ${VERDICT_ORDER.map(
+          (verdict) => `${count(verdict)} ${VERDICT_NAMES[verdict]}`,
+        ).join(", ")}. ${raw ? "The raw scrape trains on all of them." : "The cleaned scrape trains on the kept lines only."}`}
+      >
+        {scrape.map((line, index) => (
+          <i key={index} className={`is-${verdicts[index]}`} style={{ flexGrow: Math.max(4, line.text.length) }} />
+        ))}
+      </div>
+      <figcaption>
+        {VERDICT_ORDER.map((verdict) => (
+          <span key={verdict} className="tl-scrape__key">
+            <i className={`is-${verdict}`} aria-hidden="true" /> {count(verdict)} {VERDICT_NAMES[verdict]}
+          </span>
+        ))}
+        <span className="tl-scrape__mode">
+          {raw ? `Raw scrape: all ${scrape.length} lines are trained on.` : "Cleaned scrape: only the kept lines are trained on; the faded ones are dropped."}
+        </span>
+      </figcaption>
+    </figure>
+  );
+}
+
 type Curves = {
   factoredTrain: number[];
   factoredHeld: number[];
@@ -484,12 +563,13 @@ function CurvePair({
   rank: number;
   markers: number[];
 }) {
-  const W = 440;
-  const H = 250;
+  const [ref, width] = useWidth<HTMLDivElement>(380);
+  const W = Math.min(820, Math.max(260, width));
+  const H = Math.min(310, Math.max(220, Math.round(W * 0.58)));
   const L = 40;
-  const R = 432;
+  const R = W - 8;
   const T = 22;
-  const B = 222;
+  const B = H - 28;
   const values = [...curves.factoredTrain, ...curves.factoredHeld, ...curves.fullTrain, ...curves.fullHeld];
   const low = Math.max(0, Math.floor((Math.min(...values) - 0.1) * 5) / 5);
   const high = UNIFORM_CROSS_ENTROPY + 0.1;
@@ -509,63 +589,88 @@ function CurvePair({
   const lastEpoch = curves.factoredTrain.length - 1;
   const cut = (series: number[]) =>
     series.length <= epochs ? ` The curve stops at epoch ${series.length - 1}, where the run diverged.` : "";
+  const gap = final(curves.factoredHeld) - final(curves.factoredTrain);
+  /** Where each run stopped early, so a curve that ends is read as a halt and not as missing data. */
+  const halts = [
+    { name: `rank ${rank}`, series: curves.factoredTrain, kind: "factored" },
+    { name: "full table", series: curves.fullTrain, kind: "full" },
+  ].filter((entry) => entry.series.length <= epochs && entry.series.length > 0);
   return (
-    <svg
-      className="tl-chart"
-      viewBox={`0 0 ${W} ${H}`}
-      role="img"
-      aria-label={`Loss per epoch on the training split and on the held-out sentences. Factored rank ${rank}: ${final(
-        curves.factoredTrain,
-      ).toFixed(3)} training, ${final(curves.factoredHeld).toFixed(3)} held out.${cut(curves.factoredTrain)} Full table: ${final(
-        curves.fullTrain,
-      ).toFixed(3)} training, ${final(curves.fullHeld).toFixed(3)} held out.${cut(curves.fullTrain)} Uniform baseline ${UNIFORM_CROSS_ENTROPY.toFixed(3)}.`}
-    >
-      {ticks.map((tick) => (
-        <g key={tick}>
-          <line className="tl-grid" x1={L} x2={R} y1={yAt(tick)} y2={yAt(tick)} />
-          <text className="tl-tick" x={L - 5} y={yAt(tick) + 3} textAnchor="end">
-            {tick.toFixed(2)}
-          </text>
-        </g>
-      ))}
-      {epochTicks.map((epoch) => (
-        <text key={epoch} className="tl-tick" x={xAt(epoch)} y={B + 13} textAnchor="middle">
-          {epoch}
-        </text>
-      ))}
-      <line className="plot-axis" x1={L} x2={R} y1={B} y2={B} />
-      <line className="plot-axis" x1={L} x2={L} y1={T} y2={B} />
-      <line className="tl-baseline" x1={L} x2={R} y1={yAt(UNIFORM_CROSS_ENTROPY)} y2={yAt(UNIFORM_CROSS_ENTROPY)} />
-      <text className="tl-note" x={R - 2} y={yAt(UNIFORM_CROSS_ENTROPY) - 4} textAnchor="end">
-        knows nothing · ln 30 = {UNIFORM_CROSS_ENTROPY.toFixed(3)}
-      </text>
-      <path className="tl-gap" d={gapArea} />
-      <path className="tl-line tl-line--full-train" d={path(curves.fullTrain)} />
-      <path className="tl-line tl-line--full-held" d={path(curves.fullHeld)} />
-      <path className="tl-line tl-line--held" d={path(curves.factoredHeld)} />
-      <path className="tl-line tl-line--train" d={path(curves.factoredTrain)} />
-      {markers.filter((epoch) => epoch < curves.factoredTrain.length).map((epoch, index) => (
-        <g key={epoch} className="tl-marker">
-          <circle cx={xAt(epoch)} cy={yAt(curves.factoredTrain[epoch])} r={7} />
-          <text x={xAt(epoch)} y={yAt(curves.factoredTrain[epoch]) + 3} textAnchor="middle">
-            {String.fromCharCode(65 + index)}
-          </text>
-        </g>
-      ))}
-      <text
-        className="tl-note tl-note--gap"
-        x={xAt(lastEpoch) - 12}
-        y={Math.min(yAt(final(curves.factoredHeld)), yAt(final(curves.factoredTrain))) - 9}
-        textAnchor="end"
+    <div className="tl-chart-wrap" ref={ref}>
+      <svg
+        className="tl-chart"
+        viewBox={`0 0 ${W} ${H}`}
+        role="img"
+        aria-label={`Loss per epoch on the training split and on the held-out sentences. Factored rank ${rank}: ${final(
+          curves.factoredTrain,
+        ).toFixed(3)} training, ${final(curves.factoredHeld).toFixed(3)} held out.${cut(curves.factoredTrain)} Full table: ${final(
+          curves.fullTrain,
+        ).toFixed(3)} training, ${final(curves.fullHeld).toFixed(3)} held out.${cut(curves.fullTrain)} Uniform baseline ${UNIFORM_CROSS_ENTROPY.toFixed(3)}.`}
       >
-        gap {(final(curves.factoredHeld) - final(curves.factoredTrain)).toFixed(3)}
-      </text>
-      <text className="tl-tick" x={L} y={H - 4}>
-        epoch
-      </text>
-      <text className="tl-tick" x={4} y={11}>
-        loss (nats/token)
-      </text>
-    </svg>
+        {ticks.map((tick) => (
+          <g key={tick}>
+            <line className="tl-grid" x1={L} x2={R} y1={yAt(tick)} y2={yAt(tick)} />
+            <text className="tl-tick" x={L - 5} y={yAt(tick) + 3.5} textAnchor="end">
+              {tick.toFixed(2)}
+            </text>
+          </g>
+        ))}
+        {epochTicks.map((epoch) => (
+          <text key={epoch} className="tl-tick" x={xAt(epoch)} y={B + 14} textAnchor={epoch === epochs ? "end" : "middle"}>
+            {epoch}
+          </text>
+        ))}
+        <line className="plot-axis" x1={L} x2={R} y1={B} y2={B} />
+        <line className="plot-axis" x1={L} x2={L} y1={T} y2={B} />
+        <line className="tl-baseline" x1={L} x2={R} y1={yAt(UNIFORM_CROSS_ENTROPY)} y2={yAt(UNIFORM_CROSS_ENTROPY)} />
+        <text className="tl-note" x={R - 2} y={yAt(UNIFORM_CROSS_ENTROPY) - 4} textAnchor="end">
+          knows nothing · ln 30 = {UNIFORM_CROSS_ENTROPY.toFixed(3)}
+        </text>
+        <path className="tl-gap" d={gapArea} />
+        <path className="tl-line tl-line--full-train" d={path(curves.fullTrain)} />
+        <path className="tl-line tl-line--full-held" d={path(curves.fullHeld)} />
+        <path className="tl-line tl-line--held" d={path(curves.factoredHeld)} />
+        <path className="tl-line tl-line--train" d={path(curves.factoredTrain)} />
+        {markers.filter((epoch) => epoch < curves.factoredTrain.length).map((epoch, index) => (
+          <g key={epoch} className="tl-marker">
+            <circle cx={xAt(epoch)} cy={yAt(curves.factoredTrain[epoch])} r={8} />
+            <text x={xAt(epoch)} y={yAt(curves.factoredTrain[epoch]) + 3.5} textAnchor="middle">
+              {String.fromCharCode(65 + index)}
+            </text>
+          </g>
+        ))}
+        {halts.map((halt, index) => {
+          const epoch = halt.series.length - 1;
+          const x = xAt(epoch);
+          const y = yAt(final(halt.series));
+          // Keep the label clear of the dotted baseline and its name.
+          const labelY = Math.max(y + 14, yAt(UNIFORM_CROSS_ENTROPY) + 14) + index * 13;
+          return (
+            <g key={halt.kind} className={`tl-halt tl-halt--${halt.kind}`}>
+              <path d={`M${x - 5},${y - 5}l10,10M${x + 5},${y - 5}l-10,10`} />
+              <text x={x > R - 190 ? x - 10 : x + 10} y={labelY} textAnchor={x > R - 190 ? "end" : "start"}>
+                {halt.name} diverged after epoch {epoch}
+              </text>
+            </g>
+          );
+        })}
+        {halts.length === 0 && Number.isFinite(gap) && (
+          <text
+            className="tl-note tl-note--gap"
+            x={xAt(lastEpoch) - 12}
+            y={Math.min(yAt(final(curves.factoredHeld)), yAt(final(curves.factoredTrain))) - 9}
+            textAnchor="end"
+          >
+            gap {gap.toFixed(3)}
+          </text>
+        )}
+        <text className="tl-tick" x={L} y={H - 3}>
+          epoch
+        </text>
+        <text className="tl-tick" x={4} y={11}>
+          loss (nats/token)
+        </text>
+      </svg>
+    </div>
   );
 }

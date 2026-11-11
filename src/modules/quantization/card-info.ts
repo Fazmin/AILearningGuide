@@ -10,6 +10,7 @@ const cardInfo: ModuleCardInfo = {
       "`Scaling granularity`: `Per tensor` (one grid for all 900 weights), `Per row` (30 grids, one per context character), or `Per group`.",
       "`Group size` from 2 to 30, shown only in per-group mode.",
       "`Range mapping`: `Asymmetric · min/max` or `Symmetric · absmax`.",
+      "A bar on a 0 to 32 bit scale: the solid part is each weight's code, the hatched part is the scales shared out per weight, and a dashed mark sits at fp16's 16.",
       "Three metrics: `Bits per weight` including metadata, `Model size` in bytes, and `Against 32-bit` as a share of 900 × 4 bytes.",
     ],
     howItWorks: [
@@ -34,11 +35,12 @@ const cardInfo: ModuleCardInfo = {
   "Rounding grid and per-weight error": {
     title: "The grid each weight snaps to, and what it cost",
     summary:
-      "Top: the 900 trained weights as a histogram, with one block's rounding grid drawn over it. Bottom: every weight's rounding error w′ − w, plotted at its original value. Under per-tensor scaling the errors trace a sawtooth that is the grid itself; under finer scaling each block has its own, smaller teeth.",
+      "Top: one block's weights, each joined by a line to the level it rounds to. Middle: the 900 trained weights as a histogram, with that block's rounding grid drawn over it. Bottom: every weight's rounding error w′ − w, plotted at its original value. Under per-tensor scaling the errors trace a sawtooth that is the grid itself; under finer scaling each block has its own, smaller teeth.",
     whatYouSee: [
+      "A snap band zoomed on the inspected block: its weights on the top rail, its levels on the bottom rail numbered by code, and a line from each weight to the level it rounds to. A filled dot grows with the number of weights on that level, a dashed ring is a level nobody used, and a bracket marks one step.",
       "A histogram of the original weights on a square-root count axis, so the few large logits stay visible beside the pile near zero.",
-      "Vertical lines at the inspected block's levels. Solid lines are levels at least one of the block's weights landed on; dashed lines are levels nobody used. Above 64 levels the lines are too dense and a note says so.",
-      "A shaded band covering the inspected block's grid, and a marker at the table's largest weight (the logit for “.” followed by a space, 5.93).",
+      "Vertical lines on the histogram at the inspected block's levels. Solid lines are levels at least one of the block's weights landed on; dashed lines are levels nobody used. Above 64 levels the lines are too dense and a note says so.",
+      "A shaded band covering the inspected block's grid, and a label on the table's largest weight (the logit for “.” followed by a space, 5.93): on the snap band when the inspected block holds it, on the histogram otherwise.",
       "An error strip: grey dots for every weight, accent dots for the inspected block, and dashed lines at ± half of that block's step.",
       "`Inspect block` when there is more than one block, and metrics `RMS rounding error`, `Largest error`, `Step in this block`, and `Levels used in this block`.",
     ],
@@ -68,7 +70,8 @@ const cardInfo: ModuleCardInfo = {
     whatYouSee: [
       "A log-scale y axis of perplexity increase, from ≤0.01% to 1000%. Points at or below 0.01% (including tiny negative changes) sit on the floor as hollow markers.",
       "Three series for the current range mapping: `per tensor` (circles, solid), `per row` (squares, dashed), `per group of G` (triangles, dotted), each at 2, 3, 4, 5, 6, and 8 bits.",
-      "Diamonds for Q8_0, Q6_K, Q5_K, Q4_K, Q4_1, Q4_0, Q3_K, and Q2_K, and a ring on the current setting.",
+      "Diamonds for Q8_0, Q6_K, Q5_K, Q4_K, Q4_1, Q4_0, Q3_K, and Q2_K, and a ring on the current setting, labelled with its bits per weight and cost and joined to both axes by dotted guides.",
+      "A dashed line through the points that share the current bit width, one per granularity, when that width is one of the six plotted.",
       "Metrics `Full precision`, `Quantized`, and `Quality cost`, and two samples at temperature 0.7 from the same seed.",
     ],
     howItWorks: [
@@ -95,7 +98,7 @@ const cardInfo: ModuleCardInfo = {
     summary:
       "Nine llama.cpp block types applied to the same table in storage order: the exact bits per weight from each block's struct, the perplexity and rounding error measured here, and llama.cpp's own file size for Llama-3-8B where a file mix is built on that block.",
     whatYouSee: [
-      "Columns `Block type` (with the byte layout and a one-line description), `Bits per weight` (with a bar out of 16), `Toy perplexity` (with its percent cost), `RMS error`, and `llama.cpp file, Llama-3-8B`.",
+      "Columns `Block type` (with the byte layout and a one-line description), `Bits per weight` (with a bar out of 16, solid for the code bits and hatched for the scale bits), `Toy perplexity` (with its percent cost), `RMS error` (with a bar against the largest in the table), and `llama.cpp file, Llama-3-8B`.",
       "Rows whose code width matches the Bit width slider are highlighted.",
       "A note decoding a file name like Q4_K_M as a mix of block types.",
     ],
@@ -122,11 +125,12 @@ const cardInfo: ModuleCardInfo = {
   "The file you downloaded": {
     title: "What a Q4_K_M file really costs per weight",
     summary:
-      "The model file this app downloads, weighed the way the rest of the lab weighs a table: its bytes over its parameters give effective bits per weight, set against the nominal Q4_K rate and against F16. The bars show which tensors carry the extra bits.",
+      "The model file this app downloads, weighed the way the rest of the lab weighs a table: its bytes over its parameters give effective bits per weight, set against the nominal Q4_K rate and against F16. The blocks show which tensors carry the extra bits.",
     whatYouSee: [
       "Metrics `File size` (1.19 GiB), `Parameters in the file` (1.88 B), `Effective bits per weight` (5.445), and `Share of the F16 size` (34.0%).",
       "`Group tensors by`: `Block type` (Q6_K, Q4_K, Q5_K, Q8_0, F32) or `Role in the network` (embedding, feed-forward, Gated DeltaNet, full attention, norms).",
-      "One bar per group for its share of the file's tensor bytes, with its tensor count, its share of the parameters, and its own bits per weight. Groups above 5 bits per weight are drawn in the loss colour.",
+      "One block per group: its width is the group's share of the parameters and its height is its bits per weight, so its area is its bytes. A dashed line marks the 4.5 of a Q4_K block, the hatched part of a block is what it spends above that, and a solid line marks the whole file's 5.445. Groups too thin to draw are named in the corner.",
+      "A table under the blocks with each group's tensor count, share of the parameters, bits per weight (in the loss colour above 5), and share of the bytes.",
       "A note with the exact byte and parameter counts, the gap to Q4_K, the header's cost, and the calibration the file's metadata records.",
     ],
     howItWorks: [
@@ -136,7 +140,7 @@ const cardInfo: ModuleCardInfo = {
       "Source and date: the counts were read on 30 September 2026 from the GGUF header of the pinned revision (unsloth/Qwen3.5-2B-GGUF at f6d5376, the file Settings downloads); Hugging Face's API reports the same 1,881,825,088 parameters.",
     ],
     controls: [
-      "`Group tensors by` switches the bars between the two groupings; the metrics do not change.",
+      "`Group tensors by` switches the blocks and the table between the two groupings; the metrics do not change.",
       "Comparison worth running: by `Block type`, Q6_K holds 35.3% of the parameters but 42.9% of the bytes. By `Role in the network`, the token embedding costs 6.56 bits per weight while the feed-forward layers cost 4.84.",
     ],
     notice: [
@@ -155,8 +159,9 @@ const cardInfo: ModuleCardInfo = {
       "Five floating-point formats laid out as sign, exponent, and mantissa bits, with their range and spacing computed from those layouts, one value you choose rounded into each of them, and the trained 900-weight table rounded through each to see what it costs.",
     whatYouSee: [
       "`Example value` (0.001, 0.02, 300, 100,000) and `Value to store`, a log slider from 1e-6 to 1e6 that sets the number rounded in every row.",
-      "Per format: sign, exponent, and mantissa bits and the exponent bias; the smallest normal and largest finite value; the spacing at 1.0 as 2 to the minus the mantissa bits, with the worst relative rounding error; what your value is stored as and its percent error, or `overflow`.",
-      "Toy columns: RMS rounding error of the 900 trained weights through each format, and the perplexity against the full-precision 6.600.",
+      "First table, per format: its sign, exponent, and mantissa bits drawn as cells, with the exponent bias; a ruler with one tick for every value it can store from 1 to 2 (a solid bar when they are too many to draw), and the spacing at 1.0 as 2 to the minus the mantissa bits, with the worst relative rounding error.",
+      "Toy columns in that table: RMS rounding error of the 900 trained weights through each format, and the perplexity against the full-precision 6.600.",
+      "Second table, per format: a bar from the smallest normal to the largest finite value on a shared log axis from 1e-8 to 1e8, hatched where values are subnormal, with a line at your value; then what your value is stored as and its percent error, or `overflow`.",
     ],
     howItWorks: [
       "Largest finite value = (2 − 2^(−mantissa bits)) × 2^(top exponent − bias): 65,504 for fp16, 448 for E4M3, 57,344 for E5M2. E4M3 gives its top exponent to numbers and keeps one mantissa pattern for not-a-number; the others reserve that exponent for infinity and not-a-number.",

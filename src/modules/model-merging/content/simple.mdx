@@ -181,7 +181,7 @@ Take a list of two numbers, 3 and 4. Draw it as an arrow on graph paper that goe
 
 The same rule works for 900 numbers. Square each one, add up all the squares, and take the square root of the total. You cannot draw an arrow that needs 900 numbers to describe it. But its length, and the angle between two such arrows, still work exactly as they do on paper.
 
-The lab prints each task vector’s length under its map as `‖τ‖`. The double bars mean “length of”, and both lengths are about 10. The badge on **Task vectors** reads cosine 0.34. The **cosine** is a score for how closely two arrows point the same way.
+The lab prints each task vector’s length above its map as `‖τ‖`. The double bars mean “length of”, and both lengths are about 10. The badge on **Task vectors** reads cosine 0.34. The **cosine** is a score for how closely two arrows point the same way.
 
 A cosine of 1 means the same direction, 0 means a right angle, and −1 means opposite directions. So 0.34 means the two task vectors point partly the same way. Their angle is 69.9°, a little less than a right angle. The cosine on the badge and that angle are the same fact written in two different ways.
 
@@ -235,7 +235,7 @@ Start on **Task vectors**. Leave **Task vectors from** on `Full fine-tunes`, and
 
 Under the maps, **Recipe specialist, recipes** shows 2.123 and **Proverb specialist, proverbs** shows 2.169. Those are the two specialists’ scores on their own texts. **Overlapping entries** reads 720 of 900, which counts the cells that both fine-tunes changed. The badge above the maps reads cosine 0.34.
 
-**Sign conflicts** reads 96 (13%). So the two fine-tunes pushed about 1 in 8 of those shared cells in opposite directions. Look for the cells with a thin diagonal line through them. Those are the 96 conflicts, and they are marked on both maps.
+**Sign conflicts** reads 96 (13%). So the two fine-tunes pushed about 1 in 8 of those shared cells in opposite directions. Look for the cells with a small dark dot in them. Those are the 96 conflicts, and they are marked on both maps.
 
 Then drag **Recipe epochs** down to 0. The slider changes to read `untrained · τ = 0`, and the recipe map turns grey.
 
@@ -249,7 +249,7 @@ Now go to **Two task losses**. Its plot puts the recipe loss along the bottom an
 
 Four markers stay fixed: the `harbor base`, the `recipe specialist` and the `proverb specialist`. The last is a cross for `two separate models`. That cross sits at each specialist’s score on its own job. It shows what you would get by keeping both models.
 
-The large filled circle is the merge you picked. Small hollow circles show the other four methods. Each has a short tag: Lin, TA, TIES, DARE or SL. If a point would fall off the plot, the lab draws it at the edge with a dashed outline. It labels the point with its true losses.
+The large filled circle is the merge you picked. Small hollow circles show the other four methods. Each is labelled with its method’s name. If a point would fall off the plot, the lab draws it at the edge with a dashed outline. It labels the point with its true losses.
 
 In the table below the plot, the `Linear blend` row shows 2.257 on recipes and 2.330 on proverbs. Both are worse than the **Specialists** row. So the merge loses to each specialist at its own job, by gaps of +0.134 and +0.161.
 

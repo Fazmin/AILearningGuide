@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import {
+  BarList,
   FormulaWithValues,
   LabSurface,
   Metric,
@@ -12,33 +13,25 @@ import {
   ALGORITHMS,
   FOREST_SIZE,
   POINTS,
-  buildForest,
-  buildTree,
   countLeaves,
-  fitKMeans,
-  fitLinear,
-  fitLogistic,
-  fitNaiveBayes,
-  fitSvm,
   forestVotes,
   knnRanked,
-  knnVote,
   lineInSquare,
   naiveFactors,
-  naivePosterior,
-  nearestCenter,
   marginWidthOf,
   score,
   scoreSplit,
-  sigmoid,
   storedCount,
   supportVectors,
   treePredict,
   treeSegments,
   type Algorithm,
 } from "./fit";
+import { buildModel, classify, probabilityOf, treePath } from "./model";
+import { Ballots, MethodGallery, ScoreLine, ShareBar, TreeWalk, type GalleryItem } from "./pictures";
 
 const GRID = 28;
+const THUMB = 14;
 const TICKS = [0, 0.5, 1];
 
 const asString = (state: ModuleContext["state"], key: string, fallback: string) =>
@@ -59,32 +52,34 @@ export default function Explore({ state, setState }: ModuleContext) {
   const probeX = clamp(asNumber(state, "probeX", 0.5), 0, 1);
   const probeY = clamp(asNumber(state, "probeY", 0.5), 0, 1);
 
-  const model = useMemo(() => {
-    if (algorithm === "linear") return { kind: "linear" as const, weights: fitLinear(POINTS) };
-    if (algorithm === "logistic") return { kind: "logistic" as const, weights: fitLogistic(POINTS) };
-    if (algorithm === "svm") return { kind: "svm" as const, weights: fitSvm(POINTS) };
-    if (algorithm === "knn") return { kind: "knn" as const, k };
-    if (algorithm === "tree") return { kind: "tree" as const, tree: buildTree(POINTS, depth) };
-    if (algorithm === "forest") return { kind: "forest" as const, trees: buildForest(depth) };
-    if (algorithm === "naivebayes") return { kind: "naivebayes" as const, classes: fitNaiveBayes(POINTS) };
-    return { kind: "kmeans" as const, ...fitKMeans(k) };
-  }, [algorithm, depth, k]);
+  const model = useMemo(() => buildModel(algorithm, k, depth), [algorithm, depth, k]);
 
-  const probabilityAt = (x: number, y: number) => {
-    if (model.kind === "logistic") return sigmoid(score(model.weights, x, y));
-    if (model.kind === "naivebayes") return naivePosterior(model.classes, x, y);
-    return null;
-  };
+  const probabilityAt = (x: number, y: number) => probabilityOf(model, x, y);
 
-  const predict = (x: number, y: number): number => {
-    if (model.kind === "linear") return score(model.weights, x, y) >= 0.5 ? 1 : 0;
-    if (model.kind === "logistic" || model.kind === "naivebayes") return probabilityAt(x, y)! >= 0.5 ? 1 : 0;
-    if (model.kind === "svm") return score(model.weights, x, y) >= 0 ? 1 : 0;
-    if (model.kind === "knn") return knnVote(x, y, model.k);
-    if (model.kind === "tree") return treePredict(model.tree, x, y);
-    if (model.kind === "forest") return forestVotes(model.trees, x, y) * 2 >= model.trees.length ? 1 : 0;
-    return nearestCenter(model.centers, x, y);
-  };
+  const predict = (x: number, y: number): number => classify(model, x, y);
+
+  /** Every method fitted at the current k and depth, sampled coarsely for the side-by-side strip. */
+  const gallery = useMemo<GalleryItem[]>(
+    () =>
+      ALGORITHMS.map((name) => {
+        const fitted = buildModel(name, k, depth);
+        const tiles: number[] = [];
+        for (let row = 0; row < THUMB; row += 1) {
+          for (let column = 0; column < THUMB; column += 1) {
+            tiles.push(classify(fitted, (column + 0.5) / THUMB, 1 - (row + 0.5) / THUMB));
+          }
+        }
+        const misses = POINTS.map((point) => name !== "kmeans" && classify(fitted, point.x, point.y) !== point.label);
+        return {
+          id: name,
+          cells: tiles,
+          size: THUMB,
+          hits: name === "kmeans" ? null : misses.filter((miss) => !miss).length,
+          misses,
+        };
+      }),
+    [depth, k],
+  );
 
   const cells = useMemo(() => {
     const tiles: { column: number; row: number; value: number; probability: number | null }[] = [];
@@ -150,6 +145,15 @@ export default function Explore({ state, setState }: ModuleContext) {
   const leaves =
     model.kind === "tree" ? countLeaves(model.tree) : model.kind === "forest" ? countLeaves(model.trees[0]) : null;
   const stored = storedCount(algorithm, k, depth);
+  const storedAll = useMemo(() => ALGORITHMS.map((name) => ({ name, count: storedCount(name, k, depth) })), [depth, k]);
+  const usesK = algorithm === "knn" || algorithm === "kmeans";
+  const usesDepth = algorithm === "tree" || algorithm === "forest";
+  const walk = model.kind === "tree" ? treePath(model.tree, probeX, probeY) : null;
+  const treeVotes = model.kind === "forest" ? model.trees.map((tree) => treePredict(tree, probeX, probeY)) : [];
+  const centerDistances =
+    model.kind === "kmeans"
+      ? model.centers.map((center, index) => ({ index, distance: Math.hypot(center.x - probeX, center.y - probeY) }))
+      : [];
 
   const keeps =
     algorithm === "knn"
@@ -298,16 +302,23 @@ export default function Explore({ state, setState }: ModuleContext) {
             onChange={(value) => setState({ algorithm: value })}
           />
         </div>
-        <div className="algorithm-params">
-          <RangeControl label="k" min={1} max={7} step={1} value={k} onChange={(value) => setState({ k: value })} />
-          <RangeControl
-            label="Tree depth"
-            min={1}
-            max={5}
-            step={1}
-            value={depth}
-            onChange={(value) => setState({ depth: value })}
-          />
+        <MethodGallery items={gallery} current={algorithm} onSelect={(value) => setState({ algorithm: value })} />
+        <div className="algorithm-params cml-params">
+          <div className={`cml-param${usesK ? "" : " is-idle"}`}>
+            <RangeControl label="k" min={1} max={7} step={1} value={k} onChange={(value) => setState({ k: value })} />
+            <small>{usesK ? `used by ${algorithm} now` : "used by knn and kmeans"}</small>
+          </div>
+          <div className={`cml-param${usesDepth ? "" : " is-idle"}`}>
+            <RangeControl
+              label="Tree depth"
+              min={1}
+              max={5}
+              step={1}
+              value={depth}
+              onChange={(value) => setState({ depth: value })}
+            />
+            <small>{usesDepth ? `used by ${algorithm} now` : "used by tree and forest"}</small>
+          </div>
         </div>
         <p className="lab-note">
           k is used by k-nearest neighbors and k-means. Tree depth is used by the decision tree and the forest.
@@ -326,6 +337,7 @@ export default function Explore({ state, setState }: ModuleContext) {
           }
           title="The same 18 points, a new boundary"
         />
+        <div className="cml-surface">
         <svg
           className="decision-canvas cml-canvas"
           viewBox="-3.4 -1.4 33.4 33.4"
@@ -455,6 +467,7 @@ export default function Explore({ state, setState }: ModuleContext) {
           <circle className="is-probe" cx={sx(probeX)} cy={sy(probeY)} r="0.48" />
           <circle className="cml-probe-dot" cx={sx(probeX)} cy={sy(probeY)} r="0.12" />
         </svg>
+        <div className="cml-surface__key">
         <ul className="cml-legend" aria-label="Legend">
           <li>
             <i className="cml-swatch is-one" />
@@ -496,6 +509,8 @@ export default function Explore({ state, setState }: ModuleContext) {
             : ""}{" "}
           Circles keep their true label even under k-means. Click the canvas to move the probe.
         </p>
+        </div>
+        </div>
       </LabSurface>
 
       <LabSurface label="Probe and inductive bias" className="probe-card">
@@ -519,6 +534,94 @@ export default function Explore({ state, setState }: ModuleContext) {
             format={(value) => value.toFixed(2)}
             onChange={(value) => setState({ probeY: value })}
           />
+        </div>
+        <div className="cml-probe-picture">
+          {model.kind === "linear" && linearScore !== null && (
+            <ScoreLine
+              value={linearScore}
+              min={-0.5}
+              max={1.5}
+              cut={0.5}
+              cutLabel="ŷ = 0.5"
+              valueLabel={`ŷ = ${linearScore.toFixed(3)}`}
+              axisLabel="linear score ŷ"
+              ticks={[-0.5, 0, 0.5, 1, 1.5]}
+            />
+          )}
+          {model.kind === "logistic" && probeProbability !== null && (
+            <ScoreLine
+              value={probeProbability}
+              min={0}
+              max={1}
+              cut={0.5}
+              cutLabel="P = 0.5"
+              valueLabel={`P(y=1|x) = ${probeProbability.toFixed(3)}`}
+              axisLabel="probability of class 1"
+              ticks={[0, 0.25, 0.5, 0.75, 1]}
+            />
+          )}
+          {model.kind === "svm" && linearScore !== null && (
+            <ScoreLine
+              value={linearScore}
+              min={-3}
+              max={3}
+              cut={0}
+              cutLabel="w·x + b = 0"
+              valueLabel={`w·x + b = ${linearScore.toFixed(3)}`}
+              axisLabel="signed margin score"
+              band={[-1, 1]}
+              bandLabel="the street, |w·x + b| < 1"
+              ticks={[-3, -2, -1, 0, 1, 2, 3]}
+            />
+          )}
+          {model.kind === "knn" && (
+            <Ballots
+              title={`The ${k} nearest points, nearest first`}
+              votes={probeNeighbors.map((point) => ({ label: point.label, caption: `d ${point.distance.toFixed(2)}` }))}
+              result={probeClass}
+              rule="An even split goes to class 1."
+            />
+          )}
+          {model.kind === "forest" && (
+            <Ballots
+              title={`The ${FOREST_SIZE} trees, one ballot each`}
+              votes={treeVotes.map((vote, index) => ({ label: vote, caption: `tree ${index}` }))}
+              result={probeClass}
+              rule="Unweighted majority."
+            />
+          )}
+          {walk && walk.leaf.kind === "leaf" && (
+            <TreeWalk
+              steps={walk.steps}
+              leafLabel={walk.leaf.label}
+              leafCount={walk.leaf.count}
+              leafPositives={walk.leaf.positives}
+            />
+          )}
+          {model.kind === "naivebayes" && factors && (
+            <ShareBar
+              title="Each class's score at the probe, as shares of their total"
+              parts={[
+                { label: "class 1", value: factors[1].score, tone: "one" },
+                { label: "class 0", value: factors[0].score, tone: "zero" },
+              ]}
+            />
+          )}
+          {model.kind === "kmeans" && (
+            <BarList
+              label="Distance from the probe to each center"
+              items={centerDistances.map((item) => ({
+                id: `c${item.index}`,
+                label: `center ${item.index}`,
+                value: item.distance,
+                display: item.distance.toFixed(3),
+                detail: item.index === probeClass ? "nearest, so the probe joins it" : undefined,
+                tone: item.index === probeClass ? "forward" : "muted",
+                emphasis: item.index === probeClass,
+              }))}
+              max={1.5}
+            />
+          )}
         </div>
         <FormulaWithValues
           label={formula.label}
@@ -544,6 +647,21 @@ export default function Explore({ state, setState }: ModuleContext) {
             }
           />
         </div>
+        <p className="cml-stored-title" aria-hidden="true">
+          Numbers each method stores at k = {k} and depth {depth}, on one scale
+        </p>
+        <BarList
+          label="Numbers stored by each of the eight methods"
+          items={storedAll.map((item) => ({
+            id: item.name,
+            label: item.name,
+            value: item.count,
+            display: `${item.count}`,
+            tone: item.name === algorithm ? "forward" : "muted",
+            emphasis: item.name === algorithm,
+          }))}
+          selectedId={algorithm}
+        />
         <p className="lab-note">
           {algorithm === "knn"
             ? "k-nearest neighbors keeps all 18 points (x, y, label) and votes at query time. There is almost no fitting step, so memory and query cost grow with the dataset."

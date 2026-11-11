@@ -10,7 +10,7 @@ const scenes: LabScene[] = [
     id: "read-vectors",
     sections: ["Read the two task vectors", "How to play with it"],
     title: "Two task vectors",
-    look: "Read Overlapping entries, Sign conflicts and the cosine badge, then find the struck-through cells on both maps.",
+    look: "Read Overlapping entries, Sign conflicts and the cosine badge, then find the dotted cells on both maps.",
     step: 0,
     focus: "Task vectors",
   },

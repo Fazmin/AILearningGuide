@@ -1,6 +1,5 @@
 import { useMemo } from "react";
 import {
-  BarList,
   LabSurface,
   Metric,
   RangeControl,
@@ -14,7 +13,17 @@ import {
   trainTinyModel,
   type ModuleContext,
 } from "@app/module-sdk";
-import { FrontierPlot, GridAndErrorPlot, type FrontierSeries } from "./QuantCharts";
+import {
+  BitStrip,
+  FileMosaic,
+  FrontierPlot,
+  GridAndErrorPlot,
+  RangeAxis,
+  RangeBar,
+  SpacingRuler,
+  StorageBill,
+  type FrontierSeries,
+} from "./QuantCharts";
 import {
   bitsPerWeightOf,
   codesUsed,
@@ -51,6 +60,14 @@ const percent = (value: number) => {
 };
 
 const GIB = 1024 ** 3;
+/** Names short enough to print inside a block of the file picture; the table under it keeps the full ones. */
+const SHORT_SLICE_LABELS: Record<string, string> = {
+  embedding: "Token embedding",
+  ffn: "Feed-forward",
+  linear: "Gated DeltaNet",
+  attention: "Full attention",
+  norms: "Norms",
+};
 const FLOAT_EXAMPLES = [0.001, 0.02, 300, 100000];
 const FLOAT_MIN = 1e-6;
 const FLOAT_MAX = 1e6;
@@ -146,6 +163,8 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
       }),
     [base.weights],
   );
+
+  const worstFormatError = Math.max(...formats.map((format) => format.rmsError), 1e-9);
 
   const samples = useMemo(
     () => ({
@@ -257,6 +276,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             </div>
           </div>
         </div>
+        <StorageBill codeBits={bits} bitsPerWeight={quantized.bitsPerWeight} />
         <div className="metric-row">
           <Metric label="Bits per weight" value={quantized.bitsPerWeight.toFixed(3)} />
           <Metric label="Model size" value={`${quantized.totalBytes} B`} tone="forward" />
@@ -328,6 +348,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             .filter((format) => format.name !== "F16")
             .map((format) => ({ name: format.name, bpw: format.bitsPerWeight, cost: cost(format.perplexity) }))}
           current={{ bpw: quantized.bitsPerWeight, cost: cost(quantizedPerplexity) }}
+          bits={bits}
           maxBpw={MAX_PLOTTED_BPW}
         />
         <div className="metric-row">
@@ -359,6 +380,11 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           kicker="llama.cpp block layouts, run on this table"
           title="What the letters in a GGUF name stand for"
         />
+        <p className="qz-key" aria-hidden="true">
+          <span className="qz-key__codes">bits in each weight's code</span>
+          <span className="qz-key__scales">shared scale bits, per weight</span>
+          <span>bars run from 0 to 16 bits</span>
+        </p>
         <div className="qz-table-wrap">
           <table>
             <thead>
@@ -380,15 +406,33 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
                   </th>
                   <td>
                     <span className="qz-bpw">
-                      <i style={{ width: `${(format.bitsPerWeight / 16) * 100}%` }} aria-hidden="true" />
+                      <span className="qz-bpw__track" aria-hidden="true">
+                        <i className="qz-bpw__codes" style={{ width: `${(format.codeBits / 16) * 100}%` }} />
+                        <i
+                          className="qz-bpw__scales"
+                          style={{ width: `${((format.bitsPerWeight - format.codeBits) / 16) * 100}%` }}
+                        />
+                      </span>
                       {String(format.bitsPerWeight)}
+                      <small>
+                        {format.bitsPerWeight > format.codeBits
+                          ? `${format.codeBits} code + ${String(Number((format.bitsPerWeight - format.codeBits).toFixed(4)))} scales`
+                          : "no shared scale"}
+                      </small>
                     </span>
                   </td>
                   <td>
                     {format.perplexity.toFixed(3)}
                     <small>{percent(cost(format.perplexity))}</small>
                   </td>
-                  <td>{format.rmsError.toFixed(4)}</td>
+                  <td>
+                    <span className="qz-err">
+                      <span className="qz-err__track" aria-hidden="true">
+                        <i style={{ width: `${(format.rmsError / worstFormatError) * 100}%` }} />
+                      </span>
+                      {format.rmsError.toFixed(4)}
+                    </span>
+                  </td>
                   <td className="qz-files">{format.files}</td>
                 </tr>
               ))}
@@ -430,18 +474,33 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             }}
           />
         </div>
-        <BarList
-          label="Share of the file's tensor bytes by group, with each group's bits per weight"
-          items={slices.map((slice) => ({
-            id: slice.key,
-            label: slice.label,
-            value: slice.byteShare,
-            display: `${(slice.byteShare * 100).toFixed(1)}% of bytes`,
-            tone: slice.bitsPerWeight > 5 ? "loss" : "forward",
-            detail: `${slice.tensors} tensor${slice.tensors === 1 ? "" : "s"} · ${(slice.parameterShare * 100).toFixed(1)}% of parameters · ${slice.bitsPerWeight.toFixed(2)} bits per weight`,
-          }))}
-          max={Math.max(...slices.map((slice) => slice.byteShare))}
-        />
+        <FileMosaic slices={slices} shortLabels={SHORT_SLICE_LABELS} effective={effective} />
+        <div className="qz-table-wrap">
+          <table className="qz-slices">
+            <thead>
+              <tr>
+                <th scope="col">Group</th>
+                <th scope="col">Tensors</th>
+                <th scope="col">Share of parameters</th>
+                <th scope="col">Bits per weight</th>
+                <th scope="col">Share of bytes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {slices.map((slice, index) => (
+                <tr key={slice.key} className={slice.bitsPerWeight > 5 ? "is-wide" : ""}>
+                  <th scope="row">
+                    <b>{String.fromCharCode(65 + index)}</b> {slice.label}
+                  </th>
+                  <td>{slice.tensors}</td>
+                  <td>{(slice.parameterShare * 100).toFixed(1)}%</td>
+                  <td>{slice.bitsPerWeight.toFixed(2)}</td>
+                  <td>{(slice.byteShare * 100).toFixed(1)}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
         <p className="lab-note">
           {withCommas(DOWNLOADED_FILE.bytes)} bytes divided over {withCommas(DOWNLOADED_FILE.parameters)} parameters is{" "}
           {effective.toFixed(3)} bits per weight: {(effective - 4.5).toFixed(3)} above the 4.5 of a Q4_K block, and{" "}
@@ -482,41 +541,76 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             onChange={(value) => setState({ floatValue: clampFloatValue(10 ** (value / 20)) })}
           />
         </div>
+        <p className="qz-key" aria-hidden="true">
+          <span className="qz-key__sign">sign bit</span>
+          <span className="qz-key__exponent">exponent bits set the range</span>
+          <span className="qz-key__mantissa">mantissa bits set the precision</span>
+          <span className="qz-key__ruler">ruler = every value it can store from 1 to 2</span>
+        </p>
         <div className="qz-table-wrap">
-          <table>
+          <table className="qz-float-layout">
             <thead>
               <tr>
                 <th scope="col">Format</th>
-                <th scope="col">Smallest normal to largest</th>
+                <th scope="col">Bits</th>
                 <th scope="col">Spacing at 1.0</th>
-                <th scope="col">{formatInput(floatValue)} is stored as</th>
-                <th scope="col">Error</th>
                 <th scope="col">Toy table RMS error</th>
                 <th scope="col">Toy perplexity</th>
               </tr>
             </thead>
             <tbody>
-              {floatTable.map(({ format, stats, rmsError, cost: toyCost }) => {
+              {floatTable.map(({ format, stats, rmsError, cost: toyCost }) => (
+                <tr key={format.id}>
+                  <th scope="row">{format.name}</th>
+                  <td className="qz-float-bits">
+                    <BitStrip format={format} />
+                    <small>
+                      1 + {format.exponentBits} + {format.mantissaBits} bits, bias {format.bias}
+                    </small>
+                  </td>
+                  <td className="qz-float-spacing">
+                    <SpacingRuler format={format} />
+                    2^−{format.mantissaBits} = {formatFloat(stats.spacingAtOne)}
+                    <small>at most {relativePercent(stats.maxRelativeError)} off</small>
+                  </td>
+                  <td>{rmsError.toFixed(4)}</td>
+                  <td>
+                    {percent(toyCost)}
+                    <small>against {basePerplexity.toFixed(3)}</small>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="qz-table-wrap">
+          <table className="qz-float-range">
+            <thead>
+              <tr>
+                <th scope="col">Format</th>
+                <th scope="col" className="qz-float-range__axis">
+                  Smallest normal to largest
+                  <RangeAxis value={floatValue} label={formatInput(floatValue)} />
+                </th>
+                <th scope="col">{formatInput(floatValue)} is stored as</th>
+                <th scope="col">Error</th>
+              </tr>
+            </thead>
+            <tbody>
+              {floatTable.map(({ format, stats }) => {
                 const stored = roundToFloatFormat(floatValue, format);
+                const fate = stored.overflow ? "overflow" : stored.value === 0 ? "zero" : stored.subnormal ? "subnormal" : "normal";
                 return (
-                  <tr key={format.id}>
-                    <th scope="row">
-                      {format.name}
+                  <tr key={format.id} className={`is-${fate}`}>
+                    <th scope="row">{format.name}</th>
+                    <td className="qz-float-range__cell">
+                      <RangeBar stats={stats} value={floatValue} state={fate} />
                       <small>
-                        1 + {format.exponentBits} + {format.mantissaBits} bits, bias {format.bias}
-                      </small>
-                    </th>
-                    <td>
-                      {formatFloat(stats.minNormal)} to {formatFloat(stats.maxFinite)}
-                      <small>{withCommas(stats.finiteValues)} finite values</small>
-                    </td>
-                    <td>
-                      2^−{format.mantissaBits}
-                      <small>
-                        {formatFloat(stats.spacingAtOne)}, at most {relativePercent(stats.maxRelativeError)} off
+                        {formatFloat(stats.minNormal)} to {formatFloat(stats.maxFinite)} · {withCommas(stats.finiteValues)} finite
+                        values
                       </small>
                     </td>
-                    <td>
+                    <td className="qz-float-range__stored">
                       {stored.overflow ? "overflow" : stored.value === 0 ? "0" : formatFloat(stored.value)}
                       <small>
                         {stored.overflow
@@ -530,11 +624,6 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
                     </td>
                     <td>
                       {stored.overflow || stored.value === 0 ? "—" : signedPrecise(((stored.value - floatValue) / floatValue) * 100)}
-                    </td>
-                    <td>{rmsError.toFixed(4)}</td>
-                    <td>
-                      {percent(toyCost)}
-                      <small>against {basePerplexity.toFixed(3)}</small>
                     </td>
                   </tr>
                 );

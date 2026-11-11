@@ -233,6 +233,12 @@ export default function Explore({ state, setState, currentStep, narrate }: Modul
       provider: decoded.provider,
     };
   });
+  // Where the reconstruction and the drawing disagree, pixel by pixel: what the BCE row adds up.
+  const meanImage = encoded.value?.meanImage;
+  const difference = useMemo(
+    () => (meanImage ? Float32Array.from(drawing, (value, index) => Math.abs(value - meanImage[index])) : null),
+    [drawing, meanImage],
+  );
   const loadPreset = (name: string) => {
     loadedSample.current = name;
     setStrokes([...(PRESET_STROKES[name] ?? [])]);
@@ -483,23 +489,50 @@ export default function Explore({ state, setState, currentStep, narrate }: Modul
               </div>
               <small>Draw with a mouse or pen, or load a preset.</small>
             </div>
-            <div className="dv-encode__outputs">
-              <figure className="dv-figure">
-                <PixelImage
-                  data={encodedValue?.meanImage ?? null}
-                  size={112}
-                  label="Reconstruction decoded from the posterior mean"
-                />
-                <figcaption>decoder(μ)</figcaption>
-              </figure>
-              <figure className="dv-figure">
-                <PixelImage
-                  data={encodedValue?.sampleImage ?? null}
-                  size={112}
-                  label="Reconstruction decoded from a sampled latent"
-                />
-                <figcaption>decoder(μ + σ·ε)</figcaption>
-              </figure>
+            <div className="dv-encode__flow">
+              <ol className="dv-bottleneck" aria-label="The path a drawing takes">
+                <li>
+                  <b>784</b> pixels
+                </li>
+                <li className="is-op">encoder</li>
+                <li className="is-code">
+                  <b>2</b> numbers
+                  <small>{encodedValue ? `μ = (${num(encodedValue.mean[0])}, ${num(encodedValue.mean[1])})` : "μ = —"}</small>
+                </li>
+                <li className="is-op">decoder</li>
+                <li>
+                  <b>784</b> pixels
+                </li>
+              </ol>
+              <div className="dv-encode__outputs">
+                <figure className="dv-figure">
+                  <PixelImage
+                    data={encodedValue?.meanImage ?? null}
+                    size={112}
+                    label="Reconstruction decoded from the posterior mean"
+                  />
+                  <figcaption>decoder(μ)</figcaption>
+                </figure>
+                <figure className="dv-figure">
+                  <PixelImage
+                    data={encodedValue?.sampleImage ?? null}
+                    size={112}
+                    label="Reconstruction decoded from a sampled latent"
+                  />
+                  <figcaption>decoder(μ + σ·ε)</figcaption>
+                </figure>
+                <figure className="dv-figure">
+                  <PixelImage
+                    data={encodedValue ? difference : null}
+                    size={112}
+                    label="Difference between the drawing and the reconstruction from the posterior mean; brighter pixels differ more"
+                  />
+                  <figcaption>
+                    |drawing − decoder(μ)|
+                    <small>brighter = further apart</small>
+                  </figcaption>
+                </figure>
+              </div>
             </div>
             <div className="dv-encode__numbers">
               <dl className="dv-readout">
@@ -528,10 +561,34 @@ export default function Explore({ state, setState, currentStep, narrate }: Modul
                   <dd>{encodedValue ? `${fmt(encodedValue.bce + KL_WEIGHT * encodedValue.kl, 1)} nats` : "—"}</dd>
                 </div>
               </dl>
-              <p className="dv-small">
-                BCE sums over 784 pixels. Training scored the sampled latent instead, which gives{" "}
-                {encodedValue ? `${fmt(encodedValue.bceSampled, 1)} nats` : "—"} here; the two agree closely because σ is tiny next to the prior's 1.
-              </p>
+              <div className="dv-encode__loss">
+                {encodedValue && (
+                  <div
+                    className="dv-lossbar"
+                    role="img"
+                    aria-label={`Training loss of ${fmt(encodedValue.bce + KL_WEIGHT * encodedValue.kl, 1)} nats: ${fmt(encodedValue.bce, 1)} from reconstruction and ${fmt(KL_WEIGHT * encodedValue.kl, 2)} from the weighted KL term.`}
+                  >
+                    <span className="dv-lossbar__track">
+                      <i className="is-bce" style={{ flexGrow: encodedValue.bce }} />
+                      <i className="is-kl" style={{ flexGrow: KL_WEIGHT * encodedValue.kl }} />
+                    </span>
+                    <span className="dv-lossbar__labels">
+                      <span className="is-bce">
+                        BCE {fmt(encodedValue.bce, 1)} ·{" "}
+                        {Math.round((encodedValue.bce / (encodedValue.bce + KL_WEIGHT * encodedValue.kl)) * 100)}% of the
+                        loss
+                      </span>
+                      <span className="is-kl">
+                        {KL_WEIGHT} × KL = {fmt(KL_WEIGHT * encodedValue.kl, 2)}
+                      </span>
+                    </span>
+                  </div>
+                )}
+                <p className="dv-small">
+                  BCE sums over 784 pixels. Training scored the sampled latent instead, which gives{" "}
+                  {encodedValue ? `${fmt(encodedValue.bceSampled, 1)} nats` : "—"} here; the two agree closely because σ is tiny next to the prior's 1.
+                </p>
+              </div>
             </div>
           </div>
         </LabSurface>
@@ -551,7 +608,18 @@ export default function Explore({ state, setState, currentStep, narrate }: Modul
         <div className="dv-strip" role="list" aria-label="The same digit at six noise levels">
           <figure className="dv-figure" role="listitem">
             <PixelImage data={x0Signed} range={[-1, 1]} size={72} label="Clean digit x0" />
-            <figcaption>x₀</figcaption>
+            <figcaption>
+              x₀
+              <span className="dv-mix" aria-hidden="true">
+                <i className="dv-mix__signal">
+                  <b style={{ width: "100%" }} />
+                </i>
+                <i className="dv-mix__noise">
+                  <b style={{ width: "0%" }} />
+                </i>
+              </span>
+              <small>all signal</small>
+            </figcaption>
           </figure>
           {FORWARD_STEPS.map((t, index) => (
             <figure className={`dv-figure ${index === nearestForward ? "is-current" : ""}`} role="listitem" key={t}>
@@ -563,11 +631,33 @@ export default function Explore({ state, setState, currentStep, narrate }: Modul
               />
               <figcaption>
                 t = {t}
+                <span className="dv-mix" aria-hidden="true">
+                  <i className="dv-mix__signal">
+                    <b style={{ width: `${Math.sqrt(schedule.alphaBar[t]) * 100}%` }} />
+                  </i>
+                  <i className="dv-mix__noise">
+                    <b style={{ width: `${Math.sqrt(1 - schedule.alphaBar[t]) * 100}%` }} />
+                  </i>
+                </span>
                 <small>√ᾱ {Math.sqrt(schedule.alphaBar[t]).toFixed(2)}</small>
               </figcaption>
             </figure>
           ))}
         </div>
+        <ul className="dv-legend dv-mix-key" aria-label="Bars under each tile">
+          <li>
+            <i className="dv-mix__signal">
+              <b style={{ width: "100%" }} />
+            </i>{" "}
+            signal share √ᾱ_t: how much of the digit is left
+          </li>
+          <li>
+            <i className="dv-mix__noise">
+              <b style={{ width: "100%" }} />
+            </i>{" "}
+            noise share √(1−ᾱ_t): how much static is mixed in
+          </li>
+        </ul>
         <p className="dv-small">{x0Caption}. Pixels are scaled to [−1, 1]; one seeded ε is reused across the strip.</p>
         <div className="dv-charts">
           <LineChart
@@ -648,7 +738,9 @@ export default function Explore({ state, setState, currentStep, narrate }: Modul
             />
             <figcaption>{calls < STEPS ? `x after ${calls} calls · level t = ${currentLevel}` : "sample after 100 calls"}</figcaption>
           </figure>
-          <span className="dv-now__op" aria-hidden="true">→</span>
+          <span className="dv-now__op" aria-hidden="true">
+            <small>denoiser</small>→
+          </span>
           <figure className="dv-figure dv-figure--hero">
             <PixelImage
               data={cleanAt}

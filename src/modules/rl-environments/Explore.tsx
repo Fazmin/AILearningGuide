@@ -4,7 +4,6 @@ import {
   Heatmap,
   LabSurface,
   LineChart,
-  Metric,
   RangeControl,
   SegmentedControl,
   SurfaceHeading,
@@ -59,54 +58,107 @@ import {
  * shared 0–100% axis, so the two never hide each other and shape, not colour, tells them apart.
  */
 function SeedStrip({ summary, seed }: { summary: SeedSummary; seed: number }) {
-  const left = 40;
-  const right = 404;
-  const top = 26;
-  const bottom = 118;
+  const left = 46;
+  const right = 664;
+  const top = 34;
+  const bottom = 138;
   const slot = (right - left) / summary.seeds.length;
   const xAt = (index: number) => left + slot * (index + 0.5);
   const yAt = (value: number) => bottom - value * (bottom - top);
   const describe = summary.seeds
     .map((entry) => `seed ${entry.seed}: true success ${percent(entry.final.trueSuccess)}, hack rate ${percent(entry.final.hackRate)}`)
     .join("; ");
+  const meanY = yAt(summary.meanSuccess);
   return (
-    <svg className="rle-strip" viewBox="0 0 420 148" role="img" aria-label={`Across 10 seeds at update ${UPDATES}. ${describe}.`}>
+    <svg
+      className="rle-strip"
+      viewBox="0 0 680 172"
+      role="img"
+      aria-label={`Across 10 seeds at update ${UPDATES}. ${describe}. Mean true success ${percent(summary.meanSuccess)}.`}
+    >
       <g className="rle-strip-key">
-        <circle className="is-success" cx={left + 4} cy={9} r={4} />
-        <text x={left + 12} y={12}>
-          true success
+        <circle className="is-success" cx={left + 5} cy={10} r={5} />
+        <text x={left + 15} y={14}>
+          true success (higher is better)
         </text>
-        <path className="is-hack" d={`M ${left + 112} 4 l 5 5 l -5 5 l -5 -5 z`} />
-        <text x={left + 122} y={12}>
-          hack rate
+        <path className="is-hack" d={`M ${left + 250} 4 l 6 6 l -6 6 l -6 -6 z`} />
+        <text x={left + 262} y={14}>
+          hack rate (lower is better)
+        </text>
+        <line className="rle-strip-mean" x1={left + 458} x2={left + 482} y1={10} y2={10} />
+        <text className="rle-strip-mean-label" x={left + 488} y={14}>
+          mean success {percent(summary.meanSuccess)}
         </text>
       </g>
       {[0, 0.5, 1].map((tick) => (
         <g key={tick}>
           <line className="rle-strip-grid" x1={left} x2={right} y1={yAt(tick)} y2={yAt(tick)} />
-          <text x={left - 6} y={yAt(tick) + 3} textAnchor="end">
+          <text x={left - 6} y={yAt(tick) + 4} textAnchor="end">
             {percent(tick)}
           </text>
         </g>
       ))}
+      <line className="rle-strip-mean" x1={left} x2={right} y1={meanY} y2={meanY} />
       {summary.seeds.map((entry, index) => {
         const x = xAt(index);
+        const success = yAt(entry.final.trueSuccess);
         const hack = yAt(entry.final.hackRate);
+        const close = Math.abs(success - hack) < 14;
         return (
           <g key={entry.seed} className={`rle-strip-seed${entry.seed === seed ? " is-current" : ""}`}>
-            {entry.seed === seed && <rect className="rle-strip-band" x={x - slot / 2 + 2} y={top - 6} width={slot - 4} height={bottom - top + 12} rx={4} />}
-            <circle className="is-success" cx={x} cy={yAt(entry.final.trueSuccess)} r={4.5} />
-            <path className="is-hack" d={`M ${x} ${hack - 6} l 6 6 l -6 6 l -6 -6 z`} />
-            <text x={x} y={bottom + 16} textAnchor="middle">
+            {entry.seed === seed && <rect className="rle-strip-band" x={x - slot / 2 + 2} y={top - 8} width={slot - 4} height={bottom - top + 16} rx={4} />}
+            <line className="rle-strip-stem" x1={x} x2={x} y1={success} y2={hack} />
+            <circle className="is-success" cx={x} cy={success} r={5.5} />
+            <path className="is-hack" d={`M ${x} ${hack - 7} l 7 7 l -7 7 l -7 -7 z`} />
+            {entry.seed === seed && (
+              <>
+                <text className="rle-strip-value for-success" x={x + 10} y={close ? Math.min(success, hack) - 5 : success + 4}>
+                  {percent(entry.final.trueSuccess)}
+                </text>
+                <text className="rle-strip-value for-hack" x={x + 11} y={close ? Math.max(success, hack) + 13 : hack + 4}>
+                  {percent(entry.final.hackRate)}
+                </text>
+              </>
+            )}
+            <text x={x} y={bottom + 18} textAnchor="middle">
               {entry.seed}
             </text>
           </g>
         );
       })}
-      <text x={(left + right) / 2} y={bottom + 29} textAnchor="middle">
+      <text x={(left + right) / 2} y={bottom + 32} textAnchor="middle">
         seed
       </text>
     </svg>
+  );
+}
+
+/** The largest score any scorer can give: partial credit's three bonuses on top of a passing checker. */
+const SCORE_CEILING = 1.4;
+
+/**
+ * A metric tile in the training card. A tile that reports a share of episodes also draws it as a
+ * meter from 0 to 100%, so the shares in a row can be compared by length; the others keep the gap.
+ */
+function Tile({
+  label,
+  value,
+  tone,
+  share,
+}: {
+  label: string;
+  value: string;
+  tone?: "forward" | "gradient" | "loss";
+  share?: number;
+}) {
+  return (
+    <div className={`metric rle-tile${tone ? ` metric--${tone}` : ""}`}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+      <i className={share === undefined ? "is-empty" : undefined} aria-hidden="true">
+        {share !== undefined && <b style={{ width: `${Math.min(1, Math.max(0, share)) * 100}%` }} />}
+      </i>
+    </div>
   );
 }
 
@@ -134,6 +186,8 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
   const episodeScore = scoreEpisode(reward, checker, episode.outcome);
   const episodeReward = episodeScore - stepCost * episode.outcome.turns;
   const designLabel = reward === "judge" ? REWARD_LABELS.judge : `${REWARD_LABELS[reward]} with ${CHECKER_LABELS[checker]}`;
+  // The scorecard row whose score is this episode's training reward under the current Reward design.
+  const trainingScorer = reward === "judge" ? REWARD_LABELS.judge : reward === "partial" ? REWARD_LABELS.partial : CHECKER_LABELS[checker];
 
   const rewards = run.points.map((entry) => entry.trainingReward);
   const yMin = Math.min(0, Math.floor(Math.min(...rewards) * 10) / 10);
@@ -208,6 +262,15 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
                     <small>chosen with p = {chance(step.probabilities[step.tool])}</small>
                     <span>{replyText(step, kind)}</span>
                     {hidden && <em>{hidden}</em>}
+                    <div className="rle-truth">
+                      <i>hidden:</i>
+                      <i className={`${step.after.right ? "is-right" : "is-wrong"}${step.after.right !== step.before.right ? " is-changed" : ""}`}>
+                        {step.after.right ? "✓ record right" : "✗ record wrong"}
+                      </i>
+                      <i className={`${step.after.edited ? "is-edited" : "is-intact"}${step.after.edited !== step.before.edited ? " is-changed" : ""}`}>
+                        {step.after.edited ? "✗ test edited" : "✓ test intact"}
+                      </i>
+                    </div>
                   </li>
                 );
               })}
@@ -233,9 +296,19 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
               </thead>
               <tbody>
                 {rows.map((row) => (
-                  <tr key={row.name}>
-                    <th scope="row">{row.name}</th>
-                    <td>{row.shown}</td>
+                  <tr key={row.name} className={row.name === trainingScorer ? "is-training" : undefined}>
+                    <th scope="row">
+                      {row.name}
+                      {row.name === trainingScorer && <small className="rle-trains">training reward</small>}
+                    </th>
+                    <td>
+                      <span className="rle-score">
+                        {row.shown}
+                        <i aria-hidden="true">
+                          <b style={{ width: `${Math.min(100, Math.max(0, (row.score / SCORE_CEILING) * 100))}%` }} />
+                        </i>
+                      </span>
+                    </td>
                     <td>{row.detail}</td>
                   </tr>
                 ))}
@@ -366,16 +439,21 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           series={series}
         />
         <div className="metric-row">
-          <Metric label="Training reward" value={fixed(point.trainingReward)} tone="gradient" />
-          <Metric label="True success (held-out)" value={percent(point.trueSuccess)} tone="forward" />
-          <Metric label="Hack rate" value={percent(point.hackRate)} tone={point.hackRate >= 0.5 ? "loss" : undefined} />
-          <Metric label="Closed but not fixed" value={percent(point.closedNotFixed)} tone={point.closedNotFixed >= 0.5 ? "loss" : undefined} />
+          <Tile label="Training reward" value={fixed(point.trainingReward)} tone="gradient" />
+          <Tile label="True success (held-out)" value={percent(point.trueSuccess)} tone="forward" share={point.trueSuccess} />
+          <Tile label="Hack rate" value={percent(point.hackRate)} tone={point.hackRate >= 0.5 ? "loss" : undefined} share={point.hackRate} />
+          <Tile
+            label="Closed but not fixed"
+            value={percent(point.closedNotFixed)}
+            tone={point.closedNotFixed >= 0.5 ? "loss" : undefined}
+            share={point.closedNotFixed}
+          />
         </div>
         <div className="metric-row">
-          <Metric label="Needless look-ups" value={percent(point.needlessLookups)} />
-          <Metric label="Mean turns" value={fixed(point.meanTurns, 1)} />
-          <Metric label="KL per turn" value={fixed(point.klPerTurn)} />
-          <Metric label="Groups with no signal" value={`${point.flatSoFar} of ${view}`} />
+          <Tile label="Needless look-ups" value={percent(point.needlessLookups)} share={point.needlessLookups} />
+          <Tile label="Mean turns" value={fixed(point.meanTurns, 1)} />
+          <Tile label="KL per turn" value={fixed(point.klPerTurn)} />
+          <Tile label="Groups with no signal" value={`${point.flatSoFar} of ${view}`} share={view > 0 ? point.flatSoFar / view : 0} />
         </div>
         <p className="lab-note">
           Each of the {UPDATES} updates samples a group of {group} episodes on one training ticket, scores each with the

@@ -10,7 +10,17 @@ import {
   type ModuleContext,
 } from "@app/module-sdk";
 import cache from "./assets/sae-top-activations.json";
-import { ActivationText, ResidualBars, showChar, SparseCode } from "./FeatureViews";
+import {
+  ActivationText,
+  AngleDial,
+  LabelScore,
+  PairStrip,
+  ReconBar,
+  ResidualBars,
+  showChar,
+  SparseCode,
+  WindowTrack,
+} from "./FeatureViews";
 import { pct } from "./format";
 import { loadDecoder, runSae, type SaeRun, type Status } from "./runtime";
 import {
@@ -242,6 +252,12 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
               label={`Residual vector at position ${position}: 256 values, with the reconstruction overlaid. Unexplained share ${pct(unexplained, 1)}.`}
             />
           </div>
+          <p className="sf-flow" aria-hidden="true">
+            <i />
+            <span>
+              <b>encoder</b> scores all 1,024 features on this vector and keeps only the 32 largest
+            </span>
+          </p>
           <div className="sf-panel sf-code">
             <div className="sf-panel__head">
               <strong>SAE code f: {active.length} of 1,024 features active</strong>
@@ -264,6 +280,17 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
               <span>1,024</span>
             </div>
           </div>
+          {features && (
+            <>
+              <p className="sf-flow" aria-hidden="true">
+                <i />
+                <span>
+                  <b>decoder</b> adds those {active.length} feature directions back up into x̂, the red dashes in the first panel
+                </span>
+              </p>
+              <ReconBar unexplained={unexplained} count={active.length} />
+            </>
+          )}
         </div>
 
         <div className="metric-row">
@@ -348,6 +375,11 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             ) : (
               <p className="sf-small">None of this feature&apos;s top examples are in the first {EARLY_POSITIONS} positions, so there is no separate in-context list.</p>
             )}
+            <div className="sf-examples__head" aria-hidden="true">
+              <span>training text · the marked character is where it fired</span>
+              <span>place in its 64-character window</span>
+              <span>activation</span>
+            </div>
             <ol className="sf-examples" aria-label={`Eight cached top-activating examples for feature ${feature}`}>
               {shown.map((example, index) => {
                 const before = example.text.slice(Math.max(0, example.focus_offset - 22), example.focus_offset);
@@ -362,6 +394,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
                       <mark>{showChar(at)}</mark>
                       <span className="sf-unseen">{after}</span>
                     </code>
+                    <WindowTrack position={example.window_position} early={EARLY_POSITIONS} />
                     <em>{example.window_position === 0 ? "first character" : `position ${example.window_position}`}</em>
                     <i style={{ width: `${(example.activation / shownMaximum) * 100}%` }} />
                     <b>{example.activation.toFixed(2)}</b>
@@ -424,6 +457,14 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           <li><i className="sf-key__heat" /> activation, darker = higher</li>
           <li><i className="sf-key__early" /> dotted top edge: window position 0 to {EARLY_POSITIONS - 1}</li>
         </ul>
+        {aligned && (
+          <LabelScore
+            text={text}
+            activations={featureActivations}
+            threshold={threshold}
+            matches={(character, index) => matchesHypothesis(hypothesis, character, index, focusCharacter)}
+          />
+        )}
         <div className="metric-row">
           <Metric label="Precision" value={labelTest ? pct(labelTest.precision) : "—"} tone="forward" />
           <Metric label="Recall" value={labelTest ? pct(labelTest.recall) : "—"} tone="gradient" />
@@ -519,6 +560,24 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
               features that mean nearly the same thing.
             </p>
           </div>
+          {strongest && decoder.overlap && (
+            <div className="sf-geometry">
+              <figure>
+                <figcaption>
+                  The most similar pair, drawn at its true angle. The shaded sliver is where a typical pair sits.
+                </figcaption>
+                <AngleDial a={strongest.a} b={strongest.b} cosine={strongest.cosine} meanAbs={decoder.overlap.meanAbs} />
+              </figure>
+              {aligned && (
+                <figure>
+                  <figcaption>
+                    Where each of the two is active on your probe text{pair ? `: together on ${pair.both} of ${pair.total}` : ""}.
+                  </figcaption>
+                  <PairStrip text={text} rows={current?.features ?? []} a={strongest.a} b={strongest.b} />
+                </figure>
+              )}
+            </div>
+          )}
           <div className="metric-row">
             <Metric
               label="Active: mean |cos|"

@@ -21,6 +21,7 @@ import {
   SEED_RANGE,
   STEP_SUCCESS,
   trainGroupRelative,
+  type GrpoGroup,
   type GrpoPoint,
 } from "./grpo";
 import { sanitizeState } from "./state";
@@ -94,6 +95,22 @@ function VotePlot({
   const path = (key: "single" | "majority" | "verifier") =>
     curves.map((point, index) => `${index === 0 ? "M" : "L"}${xAt(point.n)},${yAt(point[key])}`).join(" ");
   const current = curves[samples - 1];
+  // The three readings at the chosen n, printed beside their markers and nudged apart so they never overlap.
+  const readings = (
+    [
+      { key: "verifier", name: "verifier", value: current.verifier },
+      { key: "majority", name: "vote", value: current.majority },
+      { key: "single", name: "one sample", value: current.single },
+    ] as const
+  )
+    .map((entry) => ({ ...entry, y: yAt(entry.value) + 15 }))
+    .sort((a, b) => a.y - b.y);
+  for (let index = 1; index < readings.length; index += 1) {
+    if (readings[index].y - readings[index - 1].y < 13) readings[index].y = readings[index - 1].y + 13;
+  }
+  const spill = readings[readings.length - 1].y - (bottom - 3);
+  if (spill > 0) readings.forEach((entry) => (entry.y -= spill));
+  const readLeft = samples > 24;
   return (
     <svg
       className="rm-vote-plot"
@@ -125,6 +142,17 @@ function VotePlot({
       <circle className="rm-dot is-verifier" cx={xAt(samples)} cy={yAt(current.verifier)} r={4.5} />
       <rect className="rm-dot is-majority" x={xAt(samples) - 4} y={yAt(current.majority) - 4} width={8} height={8} />
       <circle className="rm-dot is-single" cx={xAt(samples)} cy={yAt(current.single)} r={3.5} />
+      {readings.map((entry) => (
+        <text
+          key={entry.key}
+          className={`rm-reading is-${entry.key}`}
+          x={xAt(samples) + (readLeft ? -7 : 7)}
+          y={entry.y}
+          textAnchor={readLeft ? "end" : "start"}
+        >
+          {entry.name} {pct(entry.value)}
+        </text>
+      ))}
       <text x={(left + right) / 2} y={bottom + 32} textAnchor="middle">
         samples drawn per question (n)
       </text>
@@ -132,12 +160,22 @@ function VotePlot({
   );
 }
 
-function CountBars({ samples, accuracy, wrong }: { samples: number; accuracy: number; wrong: WrongSpread }) {
+function CountBars({
+  samples,
+  accuracy,
+  wrong,
+  verifier,
+}: {
+  samples: number;
+  accuracy: number;
+  wrong: WrongSpread;
+  verifier: number;
+}) {
   const pmf = binomialPmf(samples, accuracy);
   const left = 46;
   const right = 700;
-  const top = 16;
-  const bottom = 130;
+  const top = 40;
+  const bottom = 154;
   const peak = Math.max(...pmf);
   const slot = (right - left) / (samples + 1);
   const width = Math.max(2, slot * 0.72);
@@ -148,10 +186,32 @@ function CountBars({ samples, accuracy, wrong }: { samples: number; accuracy: nu
     .join("; ");
   const labelEvery = samples > 20 ? 4 : samples > 10 ? 2 : 1;
   return (
-    <svg className="rm-vote-plot rm-count-plot" viewBox="0 0 720 166" role="img" aria-label={`Binomial distribution of correct samples out of ${samples}. ${label}.`}>
+    <svg
+      className="rm-vote-plot rm-count-plot"
+      viewBox="0 0 720 190"
+      role="img"
+      aria-label={`Binomial distribution of correct samples out of ${samples}. ${label}. With one or more correct samples, ${pct(verifier)} of the time, a verifier can pick a right one.`}
+    >
       <text x={left} y={10}>
         probability of k correct samples · solid part = the vote picks the right answer
       </text>
+      <path
+        className="rm-bracket"
+        d={`M${xAt(1) - width / 2},${top - 6} v-6 H${xAt(samples) + width / 2} v6`}
+      />
+      <text
+        className="rm-bracket-label"
+        x={Math.min(right - 150, Math.max(left + 150, (xAt(1) + xAt(samples)) / 2))}
+        y={top - 16}
+        textAnchor="middle"
+      >
+        1 or more correct: a verifier finds it · {pct(verifier)}
+      </text>
+      {slot >= 44 && (
+        <text className="rm-bracket-none" x={xAt(0)} y={top - 4} textAnchor="middle">
+          none: {pct(pmf[0])}
+        </text>
+      )}
       <line className="plot-axis" x1={left} x2={right} y1={bottom} y2={bottom} />
       {pmf.map((probability, k) => {
         const win = winGivenCorrect(samples, k, wrong);
@@ -184,29 +244,104 @@ function CountBars({ samples, accuracy, wrong }: { samples: number; accuracy: nu
 /**
  * The policy over trace length at one training update: solid bars are its
  * probabilities, outlined bars the starting policy, and the dashed line is the
- * checker's pass chance for a trace of that length.
+ * checker's pass chance for a trace of that length. Above them, on the same
+ * length axis, sits the sampled group that produced the update: one token per
+ * trace, and an arrow for how far it moved the typical length.
  */
-function PolicyBars({ point, initial, k }: { point: GrpoPoint; initial: GrpoPoint; k: number }) {
+function PolicyBars({
+  point,
+  initial,
+  k,
+  group,
+  before,
+  groupSize,
+}: {
+  point: GrpoPoint;
+  initial: GrpoPoint;
+  k: number;
+  /** The sampled group that produced this update, and the policy it was sampled from. Absent at update 0. */
+  group?: GrpoGroup;
+  before?: GrpoPoint;
+  groupSize: number;
+}) {
   const left = 46;
   const right = 664;
-  const top = 24;
-  const bottom = 138;
   const slot = (right - left) / MAX_LENGTH;
   const width = slot * 0.56;
   const xAt = (length: number) => left + slot * (length - 0.5);
+  // The group band: one token per sampled trace, stacked over its length, six to a row.
+  const perRow = 6;
+  const pitch = 12;
+  const bandTop = 24;
+  const bandBottom = bandTop + Math.ceil(groupSize / perRow) * pitch + 4;
+  const moveY = bandBottom + 11;
+  const top = moveY + 50;
+  const bottom = top + 114;
   const maxMass = 0.6;
   const yMass = (value: number) => bottom - (Math.min(value, maxMass) / maxMass) * (bottom - top);
   const yPass = (value: number) => bottom - value * (bottom - top);
   const passes = LENGTHS.map((length) => passProbability(length, k));
-  const label = `Policy over trace length after update ${point.iteration}: ${LENGTHS.map(
+  const tokens = LENGTHS.flatMap((length) => {
+    const members = (group?.lengths ?? [])
+      .map((sampled, index) => ({ sampled, passed: group?.passed[index] === 1, up: (group?.advantages[index] ?? 0) > 1e-9 }))
+      .filter((member) => member.sampled === length)
+      .sort((a, b) => Number(b.passed) - Number(a.passed) || Number(b.up) - Number(a.up));
+    return members.map((member, index) => ({
+      ...member,
+      x: xAt(length) + ((index % perRow) - (Math.min(members.length, perRow) - 1) / 2) * pitch,
+      y: bandBottom - 6 - Math.floor(index / perRow) * pitch,
+      key: `${length}-${index}`,
+    }));
+  });
+  const passedCount = group ? group.passed.filter((value) => value === 1).length : 0;
+  const centreX = (centre: number) => Math.min(right, Math.max(left, left + slot * (centre - 0.5)));
+  const moved = before ? point.centre - before.centre : 0;
+  const groupText = group
+    ? `The group that made update ${point.iteration}: ${group.lengths.length} sampled traces, ${passedCount} passed the checker. ${
+        group.flat
+          ? "Every reward was equal, so the update moved nothing."
+          : `The typical length moved from ${before?.centre.toFixed(2)} to ${point.centre.toFixed(2)}.`
+      } `
+    : "Update 0: no group has been sampled yet. ";
+  const label = `${groupText}Policy over trace length after update ${point.iteration}: ${LENGTHS.map(
     (length, index) => `${length} steps ${percent(point.probabilities[index])}`,
   ).join(", ")}. Checker pass chance by length: ${LENGTHS.map(
     (length, index) => `${length} steps ${percent(passes[index])}`,
   ).join(", ")}. Traces shorter than ${k} steps never pass.`;
   return (
-    <svg className="rm-vote-plot rm-policy-plot" viewBox="0 0 720 190" role="img" aria-label={label}>
-      <text x={left} y={12}>
-        policy over trace length · outline = starting policy · dashed line = checker pass chance
+    <svg className="rm-vote-plot rm-policy-plot" viewBox={`0 0 720 ${bottom + 38}`} role="img" aria-label={label}>
+      <text className="rm-lead" x={left} y={12}>
+        {group
+          ? `the ${group.lengths.length} traces sampled for update ${point.iteration} · filled = passed the checker (${passedCount}) · ring = failed`
+          : "update 0 · no group sampled yet: the first one is drawn from the starting policy below"}
+      </text>
+      <line className="rm-grid" x1={left} x2={right} y1={bandBottom} y2={bandBottom} />
+      {tokens.map((token) => (
+        <circle
+          key={token.key}
+          className={`rm-token ${token.passed ? "is-pass" : "is-fail"}${group?.flat || token.up ? "" : " is-below"}`}
+          cx={token.x}
+          cy={token.y}
+          r={4.4}
+        />
+      ))}
+      {group && before && (
+        <g className={`rm-move${group.flat || Math.abs(moved) < 0.005 ? " is-flat" : ""}`}>
+          {!group.flat && Math.abs(moved) >= 0.005 && (
+            <path
+              d={`M${centreX(before.centre)},${moveY} H${centreX(point.centre)} m${moved > 0 ? -5 : 5},-4 l${moved > 0 ? 5 : -5},4 l${moved > 0 ? -5 : 5},4`}
+            />
+          )}
+          {!group.flat && <circle cx={centreX(before.centre)} cy={moveY} r={3} />}
+          <text x={left} y={moveY + 17}>
+            {group.flat
+              ? `all ${group.lengths.length} rewards equal → no signal: the typical length stays at ${point.centre.toFixed(2)}`
+              : `faded = scored below this group's average · the rest pull the typical length ${before.centre.toFixed(2)} → ${point.centre.toFixed(2)}`}
+          </text>
+        </g>
+      )}
+      <text x={left} y={top - 12}>
+        policy over trace length · outline = starting policy · dashed line = checker pass chance (right axis)
       </text>
       {[0, 0.3, 0.6].map((tick) => (
         <g key={tick}>
@@ -223,6 +358,9 @@ function PolicyBars({ point, initial, k }: { point: GrpoPoint; initial: GrpoPoin
       ))}
       <line className="plot-axis" x1={left} x2={right} y1={bottom} y2={bottom} />
       <line className="marker-guide" x1={left + slot * (k - 1)} x2={left + slot * (k - 1)} y1={top} y2={bottom} />
+      {k > 1 && (
+        <line className="marker-guide" x1={left + slot * (k - 1)} x2={left + slot * (k - 1)} y1={bandTop - 4} y2={bandBottom} />
+      )}
       {LENGTHS.map((length, index) => {
         const height = bottom - yMass(point.probabilities[index]);
         const ghost = bottom - yMass(initial.probabilities[index]);
@@ -361,7 +499,61 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             onChange={(value) => setState({ problem: value, budget: 3 })}
           />
         </div>
-        <p className="lab-note">{spec.question}</p>
+        <div
+          className="rm-recipes"
+          role="img"
+          aria-label={`Two recipes for the question “${spec.question}”. In-context prompting: worked examples and the question go into the prompt, the model's weights stay as they were, and it writes steps then an answer. Reasoning model: only the question goes into the prompt, the weights were changed earlier by training against a checker, and it writes a long trace then an answer.`}
+        >
+          <div className="rm-recipe">
+            <span className="rm-recipe__name">In-context prompting</span>
+            <div className="rm-recipe__flow">
+              <div className="rm-recipe__box is-prompt">
+                <small>the prompt</small>
+                <i>worked example</i>
+                <i>worked example</i>
+                <b>{spec.question}</b>
+              </div>
+              <span className="rm-recipe__arrow" aria-hidden="true">
+                →
+              </span>
+              <div className="rm-recipe__box is-model">
+                <small>the model</small>
+                <b>weights unchanged</b>
+              </div>
+              <span className="rm-recipe__arrow" aria-hidden="true">
+                →
+              </span>
+              <div className="rm-recipe__box is-output">
+                <small>it writes</small>
+                <b>steps, then {spec.answer}</b>
+              </div>
+            </div>
+          </div>
+          <div className="rm-recipe is-trained">
+            <span className="rm-recipe__name">Reasoning model</span>
+            <div className="rm-recipe__flow">
+              <div className="rm-recipe__box is-prompt">
+                <small>the prompt</small>
+                <b>{spec.question}</b>
+              </div>
+              <span className="rm-recipe__arrow" aria-hidden="true">
+                →
+              </span>
+              <div className="rm-recipe__box is-model is-changed">
+                <small>the model</small>
+                <b>weights changed</b>
+                <em>earlier: sample traces → checker passes or fails → update</em>
+              </div>
+              <span className="rm-recipe__arrow" aria-hidden="true">
+                →
+              </span>
+              <div className="rm-recipe__box is-output">
+                <small>it writes</small>
+                <b>a long trace, then {spec.answer}</b>
+              </div>
+            </div>
+          </div>
+        </div>
         <p className="lab-note">
           In-context learning prompted a chain with worked examples: the prompt changes, the weights do not. A reasoning
           model is post-trained, usually with reinforcement learning against answers a program can check, so its weights
@@ -467,7 +659,14 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             series={lengthSeries}
           />
         </div>
-        <PolicyBars point={now} initial={start} k={grpoK} />
+        <PolicyBars
+          point={now}
+          initial={start}
+          k={grpoK}
+          group={grpoView > 0 ? run.groups[grpoView - 1] : undefined}
+          before={grpoView > 0 ? history[grpoView - 1] : undefined}
+          groupSize={grpoGroup}
+        />
         <div className="metric-row">
           <Metric label="Checker pass rate" value={percent(now.passRate)} tone="forward" />
           <Metric label="Mean length" value={`${now.meanLength.toFixed(1)} steps`} />
@@ -503,6 +702,27 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           format={(value) => `${value} step${value === 1 ? "" : "s"}`}
           onChange={(value) => setState({ budget: value })}
         />
+        <ol
+          className="rm-strip"
+          aria-label={`The ${spec.trace.length} authored steps in order: ${spec.trace.map((step) => step.kind).join(", ")}. The budget shows the first ${budget}. The answer ${spec.answer} prints at every budget.`}
+        >
+          {spec.trace.map((step, index) => (
+            <li key={index} className={`is-${step.kind}${index < budget ? " is-shown" : " is-hidden"}${index === budget - 1 ? " is-last" : ""}`}>
+              <b>{index + 1}</b>
+              <span>{step.kind}</span>
+            </li>
+          ))}
+          <li className="is-answer">
+            <b>answer</b>
+            <span>{spec.answer}</span>
+          </li>
+        </ol>
+        <p className="rm-strip-note">
+          {budget === 0
+            ? "No step is written: the budget is 0."
+            : `Steps 1 to ${budget} are written${budget < spec.trace.length ? "; the dashed ones are never generated" : ""}.`}{" "}
+          The answer is authored, so it prints either way.
+        </p>
         <div className="metric-row">
           <Metric label="Useful" value={`${useful}`} tone="forward" />
           <Metric label="Padding" value={`${padding}`} />
@@ -525,10 +745,17 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           )}
           {visible.map((step, index) => (
             <li key={index} className={`is-${step.kind}`}>
-              <strong>{step.kind}</strong>
+              <strong>
+                <b>{index + 1}</b>
+                {step.kind}
+              </strong>
               <span>{step.text}</span>
             </li>
           ))}
+          <li className="is-answer">
+            <strong>answer (authored)</strong>
+            <span>{spec.answer}</span>
+          </li>
         </ol>
         <p className="lab-note">
           useful / padding / unfaithful are labels this lab assigns. They are not a window into a separate inner
@@ -576,7 +803,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           <span className="is-majority">majority vote</span>
           <span className="is-single">one sample · p</span>
         </div>
-        <CountBars samples={samples} accuracy={accuracy} wrong={spread.wrong} />
+        <CountBars samples={samples} accuracy={accuracy} wrong={spread.wrong} verifier={current.verifier} />
         <div className="metric-row">
           <Metric label="One sample" value={pct(current.single)} />
           <Metric label="Majority vote" value={pct(current.majority)} tone={current.majority < accuracy ? "loss" : "gradient"} />

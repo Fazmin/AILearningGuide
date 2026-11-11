@@ -111,6 +111,7 @@ export function TitleBar() {
         </div>
         <IconButton
           label="Accessibility options"
+          tooltipAlign="end"
           aria-expanded={accessibilityOpen}
           className={accessibilityOpen ? "is-active" : ""}
           onClick={() => setAccessibilityOpen(!accessibilityOpen)}
@@ -119,13 +120,13 @@ export function TitleBar() {
         </IconButton>
         {isTauri && !isMac && (
           <div className="window-controls">
-            <IconButton label="Minimize window" onClick={() => void withWindow((appWindow) => appWindow.minimize())}>
+            <IconButton label="Minimize window" tooltipAlign="end" onClick={() => void withWindow((appWindow) => appWindow.minimize())}>
               <Minus />
             </IconButton>
-            <IconButton label="Maximize window" onClick={() => void withWindow((appWindow) => appWindow.toggleMaximize())}>
+            <IconButton label="Maximize window" tooltipAlign="end" onClick={() => void withWindow((appWindow) => appWindow.toggleMaximize())}>
               <Maximize2 />
             </IconButton>
-            <IconButton label="Close window" className="window-close" onClick={() => void withWindow((appWindow) => appWindow.close())}>
+            <IconButton label="Close window" tooltipAlign="end" className="window-close" onClick={() => void withWindow((appWindow) => appWindow.close())}>
               <X />
             </IconButton>
           </div>

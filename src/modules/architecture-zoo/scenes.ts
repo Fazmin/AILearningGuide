@@ -20,7 +20,7 @@ const scenes: LabScene[] = [
     id: "early-steps-fade",
     sections: ["Why early steps fade", "Recurrence"],
     title: "Why early steps fade",
-    look: "The formula row multiplies column 1’s effect by every factor on the arrows, and its bar is the shortest in the ∂h7/∂x list.",
+    look: "The formula row multiplies column 1’s effect by every factor on the arrows, and its bar is the shortest of the ∂h7/∂x bars.",
     step: 2,
     focus: "Unrolled RNN",
   },

@@ -54,6 +54,92 @@ function tokensLabel(value: number) {
   return value >= 1024 ? `${grouped(value)} (${value / 1024}K)` : grouped(value);
 }
 
+const TURN = 2 * Math.PI;
+const PLANE = { size: 300, centre: 150, radius: 104 };
+
+/** A point on the plane at a radius and a mathematical angle (counter-clockwise, y up). */
+const onPlane = (radius: number, angle: number) => ({
+  x: PLANE.centre + radius * Math.cos(angle),
+  y: PLANE.centre - radius * Math.sin(angle),
+});
+
+/** A counter-clockwise arc from `from` through `sweep` radians, with an arrowhead at its end. */
+function TurnArc({ radius, from, sweep, className }: { radius: number; from: number; sweep: number; className: string }) {
+  if (sweep < 0.06) return null;
+  const start = onPlane(radius, from);
+  const end = onPlane(radius, from + sweep);
+  const angle = from + sweep;
+  const tangent = { x: -Math.sin(angle), y: -Math.cos(angle) };
+  const normal = { x: Math.cos(angle), y: -Math.sin(angle) };
+  const tip = { x: end.x + tangent.x * 6, y: end.y + tangent.y * 6 };
+  return (
+    <g className={className}>
+      <path d={`M${start.x.toFixed(1)} ${start.y.toFixed(1)} A${radius} ${radius} 0 ${sweep > Math.PI ? 1 : 0} 0 ${end.x.toFixed(1)} ${end.y.toFixed(1)}`} />
+      <polygon
+        points={`${tip.x.toFixed(1)},${tip.y.toFixed(1)} ${(end.x + normal.x * 4).toFixed(1)},${(end.y + normal.y * 4).toFixed(1)} ${(end.x - normal.x * 4).toFixed(1)},${(end.y - normal.y * 4).toFixed(1)}`}
+      />
+    </g>
+  );
+}
+
+function RopePlane({
+  queryStart,
+  keyStart,
+  queryTurn,
+  keyTurn,
+  between,
+  label,
+}: {
+  queryStart: number;
+  keyStart: number;
+  queryTurn: number;
+  keyTurn: number;
+  between: number;
+  label: string;
+}) {
+  const mod = (angle: number) => ((angle % TURN) + TURN) % TURN;
+  const queryAngle = queryStart + queryTurn;
+  const keyAngle = keyStart + keyTurn;
+  const { centre, radius } = PLANE;
+  const q = onPlane(radius, queryAngle);
+  const k = onPlane(radius, keyAngle);
+  const q0 = onPlane(radius, queryStart);
+  const k0 = onPlane(radius, keyStart);
+  const wedgeFrom = onPlane(radius * 0.8, keyAngle);
+  const wedgeTo = onPlane(radius * 0.8, keyAngle + between);
+  const wedgeLabel = onPlane(radius * 0.6, keyAngle + between / 2);
+  const qLabel = onPlane(radius + 17, queryAngle);
+  const kLabel = onPlane(radius + 17, keyAngle);
+  return (
+    <svg className="mas-rope-plane" viewBox={`0 0 ${PLANE.size} ${PLANE.size}`} role="img" aria-label={label}>
+      <circle className="mas-rope-plane__circle" cx={centre} cy={centre} r={radius} />
+      <line className="mas-rope-plane__axis" x1={centre - radius - 22} x2={centre + radius + 22} y1={centre} y2={centre} />
+      <line className="mas-rope-plane__axis" x1={centre} x2={centre} y1={centre - radius - 22} y2={centre + radius + 22} />
+      <path
+        className="mas-rope-plane__wedge"
+        d={`M${centre} ${centre} L${wedgeFrom.x.toFixed(1)} ${wedgeFrom.y.toFixed(1)} A${radius * 0.8} ${radius * 0.8} 0 0 ${between >= 0 ? 0 : 1} ${wedgeTo.x.toFixed(1)} ${wedgeTo.y.toFixed(1)} Z`}
+      />
+      <line className="mas-rope-plane__ghost" x1={centre} y1={centre} x2={q0.x} y2={q0.y} />
+      <line className="mas-rope-plane__ghost" x1={centre} y1={centre} x2={k0.x} y2={k0.y} />
+      <TurnArc radius={30} from={queryStart} sweep={mod(queryTurn)} className="mas-rope-plane__turn mas-rope-plane__turn--q" />
+      <TurnArc radius={44} from={keyStart} sweep={mod(keyTurn)} className="mas-rope-plane__turn mas-rope-plane__turn--k" />
+      <line className="mas-rope-plane__q" x1={centre} y1={centre} x2={q.x} y2={q.y} />
+      <line className="mas-rope-plane__k" x1={centre} y1={centre} x2={k.x} y2={k.y} />
+      <circle className="mas-rope-plane__q-dot" cx={q.x} cy={q.y} r={6} />
+      <rect className="mas-rope-plane__k-dot" x={k.x - 5.5} y={k.y - 5.5} width={11} height={11} />
+      <text className="mas-rope-plane__text" x={qLabel.x} y={qLabel.y + 4} textAnchor="middle">
+        q
+      </text>
+      <text className="mas-rope-plane__text" x={kLabel.x} y={kLabel.y + 4} textAnchor="middle">
+        k
+      </text>
+      <text className="mas-rope-plane__angle" x={wedgeLabel.x} y={wedgeLabel.y + 4} textAnchor="middle">
+        {`${between.toFixed(2)} rad`}
+      </text>
+    </svg>
+  );
+}
+
 function HeadSharing({ kvHeads }: { kvHeads: number }) {
   const width = 640;
   const cell = 16;
@@ -165,6 +251,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
   const partialOutput = current ? current.accumulator.map((value) => value / current.runningSum) : [0, 0];
   const finalGap = Math.max(...online.output.map((value, index) => Math.abs(value - full.output[index])));
   const maxWeight = Math.max(...full.weights, ...partialWeights);
+  const maxIndex = current ? TILE_SCORES.findIndex((value, index) => index < seen && value === current.runningMax) : -1;
 
   /* RoPE */
   const theta = ropeFrequency(pair, ROPE_Q.length, ropeBase);
@@ -204,14 +291,6 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
     ];
   }, [pair]);
   const pairAngle = (vector: number[]) => Math.atan2(vector[2 * pair + 1], vector[2 * pair]);
-  const ray = (vector: number[]) => {
-    const length = Math.hypot(vector[2 * pair], vector[2 * pair + 1]) || 1;
-    return { x: vector[2 * pair] / length, y: vector[2 * pair + 1] / length };
-  };
-  const qRay = ray(qRot);
-  const kRay = ray(kRot);
-  const q0 = ray(ROPE_Q);
-  const k0 = ray(ROPE_K);
   const between = (((pairAngle(qRot) - pairAngle(kRot)) % (2 * Math.PI)) + 3 * Math.PI) % (2 * Math.PI) - Math.PI;
 
   return (
@@ -293,6 +372,25 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           marker={{ x: seqLen / 1024, label: `${grouped(seqLen)} tokens` }}
           footnote={`Weight matmuls: 2 × n × ${grouped(prefillFlops(1, kvHeads).weights / 2)} weights. Attention: 4 × ${CONFIG.queryHeads} heads × ${CONFIG.headDim} × causal query–key pairs.`}
         />
+        <div
+          className={`mas-share ${windowed ? "is-windowed" : ""}`}
+          role="img"
+          aria-label={`At ${grouped(seqLen)} tokens, attention is ${(attentionShare * 100).toFixed(1)} percent of one layer's prefill arithmetic and the weight matmuls are the rest. With the full span the two are equal at ${grouped(crossover)} tokens.`}
+        >
+          <p>
+            One layer&apos;s prefill at {grouped(seqLen)} tokens{windowed ? `, window ${grouped(CONFIG.window)}` : ""}
+          </p>
+          <div className="mas-share__bar">
+            <i className="mas-share__weights" style={{ flexGrow: flops.weights }} />
+            <i className="mas-share__attention" style={{ flexGrow: flops.attention }} />
+            <b className="mas-share__half" />
+          </div>
+          <div className="mas-share__labels">
+            <span>weight matmuls {((1 - attentionShare) * 100).toFixed(1)}%</span>
+            <em>half: full-span attention gets here at {grouped(crossover)} tokens</em>
+            <span>attention {(attentionShare * 100).toFixed(1)}%</span>
+          </div>
+        </div>
         <div className="metric-row">
           <Metric label="Attention share" value={`${(attentionShare * 100).toFixed(1)}%`} tone="loss" />
           <Metric label="Crossover" value={`${grouped(crossover)} tokens`} />
@@ -336,7 +434,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
         </p>
         <svg
           className="mas-tiles"
-          viewBox="0 0 640 176"
+          viewBox="0 0 640 196"
           role="img"
           aria-label={`${seen} of ${TILE_SCORES.length} keys processed. Running max ${current ? current.runningMax.toFixed(2) : "none"}, running sum ${current ? current.runningSum.toFixed(3) : "0"}.`}
         >
@@ -368,12 +466,32 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             const partialHeight = (partialWeights[index] / maxWeight) * 116;
             return (
               <g key={`w-${index}`}>
-                <rect className="mas-tiles__partial" x={x + 7} y={166 - partialHeight} width={22} height={Math.max(0, partialHeight)} />
-                <rect className="mas-tiles__true" x={x + 5} y={166 - trueHeight} width={26} height={Math.max(0.5, trueHeight)} />
+                <rect className="mas-tiles__partial" x={x + 7} y={186 - partialHeight} width={22} height={Math.max(0, partialHeight)} />
+                <rect className="mas-tiles__true" x={x + 5} y={186 - trueHeight} width={26} height={Math.max(0.5, trueHeight)} />
               </g>
             );
           })}
-          <line className="mas-tiles__base" x1={6} x2={634} y1={166} y2={166} />
+          <line className="mas-tiles__base" x1={6} x2={634} y1={186} y2={186} />
+          {current && maxIndex >= 0 && (
+            <g className="mas-tiles__max">
+              <path d={`M${6 + maxIndex * 39.2 + 18} 39 l-5 7 h10 z`} />
+              <text
+                x={6 + maxIndex * 39.2 + (maxIndex > 12 ? 26 : maxIndex < 3 ? 10 : 18)}
+                y={58}
+                textAnchor={maxIndex > 12 ? "end" : maxIndex < 3 ? "start" : "middle"}
+              >
+                {`running max m = ${current.runningMax.toFixed(2)}`}
+              </text>
+            </g>
+          )}
+          {seen < TILE_SCORES.length && (
+            <g className="mas-tiles__edge">
+              <line x1={6 + seen * 39.2 - 2} x2={6 + seen * 39.2 - 2} y1={42} y2={190} />
+              <text x={6 + seen * 39.2 + 6} y={seen > 11 ? 110 : 82}>
+                not loaded yet
+              </text>
+            </g>
+          )}
         </svg>
         <div className="mas-legend" aria-hidden="true">
           <span><i className="mas-legend__true" />full softmax weight</span>
@@ -484,24 +602,40 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
               onChange={(value) => setState({ ropeBase: Number(value) })}
             />
           </div>
-          <svg
-            className="mas-rope-plane"
-            viewBox="-1.35 -1.35 2.7 2.7"
-            role="img"
-            aria-label={`Pair ${pair}: the query is rotated by ${(queryPos * theta).toFixed(2)} radians and the key by ${(keyPos * theta).toFixed(2)} radians; the angle between them is ${between.toFixed(2)} radians.`}
-          >
-            <circle className="mas-rope-plane__circle" r="1" />
-            <line className="mas-rope-plane__axis" x1={-1.25} x2={1.25} y1={0} y2={0} />
-            <line className="mas-rope-plane__axis" x1={0} x2={0} y1={-1.25} y2={1.25} />
-            <line className="mas-rope-plane__ghost" x1={0} y1={0} x2={q0.x} y2={-q0.y} />
-            <line className="mas-rope-plane__ghost" x1={0} y1={0} x2={k0.x} y2={-k0.y} />
-            <line className="mas-rope-plane__q" x1={0} y1={0} x2={qRay.x} y2={-qRay.y} />
-            <line className="mas-rope-plane__k" x1={0} y1={0} x2={kRay.x} y2={-kRay.y} />
-            <circle className="mas-rope-plane__q-dot" cx={qRay.x} cy={-qRay.y} r="0.07" />
-            <rect className="mas-rope-plane__k-dot" x={kRay.x - 0.06} y={-kRay.y - 0.06} width="0.12" height="0.12" />
-            <text className="mas-rope-plane__text" x={qRay.x * 1.18} y={-qRay.y * 1.18 + 0.04} textAnchor="middle">q</text>
-            <text className="mas-rope-plane__text" x={kRay.x * 1.18} y={-kRay.y * 1.18 + 0.04} textAnchor="middle">k</text>
-          </svg>
+          <figure className="mas-rope-figure">
+            <RopePlane
+              queryStart={pairAngle(ROPE_Q)}
+              keyStart={pairAngle(ROPE_K)}
+              queryTurn={queryPos * theta}
+              keyTurn={keyPos * theta}
+              between={between}
+              label={`Pair ${pair}: the query is rotated by ${(queryPos * theta).toFixed(2)} radians and the key by ${(keyPos * theta).toFixed(2)} radians; the angle between them is ${between.toFixed(2)} radians.`}
+            />
+            <figcaption>
+              <span className="mas-rope-key mas-rope-key--q">
+                <i />
+                <span>
+                  q turned m·θ = {queryPos} × {theta.toPrecision(2)} = <b>{(queryPos * theta).toFixed(2)} rad</b>
+                </span>
+              </span>
+              <span className="mas-rope-key mas-rope-key--k">
+                <i />
+                <span>
+                  k turned n·θ = {keyPos} × {theta.toPrecision(2)} = <b>{(keyPos * theta).toFixed(2)} rad</b>
+                </span>
+              </span>
+              <span className="mas-rope-key mas-rope-key--between">
+                <i />
+                <span>
+                  angle between: <b>{between.toFixed(2)} rad</b>, set by m − n = {relative} alone
+                </span>
+              </span>
+              <span className="mas-rope-key mas-rope-key--ghost">
+                <i />
+                <span>thin dashed: q and k at position 0</span>
+              </span>
+            </figcaption>
+          </figure>
         </div>
         <FormulaWithValues
           label="Score"

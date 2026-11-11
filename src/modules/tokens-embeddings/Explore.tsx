@@ -11,8 +11,9 @@ import {
 } from "@app/module-sdk";
 import tokenizerJson from "./assets/bpe-tokenizer.json";
 import { buildModel, displayToken, encode, symbolHex, type TokenizerJson } from "./bpe";
-import { analogy, neighbourOverlap, neighboursOf, type ProjectionKind } from "./embeddings";
+import { analogy, neighbourOverlap, neighboursOf, projectedNeighbours, type ProjectionKind } from "./embeddings";
 import { ProjectionMap, type MapMark } from "./ProjectionMap";
+import { VocabCurve } from "./VocabCurve";
 import { BASE_VOCAB, DEFAULT_TEXT, FULL_VOCAB } from "./state";
 import { useEmbeddingSpace } from "./useEmbeddingSpace";
 
@@ -115,6 +116,19 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
   const characters = Array.from(encoding.normalized).length;
   const unknownCount = tokens.filter((token) => token.unknown).length;
   const outsideSteps = trace ? trace.steps.filter((step) => step.rank >= mergeLimit).length : 0;
+  // The token count only changes at a vocabulary size that unlocks a merge this text uses.
+  const tokenCurve = useMemo(() => {
+    const ranks = Array.from(
+      new Set(fullEncoding.words.flatMap((entry) => entry.steps.map((step) => step.rank))),
+    ).sort((a, b) => a - b);
+    return {
+      start: encode(MODEL, text, 0).tokens.length,
+      drops: ranks.map((rank) => ({
+        vocab: BASE_VOCAB + rank + 1,
+        tokens: encode(MODEL, text, rank + 1).tokens.length,
+      })),
+    };
+  }, [fullEncoding, text]);
 
   const embeddings = useEmbeddingSpace();
   const space = embeddings.space;
@@ -146,11 +160,18 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
       return list;
     }
     if (queryRow === undefined) return [];
+    // The same ten map neighbours the "keeps N of 10" badge counts, so each spoke can say which side it is on.
+    const nearOnMap = new Set(projectedNeighbours(space.projections[projection], queryRow, NEIGHBOURS));
     return [
       { index: queryRow, word, role: "query" },
-      ...neighbours.map((entry) => ({ index: entry.index, word: entry.word, role: "neighbour" as const })),
+      ...neighbours.map((entry) => ({
+        index: entry.index,
+        word: entry.word,
+        role: "neighbour" as const,
+        kept: nearOnMap.has(entry.index),
+      })),
     ];
-  }, [space, mapShow, analogyA, analogyB, analogyC, arithmetic, queryRow, word, neighbours]);
+  }, [space, mapShow, analogyA, analogyB, analogyC, arithmetic, queryRow, word, neighbours, projection]);
 
   const statusText =
     embeddings.status === "ready" ? "Loaded" : embeddings.status === "error" ? "Unavailable" : "Loading…";
@@ -234,6 +255,16 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             setState({ vocabSize: value, focus: next >= 0 ? next : 0 });
           }}
         />
+        {tokens.length > 0 && (
+          <VocabCurve
+            drops={tokenCurve.drops}
+            startTokens={tokenCurve.start}
+            minVocab={BASE_VOCAB}
+            maxVocab={FULL_VOCAB}
+            vocabSize={vocabSize}
+            tokens={tokens.length}
+          />
+        )}
         <div className="te-stream" role="group" aria-label={`${tokens.length} tokens. Select one to inspect its ID and merges.`}>
           {encoding.words.map((entry, index) => (
             <span
@@ -501,8 +532,8 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
         <p className="lab-note">
           {mapShow === "neighbours"
             ? overlap
-              ? `Dashed spokes join ${word} to its ten nearest words by 50-D cosine. On this map only ${overlap.kept} of those ten are also among its ten nearest dots; long spokes are neighbours the projection pulled apart.`
-              : "Dashed spokes join the query word to its ten nearest words by 50-D cosine."
+              ? `Spokes join ${word} to its ten nearest words by 50-D cosine. On this map only ${overlap.kept} of those ten are also among its ten nearest dots: those spokes are solid. Dashed spokes, most of them long, are neighbours the projection pulled apart.`
+              : "Spokes join the query word to its ten nearest words by 50-D cosine."
             : `Solid arrows run ${analogyB} → ${analogyA} and ${analogyC} → ${arithmetic?.results[0]?.word ?? "the answer"}. The dashed arrow copies the first arrow's 2-D offset onto ${analogyC}; if the map preserved the analogy, it would end on the answer.`}
         </p>
       </LabSurface>

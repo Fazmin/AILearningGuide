@@ -19,12 +19,14 @@ export {
   LabSurface,
   LineChart,
   Metric,
+  niceTicks,
   RangeControl,
   SegmentedControl,
   StageFlow,
   StepThroughController,
   SurfaceHeading,
   smoothLinePath,
+  useMeasuredWidth,
   VectorChip,
 } from "./visualizations";
 export type {

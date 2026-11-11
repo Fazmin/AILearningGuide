@@ -37,7 +37,7 @@ const scenes: LabScene[] = [
     id: "fairness-rules",
     sections: ["Two fairness rules, and the one this model breaks"],
     title: "Two gaps that never move",
-    look: "On the second row of readouts, compare the True-positive rate and False-positive rate pairs, then move Group B share of patients and watch neither gap change.",
+    look: "In the chart of rates below the bars, compare the True-positive rate and False-positive rate pairs, then move Group B share of patients and watch neither gap change.",
     step: 2,
     focus: "Who the benchmark represents",
   },

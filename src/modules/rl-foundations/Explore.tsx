@@ -1,6 +1,5 @@
 import { useMemo, type KeyboardEvent } from "react";
 import {
-  BarList,
   FormulaWithValues,
   LabSurface,
   LineChart,
@@ -35,6 +34,7 @@ import {
   discountedReturn,
   greedyActions,
   isTerminal,
+  move,
   policyGradientAverages,
   qValues,
   reward,
@@ -229,7 +229,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
                     width={CELL - GAP}
                     height={CELL - GAP}
                     rx="6"
-                    style={{ fillOpacity: 0.08 + strength * 0.5 }}
+                    style={{ fillOpacity: isTerminal(cell) ? 0.36 : 0.05 + strength ** 2 * 0.62 }}
                   />
                   {mark && (
                     <text className="rl-cell__mark" x={x + 10} y={y + 22}>
@@ -413,6 +413,15 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           </p>
         ) : (
           <>
+            <BackupCross
+              cell={selected}
+              values={values}
+              backup={backup}
+              bestQ={bestQ}
+              nextValue={nextValue}
+              sweep={Math.min(MAX_SWEEPS, sweeps + 1)}
+              bonus={bonus}
+            />
             <table className="rl-q-table">
               <thead>
                 <tr>
@@ -519,7 +528,24 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           value={seed}
           onChange={(value) => setState({ seed: value, step: MAX_EPISODE_STEPS })}
         />
-        <ReturnBars rewards={rewards} gamma={gamma} step={step} slipped={episode.steps.map((item) => item.slipped)} />
+        <ReturnBars
+          rewards={rewards}
+          gamma={gamma}
+          step={step}
+          slipped={episode.steps.map((item) => item.slipped)}
+          startValue={values[START]}
+        />
+        <p className="rl-return-key" aria-hidden="true">
+          <span>
+            <i className="is-raw" /> reward as paid
+          </span>
+          <span>
+            <i className="is-disc" /> after the discount γᵗ
+          </span>
+          <span>
+            <i className="is-line" /> return so far
+          </span>
+        </p>
         <div className="metric-row">
           <Metric
             label="Reward this step"
@@ -569,19 +595,30 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
               value={banditSeed}
               onChange={(value) => setState({ banditSeed: value })}
             />
-            <BarList
-              label={`Pulls per arm in seeded run ${banditSeed}`}
-              max={BANDIT_PULLS}
-              items={ARM_MEANS.map((mean, arm) => ({
+            <ArmRows
+              label={`Pulls per arm in seeded run ${banditSeed}, with each arm's estimate against its true mean`}
+              arms={ARM_MEANS.map((mean, arm) => ({
                 id: `arm-${arm}`,
-                label: `Arm ${arm + 1}${arm === BEST_ARM ? " (best)" : ""}`,
-                value: bandit.pulls[arm],
-                display: `${bandit.pulls[arm]} pulls`,
+                name: `Arm ${arm + 1}${arm === BEST_ARM ? " (best)" : ""}`,
+                best: arm === BEST_ARM,
+                share: bandit.pulls[arm] / BANDIT_PULLS,
+                value: `${bandit.pulls[arm]} pulls`,
                 detail: `estimate ${bandit.pulls[arm] ? fmt(bandit.estimates[arm]) : "never pulled"} · true ${fmt(mean)}`,
-                tone: arm === BEST_ARM ? "forward" : "muted",
-                emphasis: arm === BEST_ARM,
+                truth: mean,
+                estimate: bandit.pulls[arm] ? bandit.estimates[arm] : null,
               }))}
             />
+            <p className="rl-arms-key" aria-hidden="true">
+              <span>
+                <i className="is-bar" /> pulls, out of {BANDIT_PULLS}
+              </span>
+              <span>
+                <i className="is-estimate" /> the agent’s estimate, on a line from 0 to 1
+              </span>
+              <span>
+                <i className="is-truth" /> true mean, which it never sees
+              </span>
+            </p>
           </div>
           <div>
             <LineChart
@@ -678,19 +715,26 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
               value={pgSeed}
               onChange={(value) => setState({ pgSeed: value })}
             />
-            <BarList
+            <ArmRows
               label={`Policy probabilities after ${BANDIT_PULLS} pulls in seeded run ${pgSeed}`}
-              max={1}
-              items={ARM_MEANS.map((mean, arm) => ({
+              arms={ARM_MEANS.map((mean, arm) => ({
                 id: `pg-arm-${arm}`,
-                label: `Arm ${arm + 1}${arm === BEST_ARM ? " (best)" : ""}`,
-                value: pgRun.probabilities[arm],
-                display: `${Math.round(pgRun.probabilities[arm] * 100)}%`,
+                name: `Arm ${arm + 1}${arm === BEST_ARM ? " (best)" : ""}`,
+                best: arm === BEST_ARM,
+                share: pgRun.probabilities[arm],
+                value: `${Math.round(pgRun.probabilities[arm] * 100)}%`,
                 detail: `started at 25% · true mean ${fmt(mean)} · pulled ${pgPulled[arm]} times`,
-                tone: arm === BEST_ARM ? "forward" : "muted",
-                emphasis: arm === BEST_ARM,
+                start: 0.25,
               }))}
             />
+            <p className="rl-arms-key" aria-hidden="true">
+              <span>
+                <i className="is-bar" /> probability after {BANDIT_PULLS} pulls
+              </span>
+              <span>
+                <i className="is-start" /> where every arm started, 25%
+              </span>
+            </p>
             <div className="metric-row">
               <Metric
                 label="Best-arm probability, this run"
@@ -780,75 +824,254 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
   );
 }
 
+/** One row per arm: a bar for its share, a tick for where it started, and its estimate against the truth. */
+function ArmRows({
+  label,
+  arms,
+}: {
+  label: string;
+  arms: {
+    id: string;
+    name: string;
+    best: boolean;
+    share: number;
+    value: string;
+    detail: string;
+    start?: number;
+    truth?: number;
+    estimate?: number | null;
+  }[];
+}) {
+  return (
+    <ul className="rl-arms" aria-label={label}>
+      {arms.map((arm) => (
+        <li key={arm.id} className={arm.best ? "is-best" : ""}>
+          <div className="rl-arm-head">
+            <b>{arm.name}</b>
+            <code>{arm.value}</code>
+          </div>
+          <div className="rl-arm-bar" aria-hidden="true">
+            <i style={{ width: `${clamp(arm.share, 0, 1) * 100}%` }} />
+            {arm.start !== undefined && <em style={{ left: `${arm.start * 100}%` }} />}
+          </div>
+          {arm.truth !== undefined && (
+            <div className="rl-arm-scale" aria-hidden="true">
+              <i className="rl-arm-truth" style={{ left: `calc(0.4rem + ${clamp(arm.truth, 0, 1)} * (100% - 0.8rem))` }} />
+              {arm.estimate !== null && arm.estimate !== undefined && (
+                <i
+                  className="rl-arm-estimate"
+                  style={{ left: `calc(0.4rem + ${clamp(arm.estimate, 0, 1)} * (100% - 0.8rem))` }}
+                />
+              )}
+            </div>
+          )}
+          <small>{arm.detail}</small>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** The inspected cell with its four moves around it: each move's Q, and the cell it tries to enter. */
+function BackupCross({
+  cell,
+  values,
+  backup,
+  bestQ,
+  nextValue,
+  sweep,
+  bonus,
+}: {
+  cell: number;
+  values: number[];
+  backup: { action: Action; q: number }[];
+  bestQ: number;
+  nextValue: number;
+  sweep: number;
+  bonus: boolean;
+}) {
+  const W = 94;
+  const H = 56;
+  const cx = 150;
+  const cy = 112;
+  const spot: Record<Action, [number, number]> = {
+    up: [cx - W / 2, 6],
+    right: [204, cy - H / 2],
+    down: [cx - W / 2, 162],
+    left: [2, cy - H / 2],
+  };
+  const arrow: Record<Action, string> = {
+    up: `M ${cx} ${cy - H / 2} L ${cx} 66`,
+    right: `M ${cx + W / 2} ${cy} L 201 ${cy}`,
+    down: `M ${cx} ${cy + H / 2} L ${cx} 158`,
+    left: `M ${cx - W / 2} ${cy} L 99 ${cy}`,
+  };
+  const entries = ACTIONS.map((action) => {
+    const q = backup.find((item) => item.action === action)?.q ?? 0;
+    const target = move(cell, action);
+    const where =
+      target === cell
+        ? "wall · stays put"
+        : target === GOAL
+          ? "G · pays +1"
+          : target === TRAP
+            ? "T · pays −1"
+            : `${bonus && target === BONUS ? "H" : cellName(target)} · V ${fmt(values[target])}`;
+    return { action, q, where, best: Math.abs(q - bestQ) < 1e-9, wall: target === cell };
+  });
+  return (
+    <svg
+      className="rl-cross"
+      viewBox="0 0 300 224"
+      role="img"
+      aria-label={`One-step lookahead from cell ${cellName(cell)}: ${entries
+        .map((entry) => `${entry.action} scores ${fmt(entry.q, 3)}${entry.best ? " (max)" : ""}`)
+        .join(", ")}. The next sweep writes ${fmt(nextValue, 3)} into the cell.`}
+    >
+      <defs>
+        <marker id="rl-cross-head" viewBox="0 0 8 8" refX="6.5" refY="4" markerWidth="5" markerHeight="5" orient="auto">
+          <path d="M0,0 L8,4 L0,8 z" className="rl-cross-arrowhead" />
+        </marker>
+        <marker id="rl-cross-head-best" viewBox="0 0 8 8" refX="6.5" refY="4" markerWidth="3.6" markerHeight="3.6" orient="auto">
+          <path d="M0,0 L8,4 L0,8 z" className="rl-cross-arrowhead is-best" />
+        </marker>
+      </defs>
+      {entries.map((entry) => {
+        const [x, y] = spot[entry.action];
+        return (
+          <g key={entry.action} className={`rl-cross-move${entry.best ? " is-best" : ""}${entry.wall ? " is-wall" : ""}`}>
+            <path d={arrow[entry.action]} markerEnd={entry.best ? "url(#rl-cross-head-best)" : "url(#rl-cross-head)"} />
+            <rect x={x} y={y} width={W} height={H} rx="7" />
+            <text className="rl-cross-name" x={x + 7} y={y + 16}>
+              {ARROWS[entry.action]} {entry.action}
+            </text>
+            {entry.best && (
+              <text className="rl-cross-max" x={x + W - 7} y={y + 16} textAnchor="end">
+                max
+              </text>
+            )}
+            <text className="rl-cross-q" x={x + 7} y={y + 33}>
+              Q {fmt(entry.q, 3)}
+            </text>
+            <text className="rl-cross-where" x={x + 7} y={y + 47}>
+              {entry.where}
+            </text>
+          </g>
+        );
+      })}
+      <g className="rl-cross-center">
+        <rect x={cx - W / 2} y={cy - H / 2} width={W} height={H} rx="7" />
+        <text className="rl-cross-name" x={cx} y={cy - 12} textAnchor="middle">
+          cell {cellName(cell)}
+        </text>
+        <text className="rl-cross-where" x={cx} y={cy + 3} textAnchor="middle">
+          V now {fmt(values[cell], 3)}
+        </text>
+        <text className="rl-cross-q" x={cx} y={cy + 19} textAnchor="middle">
+          V{sub(sweep)} = {fmt(nextValue, 3)}
+        </text>
+      </g>
+    </svg>
+  );
+}
+
 function ReturnBars({
   rewards,
   gamma,
   step,
   slipped,
+  startValue,
 }: {
   rewards: number[];
   gamma: number;
   step: number;
   slipped: boolean[];
+  startValue: number;
 }) {
-  const width = 380;
-  const height = 150;
-  const left = 30;
-  const right = width - 8;
-  const mid = 78;
-  const scale = 58;
+  const width = 330;
+  const height = 204;
+  const left = 34;
+  const right = width - 10;
+  const top = 26;
+  const bottom = 166;
   const columns = Math.max(rewards.length, 6);
   const band = (right - left) / columns;
   const total = discountedReturn(rewards, gamma, step);
+  // running[k] is the discounted return after k steps: the height of the line at step k.
+  const running = [0];
+  rewards.forEach((value, index) => running.push(running[index] + value * gamma ** index));
+  const lowest = Math.min(-0.25, startValue, ...rewards, ...running);
+  const highest = Math.max(1, startValue, ...running);
+  const pad = (highest - lowest) * 0.07;
+  const y = (value: number) => bottom - ((value - (lowest - pad)) / (highest - lowest + pad * 2)) * (bottom - top);
+  const zero = y(0);
+  const pointX = (index: number) => left + index * band;
+  const line = (from: number, to: number) =>
+    running
+      .slice(from, to + 1)
+      .map((value, offset) => `${offset === 0 ? "M" : "L"} ${pointX(from + offset).toFixed(1)} ${y(value).toFixed(1)}`)
+      .join(" ");
+  const wholeTicks: number[] = [];
+  for (let tick = Math.ceil(lowest); tick <= Math.floor(highest); tick += 1) wholeTicks.push(tick);
+  const labelLeft = step > columns / 2;
   return (
     <svg
       className="rl-return-svg"
       viewBox={`0 0 ${width} ${height}`}
       role="img"
-      aria-label={`Rewards for ${rewards.length} steps. Discounted return over the first ${step} steps is ${total.toFixed(3)}.`}
+      aria-label={`Rewards for ${rewards.length} steps. Discounted return over the first ${step} steps is ${total.toFixed(3)}. V(S) is ${startValue.toFixed(3)}.`}
     >
-      <line className="rl-return-axis" x1={left} x2={right} y1={mid} y2={mid} />
-      <text className="rl-return-tick" x={left - 6} y={mid - scale + 4} textAnchor="end">
-        +1
-      </text>
-      <text className="rl-return-tick" x={left - 6} y={mid + 4} textAnchor="end">
-        0
-      </text>
-      <text className="rl-return-tick" x={left - 6} y={mid + scale + 4} textAnchor="end">
-        −1
+      {wholeTicks.map((tick) => (
+        <text key={tick} className="rl-return-tick" x={left - 6} y={y(tick) + 4} textAnchor="end">
+          {tick > 0 ? `+${tick}` : tick < 0 ? `−${Math.abs(tick)}` : "0"}
+        </text>
+      ))}
+      <line className="rl-return-axis" x1={left} x2={right} y1={zero} y2={zero} />
+      <line className="rl-return-ref" x1={left} x2={right} y1={y(startValue)} y2={y(startValue)} />
+      <text className="rl-return-ref-label" x={left + 3} y={y(startValue) - 4}>
+        V(S) {fmt(startValue, 3)}
       </text>
       {rewards.map((value, index) => {
         const x = left + index * band + band * 0.15;
         const w = band * 0.7;
-        const raw = Math.max(Math.abs(value) * scale, 1.5);
-        const discounted = Math.max(Math.abs(value * gamma ** index) * scale, 1.5);
+        const raw = Math.max(Math.abs(y(value) - zero), 1.5);
+        const discounted = Math.max(Math.abs(y(value * gamma ** index) - zero), 1.5);
         const up = value >= 0;
         return (
           <g key={index} className={index < step ? "is-counted" : "is-future"}>
-            <rect className="rl-return-raw" x={x} y={up ? mid - raw : mid} width={w} height={raw} />
+            <rect className="rl-return-raw" x={x} y={up ? zero - raw : zero} width={w} height={raw} />
             <rect
               className={`rl-return-disc ${up ? "is-pos" : "is-neg"}`}
               x={x + w * 0.2}
-              y={up ? mid - discounted : mid}
+              y={up ? zero - discounted : zero}
               width={w * 0.6}
               height={discounted}
             />
             {slipped[index] && (
-              <text className="rl-return-slip" x={x + w / 2} y={height - 18} textAnchor="middle">
+              <text className="rl-return-slip" x={x + w / 2} y={height - 16} textAnchor="middle">
                 slip
               </text>
             )}
             {(index === 0 || (index + 1) % 4 === 0 || index === rewards.length - 1) && (
-              <text className="rl-return-tick" x={x + w / 2} y={height - 4} textAnchor="middle">
+              <text className="rl-return-tick" x={x + w / 2} y={height - 3} textAnchor="middle">
                 t{index + 1}
               </text>
             )}
           </g>
         );
       })}
-      {step > 0 && (
-        <line className="rl-return-cursor" x1={left + step * band} x2={left + step * band} y1={8} y2={height - 26} />
-      )}
+      <path className="rl-return-line is-rest" d={line(step, rewards.length)} />
+      <path className="rl-return-line" d={line(0, step)} />
+      <line className="rl-return-cursor" x1={pointX(step)} x2={pointX(step)} y1={top - 8} y2={bottom + 4} />
+      <circle className="rl-return-dot" cx={pointX(step)} cy={y(running[step])} r="4.5" />
+      <text
+        className="rl-return-now"
+        x={pointX(step) + (labelLeft ? -5 : 5)}
+        y={top - 12}
+        textAnchor={labelLeft ? "end" : "start"}
+      >
+        return so far {fmt(total, 3)}
+      </text>
     </svg>
   );
 }

@@ -7,6 +7,7 @@ const cardInfo: ModuleCardInfo = {
       "Problem chooses Sunday hours, 17 + 28, or a dog on the ferry. They stand for items a reasoning model met during post-training, not few-shot examples pasted into a prompt. The contrast with the ICL lab is the recipe, not the harbor facts: a prompt changes what the model reads, while training against a checker changes its weights.",
     whatYouSee: [
       "Problem, three segments, and the question text.",
+      "Two rows that set the recipes side by side as prompt, model, and output. In-context prompting puts worked examples and the question in the prompt and leaves the weights unchanged; the reasoning model gets only the question, and its weights were changed earlier by training against a checker. The box that differs in each row is outlined.",
       "A note contrasting the two recipes: examples in a prompt (no weight change) and post-training with reinforcement learning against answers a program can check (weights change).",
     ],
     howItWorks: [
@@ -34,6 +35,7 @@ const cardInfo: ModuleCardInfo = {
     whatYouSee: [
       "Controls Steps the task needs (k) from 1 to 4, Group size (G) from 2 to 32, Learning rate from 0.1 to 1.0, Seed, Training update (a scrubber over the 100 updates), and Length cost Off or On.",
       "Two learning curves with a marker at the chosen update: Checker pass rate (plus Mean reward after cost when the cost is on), and Mean trace length against a dotted line at k.",
+      "The group that produced the chosen update, drawn over the same length axis: one dot per sampled trace, filled if the checker passed it and a ring if it failed, faded when it scored below its group's average, with an arrow for how far the typical length moved. At update 0 no group has been sampled yet.",
       "Bars for the policy over trace length at that update: solid bars now, outlines for the starting policy, a dashed line for the checker's pass chance at each length, and a vertical rule left of which a trace is too short to ever pass.",
       "Metrics Checker pass rate, Mean length, Steps past k, Mean reward after cost, and Groups with no signal (updates so far whose sampled group had identical rewards).",
     ],
@@ -66,6 +68,7 @@ const cardInfo: ModuleCardInfo = {
       "Thinking budget reveals 0 to 6 authored steps, useful first, then padding, then an unfaithful step, then a final useful one. The answer slot is authored and prints at every budget. Extra tokens are test-time compute, not a weight update.",
     whatYouSee: [
       "Thinking budget, a slider whose maximum is the trace length.",
+      "A strip of the six authored steps in order, each with its label, then the answer. Steps inside the budget are filled, the rest are dashed, and a bar marks where the budget stops.",
       "Metrics Useful, Padding, Unfaithful, and Answer (authored).",
       "A note on why a trace can help: each token is another forward pass that can read what earlier steps wrote.",
     ],
@@ -93,7 +96,8 @@ const cardInfo: ModuleCardInfo = {
       "Each revealed line is a generated-looking sentence with a label this lab assigns. The labels are teaching marks, not a probe of an inner algorithm. A process reward model would score these steps; this page only displays them.",
     whatYouSee: [
       "An ordered list; an empty budget prints that no intermediate tokens ran.",
-      "Each row has a kind label and the sentence.",
+      "Each row has its step number, a kind label and the sentence. Its left edge is solid for useful, dotted for padding and dashed for unfaithful.",
+      "A last row prints the authored answer, at every budget.",
     ],
     howItWorks: [
       "The list is the prefix of the authored trace.",
@@ -119,8 +123,8 @@ const cardInfo: ModuleCardInfo = {
       "The other kind of test-time compute: draw n independent answers, each right with probability p, then either keep the most common answer (majority vote) or keep any answer a perfect checker accepts (verifier picks). Both curves are exact binomial arithmetic.",
     whatYouSee: [
       "Controls Samples (1 to 32), Single-sample accuracy (p from 0.05 to 0.95), and Wrong answers: Always the same one, Split over 3, or All different.",
-      "A chart of accuracy against n: dotted one sample (flat at p), solid majority vote, dashed verifier picks, with markers at the current n.",
-      "Bars for the binomial probability of k correct samples out of n. The solid part of each bar is the chance the vote then picks the right answer.",
+      "A chart of accuracy against n: dotted one sample (flat at p), solid majority vote, dashed verifier picks, with markers at the current n and each value printed beside its marker.",
+      "Bars for the binomial probability of k correct samples out of n. The solid part of each bar is the chance the vote then picks the right answer. A bracket spans every bar with one or more correct samples, the cases where a verifier finds a right answer.",
       "Metrics One sample, Majority vote, Verifier picks, and Decode cost in multiples of one sample's tokens.",
     ],
     howItWorks: [

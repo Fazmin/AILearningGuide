@@ -15,16 +15,23 @@ import {
   PARAMETER_OPTIONS,
   accuracyOf,
   breakEvenDays,
-  equalOpportunityGap,
-  falsePositiveGap,
-  falsePositiveRate,
-  truePositiveRate,
   megawattHours,
   mixOutcome,
   servingFlopsPerDay,
   trainingFlops,
   type Measured,
 } from "./impact";
+import {
+  BearerMap,
+  BreakEvenScale,
+  CoverageMap,
+  MEASURED_TAG,
+  MeasureMark,
+  MeasureScale,
+  MixBars,
+  RatesChart,
+  UrgentPanels,
+} from "./ImpactViews";
 
 const asString = (state: ModuleContext["state"], key: string, fallback: string) =>
   typeof state[key] === "string" ? state[key] : fallback;
@@ -119,11 +126,8 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
                         <span>{item.theme}</span>
                         <small>borne by {item.bearer}</small>
                         <em className={`is-${item.measured}`}>
-                          {item.measured === "yes"
-                            ? "on a leaderboard"
-                            : item.measured === "partly"
-                              ? "partly measurable"
-                              : "not on a leaderboard"}
+                          <MeasureMark measured={item.measured} />
+                          {MEASURED_TAG[item.measured]}
                         </em>
                       </button>
                     </li>
@@ -133,6 +137,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             </div>
           ))}
         </div>
+        <CoverageMap current={deployment.value} />
         <div className="metric-row">
           <Metric label="For claims" value={`${forCount}`} tone="forward" />
           <Metric label="Against claims" value={`${againstCount}`} tone="loss" />
@@ -159,23 +164,29 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           options={deployment.claims.map((item, index) => ({ value: `${index}`, label: `${index + 1} ${item.side}` }))}
           onChange={(value) => setState({ claim: Number(value) })}
         />
-        <blockquote className={`ethics-claim is-${claim.side.toLowerCase()}`}>{claim.text}</blockquote>
-        <dl className="ethics-tags">
+        <div className="ethics-tension-body">
           <div>
-            <dt>Theme</dt>
-            <dd>{claim.theme}</dd>
+            <blockquote className={`ethics-claim is-${claim.side.toLowerCase()}`}>{claim.text}</blockquote>
+            <dl className="ethics-tags">
+              <div>
+                <dt>Theme</dt>
+                <dd>{claim.theme}</dd>
+              </div>
+              <div>
+                <dt>Who bears it</dt>
+                <dd>{claim.bearer}</dd>
+              </div>
+              <div>
+                <dt>Can a benchmark measure it?</dt>
+                <dd className={`is-${claim.measured}`}>
+                  <MeasureScale measured={claim.measured} />
+                  {claim.measured}: {MEASURED_TEXT[claim.measured]}
+                </dd>
+              </div>
+            </dl>
           </div>
-          <div>
-            <dt>Who bears it</dt>
-            <dd>{claim.bearer}</dd>
-          </div>
-          <div>
-            <dt>Can a benchmark measure it?</dt>
-            <dd className={`is-${claim.measured}`}>
-              {claim.measured}: {MEASURED_TEXT[claim.measured]}
-            </dd>
-          </div>
-        </dl>
+          <BearerMap deployment={deployment} claimIndex={claimIndex} />
+        </div>
       </LabSurface>
 
       <LabSurface label="Who the benchmark represents" className="ethics-bench-card">
@@ -194,7 +205,11 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             onChange={(value) => setState({ shareB: Number(value.toFixed(2)) })}
           />
         </div>
-        <MixBars holdout={holdout} tomorrow={tomorrow} shareB={shareB} />
+        <UrgentPanels holdout={holdout} tomorrow={tomorrow} shareB={shareB} />
+        <div className="ethics-bench-lower">
+          <MixBars holdout={holdout} tomorrow={tomorrow} shareB={shareB} />
+          <RatesChart />
+        </div>
         <div className="metric-row">
           <Metric label={`Accuracy, holdout (${Math.round(HOLDOUT_SHARE_B * 100)}% B)`} value={pct(holdout.accuracy)} />
           <Metric label={`Accuracy at ${Math.round(shareB * 100)}% B`} value={pct(tomorrow.accuracy)} />
@@ -204,25 +219,12 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             tone="loss"
           />
         </div>
-        <div className="metric-row">
-          <Metric
-            label="True-positive rate, A / B"
-            value={`${Math.round(truePositiveRate(GROUP_A) * 100)}% / ${Math.round(truePositiveRate(GROUP_B) * 100)}%`}
-          />
-          <Metric label="Equal-opportunity gap" value={`${Math.round(equalOpportunityGap() * 100)} points`} tone="loss" />
-          <Metric
-            label="False-positive rate, A / B"
-            value={`${Math.round(falsePositiveRate(GROUP_A) * 100)}% / ${Math.round(falsePositiveRate(GROUP_B) * 100)}%`}
-          />
-          <Metric label="False-positive gap" value={`${Math.round(falsePositiveGap() * 100)} points`} />
-        </div>
         <p className="lab-note">
           Group A: {pct(accuracyOf(GROUP_A))} accurate, misses {Math.round((1 - GROUP_A.sensitivity) * 100)}% of urgent
           cases. Group B: {pct(accuracyOf(GROUP_B))} accurate, misses {Math.round((1 - GROUP_B.sensitivity) * 100)}%.
-          Accuracy is a weighted average of the two, so it barely moves; the misses concentrate in group B, which is{" "}
-          {Math.round(shareB * 100)}% of patients and {Math.round(tomorrow.shareOfMissesB * 100)}% of missed urgent
-          cases. Equal opportunity asks for equal true-positive rates; equalized odds asks for equal false-positive
-          rates as well. The two gaps are properties of the model, so they do not move with the share.
+          Accuracy is a weighted average of the two, so it barely moves; the misses concentrate in group B. Equal
+          opportunity asks for equal true-positive rates; equalized odds asks for equal false-positive rates as well.
+          The two gaps are properties of the model, so they do not move with the share.
         </p>
       </LabSurface>
 
@@ -267,13 +269,6 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
               <Metric label="Serving, per day" value={`${formatFlops(servePerDay)} FLOP`} />
               <Metric label="Days to break even" value={formatDays(breakEven)} tone="loss" />
             </div>
-            <p className="lab-note">
-              Training ≈ 6·N·D. Serving ≈ 2·N per token. They are equal after 3·D ÷ tokens per day, so model size
-              cancels out. At 40% of an A100's peak and 400 W, this training run is about{" "}
-              {Math.round(megawattHours(train)).toLocaleString("en-US")} MWh of GPU power; serving at the same
-              efficiency is {megawattHours(servePerDay).toFixed(2)} MWh a day, and real decoding usually runs less
-              efficiently than that.
-            </p>
           </div>
           <LineChart
             label="Cumulative compute of serving against one training run"
@@ -310,70 +305,14 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             }
           />
         </div>
+        <BreakEvenScale days={breakEven} label={formatDays(breakEven)} />
+        <p className="lab-note">
+          Training ≈ 6·N·D. Serving ≈ 2·N per token. They are equal after 3·D ÷ tokens per day, so model size cancels
+          out. At 40% of an A100&apos;s peak and 400 W, this training run is about{" "}
+          {Math.round(megawattHours(train)).toLocaleString("en-US")} MWh of GPU power; serving at the same efficiency is{" "}
+          {megawattHours(servePerDay).toFixed(2)} MWh a day, and real decoding usually runs less efficiently than that.
+        </p>
       </LabSurface>
-    </div>
-  );
-}
-
-function MixBars({
-  holdout,
-  tomorrow,
-  shareB,
-}: {
-  holdout: ReturnType<typeof mixOutcome>;
-  tomorrow: ReturnType<typeof mixOutcome>;
-  shareB: number;
-}) {
-  const maxMisses = Math.max(holdout.misses, tomorrow.misses, 60);
-  const groups = [
-    {
-      title: "Patients per 1,000",
-      scale: 1000,
-      rows: [
-        { label: `Holdout (${Math.round(HOLDOUT_SHARE_B * 100)}% B)`, a: holdout.patientsA, b: holdout.patientsB },
-        { label: `At ${Math.round(shareB * 100)}% B`, a: tomorrow.patientsA, b: tomorrow.patientsB },
-      ],
-    },
-    {
-      title: "Missed urgent cases per 1,000",
-      scale: maxMisses,
-      rows: [
-        { label: `Holdout (${Math.round(HOLDOUT_SHARE_B * 100)}% B)`, a: holdout.missesA, b: holdout.missesB },
-        { label: `At ${Math.round(shareB * 100)}% B`, a: tomorrow.missesA, b: tomorrow.missesB },
-      ],
-    },
-  ];
-  return (
-    <div
-      className="ethics-mix"
-      role="img"
-      aria-label={`Per 1,000 patients. Holdout: ${Math.round(holdout.misses)} missed urgent cases. At ${Math.round(shareB * 100)}% group B: ${Math.round(tomorrow.misses)}, of which ${Math.round(tomorrow.missesB)} are in group B.`}
-    >
-      <p className="ethics-mix__legend" aria-hidden="true">
-        <span className="ethics-mix__key ethics-mix__key--a" /> group A, solid
-        <span className="ethics-mix__key ethics-mix__key--b" /> group B, hatched
-      </p>
-      {groups.map((group) => (
-        <div key={group.title} className="ethics-mix__group">
-          <h4>{group.title}</h4>
-          {group.rows.map((row) => (
-            <div key={row.label} className="ethics-mix__row">
-              <span className="ethics-mix__label">{row.label}</span>
-              <span className="ethics-mix__track">
-                <i className="ethics-mix__a" style={{ width: `${(row.a / group.scale) * 100}%` }} />
-                <i className="ethics-mix__b" style={{ width: `${(row.b / group.scale) * 100}%` }} />
-              </span>
-              <span className="ethics-mix__value">
-                {Math.round(row.a + row.b)}
-                <small>
-                  {" "}
-                  A {Math.round(row.a)} · B {Math.round(row.b)}
-                </small>
-              </span>
-            </div>
-          ))}
-        </div>
-      ))}
     </div>
   );
 }

@@ -7,7 +7,7 @@ const cardInfo: ModuleCardInfo = {
       "The text is split, turned into bytes, and merged by the 443 learned rules in `bpe-tokenizer.json`, giving the same IDs Hugging Face `tokenizers` produces. `Vocabulary size` keeps only the first merges, which is the tokenizer a shorter training run would have learned.",
     whatYouSee: [
       "`Text to tokenize` and a row of sample texts. Each sample is chosen to show one behaviour: whole-word tokens, spacing and case, missing digits, accented letters, and a literal special token.",
-      "`Vocabulary size`, printed as entries and merges. 69 entries means 4 special tokens plus 65 byte symbols and no merges; 512 means all 443 merges.",
+      "`Vocabulary size`, printed as entries and merges. 69 entries means 4 special tokens plus 65 byte symbols and no merges; 512 means all 443 merges. Under the slider, a staircase curve of how many tokens this text needs at every vocabulary size, with the current size marked and a tick at each merge the text can use.",
       "One chip per token. The small number is the token ID; `␣` marks a leading space that belongs to the token. A coloured bracket under a group of chips marks one pre-token, a chunk merges never cross; the selected chip's bracket is thicker.",
       "Dashed red chips are `<unk>` (ID 0): a byte this vocabulary never saw. Double-bordered chips are special tokens such as `<eos>`.",
       "`Tokens`, `Characters`, `Characters per token` and `Unknown bytes`, then a line explaining where the selected chip's ID comes from.",
@@ -143,7 +143,7 @@ const cardInfo: ModuleCardInfo = {
       "All 10,000 words placed by one of the two precomputed projections in the asset file, UMAP or PCA, with the query's true 50-D neighbours or the analogy words highlighted. A readout counts how many 50-D neighbours survive as 2-D neighbours.",
     whatYouSee: [
       "A grey dot for every word inside the frame, drawn at its projected position with the same scale on both axes. The axes carry no units.",
-      "In `queen + neighbours` mode: the query in the accent colour, its ten nearest words by 50-D cosine in violet, and dashed spokes from the query to each one.",
+      "In `queen + neighbours` mode: the query in the accent colour, its ten nearest words by 50-D cosine in violet, and a spoke from the query to each one. A solid spoke and a filled dot mark a neighbour that is also among its ten nearest dots on the map; a dashed spoke and a hollow dot mark one the map pulled apart.",
       "In `Analogy words` mode: solid arrows from B to A and from C to the top answer, and a dashed arrow that copies the B→A offset onto C.",
       "A `keeps k of 10 neighbours` badge, a caption counting the words in view, and leader lines where a label had to move off its dot.",
     ],

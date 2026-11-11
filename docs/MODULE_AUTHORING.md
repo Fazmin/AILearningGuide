@@ -111,6 +111,15 @@ existing SDK primitives. Do not import shell components or the global store. Run
 `npm run visuals` to review vector chips, formulas, arc diagrams, heatmaps, stage flows,
 line charts, bar lists, and the step controller in the standalone component gallery.
 
+The lab sits in a column about 760px wide while the Learn panel is open, so a full-width
+card is about 712px and a half-width card about 330px. Design for that width first. An SVG
+with a fixed viewBox shrinks its text along with itself; draw at the card's real size
+instead by taking `[ref, width]` from `useMeasuredWidth` and setting the viewBox to that
+width, so labels stay at the 10px or more the CSS asks for. `LineChart` already does this,
+picks round ticks with `niceTicks`, ends each line in a dot, and reads every series at the
+pointer. Lead a card with the picture of its mechanism, label marks directly, and keep the
+table or tiles underneath for the exact numbers.
+
 A module that needs to train something can import `tiny-lm` from the SDK, which trains a
 character bigram model in a few milliseconds. Keep the training call inside `useMemo`
 keyed on the controls, store only controls and seeds in module state, and quote measured

@@ -14,6 +14,7 @@ import {
   EOS,
   expectation,
   GRAMMARS,
+  matchPrefix,
   VOCAB,
   type GrammarSpec,
   type TokenRow,
@@ -91,6 +92,213 @@ function MaskTable({ grammar, rows, greedy }: { grammar: GrammarSpec; rows: Toke
   );
 }
 
+interface RailCell {
+  char: string;
+  /** Index of the emitted token that wrote this character, or -1 when it is not written yet. */
+  token: number;
+  next: boolean;
+}
+
+/**
+ * The grammar as a track of characters, with the text so far laid onto it. Which cells are "next" comes
+ * from the matcher's own states, so the picture and the mask can never disagree.
+ */
+function GrammarRail({ grammar, emitted, expects }: { grammar: GrammarSpec; emitted: readonly string[]; expects: string }) {
+  const prefix = emitted.join("");
+  const owner: number[] = [];
+  emitted.forEach((token, index) => {
+    for (let i = 0; i < token.length; i += 1) owner.push(index);
+  });
+  const states = matchPrefix(grammar, prefix);
+  const finished = states.some((state) => state.part === grammar.parts.length);
+  let cursor = 0;
+
+  const cells = (text: string, start: number, written: number, nextAt: number): RailCell[] =>
+    [...text].map((char, index) => ({
+      char,
+      token: index < written ? owner[start + index] ?? -1 : -1,
+      next: index === nextAt,
+    }));
+
+  const groups = (row: RailCell[]) => {
+    const out: RailCell[][] = [];
+    row.forEach((cell) => {
+      const last = out[out.length - 1];
+      if (last && cell.token >= 0 && last[0].token === cell.token) last.push(cell);
+      else out.push([cell]);
+    });
+    return out;
+  };
+
+  const drawRow = (row: RailCell[]) =>
+    groups(row).map((group, index) =>
+      group[0].token >= 0 ? (
+        <span key={index} className="sd-rail-tok" title={`token ${group[0].token + 1}: ${emitted[group[0].token]}`}>
+          {group.map((cell, position) => (
+            <i key={position}>{cell.char}</i>
+          ))}
+        </span>
+      ) : (
+        <i key={index} className={`sd-rail-cell${group[0].next ? " is-next" : ""}`}>
+          {group[0].char}
+        </i>
+      ),
+    );
+
+  const parts = grammar.parts.map((part, partIndex) => {
+    const here = states.filter((state) => state.part === partIndex);
+    const rest = prefix.slice(cursor);
+    const start = cursor;
+    if (part.kind === "literal") {
+      let written = 0;
+      while (written < part.text.length && rest[written] === part.text[written]) written += 1;
+      cursor += written;
+      const nextAt = here.find((state) => state.offset < part.text.length)?.offset ?? -1;
+      return (
+        <div key={partIndex} className="sd-rail-part">
+          <span className="sd-rail-row">{drawRow(cells(part.text, start, written, nextAt))}</span>
+          <small>fixed text</small>
+        </div>
+      );
+    }
+    if (part.kind === "choice") {
+      const taken = rest.length
+        ? part.options.findIndex((option) => option.startsWith(rest) || rest.startsWith(option))
+        : -1;
+      const written = taken >= 0 ? Math.min(part.options[taken].length, rest.length) : 0;
+      cursor += written;
+      return (
+        <div key={partIndex} className="sd-rail-part is-choice">
+          {part.options.map((option, optionIndex) => {
+            const state = here.find((item) => item.option === optionIndex || item.option === -1);
+            const nextAt = state && state.offset < option.length ? state.offset : -1;
+            const dead = taken >= 0 && taken !== optionIndex;
+            return (
+              <span key={option} className={`sd-rail-row${dead ? " is-dead" : ""}`}>
+                {drawRow(cells(option, start, taken === optionIndex ? written : 0, dead ? -1 : nextAt))}
+              </span>
+            );
+          })}
+          <small>one of these</small>
+        </div>
+      );
+    }
+    let written = 0;
+    while (written < rest.length && /[A-Za-z]/.test(rest[written])) written += 1;
+    cursor += written;
+    return (
+      <div key={partIndex} className="sd-rail-part">
+        <span className="sd-rail-row">
+          {drawRow(cells(rest.slice(0, written), start, written, -1))}
+          <i className={`sd-rail-cell is-loop${here.length ? " is-next" : ""}`}>a–z ↻</i>
+        </span>
+        <small>any letters, one or more</small>
+      </div>
+    );
+  });
+
+  return (
+    <div
+      className="sd-rail"
+      role="img"
+      aria-label={`The grammar as a track of characters. Written so far: ${prefix || "nothing"}. Accepted next: ${expects}.`}
+    >
+      <span className="sd-rail-end">start</span>
+      {parts.map((part, index) => (
+        <span key={index} className="sd-rail-step">
+          <b aria-hidden="true">→</b>
+          {part}
+        </span>
+      ))}
+      <span className="sd-rail-step">
+        <b aria-hidden="true">→</b>
+        <span className={`sd-rail-end is-stop${finished ? " is-next" : ""}`}>end {EOS}</span>
+      </span>
+    </div>
+  );
+}
+
+/** The whole next-token distribution as one bar, and the legal slice of it stretched back to 100%. */
+function RenormBars({ rows, z, greedy }: { rows: TokenRow[]; z: number; greedy: TokenRow }) {
+  const byMass = [...rows].sort((left, right) => right.p - left.p);
+  const legal = byMass.filter((row) => row.legal);
+  const masked = byMass.filter((row) => !row.legal && row.p >= 0.02);
+  const dust = byMass.filter((row) => !row.legal && row.p < 0.02);
+  const dustMass = dust.reduce((sum, row) => sum + row.p, 0);
+  const tag = (row: TokenRow, value: number) =>
+    value >= 0.085 ? (
+      <span>
+        {row.token} <em>{pct(value, 0)}</em>
+      </span>
+    ) : null;
+
+  return (
+    <figure
+      className="sd-renorm"
+      role="img"
+      aria-label={`The model's probability as one bar: ${pct(z)} on ${legal.length} legal token${
+        legal.length === 1 ? "" : "s"
+      } and ${pct(1 - z)} on masked tokens. After the mask the legal part is stretched to 100%: ${legal
+        .slice(0, 4)
+        .map((row) => `${row.token} ${pct(row.masked)}`)
+        .join(", ")}.`}
+    >
+      <div className="sd-renorm__caption">
+        <strong>Before</strong> the model’s probability over all {rows.length} tokens
+      </div>
+      <div className="sd-renorm__bar">
+        {legal.map((row) => (
+          <b
+            key={row.token}
+            className={`is-legal${row.token === greedy.token ? " is-pick" : ""}`}
+            style={{ width: pct(row.p, 3) }}
+          >
+            {tag(row, row.p)}
+          </b>
+        ))}
+        {masked.map((row) => (
+          <b key={row.token} className="is-masked" style={{ width: pct(row.p, 3) }}>
+            {tag(row, row.p)}
+          </b>
+        ))}
+        {dustMass > 0 && (
+          <b className="is-masked is-dust" style={{ width: pct(dustMass, 3) }}>
+            {dustMass >= 0.12 ? (
+              <span>
+                {dust.length} more <em>{pct(dustMass, 0)}</em>
+              </span>
+            ) : null}
+          </b>
+        )}
+      </div>
+      <div className="sd-renorm__split">
+        <span className="is-legal" style={{ width: pct(z, 3) }} />
+        <span className="is-masked" />
+        <em className="is-legal">legal · Z = {z.toFixed(3)} kept</em>
+        <em className="is-masked">✗ masked · {pct(1 - z, 0)} removed</em>
+      </div>
+      <svg className="sd-renorm__zoom" viewBox="0 0 100 10" preserveAspectRatio="none" aria-hidden="true">
+        <polygon points={`0,0 ${(z * 100).toFixed(2)},0 100,10 0,10`} />
+      </svg>
+      <div className="sd-renorm__bar is-after">
+        {legal.map((row) => (
+          <b
+            key={row.token}
+            className={`is-legal${row.token === greedy.token ? " is-pick" : ""}`}
+            style={{ width: pct(row.masked, 3) }}
+          >
+            {tag(row, row.masked)}
+          </b>
+        ))}
+      </div>
+      <div className="sd-renorm__caption">
+        <strong>After</strong> the legal part ÷ Z, stretched back to 100%. The ratios between legal tokens do not
+        change.
+      </div>
+    </figure>
+  );
+}
+
 function DetourTree({ legalAfterO }: { legalAfterO: number }) {
   const { O, B, P } = DETOUR.first;
   const afterB = DETOUR.afterB.legal;
@@ -106,6 +314,8 @@ function DetourTree({ legalAfterO }: { legalAfterO: number }) {
     { from: "B", x: 292, y: 158, label: 'ern"', city: "Bern", p: 1 - afterB, legal: false },
   ];
   const nodeAt = (id: string) => nodes.find((node) => node.id === id)!;
+  // A branch is as thick as the share of probability the model sends down it.
+  const flow = (p: number) => 1 + p * 8;
   return (
     <svg
       className="sd-tree"
@@ -118,7 +328,7 @@ function DetourTree({ legalAfterO }: { legalAfterO: number }) {
       </text>
       {nodes.map((node) => (
         <g key={node.id} className={node.legal ? "is-legal" : "is-masked"}>
-          <path d={`M66 114 C 96 114, 96 ${node.y}, ${node.x - 24} ${node.y}`} />
+          <path d={`M66 114 C 96 114, 96 ${node.y}, ${node.x - 24} ${node.y}`} style={{ strokeWidth: flow(node.p) }} />
           <text className="sd-tree-p" x={node.x - 30} y={node.y < 114 ? node.y - 6 : node.y + 17} textAnchor="end">
             {pct(node.p, 0)}
           </text>
@@ -132,7 +342,10 @@ function DetourTree({ legalAfterO }: { legalAfterO: number }) {
         const parent = nodeAt(leaf.from);
         return (
           <g key={leaf.label} className={leaf.legal ? "is-legal" : "is-masked"}>
-            <path d={`M${parent.x + 24} ${parent.y} C 205 ${parent.y}, 205 ${leaf.y}, ${leaf.x - 36} ${leaf.y}`} />
+            <path
+              d={`M${parent.x + 24} ${parent.y} C 205 ${parent.y}, 205 ${leaf.y}, ${leaf.x - 36} ${leaf.y}`}
+              style={{ strokeWidth: flow(leaf.p) }}
+            />
             <text
               className="sd-tree-p"
               x={leaf.x - 42}
@@ -197,33 +410,37 @@ export default function Explore({ state, setState }: ModuleContext) {
     <div className="sd-lab">
       <LabSurface label="Grammar" className="grammar-card sd-grammar-card">
         <SurfaceHeading kicker={grammar.label} title="A filter, not a knowledge source" />
-        <div className="grammar-control">
-          <SegmentedControl
-            label="Grammar"
-            value={grammarId}
-            options={[
-              { value: "json", label: "JSON object" },
-              { value: "call", label: "Function call" },
-            ]}
-            onChange={(value) => setState({ grammar: value, step: 0 })}
-          />
+        <div className="sd-grammar-body">
+          <div className="sd-grammar-side">
+            <div className="grammar-control">
+              <SegmentedControl
+                label="Grammar"
+                value={grammarId}
+                options={[
+                  { value: "json", label: "JSON object" },
+                  { value: "call", label: "Function call" },
+                ]}
+                onChange={(value) => setState({ grammar: value, step: 0 })}
+              />
+            </div>
+            <p className="lab-note">
+              The lab compiles the pattern into a character-level matcher. A token is legal when all of its
+              characters can follow the text so far. Switching grammar resets Decode step.
+            </p>
+          </div>
+          <dl className="sd-spec">
+            <dt>Prompt</dt>
+            <dd>{grammar.prompt}</dd>
+            <dt>Allowed output</dt>
+            <dd>
+              <code>{grammar.pattern}</code>
+            </dd>
+            <dt>Rule</dt>
+            <dd>{grammar.source}</dd>
+            <dt>Vocabulary</dt>
+            <dd>{VOCAB.length} tokens, some spanning two grammar symbols</dd>
+          </dl>
         </div>
-        <dl className="sd-spec">
-          <dt>Prompt</dt>
-          <dd>{grammar.prompt}</dd>
-          <dt>Allowed output</dt>
-          <dd>
-            <code>{grammar.pattern}</code>
-          </dd>
-          <dt>Rule</dt>
-          <dd>{grammar.source}</dd>
-          <dt>Vocabulary</dt>
-          <dd>{VOCAB.length} tokens, some spanning two grammar symbols</dd>
-        </dl>
-        <p className="lab-note">
-          The lab compiles the pattern into a character-level matcher. A token is legal when all of its characters
-          can follow the text so far. Switching grammar resets Decode step.
-        </p>
       </LabSurface>
 
       <LabSurface label="Prefix walk" className="prefix-card sd-prefix-card">
@@ -238,6 +455,7 @@ export default function Explore({ state, setState }: ModuleContext) {
           ))}
           <code className="sd-chip sd-chip--next">?</code>
         </div>
+        <GrammarRail grammar={grammar} emitted={emitted} expects={expects} />
         <p className="sd-expect">
           Grammar accepts next: <strong>{expects}</strong>
         </p>
@@ -263,6 +481,7 @@ export default function Explore({ state, setState }: ModuleContext) {
           kicker={`Legal mass Z = ${z.toFixed(3)} · ${pct(1 - z, 0)} of the model's probability removed`}
           title="Zero the illegal tokens, then divide the survivors by what is left"
         />
+        <RenormBars rows={rows} z={z} greedy={greedy} />
         <div className="token-mask">
           <MaskTable grammar={grammar} rows={rows} greedy={greedy} />
         </div>

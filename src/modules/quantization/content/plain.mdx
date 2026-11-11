@@ -480,7 +480,7 @@ flips to the other side, so each tooth is exactly one gap wide. As you take bits
 widen, so the teeth get wider. They get taller too, but the strip rescales to fit them, so read the
 numbers on its left edge: about +0.015 at 8 bits, and about +1.27 at 2 bits.
 
-The top half of the same card is a **histogram**, a bar chart that counts how many weights fall in
+The middle of the same card is a **histogram**, a bar chart that counts how many weights fall in
 each small range of values. The ruler’s ticks are drawn over it as vertical lines, solid where at
 least one weight landed and dashed where none did. Its bars use a square-root scale, which squashes
 the tallest bars so that the few large weights still show up beside the big pile near zero. At 7 and
@@ -598,7 +598,7 @@ bits per weight rather than the 4.5 of a single block.
 Now open **The file you downloaded**, which weighs the model file this app downloads in the same way
 as the toy table:
 
-- **File size** reads 1.19 GiB, and the note below the bars gives the exact count, 1,280,835,840
+- **File size** reads 1.19 GiB, and the note below the table gives the exact count, 1,280,835,840
   bytes.
 - **Parameters in the file** reads 1.88 B, where the B means billion rather than bytes, so this is
   the number of weights.
@@ -609,18 +609,18 @@ as the toy table:
 
 So a file built from 4-bit blocks really costs 5.445 bits per weight, which is 0.945 above the 4.5
 of a `Q4_K` block. To find where those extra bits go, switch **Group tensors by** from `Block type`
-to `Role in the network`, which sorts the model’s parts by the job each one does. Each bar is then
-one part of the model, sized by its share of the file’s bytes, with its own bits per weight written
-beside it.
+to `Role in the network`, which sorts the model’s parts by the job each one does. Each block is then
+one part of the model. Its width is that part’s share of the weights, and its height is its bits per
+weight, which is also written on it.
 
 The token embedding costs 6.56 bits per weight, while the feed-forward layers cost 4.84. A model is
 built as a stack of repeated steps called layers. The feed-forward parts of those layers, added
 together, hold more weights than any other part of the model. The token embedding is the table that
 turns each token into a list of numbers the model can work with. This recipe keeps it in the larger
-`Q6_K` type, which is why it costs so much per weight. Bars above 5 bits per weight are drawn in a
-warning colour, so you can spot the expensive parts quickly.
+`Q6_K` type, which is why it costs so much per weight. The striped top of a block is what it spends
+above 4.5 bits, so you can spot the expensive parts quickly.
 
-Back on `Block type`, the `Q6_K` bar holds 35.3% of the parameters but 42.9% of the bytes, because
+Back on `Block type`, the `Q6_K` block holds 35.3% of the parameters but 42.9% of the bytes, because
 each of its weights costs more to store.
 
 ### Climb the float ladder
@@ -650,7 +650,7 @@ The fp8 E4M3 row shows this as `1.9531e-3`, meaning 1.9531 ÷ 1,000, or about 0.
 subnormal. The stored value is nearly double the real one, which shows how little detail is left
 down there.
 
-The last two columns round the whole trained table through each format, and **Toy table RMS error**
+The last two columns of the first table round the whole trained table through each format, and **Toy table RMS error**
 is 0.0002 for fp16 but 0.0017 for bf16. So fp16 keeps the weights more than eight times closer,
 because its 10 mantissa bits make steps 2 × 2 × 2 = 8 times finer than the 7 of bf16. The table
 never comes near the fp16 limit of 65,504, so the extra range of bf16 buys nothing here.

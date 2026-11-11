@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useId, useMemo } from "react";
 import {
   BarList,
   LabSurface,
@@ -8,6 +8,7 @@ import {
   SurfaceHeading,
   type ModuleContext,
 } from "@app/module-sdk";
+import { LayoutMap } from "./LayoutMap";
 import { PipelineSchedule } from "./PipelineSchedule";
 import {
   CHECKPOINT_MINUTES,
@@ -62,29 +63,52 @@ const RECOMPUTE_NOTES: Record<Recompute, string> = {
   full: "Full keeps only each layer's input and reruns the whole forward pass in the backward pass: a third more arithmetic.",
 };
 
+/** Short names for the step strip, where a segment may be only a few characters wide. */
+const STRIP_LABELS: Record<string, string> = {
+  communication: "Traffic",
+  bubble: "Bubble",
+  sync: "Sync",
+};
+
 const indexOn = (ladder: ReadonlyArray<number>, value: number) => Math.max(0, ladder.indexOf(value));
 const plural = (count: number, one: string, many = `${one}s`) => `${count.toLocaleString("en-US")} ${count === 1 ? one : many}`;
 
-function MemoryBar({ memory }: { memory: MemoryPerGpu }) {
+const MEMORY_PARTS = [
+  { id: "weights", name: "weights" },
+  { id: "gradients", name: "gradients" },
+  { id: "optimizer", name: "optimizer" },
+  { id: "activations", name: "activations" },
+] as const;
+
+const placeParts = (memory: MemoryPerGpu) => {
+  let start = 0;
+  return MEMORY_PARTS.map((part) => {
+    const at = start;
+    start += memory[part.id];
+    return { ...part, bytes: memory[part.id], start: at };
+  });
+};
+
+/**
+ * The stacked bar for one GPU, with the same layout at ZeRO stage 0 drawn underneath on the same axis. The axis
+ * always reaches the stage-0 total, so sharding visibly shortens the bar instead of rescaling the picture.
+ */
+function MemoryBar({ memory, unsharded, zero }: { memory: MemoryPerGpu; unsharded: MemoryPerGpu; zero: ZeroStage }) {
   const left = 12;
   const right = 708;
   const limit = HARDWARE.memoryBytes;
-  const scale = Math.max(limit * 1.12, memory.total * 1.04);
+  const scale = Math.max(limit * 1.12, memory.total * 1.04, unsharded.total * 1.04);
   const xAt = (bytes: number) => left + (bytes / scale) * (right - left);
   const top = 30;
   const barHeight = 34;
-  const segments = [
-    { id: "weights", bytes: memory.weights },
-    { id: "gradients", bytes: memory.gradients },
-    { id: "optimizer", bytes: memory.optimizer },
-    { id: "activations", bytes: memory.activations },
-  ];
-  let start = 0;
-  const placed = segments.map((segment) => {
-    const at = start;
-    start += segment.bytes;
-    return { ...segment, start: at };
-  });
+  const ghostTop = top + barHeight + 5;
+  const ghostHeight = 15;
+  const axisY = ghostTop + ghostHeight + 4;
+  const placed = placeParts(memory);
+  const ghost = placeParts(unsharded);
+  const ghostLabel = zero === 0 ? `ZeRO stage 0, as now: ${formatBytes(unsharded.total)}` : `at ZeRO stage 0: ${formatBytes(unsharded.total)}`;
+  const ghostWidth = xAt(unsharded.total) - left;
+  const ghostLabelInside = ghostWidth >= ghostLabel.length * 6.9 + 12;
   const limitOnRight = xAt(limit) > (left + right) / 2;
   const tickStep = [10e9, 20e9, 50e9, 100e9, 200e9, 500e9, 1000e9].find((step) => scale / step <= 9) ?? 2000e9;
   const ticks: number[] = [];
@@ -92,32 +116,56 @@ function MemoryBar({ memory }: { memory: MemoryPerGpu }) {
   return (
     <svg
       className="par-plot par-memory-bar"
-      viewBox="0 0 720 96"
+      viewBox={`0 0 720 ${axisY + 16}`}
       role="img"
-      aria-label={`Memory on one GPU: weights ${formatBytes(memory.weights)}, gradients ${formatBytes(memory.gradients)}, optimizer state ${formatBytes(memory.optimizer)}, activations ${formatBytes(memory.activations)}; ${formatBytes(memory.total)} in all against ${MEMORY_LABEL}. ${memory.fits ? "It fits." : "It does not fit."}`}
+      aria-label={`Memory on one GPU: weights ${formatBytes(memory.weights)}, gradients ${formatBytes(memory.gradients)}, optimizer state ${formatBytes(memory.optimizer)}, activations ${formatBytes(memory.activations)}; ${formatBytes(memory.total)} in all against ${MEMORY_LABEL}. ${memory.fits ? "It fits." : "It does not fit."} ${zero === 0 ? "Nothing is sharded yet." : `The same layout at ZeRO stage 0 would hold ${formatBytes(unsharded.total)}.`}`}
     >
       {ticks.map((bytes) => (
         <g key={bytes}>
-          <line className="par-grid" x1={xAt(bytes)} x2={xAt(bytes)} y1={top - 4} y2={top + barHeight + 4} />
-          <text x={xAt(bytes)} y={top + barHeight + 16} textAnchor="middle">
+          <line className="par-grid" x1={xAt(bytes)} x2={xAt(bytes)} y1={top - 4} y2={axisY} />
+          <text x={xAt(bytes)} y={axisY + 12} textAnchor="middle">
             {Math.round(bytes / 1e9)}
           </text>
         </g>
       ))}
-      {placed.map((segment) => (
+      {placed.map((segment) => {
+        const width = Math.max(0, xAt(segment.start + segment.bytes) - xAt(segment.start));
+        const value = formatBytes(segment.bytes);
+        const full = `${segment.name} ${value}`;
+        const text = width >= full.length * 7.4 + 8 ? full : width >= value.length * 7.4 + 6 ? value : "";
+        return (
+          <g key={segment.id}>
+            <rect className={`par-seg is-${segment.id}`} x={xAt(segment.start)} y={top} width={width} height={barHeight} />
+            {text && (
+              <text className="par-seg-label" x={xAt(segment.start) + width / 2} y={top + barHeight / 2 + 4} textAnchor="middle">
+                {text}
+              </text>
+            )}
+          </g>
+        );
+      })}
+      {ghost.map((segment) => (
         <rect
           key={segment.id}
-          className={`par-seg is-${segment.id}`}
+          className={`par-seg par-ghost is-${segment.id}`}
           x={xAt(segment.start)}
-          y={top}
+          y={ghostTop}
           width={Math.max(0, xAt(segment.start + segment.bytes) - xAt(segment.start))}
-          height={barHeight}
+          height={ghostHeight}
         />
       ))}
+      <text
+        className="par-ghost-label"
+        x={ghostLabelInside ? xAt(unsharded.total) - 6 : xAt(unsharded.total) + 6}
+        y={ghostTop + ghostHeight / 2 + 4}
+        textAnchor={ghostLabelInside ? "end" : "start"}
+      >
+        {ghostLabel}
+      </text>
       {!memory.fits && (
         <rect className="par-over" x={xAt(limit)} y={top - 6} width={Math.max(0, xAt(memory.total) - xAt(limit))} height={barHeight + 12} />
       )}
-      <line className="par-limit" x1={xAt(limit)} x2={xAt(limit)} y1={top - 12} y2={top + barHeight + 6} />
+      <line className="par-limit" x1={xAt(limit)} x2={xAt(limit)} y1={top - 12} y2={axisY} />
       {/* The limit's label sits on whichever side of its line has room; the axis note takes the other end. */}
       <text
         className="par-limit-label"
@@ -169,6 +217,15 @@ function LostPlot({
     { id: "daly", label: "Daly", seconds: dalySeconds },
   ];
   const currentLost = lost(intervalMinutes);
+  /** The two terms of the same formula, drawn apart: saving falls with the interval, redone work rises with it. */
+  const saving = (minutes: number) => saveSeconds / (minutes * 60);
+  const redone = (minutes: number) => ((minutes * 60) / 2 + restartSeconds) / mtbfSeconds;
+  const partPath = (part: (minutes: number) => number) =>
+    samples.map((minutes, index) => `${index === 0 ? "M" : "L"}${xAt(minutes).toFixed(1)},${yAt(part(minutes)).toFixed(1)}`).join(" ");
+  const dotX = xAt(intervalMinutes);
+  const dotY = yAt(currentLost);
+  // The curve falls towards Young's optimum, so the label sits on the side where the curve is lower.
+  const dotLabelLeft = intervalMinutes * 60 > youngSeconds && dotX - 200 > left;
   return (
     <svg
       className="par-plot par-lost-plot"
@@ -192,6 +249,11 @@ function LostPlot({
       <text x={(left + right) / 2} y={bottom + 31} textAnchor="middle">
         checkpoint every … minutes
       </text>
+      <text x={left - 44} y={top - 7}>
+        share of time lost
+      </text>
+      <path className="par-lost-part is-saving" d={partPath(saving)} />
+      <path className="par-lost-part is-redone" d={partPath(redone)} />
       <path className="par-lost-curve" d={path} />
       {markers.map((marker, index) => {
         const minutes = marker.seconds / 60;
@@ -214,7 +276,115 @@ function LostPlot({
         );
       })}
       <line className="marker-guide" x1={xAt(intervalMinutes)} x2={xAt(intervalMinutes)} y1={top} y2={bottom} />
-      <circle className="par-lost-dot" cx={xAt(intervalMinutes)} cy={yAt(currentLost)} r={5} />
+      <circle className="par-lost-part-dot is-saving" cx={dotX} cy={yAt(saving(intervalMinutes))} r={3.2} />
+      <circle className="par-lost-part-dot is-redone" cx={dotX} cy={yAt(redone(intervalMinutes))} r={3.2} />
+      <circle className="par-lost-dot" cx={dotX} cy={dotY} r={5} />
+      <text
+        className="par-lost-dot-label"
+        x={dotX + (dotLabelLeft ? -9 : 9)}
+        y={Math.max(top + 38, dotY - 9)}
+        textAnchor={dotLabelLeft ? "end" : "start"}
+      >
+        your setting: {currentLost >= 1 ? "100%+" : formatPercent(currentLost)} lost
+      </text>
+    </svg>
+  );
+}
+
+/**
+ * The data-parallel sync against the last backward pass on one time axis. With overlap on the sync starts with
+ * that backward pass and only what sticks out past its end is waited for; with overlap off it starts at the end.
+ */
+function OverlapTimeline({
+  backwardSeconds,
+  syncSeconds,
+  exposedSeconds,
+  overlap,
+  replicas,
+}: {
+  backwardSeconds: number;
+  syncSeconds: number;
+  exposedSeconds: number;
+  overlap: boolean;
+  replicas: number;
+}) {
+  const hatch = `par-hidden-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
+  const left = 150;
+  const right = 708;
+  const total = Math.max(1e-9, backwardSeconds + syncSeconds);
+  const xAt = (seconds: number) => left + (seconds / total) * (right - left);
+  const rowHeight = 20;
+  const backwardY = 26;
+  const syncY = backwardY + rowHeight + 8;
+  const none = replicas <= 1 || syncSeconds <= 0;
+  const syncStart = overlap ? 0 : backwardSeconds;
+  const hiddenSeconds = Math.max(0, syncSeconds - exposedSeconds);
+  const exposedStart = syncStart + hiddenSeconds;
+  const hiddenWidth = xAt(exposedStart) - xAt(syncStart);
+  const exposedWidth = xAt(exposedStart + exposedSeconds) - xAt(exposedStart);
+  const endX = xAt(backwardSeconds);
+  const exposedLabel = `exposed ${formatSeconds(exposedSeconds)}`;
+  const exposedInside = exposedWidth >= exposedLabel.length * 7.4 + 10;
+  return (
+    <svg
+      className="par-plot par-overlap-plot"
+      viewBox={`0 0 720 ${syncY + rowHeight + 22}`}
+      role="img"
+      aria-label={
+        none
+          ? "Data parallel is 1, so there is no gradient sync to overlap."
+          : `The last backward pass takes ${formatSeconds(backwardSeconds)} and the gradient sync ${formatSeconds(syncSeconds)}. ${overlap ? `With overlap on the sync starts with the backward pass, so ${formatSeconds(hiddenSeconds)} is hidden under it and ${formatSeconds(exposedSeconds)} is left exposed.` : `With overlap off the sync starts when the backward pass ends, so all ${formatSeconds(exposedSeconds)} is exposed.`}`
+      }
+    >
+      <defs>
+        <pattern id={hatch} width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <rect className="par-overlap__hidden-fill" width="6" height="6" />
+          <line className="par-overlap__hidden-line" x1="0" y1="0" x2="0" y2="6" />
+        </pattern>
+      </defs>
+      <text x={left - 10} y={backwardY + 14} textAnchor="end">
+        last backward pass
+      </text>
+      <text x={left - 10} y={syncY + 14} textAnchor="end">
+        DP gradient sync
+      </text>
+      <rect className="par-overlap__backward" x={left} y={backwardY} width={Math.max(1, endX - left)} height={rowHeight} rx={2} />
+      {endX - left >= 60 && (
+        <text className="par-seg-label" x={(left + endX) / 2} y={backwardY + 14} textAnchor="middle">
+          {formatSeconds(backwardSeconds)}
+        </text>
+      )}
+      {none ? (
+        <text x={left + 4} y={syncY + 14}>
+          no sync: one replica has nobody to average with
+        </text>
+      ) : (
+        <>
+          {hiddenSeconds > 0 && (
+            <rect className="par-overlap__hidden" x={xAt(syncStart)} y={syncY} width={Math.max(1, hiddenWidth)} height={rowHeight} rx={2} fill={`url(#${hatch})`} />
+          )}
+          {hiddenSeconds > 0 && hiddenWidth >= 110 && (
+            <text className="par-seg-label" x={xAt(syncStart) + hiddenWidth / 2} y={syncY + 14} textAnchor="middle">
+              hidden {formatSeconds(hiddenSeconds)}
+            </text>
+          )}
+          {exposedSeconds > 0 && (
+            <rect className="par-overlap__exposed" x={xAt(exposedStart)} y={syncY} width={Math.max(1.5, exposedWidth)} height={rowHeight} rx={2} />
+          )}
+          <text
+            className={exposedSeconds > 0 ? "par-overlap__exposed-label" : undefined}
+            x={exposedInside ? xAt(exposedStart) + exposedWidth / 2 : Math.min(xAt(exposedStart + exposedSeconds) + 6, right)}
+            y={exposedInside ? syncY + 14 : syncY + rowHeight + 14}
+            textAnchor={exposedInside ? "middle" : xAt(exposedStart + exposedSeconds) + 6 + exposedLabel.length * 7.4 > right ? "end" : "start"}
+          >
+            {exposedSeconds > 0 ? exposedLabel : "all of it hidden: nothing to wait for"}
+          </text>
+        </>
+      )}
+      <line className="par-overlap__end" x1={endX} x2={endX} y1={backwardY - 8} y2={syncY + rowHeight + 4} />
+      <text x={endX > (left + right) / 2 ? endX - 5 : endX + 5} y={backwardY - 10} textAnchor={endX > (left + right) / 2 ? "end" : "start"}>
+        backward pass ends: the step can finish here
+      </text>
     </svg>
   );
 }
@@ -251,6 +421,8 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
     ],
   );
   const memory = useMemo(() => memoryPerGpu(layout), [layout]);
+  /** The same layout with nothing sharded: the baseline the Memory per GPU bar is compared against. */
+  const unsharded = useMemo(() => memoryPerGpu({ ...layout, zero: 0 }), [layout]);
   const timing = useMemo(() => stepTime(layout), [layout]);
   const gpus = gpuCount(layout);
   const expert = effectiveExpert(layout);
@@ -465,6 +637,16 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             onChange={(index) => update({ microbatches: MICROBATCHES_LADDER[index] ?? 1 }, `${MICROBATCHES_LADDER[index] ?? 1} microbatches.`)}
           />
         </div>
+        <LayoutMap
+          model={model}
+          tensor={config.tensor}
+          pipeline={config.pipeline}
+          data={config.data}
+          expert={expert}
+          moe={moe}
+          sliceParameters={memory.sliceParameters}
+          gpus={gpus}
+        />
         <div className="metric-row">
           <Metric label="GPUs" value={gpus.toLocaleString("en-US")} />
           <Metric label="Nodes of 8" value={nodes.toLocaleString("en-US")} />
@@ -548,7 +730,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           </div>
         </div>
         <div className="par-budget">
-          <MemoryBar memory={memory} />
+          <MemoryBar memory={memory} unsharded={unsharded} zero={config.zero} />
           <div className="par-legend" aria-hidden="true">
             <span className="is-weights">weights</span>
             <span className="is-gradients">gradients</span>
@@ -658,6 +840,13 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             <b>{config.overlap ? "on" : "off"}</b>
           </button>
         </div>
+        <OverlapTimeline
+          backwardSeconds={(2 / 3) * timing.computePerMicrobatch}
+          syncSeconds={timing.dataSync.seconds}
+          exposedSeconds={timing.exposedDataSync}
+          overlap={config.overlap}
+          replicas={config.data}
+        />
         <BarList
           label="Seconds of communication per step for each kind of parallelism"
           max={Math.max(1e-9, ...commRows.map((row) => row.value))}
@@ -694,7 +883,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             .filter((part) => part.value / timing.step >= 0.002)
             .map((part) => (
               <i key={part.id} className={`is-${part.id}`} style={{ flexGrow: part.value }}>
-                {part.value / timing.step >= 0.09 && <span>{part.label}</span>}
+                {part.value / timing.step >= 0.09 && <span>{STRIP_LABELS[part.id] ?? part.label}</span>}
               </i>
             ))}
         </div>
@@ -710,6 +899,43 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             detail: `${formatPercent(part.value / timing.step)} of the step · ${part.detail}`,
           }))}
         />
+        <div
+          className="par-mfu"
+          role="img"
+          aria-label={`Of the GPUs' peak arithmetic, ${formatPercent(timing.mfu)} is model work (MFU)${timing.hfu > timing.mfu ? `, ${formatPercent(timing.hfu - timing.mfu)} is recomputation (HFU ${formatPercent(timing.hfu)})` : ""}, ${formatPercent(Math.max(0, HARDWARE.efficiency - timing.hfu))} is lost to traffic, bubble, and exposed sync, and ${formatPercent(1 - HARDWARE.efficiency)} is out of reach above the kernel efficiency of ${formatPercent(HARDWARE.efficiency)}.`}
+        >
+          <span className="par-mfu__title">Share of the GPUs' peak arithmetic</span>
+          <div className="par-mfu__bar">
+            <i className="is-mfu" style={{ width: `${timing.mfu * 100}%` }}>
+              {timing.mfu >= 0.16 && <span>MFU {formatPercent(timing.mfu)}</span>}
+            </i>
+            {timing.hfu - timing.mfu > 0.0005 && (
+              <i className="is-recompute" style={{ width: `${(timing.hfu - timing.mfu) * 100}%` }}>
+                {timing.hfu - timing.mfu >= 0.13 && <span>recompute</span>}
+              </i>
+            )}
+            <i className="is-waiting" style={{ width: `${Math.max(0, HARDWARE.efficiency - timing.hfu) * 100}%` }}>
+              {HARDWARE.efficiency - timing.hfu >= 0.22 ? (
+                <span>traffic, bubble, sync</span>
+              ) : (
+                HARDWARE.efficiency - timing.hfu >= 0.09 && <span>waiting</span>
+              )}
+            </i>
+            <i className="is-kernel" style={{ width: `${(1 - HARDWARE.efficiency) * 100}%` }}>
+              <span>out of reach</span>
+            </i>
+            <b className="par-mfu__cap" style={{ left: `${HARDWARE.efficiency * 100}%` }}>
+              <span>cap {Math.round(HARDWARE.efficiency * 100)}% · kernel efficiency</span>
+            </b>
+          </div>
+          <div className="par-mfu__axis" aria-hidden="true">
+            <span>0%</span>
+            <span>25%</span>
+            <span>50%</span>
+            <span>75%</span>
+            <span>100% of peak</span>
+          </div>
+        </div>
         <div className="metric-row">
           <Metric label="Step time" value={formatSeconds(timing.step)} />
           <Metric label="Tokens/s" value={formatCount(timing.tokensPerSecond)} tone="forward" />
@@ -772,6 +998,19 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           youngSeconds={plan.youngSeconds}
           dalySeconds={plan.dalySeconds}
         />
+        <div className="par-lost-legend">
+          <span className="is-total">
+            <i /> time lost <b>{plan.lost >= 1 ? "100%+" : formatPercent(lostCapped)}</b>
+          </span>
+          <span>=</span>
+          <span className="is-saving">
+            <i /> saving (save time ÷ interval) <b>{formatPercent(Math.min(1, config.saveSeconds / (config.checkpointMinutes * 60)))}</b>
+          </span>
+          <span>+</span>
+          <span className="is-redone">
+            <i /> redone work and restarts <b>{formatPercent(Math.min(1, ((config.checkpointMinutes * 60) / 2 + config.restartMinutes * 60) / plan.mtbfSeconds))}</b>
+          </span>
+        </div>
         <div className="metric-row">
           <Metric label="Job MTBF" value={formatHours(plan.mtbfHours)} />
           <Metric label="Young optimum" value={formatMinutes(plan.youngSeconds)} />

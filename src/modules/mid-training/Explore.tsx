@@ -20,6 +20,7 @@ import {
   DECAY_FRACTION,
   gainPerEpoch,
   LATE_PHASES,
+  lateShares,
   LEARNING_RATE,
   PRESETS,
   runEvenSpread,
@@ -51,6 +52,7 @@ import {
   UNIQUE_MIN,
 } from "./repetition";
 import { readState, WEIGHT_KEYS, weightsOf } from "./state";
+import { BudgetBars, CellBar, EndDots, FactGrid, PassStrips, type EndGroup } from "./visuals";
 
 const loss = (value: number) => value.toFixed(3);
 const signed = (value: number) => `${value >= 0 ? "+" : "−"}${Math.abs(value).toFixed(3)}`;
@@ -134,6 +136,21 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
   const sweepDomain = curveDomain(sweep.flatMap((point) => (point.run ? [[point.run.arithmetic, point.run.general]] : [])));
   const maxSweepEpochs = Math.max(0.1, ...sweepEpochs);
 
+  const maxGain = Math.max(1e-6, ...gains.map((gain) => gain ?? 0));
+  const lateMix = switched ? lateShares(stable, latePhase) : null;
+  const endRows = (pick: (entry: MixtureRun) => number) =>
+    switched
+      ? [
+          { id: "switched", label: "Switched at decay", value: pick(run), current: true },
+          ...(even ? [{ id: "even", label: "Spread evenly", value: pick(even), current: false }] : []),
+          { id: "none", label: "No switch", value: pick(noSwitch), current: false },
+        ]
+      : [{ id: "none", label: "No switch (this run)", value: pick(run), current: true }];
+  const endGroups: EndGroup[] = [
+    { title: "Arithmetic held-out", tone: "attention", rows: endRows((entry) => entry.arithmetic) },
+    { title: "General held-out", tone: "forward", rows: endRows((entry) => entry.general) },
+  ];
+
   const lateRows = (entry: MixtureRun) => [
     loss(entry.arithmetic),
     loss(entry.general),
@@ -211,56 +228,63 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           title="Four domains share one training budget"
           aside={<span className="tg-badge">seed {SEED}</span>}
         />
+        <BudgetBars
+          domains={DOMAINS}
+          shares={shares}
+          late={lateMix}
+          earlyNote={switched ? `One batch of ${BATCH_SIZE} pairs, up to step ${SWITCH_STEP}` : `One batch of ${BATCH_SIZE} pairs, every step`}
+          lateNote={`One batch from step ${SWITCH_STEP}: ${lateLabel(latePhase)}`}
+          spoken={`Each batch is drawn ${DOMAINS.map((domain, index) => `${percent(shares[index])} ${domain.name}`).join(", ")}${
+            lateMix
+              ? ` until the late phase, then ${DOMAINS.map((domain, index) => `${percent(lateMix[index])} ${domain.name}`).join(", ")}`
+              : ""
+          }.`}
+        />
         <div className="mt-mixture">
-          <div className="mt-weights">
-            <SegmentedControl
-              label="Mixture preset"
-              value={preset?.id ?? "custom"}
-              options={PRESETS.map((entry) => ({ value: entry.id, label: entry.label }))}
-              onChange={(value) => {
-                const chosen = PRESETS.find((entry) => entry.id === value);
-                if (!chosen) return;
-                setState(Object.fromEntries(WEIGHT_KEYS.map((key, index) => [key, chosen.weights[index]])));
-                narrate(
-                  `${chosen.label}: ${DOMAINS.map((domain, index) => `${domain.name} ${percent(sharesOf(chosen.weights)[index])}`).join(", ")}.`,
-                );
-              }}
-            />
-            {DOMAINS.map((domain, index) => (
-              <RangeControl
-                key={domain.id}
-                label={`${domain.name} weight`}
-                min={WEIGHT_MIN}
-                max={WEIGHT_MAX}
-                step={1}
-                value={stable[index]}
-                format={(value) => `${value} · ${percent(shares[index])} of each batch`}
-                onChange={(value) => setWeight(index, value)}
+          <div className="mt-mixture__dials">
+            <div className="mt-weights">
+              <SegmentedControl
+                label="Mixture preset"
+                value={preset?.id ?? "custom"}
+                options={PRESETS.map((entry) => ({ value: entry.id, label: entry.label }))}
+                onChange={(value) => {
+                  const chosen = PRESETS.find((entry) => entry.id === value);
+                  if (!chosen) return;
+                  setState(Object.fromEntries(WEIGHT_KEYS.map((key, index) => [key, chosen.weights[index]])));
+                  narrate(
+                    `${chosen.label}: ${DOMAINS.map((domain, index) => `${domain.name} ${percent(sharesOf(chosen.weights)[index])}`).join(", ")}.`,
+                  );
+                }}
               />
-            ))}
-            <p className="mt-weights__note">
-              Only the ratio matters: 3, 3, 3, 1 and 6, 6, 6, 2 draw the same shares. All four at 0 falls back to
-              Uniform.
-            </p>
+              {DOMAINS.map((domain, index) => (
+                <RangeControl
+                  key={domain.id}
+                  label={`${domain.name} weight`}
+                  min={WEIGHT_MIN}
+                  max={WEIGHT_MAX}
+                  step={1}
+                  value={stable[index]}
+                  format={(value) => `${value} · ${percent(shares[index])} of each batch`}
+                  onChange={(value) => setWeight(index, value)}
+                />
+              ))}
+              <p className="mt-weights__note">
+                Only the ratio matters: 3, 3, 3, 1 and 6, 6, 6, 2 draw the same shares. All four at 0 falls back to
+                Uniform.
+              </p>
+            </div>
+            <PassStrips
+              rows={DOMAINS.map((domain, index) => ({
+                id: domain.id,
+                name: domain.name,
+                general: domain.general,
+                epochs: run.domains[index].epochs,
+                seen: count(run.domains[index].seen),
+                pairs: count(run.domains[index].pairs),
+              }))}
+            />
           </div>
           <div className="mt-mixture__readouts">
-            <div
-              className="mt-budget-bar"
-              role="img"
-              aria-label={`Each batch is drawn ${DOMAINS.map((domain, index) => `${percent(shares[index])} ${domain.name}`).join(", ")}${switched ? " until the late phase" : ""}.`}
-            >
-              {DOMAINS.map((domain, index) =>
-                shares[index] > 0 ? (
-                  <i
-                    key={domain.id}
-                    className={`mt-budget-bar__${domain.general ? "general" : "target"} mt-budget-bar__${domain.id}`}
-                    style={{ flexGrow: shares[index] }}
-                  >
-                    {domain.name} {percent(shares[index])}
-                  </i>
-                ) : null,
-              )}
-            </div>
             <div className="mt-table-wrap">
               <table className="tg-board mt-mixture-table">
                 <caption>
@@ -370,7 +394,13 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
                   <th scope="row">{point.weight}</th>
                   <td>{point.run ? point.run.domains[3].epochs.toFixed(2) : "—"}</td>
                   <td>{point.run ? loss(point.run.arithmetic) : "no data"}</td>
-                  <td>{gains[index] === null ? "—" : (gains[index] as number).toFixed(2)}</td>
+                  <td>
+                    <CellBar
+                      value={gains[index] === null ? null : Math.max(0, gains[index] as number)}
+                      max={maxGain}
+                      text={gains[index] === null ? "—" : (gains[index] as number).toFixed(2)}
+                    />
+                  </td>
                   <td>{point.run ? loss(point.run.general) : "no data"}</td>
                 </tr>
               ))}
@@ -411,6 +441,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             emphasis: index === 0,
           }))}
         />
+        <FactGrid facts={probe.facts} />
         <ul className="mt-probe-facts" aria-label="Three held-out facts with the model's answer">
           {probe.facts.slice(0, 3).map((fact) => (
             <li key={fact.question}>
@@ -568,6 +599,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             footnote={`Measured every 30 steps from step ${CURVE_FROM_STEP}; the zero table at step 0 scores ${UNIFORM_CROSS_ENTROPY.toFixed(3)}.`}
           />
         </div>
+        <EndDots groups={endGroups} format={loss} />
         <div className="mt-table-wrap">
           <table className="tg-board mt-late-table">
             <caption>

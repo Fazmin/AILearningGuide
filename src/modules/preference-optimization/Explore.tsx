@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   LabSurface,
   LineChart,
@@ -50,23 +50,43 @@ const signed = (value: number, digits = 3) => `${value >= 0 ? "+" : "−"}${Math
 /* Loss curve with the pairs on it                                             */
 /* -------------------------------------------------------------------------- */
 
+/** The drawn width of an element, so an SVG can be laid out in real pixels and keep its text readable. */
+function useMeasuredWidth(fallback: number) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [width, setWidth] = useState(fallback);
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    const read = () => {
+      const next = Math.round(element.getBoundingClientRect().width);
+      if (next > 0) setWidth(next);
+    };
+    read();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(read);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  return { ref, width };
+}
+
 function LossCurve({ beta, scores }: { beta: number; scores: PairScore[] }) {
-  const width = 460;
-  const height = 250;
-  const left = 44;
-  const right = width - 14;
-  const top = 16;
-  const bottom = height - 40;
+  const { ref, width } = useMeasuredWidth(660);
+  const height = 290;
+  const left = 46;
+  const right = width - 16;
+  const top = 26;
+  const bottom = height - 44;
   const largest = Math.max(0, ...scores.map((score) => score.margin));
   const xMin = -2;
   const xMax = Math.max(12, Math.ceil(largest + 1));
   const yMax = 1.2;
   const xAt = (value: number) => left + ((value - xMin) / (xMax - xMin)) * (right - left);
   const yAt = (value: number) => bottom - (Math.min(yMax, value) / yMax) * (bottom - top);
-  const curve = (value: number) => {
+  const curve = (value: number, from = xMin, to = xMax) => {
     const points: string[] = [];
     for (let step = 0; step <= 120; step += 1) {
-      const m = xMin + ((xMax - xMin) * step) / 120;
+      const m = from + ((to - from) * step) / 120;
       points.push(`${step === 0 ? "M" : "L"}${xAt(m).toFixed(1)},${yAt(dpoLoss(value, m)).toFixed(1)}`);
     }
     return points.join(" ");
@@ -78,9 +98,29 @@ function LossCurve({ beta, scores }: { beta: number; scores: PairScore[] }) {
   ];
   const tickStep = xMax <= 12 ? 2 : xMax <= 24 ? 4 : 10;
   const xTicks = Array.from({ length: Math.floor(xMax / tickStep) + 1 }, (_, index) => index * tickStep);
+  // How far along the current curve the pairs have travelled from the shared start at m = 0.
+  const reached = Math.min(xMax, largest);
+  const startX = xAt(0);
+  const startY = yAt(Math.LN2);
+  // Pairs that land within a few pixels of each other are fanned out vertically, each tied to its
+  // true point on the curve by a short stem, so every number stays readable.
+  const dots = scores
+    .map((score, index) => ({
+      index,
+      x: xAt(Math.max(xMin, Math.min(xMax, score.margin))),
+      y: yAt(dpoLoss(beta, score.margin)),
+      lift: 0,
+    }))
+    .sort((a, b) => a.x - b.x);
+  for (let index = 1; index < dots.length; index += 1) {
+    const previous = dots[index - 1];
+    if (dots[index].x - previous.x < 17 && Math.abs(dots[index].y - previous.y) < 17) dots[index].lift = previous.lift + 1;
+  }
   return (
-    <div className="pref-curve">
+    <div className="pref-curve" ref={ref}>
       <svg
+        width={width}
+        height={height}
         viewBox={`0 0 ${width} ${height}`}
         role="img"
         aria-label={`DPO loss against the log-ratio margin for beta ${(beta / 2).toFixed(2)}, ${beta.toFixed(2)} and ${(beta * 2).toFixed(2)}. ${scores
@@ -90,38 +130,44 @@ function LossCurve({ beta, scores }: { beta: number; scores: PairScore[] }) {
         {[0, 0.4, 0.8, 1.2].map((value) => (
           <g key={`y-${value}`}>
             <line className="pref-curve__grid" x1={left} x2={right} y1={yAt(value)} y2={yAt(value)} />
-            <text className="pref-curve__tick" x={left - 6} y={yAt(value) + 3} textAnchor="end">
+            <text className="pref-curve__tick" x={left - 7} y={yAt(value) + 3.5} textAnchor="end">
               {value.toFixed(1)}
             </text>
           </g>
         ))}
         {xTicks.map((value) => (
-          <text key={`x-${value}`} className="pref-curve__tick" x={xAt(value)} y={bottom + 14} textAnchor="middle">
+          <text key={`x-${value}`} className="pref-curve__tick" x={xAt(value)} y={bottom + 15} textAnchor="middle">
             {value}
           </text>
         ))}
-        <line className="pref-curve__zero" x1={xAt(0)} x2={xAt(0)} y1={top} y2={bottom} />
+        <rect className="pref-curve__wrong" x={left} y={top} width={startX - left} height={bottom - top} />
+        <text className="pref-curve__note" x={left + 4} y={bottom - 6}>
+          m &lt; 0: ordered wrongly
+        </text>
+        <line className="pref-curve__zero" x1={startX} x2={startX} y1={top} y2={bottom} />
         <line className="pref-curve__axis" x1={left} x2={right} y1={bottom} y2={bottom} />
         <text className="pref-curve__label" x={(left + right) / 2} y={height - 8} textAnchor="middle">
-          log-ratio margin m = Δ log p(chosen) − Δ log p(rejected), in nats
+          log-ratio margin m = Δ log p(chosen) − Δ log p(rejected), in nats →
         </text>
-        <text className="pref-curve__label" x={left} y={top - 4}>
+        <text className="pref-curve__label" x={left} y={top - 10}>
           loss −log σ(β·m)
-        </text>
-        <text className="pref-curve__note" x={xAt(0) + 4} y={yAt(Math.LN2) - 6}>
-          ln 2 at step 0
         </text>
         {betas.map((entry) => (
           <path key={entry.className} className={`pref-curve__line ${entry.className}`} d={curve(entry.value)} />
         ))}
-        {scores.map((score, index) => {
-          const x = xAt(score.margin);
-          const y = yAt(dpoLoss(beta, score.margin));
+        {reached > 0.05 && <path className="pref-curve__travel" d={curve(beta, 0, reached)} />}
+        <circle className="pref-curve__start" cx={startX} cy={startY} r={5} />
+        <text className="pref-curve__note is-start" x={startX + 10} y={startY - 9}>
+          every pair starts here: m = 0, loss ln 2 = 0.693, pull 50%
+        </text>
+        {dots.map((dot) => {
+          const cy = dot.y - dot.lift * 16;
           return (
-            <g key={index}>
-              <circle className="pref-curve__dot" cx={x} cy={y} r={6} />
-              <text className="pref-curve__dot-label" x={x} y={y + 3.5} textAnchor="middle">
-                {index + 1}
+            <g key={dot.index}>
+              {dot.lift > 0 && <line className="pref-curve__stem" x1={dot.x} x2={dot.x} y1={dot.y} y2={cy + 7} />}
+              <circle className="pref-curve__dot" cx={dot.x} cy={cy} r={7.5} />
+              <text className="pref-curve__dot-label" x={dot.x} y={cy + 3.8} textAnchor="middle">
+                {dot.index + 1}
               </text>
             </g>
           );
@@ -138,6 +184,10 @@ function LossCurve({ beta, scores }: { beta: number; scores: PairScore[] }) {
           <i className="pref-curve__key is-dot" />
           numbered pairs, on the current curve
         </span>
+        <span>
+          <i className="pref-curve__key is-travel" />
+          how far they have slid from the start
+        </span>
       </div>
     </div>
   );
@@ -146,6 +196,27 @@ function LossCurve({ beta, scores }: { beta: number; scores: PairScore[] }) {
 /* -------------------------------------------------------------------------- */
 /* One comparison, scored                                                      */
 /* -------------------------------------------------------------------------- */
+
+/** How far, in percent of the track either side of zero, the largest reward on the card reaches. */
+const DUMBBELL_REACH = 36;
+
+/** The shared scale printed once above a group of pair blocks; every dumbbell below lines up with it. */
+function RewardAxis({ scale }: { scale: number }) {
+  return (
+    <div className="pref-axis" aria-hidden="true">
+      <span className="pref-axis__title">implicit reward, β × log-probability shift (nats)</span>
+      <div className="pref-axis__track">
+        <span style={{ left: `${50 - DUMBBELL_REACH}%` }}>−{scale.toFixed(2)}</span>
+        <span className="is-zero" style={{ left: "50%" }}>
+          0 = the reference
+        </span>
+        <span style={{ left: `${50 + DUMBBELL_REACH}%` }}>+{scale.toFixed(2)}</span>
+        <small className="is-left">← less likely than before</small>
+        <small className="is-right">more likely than before →</small>
+      </div>
+    </div>
+  );
+}
 
 function PairBlock({
   pair,
@@ -163,7 +234,7 @@ function PairBlock({
 }) {
   const chosen = beta * score.chosenShift;
   const rejected = beta * score.rejectedShift;
-  const position = (value: number) => 50 + (value / scale) * 46;
+  const position = (value: number) => 50 + (value / scale) * DUMBBELL_REACH;
   return (
     <div className={`pref-pair ${score.margin > 0 ? "is-ordered" : "is-unordered"}`}>
       <div className="pref-pair__head">
@@ -190,10 +261,12 @@ function PairBlock({
         />
         <i className="pref-dumbbell__rejected" style={{ left: `${position(rejected)}%` }} />
         <i className="pref-dumbbell__chosen" style={{ left: `${position(chosen)}%` }} />
-      </div>
-      <div className="pref-pair__values">
-        <span className="is-rejected">■ rejected {signed(rejected)}</span>
-        <span className="is-chosen">● chosen {signed(chosen)}</span>
+        <span className="pref-dumbbell__value is-chosen" style={{ left: `${position(chosen)}%` }}>
+          ● chosen {signed(chosen)}
+        </span>
+        <span className="pref-dumbbell__value is-rejected" style={{ left: `${position(rejected)}%` }}>
+          ■ rejected {signed(rejected)}
+        </span>
       </div>
       <i className="pref-pair__foot">
         margin {signed(chosen - rejected)} · reference {score.referenceChosen > score.referenceRejected ? "already preferred it" : "preferred the rejected one"}
@@ -282,7 +355,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
   const driftMax = Math.max(1e-4, ...betaSweep.flatMap((entry) => entry.run.history.map((point) => point.drift)));
 
   return (
-    <div className="tg-lab tg-lab--hero">
+    <div className="tg-lab pref-lab">
       <LabSurface label="Implicit reward margin during training" className="tg-margin-panel">
         <SurfaceHeading
           kicker={`${pairs.length} training pairs · ${HELD_OUT_PAIRS.length} held out · beta ${beta.toFixed(2)} · ${steps} steps`}
@@ -342,174 +415,190 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
         </div>
       </LabSurface>
 
-      <div className="tg-column">
-        <LabSurface label="Where each pair sits on the loss" className="pref-curve-panel">
-          <SurfaceHeading kicker="The same loss at three betas" title="Why a pair stops pulling" />
-          <LossCurve beta={beta} scores={scores} />
-          <ol className="pref-weights">
-            {scores.map((score, index) => (
+      <LabSurface label="Preference pair editor" className="tg-pairs-panel">
+        <SurfaceHeading kicker="Your labels" title="Write the comparisons yourself" />
+        <div className="pref-editor-grid">
+          <div>
+            <label className="tg-editor">
+              <span>prompt | preferred | rejected</span>
+              <textarea
+                aria-label="Preference pairs"
+                rows={5}
+                value={pairsText}
+                maxLength={MAX_PAIRS * (3 * MAX_FIELD_LENGTH + 9)}
+                onChange={(event) => setState({ pairsText: sanitizePairsText(event.target.value) })}
+              />
+            </label>
+            <p className="lab-note">
+              Up to {MAX_PAIRS} lines, each part up to {MAX_FIELD_LENGTH} characters; anything beyond is
+              ignored so training stays instant.
+            </p>
+          </div>
+          <div>
+            <SegmentedControl
+              label="Reference model"
+              value={referenceChoice}
+              options={[
+                { value: "base", label: "Base model" },
+                { value: "sft", label: "SFT checkpoint" },
+              ]}
+              onChange={(value) => {
+                setState({ reference: value });
+                narrate(value === "sft" ? "Reference is the SFT checkpoint." : "Reference is the base model.");
+              }}
+            />
+            <p className="lab-note">
+              {referenceChoice === "sft"
+                ? `The base table fine-tuned for ${SFT_STEPS} steps on your preferred completions, with the prompt read as context and never graded. It is trained here; Instruction tuning & templates' own weights are never loaded.`
+                : "The base table: 50 epochs on Harbor weather notes and Recipe steps, with no instruction tuning."}
+            </p>
+            <RangeControl
+              label="DPO steps"
+              min={0}
+              max={120}
+              step={2}
+              value={steps}
+              format={(value) => (value === 0 ? "untrained" : `${value} steps`)}
+              onChange={(value) => {
+                setState({ steps: value });
+                narrate(`${value} DPO steps.`);
+              }}
+            />
+            <RangeControl
+              label="Beta"
+              min={0.05}
+              max={1.5}
+              step={0.05}
+              value={beta}
+              format={(value) => value.toFixed(2)}
+              onChange={(value) => {
+                setState({ beta: value });
+                narrate(`Beta ${value.toFixed(2)}.`);
+              }}
+            />
+            <RangeControl
+              label="DPO learning rate"
+              min={0.05}
+              max={1}
+              step={0.05}
+              value={learningRate}
+              format={(value) => value.toFixed(2)}
+              onChange={(value) => setState({ learningRate: value })}
+            />
+          </div>
+        </div>
+      </LabSurface>
+
+      <LabSurface label="Where each pair sits on the loss" className="pref-curve-panel">
+        <SurfaceHeading kicker="The same loss at three betas" title="Why a pair stops pulling" />
+        <LossCurve beta={beta} scores={scores} />
+        <ol className="pref-weights">
+          {scores.map((score, index) => {
+            const pull = gradientWeight(beta, score.margin);
+            return (
               <li key={index}>
                 <b>{index + 1}</b>
                 <span>m {score.margin.toFixed(2)}</span>
                 <span>loss {dpoLoss(beta, score.margin).toFixed(3)}</span>
-                <span>pull σ(−β·m) {(gradientWeight(beta, score.margin) * 100).toFixed(1)}%</span>
+                <span>pull σ(−β·m) {(pull * 100).toFixed(1)}%</span>
+                <i className={`pref-pull${pull > 0.5 ? " is-over" : ""}`} aria-hidden="true">
+                  <i style={{ width: `${Math.min(100, pull * 200)}%` }} />
+                </i>
               </li>
-            ))}
-          </ol>
-          <p className="lab-note">
-            Loss 0.1 needs m = {marginForLoss(beta / 2, 0.1).toFixed(2)} at β {(beta / 2).toFixed(2)},{" "}
-            {marginForLoss(beta, 0.1).toFixed(2)} at β {beta.toFixed(2)} and {marginForLoss(beta * 2, 0.1).toFixed(2)} at β{" "}
-            {(beta * 2).toFixed(2)}. A higher β reaches the flat part of the curve with a smaller change to
-            the model, and a pair on the flat part barely moves the weights.
+            );
+          })}
+        </ol>
+        {scores.length > 0 && (
+          <p className="pref-pull-scale" aria-hidden="true">
+            <span>pull bar: 0%</span>
+            <span>a full bar is 50%, where every pair starts</span>
           </p>
-        </LabSurface>
+        )}
+        <p className="lab-note">
+          Loss 0.1 needs m = {marginForLoss(beta / 2, 0.1).toFixed(2)} at β {(beta / 2).toFixed(2)},{" "}
+          {marginForLoss(beta, 0.1).toFixed(2)} at β {beta.toFixed(2)} and {marginForLoss(beta * 2, 0.1).toFixed(2)} at β{" "}
+          {(beta * 2).toFixed(2)}. A higher β reaches the flat part of the curve with a smaller change to
+          the model, and a pair on the flat part barely moves the weights.
+        </p>
+      </LabSurface>
 
-        <LabSurface label="Drift from the reference model" className="tg-drift-panel a11-narrow-chart">
-          <SurfaceHeading
-            kicker="Three betas, same pairs, same steps"
-            title="How far the policy wandered from where it started"
-            aside={<span className="tg-badge">KL {run.finalDrift.toFixed(4)}</span>}
-          />
-          <LineChart
-            label="Average KL divergence from the reference model for three values of beta"
-            xLabel="DPO step"
-            yLabel="mean KL(policy ‖ reference) over 30 rows (nats)"
-            yDomain={[0, driftMax * 1.15]}
-            series={betaSweep.map((entry, index) => {
-              const final = entry.run.history.at(-1);
-              const gap = final && entry.beta > 0 ? final.margin / entry.beta : 0;
-              return {
-                id: `beta-${index}`,
-                name: `β ${entry.beta.toFixed(2)}${index === 1 ? " (current)" : ""} · gap ${gap.toFixed(1)} · KL`,
-                tone: index === 1 ? "forward" : "muted",
-                dash: index === 0 ? "dotted" : index === 2 ? "dashed" : "solid",
-                format: (value: number) => value.toFixed(4),
-                points: entry.run.history.map((point) => ({ x: point.step, y: point.drift })),
-              };
-            })}
-            footnote="An unweighted average over all 30 context rows, so it measures the whole table rather than the three prompts. Gap is each run's mean log-ratio margin in nats."
-          />
-          <div className="tg-diff">
-            <div className="tg-sample">
-              <span>Reference model</span>
-              <p>{sampleTinyText(referenceWeights, { prompt: "the ", length: 76, temperature: 0.7, seed: 8 })}</p>
-            </div>
-            <div className="tg-sample">
-              <span>After preference optimization</span>
-              <p>{sampleTinyText(run.weights, { prompt: "the ", length: 76, temperature: 0.7, seed: 8 })}</p>
-            </div>
+      <LabSurface label="Drift from the reference model" className="tg-drift-panel a11-narrow-chart">
+        <SurfaceHeading
+          kicker="Three betas, same pairs, same steps"
+          title="How far the policy wandered from where it started"
+          aside={<span className="tg-badge">KL {run.finalDrift.toFixed(4)}</span>}
+        />
+        <LineChart
+          label="Average KL divergence from the reference model for three values of beta"
+          xLabel="DPO step"
+          yLabel="mean KL(policy ‖ reference) over 30 rows (nats)"
+          yDomain={[0, driftMax * 1.15]}
+          series={betaSweep.map((entry, index) => {
+            const final = entry.run.history.at(-1);
+            const gap = final && entry.beta > 0 ? final.margin / entry.beta : 0;
+            return {
+              id: `beta-${index}`,
+              name: `β ${entry.beta.toFixed(2)}${index === 1 ? " (current)" : ""} · gap ${gap.toFixed(1)} · KL`,
+              tone: index === 1 ? "forward" : "muted",
+              dash: index === 0 ? "dotted" : index === 2 ? "dashed" : "solid",
+              format: (value: number) => value.toFixed(4),
+              points: entry.run.history.map((point) => ({ x: point.step, y: point.drift })),
+            };
+          })}
+          footnote="An unweighted average over all 30 context rows, so it measures the whole table rather than the three prompts. Gap is each run's mean log-ratio margin in nats."
+        />
+        <div className="tg-diff">
+          <div className="tg-sample">
+            <span>Reference model</span>
+            <p>{sampleTinyText(referenceWeights, { prompt: "the ", length: 76, temperature: 0.7, seed: 8 })}</p>
           </div>
-        </LabSurface>
-      </div>
+          <div className="tg-sample">
+            <span>After preference optimization</span>
+            <p>{sampleTinyText(run.weights, { prompt: "the ", length: 76, temperature: 0.7, seed: 8 })}</p>
+          </div>
+        </div>
+      </LabSurface>
 
-      <div className="tg-column">
-        <LabSurface label="Preference pair editor" className="tg-pairs-panel">
-          <SurfaceHeading kicker="Your labels" title="Write the comparisons yourself" />
-          <label className="tg-editor">
-            <span>prompt | preferred | rejected</span>
-            <textarea
-              aria-label="Preference pairs"
-              rows={5}
-              value={pairsText}
-              maxLength={MAX_PAIRS * (3 * MAX_FIELD_LENGTH + 9)}
-              onChange={(event) => setState({ pairsText: sanitizePairsText(event.target.value) })}
+      <LabSurface label="Per-pair rewards" className="tg-pair-scores">
+        <SurfaceHeading kicker="One row per comparison" title="Implicit reward, pair by pair" />
+        <div className="pref-pairs">
+          {pairs.length > 0 && <RewardAxis scale={rewardScale} />}
+          {pairs.map((pair, index) => (
+            <PairBlock key={index} pair={pair} score={scores[index]} beta={beta} scale={rewardScale} label={`${index + 1}`} />
+          ))}
+          {pairs.length === 0 && (
+            <p className="lab-note">
+              Each line needs three parts separated by vertical bars: a prompt, the completion you
+              prefer, and the one you do not.
+            </p>
+          )}
+        </div>
+        <h4 className="pref-group-label">
+          Held-out pairs · never used by the optimizer · {heldOutOrdered} of {HELD_OUT_PAIRS.length} ordered
+          correctly
+        </h4>
+        <div className="pref-pairs">
+          <RewardAxis scale={rewardScale} />
+          {HELD_OUT_PAIRS.map((pair, index) => (
+            <PairBlock
+              key={`held-${index}`}
+              pair={pair}
+              score={heldOutScores[index]}
+              beta={beta}
+              scale={rewardScale}
+              label={`H${index + 1}`}
             />
-          </label>
-          <p className="lab-note">
-            Up to {MAX_PAIRS} lines, each part up to {MAX_FIELD_LENGTH} characters; anything beyond is
-            ignored so training stays instant.
-          </p>
-          <SegmentedControl
-            label="Reference model"
-            value={referenceChoice}
-            options={[
-              { value: "base", label: "Base model" },
-              { value: "sft", label: "SFT checkpoint" },
-            ]}
-            onChange={(value) => {
-              setState({ reference: value });
-              narrate(value === "sft" ? "Reference is the SFT checkpoint." : "Reference is the base model.");
-            }}
-          />
-          <p className="lab-note">
-            {referenceChoice === "sft"
-              ? `The base table fine-tuned for ${SFT_STEPS} steps on your preferred completions, with the prompt read as context and never graded. It is trained here; Instruction tuning & templates' own weights are never loaded.`
-              : "The base table: 50 epochs on Harbor weather notes and Recipe steps, with no instruction tuning."}
-          </p>
-          <RangeControl
-            label="DPO steps"
-            min={0}
-            max={120}
-            step={2}
-            value={steps}
-            format={(value) => (value === 0 ? "untrained" : `${value} steps`)}
-            onChange={(value) => {
-              setState({ steps: value });
-              narrate(`${value} DPO steps.`);
-            }}
-          />
-          <RangeControl
-            label="Beta"
-            min={0.05}
-            max={1.5}
-            step={0.05}
-            value={beta}
-            format={(value) => value.toFixed(2)}
-            onChange={(value) => {
-              setState({ beta: value });
-              narrate(`Beta ${value.toFixed(2)}.`);
-            }}
-          />
-          <RangeControl
-            label="DPO learning rate"
-            min={0.05}
-            max={1}
-            step={0.05}
-            value={learningRate}
-            format={(value) => value.toFixed(2)}
-            onChange={(value) => setState({ learningRate: value })}
-          />
-        </LabSurface>
-
-        <LabSurface label="Per-pair rewards" className="tg-pair-scores">
-          <SurfaceHeading kicker="One row per comparison" title="Implicit reward, pair by pair" />
-          <div className="pref-pairs">
-            {pairs.map((pair, index) => (
-              <PairBlock key={index} pair={pair} score={scores[index]} beta={beta} scale={rewardScale} label={`${index + 1}`} />
-            ))}
-            {pairs.length === 0 && (
-              <p className="lab-note">
-                Each line needs three parts separated by vertical bars: a prompt, the completion you
-                prefer, and the one you do not.
-              </p>
-            )}
-          </div>
-          <h4 className="pref-group-label">
-            Held-out pairs · never used by the optimizer · {heldOutOrdered} of {HELD_OUT_PAIRS.length} ordered
-            correctly
-          </h4>
-          <div className="pref-pairs">
-            {HELD_OUT_PAIRS.map((pair, index) => (
-              <PairBlock
-                key={`held-${index}`}
-                pair={pair}
-                score={heldOutScores[index]}
-                beta={beta}
-                scale={rewardScale}
-                label={`H${index + 1}`}
-              />
-            ))}
-          </div>
-          <p className="lab-note">
-            Each dumbbell spans one pair&rsquo;s margin on an axis centred at zero (the reference). A
-            reward is β times how much more log-probability the policy gives a completion than the
-            reference did. It is not a quality score, and the reference&rsquo;s raw log-probability
-            favours the shorter completion whatever its quality. The H pairs are fixed comparisons of
-            the same kind that no step ever trains on, so a pair ordered here has carried over from the
-            training pairs and a pair not ordered has not.
-          </p>
-        </LabSurface>
-      </div>
+          ))}
+        </div>
+        <p className="lab-note">
+          Each dumbbell spans one pair&rsquo;s margin on an axis centred at zero (the reference). A
+          reward is β times how much more log-probability the policy gives a completion than the
+          reference did. It is not a quality score, and the reference&rsquo;s raw log-probability
+          favours the shorter completion whatever its quality. The H pairs are fixed comparisons of
+          the same kind that no step ever trains on, so a pair ordered here has carried over from the
+          training pairs and a pair not ordered has not.
+        </p>
+      </LabSurface>
     </div>
   );
 }

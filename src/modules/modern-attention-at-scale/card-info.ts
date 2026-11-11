@@ -39,7 +39,7 @@ const cardInfo: ModuleCardInfo = {
     summary:
       "Prefill FLOPs for one layer of the same model as the prompt grows: the weight matmuls grow linearly with tokens, full causal attention grows with the square, and a 4,096-token window grows linearly again.",
     whatYouSee: [
-      "Three curves in TFLOP against sequence length in thousands of tokens: weight matmuls (solid), attention with the full span (dashed), and attention with a 4,096 window (dotted). A vertical line marks the current length.",
+      "Three curves in TFLOP against sequence length in thousands of tokens: weight matmuls (solid), attention with the full span (dashed), and attention with a 4,096 window (dotted). A vertical line marks the current length. Under the chart, one bar splits the layer's FLOPs at that length into weight matmuls and attention, with a dashed mark at half.",
       "Metrics: attention's share of the layer's FLOPs at the current length and span, the crossover length where attention equals the weight matmuls, the memory a stored score matrix would take, and what FlashAttention keeps instead.",
     ],
     howItWorks: [
@@ -67,7 +67,7 @@ const cardInfo: ModuleCardInfo = {
     summary:
       "One query's attention over 16 keys, processed in tiles the way FlashAttention does: keep a running max, a running sum, and a running output, and rescale them whenever a tile brings a larger score. After the last tile the output equals the ordinary softmax to rounding.",
     whatYouSee: [
-      "A row of 16 keys with their scores q·k. Finished tiles are shaded, the tile currently in fast on-chip memory (SRAM) is outlined, and waiting tiles are grey.",
+      "A row of 16 keys with their scores q·k. Finished tiles are shaded, the tile currently in fast on-chip memory (SRAM) is outlined, and waiting tiles are grey. A small arrow marks the key that holds the running max m, and a dashed line marks where the loaded keys end.",
       "Weights below each key: a dashed outline for the full softmax weight and a filled bar for exp(s − m) ÷ ℓ using the statistics so far.",
       "A table with one row per processed tile: tile max, running max m, rescale factor, running sum ℓ, and the normalised output o ÷ ℓ.",
       "A final row comparing the online output with the full softmax output.",
@@ -97,7 +97,7 @@ const cardInfo: ModuleCardInfo = {
     summary:
       "Rotary position embedding rotates each pair of query and key dimensions by position × θ for that pair. Rotating q by m and k by n makes their dot product depend only on m − n. The lab uses a toy 8-dimensional head so every pair is visible.",
     whatYouSee: [
-      "A unit circle for the selected pair: dashed rays are the unrotated q and k, solid rays are q rotated by m·θ (round dot) and k rotated by n·θ (square).",
+      "A unit circle for the selected pair: dashed rays are the unrotated q and k, solid rays are q rotated by m·θ (round dot) and k rotated by n·θ (square). Two arcs with arrowheads show those turns, and the shaded wedge is the angle between q and k.",
       "Controls for query position m, key position n, both shifted together, the dimension pair, and the RoPE base.",
       "A Score row with the full 8-dimensional dot product after rotation, and the same score after shifting both positions.",
       "A chart of the selected pair's share of q·k against distance, for base 10,000 and base 500,000.",

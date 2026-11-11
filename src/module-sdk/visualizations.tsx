@@ -1,4 +1,11 @@
-import type { CSSProperties, ReactNode } from "react";
+import {
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from "react";
 import { curveMonotoneX, line, linkHorizontal } from "d3-shape";
 import { formatPercent } from "@app/lib/math";
 import { CardInfoButton, useCardInfo, type CardInfo } from "./card-info";
@@ -390,10 +397,6 @@ export interface LineSeries {
   format?: (value: number) => string;
 }
 
-/**
- * A small multi-series chart. The legend repeats every final value as text, so
- * the chart always has a readable data alternative.
- */
 /** Compact axis numbers: 1200 → 1.2k, 0.125 → 0.13, 3 → 3. */
 function formatAxisTick(value: number) {
   const size = Math.abs(value);
@@ -404,6 +407,55 @@ function formatAxisTick(value: number) {
   return String(+value.toFixed(size < 1 ? 2 : 1));
 }
 
+/**
+ * Round tick values inside a domain: 0, 0.5, 1, 1.5 rather than thirds of whatever
+ * the data happened to span. Falls back to the two ends for a degenerate domain.
+ */
+export function niceTicks(minimum: number, maximum: number, target = 4): number[] {
+  const span = maximum - minimum;
+  if (!(span > 0) || !Number.isFinite(span)) return [minimum];
+  const rough = span / Math.max(1, target);
+  const magnitude = 10 ** Math.floor(Math.log10(rough));
+  const fraction = rough / magnitude;
+  const step = (fraction >= 7.5 ? 10 : fraction >= 3.5 ? 5 : fraction >= 1.5 ? 2 : 1) * magnitude;
+  const ticks: number[] = [];
+  const first = Math.ceil(minimum / step - 1e-9) * step;
+  for (let value = first; value <= maximum + step * 1e-9; value += step) {
+    ticks.push(Math.abs(value) < step * 1e-9 ? 0 : +value.toPrecision(12));
+  }
+  return ticks.length >= 2 ? ticks : [minimum, maximum];
+}
+
+/**
+ * The rendered width of an element, so an SVG can be drawn at its real size: set the
+ * viewBox to the measured width and text lands at the pixel size the CSS asks for,
+ * instead of shrinking with a fixed viewBox in a narrow card. Returns `[ref, width]`;
+ * `fallback` is used before the first measurement and where there is no layout (tests).
+ */
+export function useMeasuredWidth<T extends HTMLElement>(fallback: number) {
+  const ref = useRef<T>(null);
+  const [width, setWidth] = useState(fallback);
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (!element || typeof ResizeObserver === "undefined") return;
+    const read = () => {
+      const next = Math.round(element.getBoundingClientRect().width);
+      if (next > 0) setWidth((current) => (Math.abs(current - next) > 1 ? next : current));
+    };
+    read();
+    const observer = new ResizeObserver(read);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  return [ref, width] as const;
+}
+
+/**
+ * A small multi-series chart, drawn at the size of its card so tick labels stay
+ * readable in a narrow column. Pointing at the plot reads every series at that x.
+ * The legend repeats every final value as text, so the chart always has a readable
+ * data alternative.
+ */
 export function LineChart({
   label,
   series,
@@ -423,11 +475,15 @@ export function LineChart({
   marker?: { x: number; label: string };
   footnote?: string;
 }) {
+  const [frameRef, measured] = useMeasuredWidth<HTMLDivElement>(490);
+  const [probe, setProbe] = useState<number | null>(null);
+  const width = Math.min(960, Math.max(240, measured));
+  const height = Math.round(Math.min(300, Math.max(196, width * 0.46)));
   const points = series.flatMap((entry) => entry.points);
-  const left = 48;
-  const right = 470;
-  const top = 18;
-  const bottom = 196;
+  const left = 46;
+  const right = width - 14;
+  const top = 22;
+  const bottom = height - 36;
   const [xMinimum, xMaximum] = xDomain ?? [
     Math.min(...points.map((point) => point.x), 0),
     Math.max(...points.map((point) => point.x), 1),
@@ -446,61 +502,95 @@ export function LineChart({
     left + ((clamp(value, xMinimum, xMaximum) - xMinimum) / xSpan) * (right - left);
   const yAt = (value: number) =>
     bottom - ((clamp(value, yMinimum, yMaximum) - yMinimum) / ySpan) * (bottom - top);
-  // Ends are always labelled; the midpoint only when it is a readable value.
-  const xMiddle = (xMinimum + xMaximum) / 2;
-  const integerDomain = Number.isInteger(xMinimum) && Number.isInteger(xMaximum);
-  const xTicks =
-    xMaximum > xMinimum
-      ? !integerDomain || Number.isInteger(xMiddle)
-        ? [xMinimum, xMiddle, xMaximum]
-        : [xMinimum, xMaximum]
-      : [xMinimum];
+  const yTicks = niceTicks(yMinimum, yMaximum, height > 240 ? 5 : 4);
+  const yStep = yTicks.length > 1 ? Math.abs(yTicks[1] - yTicks[0]) : ySpan;
+  const formatY = (value: number) =>
+    Math.abs(value) >= 1e4
+      ? formatAxisTick(value)
+      : String(+value.toFixed(yStep >= 1 ? 0 : yStep >= 0.1 ? 1 : yStep >= 0.01 ? 2 : 3));
+  const xTicks = niceTicks(xMinimum, xMaximum, width > 420 ? 5 : 3).filter(
+    (tick) => !Number.isInteger(xMinimum) || !Number.isInteger(xMaximum) || Number.isInteger(tick),
+  );
+  const formatter = (entry: LineSeries) => entry.format ?? ((value: number) => value.toFixed(3));
   const describe = (entry: LineSeries) => {
     const last = entry.points[entry.points.length - 1];
-    const formatter = entry.format ?? ((value: number) => value.toFixed(3));
-    return last ? formatter(last.y) : "no data";
+    return last ? formatter(entry)(last.y) : "no data";
   };
+  /** The point of a series closest to a data x, so a probe never invents a value between samples. */
+  const nearest = (entry: LineSeries, x: number) => {
+    let best: PlotPoint | undefined;
+    for (const point of entry.points) {
+      if (!best || Math.abs(point.x - x) < Math.abs(best.x - x)) best = point;
+    }
+    return best;
+  };
+  const readProbe = (event: ReactPointerEvent<SVGSVGElement>) => {
+    const box = event.currentTarget.getBoundingClientRect();
+    if (box.width <= 0) return;
+    const local = ((event.clientX - box.left) / box.width) * width;
+    if (local < left - 6 || local > right + 6) {
+      setProbe(null);
+      return;
+    }
+    const x = xMinimum + ((Math.min(right, Math.max(left, local)) - left) / (right - left)) * xSpan;
+    // Snap to the sample of the densest series, so every readout is a plotted point.
+    const guide = series.reduce<LineSeries | undefined>(
+      (dense, entry) => (!dense || entry.points.length > dense.points.length ? entry : dense),
+      undefined,
+    );
+    const snapped = guide ? nearest(guide, x)?.x : undefined;
+    setProbe(snapped ?? x);
+  };
+  const probed = probe === null ? null : series.map((entry) => nearest(entry, probe));
+  const probeOnRight = probe !== null && xAt(probe) > (left + right) / 2;
 
   return (
-    <div className="viz-line-chart">
+    <div className={`viz-line-chart ${probe !== null ? "is-probing" : ""}`.trim()} ref={frameRef}>
       <svg
-        viewBox="0 0 490 236"
+        viewBox={`0 0 ${width} ${height}`}
         role="img"
         aria-label={`${label}. ${series
           .map((entry) => `${entry.name} ends at ${describe(entry)}`)
           .join(". ")}.`}
+        onPointerMove={readProbe}
+        onPointerDown={readProbe}
+        onPointerLeave={() => setProbe(null)}
       >
-        <line className="plot-axis" x1={left} x2={right} y1={bottom} y2={bottom} />
-        <line className="plot-axis" x1={left} x2={left} y1={top} y2={bottom} />
-        {[0, 0.5, 1].map((fraction) => (
-          <g key={fraction}>
+        {yTicks.map((tick) => (
+          <g key={`y-${tick}`}>
             <line
               className="viz-line-chart__grid"
               x1={left}
               x2={right}
-              y1={yAt(yMinimum + fraction * ySpan)}
-              y2={yAt(yMinimum + fraction * ySpan)}
+              y1={yAt(tick)}
+              y2={yAt(tick)}
             />
             <text
               className="viz-line-chart__tick"
               x={left - 7}
-              y={yAt(yMinimum + fraction * ySpan) + 3}
+              y={yAt(tick) + 3.5}
               textAnchor="end"
             >
-              {(yMinimum + fraction * ySpan).toFixed(2)}
+              {formatY(tick)}
             </text>
           </g>
         ))}
+        <line className="plot-axis" x1={left} x2={right} y1={bottom} y2={bottom} />
+        <line className="plot-axis" x1={left} x2={left} y1={top} y2={bottom} />
         {xTicks.map((tick) => (
-          <text
-            key={`x-${tick}`}
-            className="viz-line-chart__tick"
-            x={xAt(tick)}
-            y={bottom + 12}
-            textAnchor={tick === xMinimum ? "start" : tick === xMaximum ? "end" : "middle"}
-          >
-            {formatAxisTick(tick)}
-          </text>
+          <g key={`x-${tick}`}>
+            <line className="plot-axis" x1={xAt(tick)} x2={xAt(tick)} y1={bottom} y2={bottom + 4} />
+            <text
+              className="viz-line-chart__tick"
+              x={xAt(tick)}
+              y={bottom + 15}
+              textAnchor={
+                xAt(tick) - left < 10 ? "start" : right - xAt(tick) < 10 ? "end" : "middle"
+              }
+            >
+              {formatAxisTick(tick)}
+            </text>
+          </g>
         ))}
         {marker && (
           <g>
@@ -513,8 +603,8 @@ export function LineChart({
             />
             <text
               className="viz-line-chart__marker-label"
-              x={xAt(marker.x) + (xAt(marker.x) > (left + right) / 2 ? -4 : 4)}
-              y={top + 9}
+              x={xAt(marker.x) + (xAt(marker.x) > (left + right) / 2 ? -5 : 5)}
+              y={top + 10}
               textAnchor={xAt(marker.x) > (left + right) / 2 ? "end" : "start"}
             >
               {marker.label}
@@ -530,7 +620,51 @@ export function LineChart({
             )}
           />
         ))}
-        <text className="viz-line-chart__axis-label" x={(left + right) / 2} y={230} textAnchor="middle">
+        {/* A dot where each line ends, which is the value the legend prints. */}
+        {probe === null &&
+          series.map((entry) => {
+            const last = entry.points[entry.points.length - 1];
+            return last ? (
+              <circle
+                key={`end-${entry.id}`}
+                className={`viz-line-chart__end viz-line-chart__end--${entry.tone ?? "forward"}`}
+                cx={xAt(last.x)}
+                cy={yAt(last.y)}
+                r={3.2}
+              />
+            ) : null;
+          })}
+        {probe !== null && probed && (
+          <g className="viz-line-chart__probe" aria-hidden="true">
+            <line x1={xAt(probe)} x2={xAt(probe)} y1={top} y2={bottom} />
+            {series.map((entry, index) => {
+              const point = probed[index];
+              return point ? (
+                <circle
+                  key={`probe-${entry.id}`}
+                  className={`viz-line-chart__end viz-line-chart__end--${entry.tone ?? "forward"}`}
+                  cx={xAt(point.x)}
+                  cy={yAt(point.y)}
+                  r={3.6}
+                />
+              ) : null;
+            })}
+            <text
+              className="viz-line-chart__marker-label"
+              x={xAt(probe) + (probeOnRight ? -6 : 6)}
+              y={bottom - 6}
+              textAnchor={probeOnRight ? "end" : "start"}
+            >
+              {`${xLabel.split(/[,(·]/)[0].trim()} ${formatAxisTick(+probe.toPrecision(4))}`}
+            </text>
+          </g>
+        )}
+        <text
+          className="viz-line-chart__axis-label"
+          x={(left + right) / 2}
+          y={height - 5}
+          textAnchor="middle"
+        >
           {xLabel}
         </text>
         <text className="viz-line-chart__axis-label" x={left} y={12}>
@@ -538,13 +672,16 @@ export function LineChart({
         </text>
       </svg>
       <div className="viz-line-chart__legend">
-        {series.map((entry) => (
-          <span key={entry.id} className={`viz-legend viz-legend--${entry.tone ?? "forward"}`}>
-            <i className={`viz-legend__dash viz-legend__dash--${entry.dash ?? "solid"}`} />
-            {entry.name}
-            <b>{describe(entry)}</b>
-          </span>
-        ))}
+        {series.map((entry, index) => {
+          const point = probed?.[index];
+          return (
+            <span key={entry.id} className={`viz-legend viz-legend--${entry.tone ?? "forward"}`}>
+              <i className={`viz-legend__dash viz-legend__dash--${entry.dash ?? "solid"}`} />
+              {entry.name}
+              <b>{point ? formatter(entry)(point.y) : describe(entry)}</b>
+            </span>
+          );
+        })}
       </div>
       {footnote && <p className="viz-line-chart__footnote">{footnote}</p>}
     </div>
@@ -662,10 +799,17 @@ export function Heatmap({
                 type="button"
                 role="gridcell"
                 key={`${rowIndex}-${columnIndex}`}
-                className={isSelected ? "is-selected" : ""}
+                className={[isSelected ? "is-selected" : "", value >= 0.12 ? "is-strong" : ""]
+                  .filter(Boolean)
+                  .join(" ")}
                 aria-label={`${row} to ${column}: ${formatPercent(value)}`}
                 aria-selected={isSelected}
-                style={{ "--heat-value": value } as CSSProperties}
+                style={
+                  {
+                    "--heat-value": value,
+                    "--heat-shade": Math.sqrt(Math.min(1, Math.max(0, value))),
+                  } as CSSProperties
+                }
                 onClick={() => onSelect?.(rowIndex, columnIndex)}
               >
                 <span>{formatPercent(value)}</span>
@@ -674,6 +818,12 @@ export function Heatmap({
           }),
         ])}
       </div>
+      {/* The shade follows the square root of the share; the mid tick marks where 25% sits. */}
+      <p className="viz-heatmap-scale" aria-hidden="true">
+        0%
+        <i />
+        100% · mid-mark 25% · stronger colour = larger share
+      </p>
     </div>
   );
 }

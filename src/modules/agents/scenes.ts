@@ -37,7 +37,7 @@ const scenes: LabScene[] = [
     id: "compounding",
     sections: ["Small mistakes multiply"],
     title: "Twenty steps at 95%",
-    look: "Read Completes end to end, then the No gate column of the table, where the chance shrinks as the run gets longer.",
+    look: "Read Completes end to end, then follow the bars: each step leaves fewer runs fully right, and they turn red once fewer than half are.",
     step: 6,
     focus: "Reliability",
   },

@@ -8,7 +8,8 @@ const cardInfo: ModuleCardInfo = {
     whatYouSee: [
       "A `Probe text` box (up to 64 characters; Enter adds a line break) and one button per character; the pressed one is inspected. The line under it says how many characters that position has read.",
       "The residual panel: 256 bars for the normalized residual x, with a red dash on each bar for the SAE's reconstruction x̂.",
-      "The code panel: 1,024 slots with a spike for each active feature, its height the activation; the selected feature's spike is red.",
+      "The code panel: 1,024 slots with a spike for each active feature, its height the activation; the selected feature's spike is red. The three tallest spikes and the selected one carry their feature numbers.",
+      "Two arrows between the panels name the steps, encoder and decoder. Under the second arrow, one bar splits x into the share the active features rebuild and the hatched share left unexplained.",
       "Three readouts: active features (L0), the unexplained share ‖x − x̂‖² / ‖x‖², and the cosine between x and x̂.",
       "The eight largest active features with their values. `window start` marks a feature whose cached top examples come from the first four positions of a window; `no cached examples` means the feature has no training-text evidence.",
     ],
@@ -43,9 +44,10 @@ const cardInfo: ModuleCardInfo = {
       "A `Feature` menu of the 128 cached features in cache order (largest maximum first), each listed with the character its top examples fired on most; `window start` marks the flagged ones.",
       "Flag chips for the selected feature, and a line giving how many of the 115,200 scanned characters it is active on and how many of those were at window position 0.",
       "`Examples shown`: the top eight overall, or, for a feature with early-window examples, the top eight from position 4 on.",
-      "Eight training-text snippets with the character the feature fired on highlighted, a badge giving its window position, the activation, and a bar relative to the largest shown. Dimmed text is outside what the model had read: before its 64-character window, or after the marked character.",
+      "Eight training-text snippets with the character the feature fired on highlighted, a dot on a track showing where it sat in the 64-character window (the first four positions are shaded), a badge giving that window position, the activation, and a bar relative to the largest shown. Dimmed text is outside what the model had read: before its 64-character window, or after the marked character.",
       "`Label to test` (`Same character`, `Capital letter`, `Space`, `Line break`, `First 4 characters`) and `Activation threshold` from 0 to 10 in activation units.",
       "Your text as chips shaded by the feature's activation, with the value underneath. A heavy border means the feature fires, a pink bar means the character matches the label, and a dotted top edge marks window positions 0 to 3.",
+      "Two rows of character chips, drawn like the chips above. The Precision row holds every character where the feature fires; the Recall row holds every character the label matches. A filled chip with a heavy border and a pink bar is a hit; a heavy border alone is a false alarm; a dashed chip is a miss.",
       "Precision, recall and how many characters the feature fires on, the counts of hits, misses and false alarms, and how many of the shown examples the label matches.",
     ],
     howItWorks: [
@@ -82,6 +84,8 @@ const cardInfo: ModuleCardInfo = {
       "Left chart: the unexplained share against k, largest features first, with a marker at the slider. Right chart: the SAE's reconstruction error over its 10,000 training steps.",
       "Three readouts: the unexplained share keeping k, keeping 1, and keeping all 32.",
       "Overlap readouts: mean and largest |cosine| between the decoder directions of the features active here, and across all 523,776 pairs of the 1,024 directions.",
+      "A half-circle dial with the most similar pair drawn as two arrows at their true angle, from same way on the right to opposite on the left. The shaded sliver at the top is where a typical pair sits, close to a right angle.",
+      "Your probe text with a bar on top of each character where the first feature of the pair is active and a bar underneath where the second is.",
       "The most similar pair, its signed cosine, the number of pairs above 0.9, and how often the pair is active together on your text.",
     ],
     howItWorks: [
@@ -114,8 +118,9 @@ const cardInfo: ModuleCardInfo = {
     whatYouSee: [
       "Four controls: `Feature to steer`, `Steering position` (a character of the probe text, default 43, the comma after aye), `Steering strength` from 0 to 15, and `Random control direction` (a seed from 1 to 20).",
       "A sentence giving what the model has read, the character your text continues with, how long the push is next to the residual, and how the label scores on your text.",
-      "Three lists of the six most likely next characters, with their probabilities as text: before, after adding the feature, and after adding random direction `seed`. The label character is marked `(label)` and added if it is not in the top six.",
+      "Three lists of the six most likely next characters, with their probabilities as text: before, after adding the feature, and after adding random direction `seed`. The label character is marked `(label)` and added if it is not in the top six. On the after and control lists, a tick on each bar marks that character's probability before steering.",
       "Readouts: the label character's probability before and after, its change in log probability (nats), the range of that change over 20 random directions, and how many standard deviations the feature's change is from their mean.",
+      "A strip that puts the feature's change in log probability (a diamond) on one axis with the range of the 20 random directions (a hatched band) and a dashed line at 0.",
       "A sentence stating the verdict, the three largest rises and falls, a chart of the change against strength with the random spread as dotted lines, a table of the same numbers, and a `Continue` button that writes 12 characters greedily three ways.",
     ],
     howItWorks: [

@@ -28,7 +28,7 @@ const scenes: LabScene[] = [
     id: "bradley-terry",
     sections: ["Turning picks into chances: Bradley-Terry"],
     title: "From a reward gap to a chance",
-    look: "The line under each pair turns the gap between the two answers’ r values into the chance that the first one wins.",
+    look: "The bar and the line of text under each pair turn the gap between the two answers’ r values into the chance that the first one wins.",
     step: 1,
     focus: "Preference pairs",
   },

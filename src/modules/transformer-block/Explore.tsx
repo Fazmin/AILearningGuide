@@ -6,6 +6,7 @@ import {
   RangeControl,
   SegmentedControl,
   SurfaceHeading,
+  useMeasuredWidth,
   type ModuleContext,
 } from "@app/module-sdk";
 import {
@@ -74,15 +75,20 @@ const count = (value: number) => {
 };
 const grouped = (value: number) => value.toLocaleString("en-US");
 
-/** Eight diverging bars on a shared scale, so rows can be compared by length. */
-function VectorBars({ values, scale, label }: { values: Vector; scale: number; label: string }) {
+type RowTone = "stream" | "copy" | "attention" | "mlp";
+
+/**
+ * Eight diverging bars on a shared scale, so rows can be compared by length. Direction carries the
+ * sign; the colour says whose vector it is, matching the lanes of the Residual stream card.
+ */
+function VectorBars({ values, scale, label, tone }: { values: Vector; scale: number; label: string; tone: RowTone }) {
   const width = 132;
-  const height = 30;
+  const height = 36;
   const step = width / values.length;
   const middle = height / 2;
   return (
     <svg
-      className="tb-bars"
+      className={`tb-bars tb-bars--${tone}`}
       viewBox={`0 0 ${width} ${height}`}
       role="img"
       aria-label={`${label}: ${values.map((value) => value.toFixed(2)).join(", ")}`}
@@ -261,6 +267,8 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
         ];
 
   const barScale = Math.max(1e-6, ...rows.flatMap((row) => row.vector.map((value) => Math.abs(value))));
+  const normScale = Math.max(1e-6, ...rows.map((row) => norm(row.vector)));
+  const hiddenScale = Math.max(1e-6, ...hidden.map((value) => Math.abs(value)));
 
   const toggle = (key: "norm" | "attention" | "mlp") => {
     const current = key === "norm" ? normOn : key === "attention" ? attentionOn : mlpOn;
@@ -286,8 +294,10 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
     1e-6,
     ...sums.flatMap((entry) => [entry.start, entry.afterAttention, entry.afterMlp, entry.output].map(Math.abs)),
   );
-  const waterfallWidth = 520;
-  const rowHeight = 20;
+  // Drawn at the card's real width, so the d0…d7 labels keep their size in a narrow card.
+  const [waterfallRef, waterfallMeasured] = useMeasuredWidth<HTMLDivElement>(520);
+  const waterfallWidth = Math.min(760, Math.max(260, waterfallMeasured));
+  const rowHeight = 24;
   const left = 34;
   const plot = waterfallWidth - left - 10;
   const xAt = (value: number) => left + plot / 2 + (value / domain) * (plot / 2);
@@ -348,13 +358,21 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
         </div>
 
         <ol className={`tb-flow tb-flow--${placement}`}>
-          {rows.map((row) => (
+          {rows.map((row, index) => {
+            // A branch leaves the rail at its first row and rejoins it at the + that follows its last row.
+            const tap = row.kind === "branch" && rows[index - 1]?.kind !== "branch";
+            const merge = row.kind === "stream" && rows[index - 1]?.kind === "branch";
+            const tone: RowTone = row.extra ?? (row.kind === "stream" ? "stream" : "copy");
+            const rowNorm = norm(row.vector);
+            return (
             <li
               key={row.id}
               className={[
                 "tb-row",
                 `tb-row--${row.kind}`,
                 `tb-row--${row.focus}`,
+                tap ? "tb-row--tap" : "",
+                merge ? "tb-row--merge" : "",
                 row.enabled === false ? "is-off" : "",
               ].filter(Boolean).join(" ")}
             >
@@ -377,8 +395,13 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
                   )}
                   <small>{row.detail}</small>
                 </div>
-                <VectorBars values={row.vector} scale={barScale} label={`${row.name} vector`} />
-                <code className="tb-row__norm">norm {fixed(norm(row.vector))}</code>
+                <VectorBars values={row.vector} scale={barScale} label={`${row.name} vector`} tone={tone} />
+                <div className={`tb-row__norm tb-row__norm--${tone}`}>
+                  <code>norm {fixed(rowNorm)}</code>
+                  <span aria-hidden="true">
+                    <i style={{ width: `${Math.min(100, (rowNorm / normScale) * 100)}%` }} />
+                  </span>
+                </div>
                 {row.extra === "attention" && attentionOn && (
                   <div className="tb-heads" aria-label="Attention weights for this token">
                     {heads.map((weightsForHead, head) => (
@@ -398,14 +421,36 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
                     ))}
                   </div>
                 )}
+                {row.extra === "mlp" && mlpOn && (
+                  <div
+                    className="tb-hidden"
+                    role="img"
+                    aria-label={`The MLP widens ${WIDTH} numbers to ${HIDDEN} hidden units and narrows them back to ${WIDTH}. For this token ${activeUnits} of the ${HIDDEN} units are positive.`}
+                  >
+                    <span>{WIDTH} in →</span>
+                    <div className="tb-hidden__units">
+                      {hidden.map((value, unit) => (
+                        <i key={unit} className={value > 0 ? "is-on" : ""}>
+                          <b style={{ height: `${Math.max(8, (Math.abs(value) / hiddenScale) * 100)}%` }} />
+                        </i>
+                      ))}
+                    </div>
+                    <span>→ {WIDTH} out</span>
+                    <small>
+                      {HIDDEN} hidden units after GELU: {activeUnits} positive (filled, taller is larger), the rest
+                      pushed to about zero (hollow)
+                    </small>
+                  </div>
+                )}
               </div>
             </li>
-          ))}
+            );
+          })}
         </ol>
         <p className="tb-note">
-          The stream runs down the left rail. Branch rows read a copy of it and write back at the next +.
-          Bars share one scale, so lengths compare across rows. Weights are seeded and untrained: this
-          shows the plumbing, not learned behaviour.
+          The stream runs down the solid left rail. A dotted path taps a copy of it, runs through the dashed
+          sublayer rows and writes back at the next +. Bars share one scale, so lengths compare across rows.
+          Weights are seeded and untrained: this shows the plumbing, not learned behaviour.
         </p>
       </LabSurface>
 
@@ -414,6 +459,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           kicker={`Token “${TOKENS[position]}” · ${WIDTH} dimensions`}
           title="Every write adds to the same vector"
         />
+        <div className="tb-waterfall-frame" ref={waterfallRef}>
         <svg
           className="tb-waterfall"
           viewBox={`0 0 ${waterfallWidth} ${waterfallHeight}`}
@@ -423,26 +469,33 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           <line className="tb-waterfall__zero" x1={xAt(0)} x2={xAt(0)} y1={4} y2={waterfallHeight - 12} />
           {sums.map((entry, index) => {
             const top = 6 + index * rowHeight;
-            const lane = (from: number, to: number, offset: number, className: string) => (
-              <rect
-                className={className}
-                x={Math.min(xAt(from), xAt(to))}
-                y={top + offset}
-                width={Math.max(0.8, Math.abs(xAt(to) - xAt(from)))}
-                height={4.2}
-              />
-            );
+            // Each lane is an arrow from where the previous lane ended to where this one ends.
+            const lane = (from: number, to: number, offset: number, className: string) => {
+              const start = xAt(from);
+              const end = xAt(to);
+              const y = top + offset;
+              const length = Math.abs(end - start);
+              if (length < 1.2) return <rect className={className} x={end - 0.6} y={y} width={1.2} height={5} />;
+              const neck = end - Math.sign(end - start) * Math.min(5, length);
+              return (
+                <path
+                  className={className}
+                  d={`M${start} ${y} H${neck} V${y - 1.6} L${end} ${y + 2.5} L${neck} ${y + 6.6} V${y + 5} H${start} Z`}
+                />
+              );
+            };
             return (
               <g key={index}>
-                <text className="tb-waterfall__label" x={left - 6} y={top + 11} textAnchor="end">
+                <text className="tb-waterfall__label" x={left - 6} y={top + 15} textAnchor="end">
                   d{index}
                 </text>
-                {lane(0, entry.start, 1, "tb-waterfall__input")}
-                {lane(entry.start, entry.afterAttention, 6.5, "tb-waterfall__attention")}
-                {lane(entry.afterAttention, entry.afterMlp, 12, "tb-waterfall__mlp")}
+                {index > 0 && <line className="tb-waterfall__rule" x1={left} x2={waterfallWidth - 10} y1={top - 1} y2={top - 1} />}
+                {lane(0, entry.start, 2, "tb-waterfall__input")}
+                {lane(entry.start, entry.afterAttention, 9, "tb-waterfall__attention")}
+                {lane(entry.afterAttention, entry.afterMlp, 16, "tb-waterfall__mlp")}
                 <path
                   className="tb-waterfall__output"
-                  d={`M ${xAt(entry.output)} ${top + 3} l 4 5.5 l -4 5.5 l -4 -5.5 z`}
+                  d={`M ${xAt(entry.output)} ${top + 4.5} l 5 7 l -5 7 l -5 -7 z`}
                 />
               </g>
             );
@@ -457,8 +510,9 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             {fixed(domain, 1)}
           </text>
         </svg>
+        </div>
         <div className="tb-legend" aria-hidden="true">
-          <span><i className="tb-legend__input" />input x (top lane)</span>
+          <span><i className="tb-legend__input" />input x (top lane, from 0)</span>
           <span><i className="tb-legend__attention" />+ attention write (middle)</span>
           <span><i className="tb-legend__mlp" />+ MLP write (bottom)</span>
           <span><i className="tb-legend__output" />output</span>
@@ -567,6 +621,35 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           </span>
           <span className="tb-param-bar__norms" style={{ flexGrow: Math.max(counts.norms, counts.total * 0.004) }} title="norms" />
         </div>
+        <div className="tb-param-figure" aria-hidden="true">
+          <div className="tb-param-mats">
+            <div className="tb-param-mats__attention" style={{ flexGrow: counts.attention }}>
+              {["Q", "K", "V", "out"].map((name) => (
+                <span key={name}>
+                  {name}
+                  <small>d × d</small>
+                </span>
+              ))}
+            </div>
+            <div className="tb-param-mats__mlp" style={{ flexGrow: counts.mlp }}>
+              {(paramMlp === "gelu" ? ["up", "down"] : ["gate", "up", "down"]).map((name) => (
+                <span key={name}>
+                  {name}
+                  <small>
+                    {name === "down" ? `${grouped(counts.hidden)} × d` : `d × ${grouped(counts.hidden)}`}
+                  </small>
+                </span>
+              ))}
+            </div>
+            <div className="tb-param-mats__norms" style={{ flexGrow: Math.max(counts.norms, counts.total * 0.004) }} />
+          </div>
+          <div className="tb-param-ruler">
+            <i style={{ width: `${(counts.twelveDSquared / (counts.attention + counts.mlp + Math.max(counts.norms, counts.total * 0.004))) * 100}%` }} />
+            <small>
+              ruler: 12 squares of d × d = {grouped(counts.twelveDSquared)} weights. Attention fills 4, the MLP about 8.
+            </small>
+          </div>
+        </div>
 
         <div className="tb-param-formulas">
           <FormulaWithValues label="Attention" expression="4 · d²  (Q, K, V, output)" result={grouped(counts.attention)} tone="gradient" />
@@ -632,21 +715,55 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
         </div>
         <div className="tb-order-pair" role="group" aria-label="The two sentences being compared">
           {[
-            { name: "Original", words: orderResult.original },
-            { name: "Reordered", words: orderResult.reordered },
-          ].map((line) => (
+            { name: "Original", words: orderResult.original, movedAt: (slot: number) => orderResult.rows[slot]?.to !== slot },
+            {
+              name: "Reordered",
+              words: orderResult.reordered,
+              movedAt: (slot: number) => orderResult.rows.some((row) => row.to === slot && row.from !== slot),
+            },
+          ].map((line, lineIndex) => (
             <div key={line.name} className="tb-order-line">
               <span>{line.name}</span>
               <ol aria-label={`${line.name} order: ${line.words.join(" ")}`}>
                 {line.words.map((word, slot) => (
-                  <li key={slot}>
+                  <li key={slot} className={line.movedAt(slot) ? "is-moved" : ""}>
                     <small>{slot}</small>
                     {word}
                   </li>
                 ))}
               </ol>
+              {lineIndex === 0 && (
+                <svg
+                  className="tb-order-links"
+                  viewBox={`0 0 ${TOKENS.length * 100} 40`}
+                  preserveAspectRatio="none"
+                  aria-hidden="true"
+                >
+                  {orderResult.rows.map((row) => {
+                    const from = row.from * 100 + 50;
+                    const to = row.to * 100 + 50;
+                    return (
+                      <path
+                        key={row.from}
+                        className={row.shift > ORDER_TOLERANCE ? "is-changed" : "is-same"}
+                        d={`M${from} 0 C${from} 22 ${to} 18 ${to} 40`}
+                      />
+                    );
+                  })}
+                </svg>
+              )}
             </div>
           ))}
+          <p className="tb-order-key" aria-hidden="true">
+            <span className="is-changed">
+              <i />
+              solid line: that word&apos;s output changed
+            </span>
+            <span className="is-same">
+              <i />
+              dashed line: same output as before
+            </span>
+          </p>
         </div>
         <table className="tb-order-table">
           <caption>

@@ -5,6 +5,8 @@ interface IconButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 
   children: ReactNode;
   ref?: Ref<HTMLButtonElement>;
   tooltipSide?: "top" | "right" | "bottom" | "left";
+  /** Hang a top or bottom tooltip from one edge of the button, for a button beside a clipping edge. */
+  tooltipAlign?: "start" | "end";
 }
 
 export function IconButton({
@@ -12,6 +14,7 @@ export function IconButton({
   children,
   className = "",
   tooltipSide = "bottom",
+  tooltipAlign,
   ...props
 }: IconButtonProps) {
   return (
@@ -20,6 +23,7 @@ export function IconButton({
       aria-label={label}
       data-tooltip={label}
       data-tooltip-side={tooltipSide}
+      data-tooltip-align={tooltipAlign}
       className={`icon-button ${className}`}
       {...props}
     >

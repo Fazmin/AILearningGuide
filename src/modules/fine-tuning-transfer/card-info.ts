@@ -10,6 +10,7 @@ const cardInfo: ModuleCardInfo = {
       "A chart of fine-tuning progress against target-corpus loss. Solid `started from pretrained` and dashed `started from zero`, y axis in nats per token from 1.70 to about 3.50.",
       "Three metrics: `Transfer, target loss`, `Scratch, target loss`, and either `Transfer is lower by` or `Transfer is higher by` that gap in nats.",
       "A footnote: both curves are full-corpus loss on Recipe steps at each saved checkpoint, same seed, same budget.",
+      "A row of bars under the chart, one per checkpoint: the head start, scratch loss minus transfer loss, with its value printed and the largest one darkest.",
     ],
     howItWorks: [
       "The base model is trained once, cached, on Harbor weather notes for 60 epochs at seed 1. Transfer continues from those weights at seed 2. Scratch starts from zeros at seed 2. Both use your `Fine-tune learning rate` and `Fine-tune epochs`.",
@@ -72,6 +73,7 @@ const cardInfo: ModuleCardInfo = {
       "The adaptation budget and the step size, plus the three losses that tell you whether the push was worth it: harbor before, harbor after, and how much recipe loss you gained.",
     whatYouSee: [
       "`Fine-tune epochs` from `no adaptation` at 0 to 60 passes, and `Fine-tune learning rate` from 0.05 to 2.00.",
+      "Two arrows on one loss scale, from a ring at the loss before the fine-tune to an arrowhead at the loss after: Recipe steps (target) and Harbor weather notes (original), each with the change printed as better or worse.",
       "Three metrics: `Source before`, `Source after` (loss tone once forgetting exceeds 0.05 nats), and `Target gained` as `CE(recipes, before) − CE(recipes, after)`.",
     ],
     howItWorks: [
@@ -103,7 +105,7 @@ const cardInfo: ModuleCardInfo = {
     whatYouSee: [
       "Five buttons, each labelled with the six vocabulary characters it covers (`␣abcde`, `fghijk`, …) and a status `trainable` or `frozen`.",
       "Three metrics: `Frozen rows` out of 30, `Trainable weights` as `(30 − frozen rows) × 30`, and `Forgetting` with the same +0.05 nats colour threshold as the controls card.",
-      "A row strip with one bar per context character: the length of that row's change, ‖W_after − W_before‖, scaled to the largest. Frozen rows are hatched; trainable rows that never moved carry a dot.",
+      "A row strip with one bar per context character, six under each button: the length of that row's change, ‖W_after − W_before‖, scaled to the largest change with nothing frozen. Frozen rows are hatched and carry a dashed outline of how far they would have moved if left free; trainable rows that never moved carry a dot.",
       "A note stating that this model has no layers, so the grid freezes context rows of the bigram table rather than transformer blocks.",
     ],
     howItWorks: [
@@ -135,7 +137,8 @@ const cardInfo: ModuleCardInfo = {
     whatYouSee: [
       "Replay share, a slider from no replay to 100% of the original corpus in notches of 12.5%. Each notch is exactly one of Harbor weather notes' eight sentences, and the readout names the share and the sentence count. Held-out target sentences, a slider from 0 to 4, whose readout says how many of the eight recipe sentences are held out and how many trained on.",
       "A chart against fine-tuning progress of three losses in nats per character: the recipe sentences it trained on (solid), the recipe sentences held out (dotted), and Harbor weather notes (dashed, forgetting). With nothing held out the dotted line is absent.",
-      "A table with a No replay column and, once Replay share is above 0, a With replay column. Its rows are Trained-on target, Held-out target, Forgetting on all original sentences, Forgetting on the replayed sentences, Forgetting on the sentences not replayed, and Optimizer steps.",
+      "A tile for each of the eight recipe sentences and the eight Harbor sentences: filled when it is in the fine-tuning text, outlined when it is only scored.",
+      "A table with a No replay column and, once Replay share is above 0, a With replay column. Each forgetting value has a bar that grows right of a tick for worse and left for better. Its rows are Trained-on target, Held-out target, Forgetting on all original sentences, Forgetting on the replayed sentences, Forgetting on the sentences not replayed, and Optimizer steps.",
       "A kicker counting trained-on, held-out, and replayed sentences, and a badge with the optimizer steps of the run.",
     ],
     howItWorks: [
@@ -172,7 +175,7 @@ const cardInfo: ModuleCardInfo = {
       "A badge `rule N of 5 matched` and four fieldsets, each a question with `Yes` and `No` buttons: does the knowledge change often, must answers cite sources, do you need a consistent format, style or behaviour, and do you have hundreds of good examples and an evaluation set.",
       "A `Recommended route` box with the route name, the sentence that explains why this rule fired, and a `Next` line saying what to do first.",
       "Four printed lines, one per question, each starting with the question's short name and your answer, so you can read what each answer contributed.",
-      "The whole rule table: five rows in order, the first that matches wins, and the matched row ends with `(matched)` and carries an outline as well as the text.",
+      "The whole rule table: five rows in order, the first that matches wins, and the matched row ends with `(matched)` and carries an outline as well as the text. Each row shows a `needs Yes` mark under every condition it depends on, filled with a tick when your answers meet it and dashed with a cross when they do not; a row of your answers sits on top.",
     ],
     howItWorks: [
       "`recommend()` tests the rows in order. Row 1: facts change or need citations, and a consistent format is needed, and you have examples plus an evaluation set. Row 2: facts change or need citations. Row 3: a consistent format is needed and you have the examples and the evaluation set. Row 4: a consistent format is needed. Row 5: none of those.",

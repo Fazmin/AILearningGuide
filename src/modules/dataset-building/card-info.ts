@@ -8,7 +8,7 @@ const cardInfo: ModuleCardInfo = {
     whatYouSee: [
       "A kicker counting the scraped lines (20, or 21 with the leak on) and how many the current pipeline removed, plus a `Show` control: `All lines` or `Kept only`.",
       "A pressable row, `Leak a held-out sentence into the scrape`, reading `off` or `leaked`.",
-      "An ordered list. Each row is the line text, a verdict chip (`kept`, `boilerplate`, `too short`, `exact repeat`, `near-duplicate`, or `held-out overlap`), and the line's character count. A near-duplicate chip also prints the trigram Jaccard `J` with the line it matched; a leaked line that survives says `leaked`.",
+      "An ordered list. Each row is the line's number, the line text, a verdict chip (`kept`, `boilerplate`, `too short`, `exact repeat`, `near-duplicate`, or `held-out overlap`), and the line's character count. A near-duplicate chip also prints the trigram Jaccard `J` with the line it matched; a leaked line that survives says `leaked`.",
       "Removed lines are struck through and dimmed, so a verdict never depends on the chip colour alone.",
     ],
     howItWorks: [
@@ -41,7 +41,7 @@ const cardInfo: ModuleCardInfo = {
       "A chart whose x axis is training progress from 0 to 1 and whose y axis is held-out loss in nats per token, pinned from 1.50 to 3.50.",
       "Two series named with their training-pair counts: dashed `raw (N pairs)` and solid `cleaned (N pairs)`.",
       "Three metrics: `Raw held-out`, `Cleaned held-out`, and `Difference`, signed with a minus when cleaning wins.",
-      "A contamination check: the longest run of words the cleaned training set shares with the held-out text, the run itself, and a flag at 8 words or more. With the leak on it also prints the cleaned model's loss on the two held-out sentences the leak did not copy.",
+      "A contamination check: the longest run of words the cleaned training set shares with the held-out text, drawn as filled slots out of the 8 that raise the flag, and the run itself. With the leak on it also prints the cleaned model's loss on the two held-out sentences the leak did not copy.",
     ],
     howItWorks: [
       "Each run is minibatch SGD on a character bigram, 25 epochs, batch 16, learning rate 0.6, seed 4, seven checkpoints. The only difference is the training text.",
@@ -70,9 +70,9 @@ const cardInfo: ModuleCardInfo = {
     summary:
       "The same verdicts as the line list, counted stage by stage in pipeline order: how many lines and characters are left after each filter, and how much each one removed.",
     whatYouSee: [
-      "One row per stage: Scraped, Strip boilerplate, Length floor, Exact dedup, Near-dup, Decontaminate. A centred bar's width is the number of lines left after that stage.",
-      "Where a stage removed lines, a hatched ghost bar behind it shows the width before the stage.",
-      "On the right, lines and characters left, and underneath the stage's own removal (`−9 lines · −319 chars`), `removes nothing here`, or `stage off`.",
+      "One row per stage: Scraped, Strip boilerplate, Length floor, Exact dedup, Near-dup, Decontaminate. Each row is a centred strip of squares, one per line that reaches that stage, numbered as in the line list.",
+      "A line that a stage removes is drawn as a hatched square in that stage's row, so the next row is narrower by exactly those squares.",
+      "Above each strip, the stage's own removal (`−9 lines · −319 chars`), `removes nothing here`, or `stage off`, and on the right the lines and characters left.",
     ],
     howItWorks: [
       "Rows are computed from the verdict list: each stage removes exactly the lines tagged with its verdict, so the removals always add up to the difference between the first and last rows.",
@@ -84,7 +84,7 @@ const cardInfo: ModuleCardInfo = {
     ],
     notice: [
       "Boilerplate removes 9 of 20 lines but only 319 of 899 characters: the lines it removes are short. Counting documents and counting tokens tell different stories.",
-      "A stage that is on but removes nothing still appears as a full-width row. That is not a bug: the earlier stages already took its targets.",
+      "A stage that is on but removes nothing still appears as a row with no hatched squares. That is not a bug: the earlier stages already took its targets.",
     ],
     limits: [
       "In this lab: twenty lines, five stages, and one order. The funnel cannot reorder stages.",
@@ -129,8 +129,8 @@ const cardInfo: ModuleCardInfo = {
     summary:
       "How much text survived, how repetitive it is, and a three-way split bar drawn by line. The bar is a teaching picture of a split; the validation loss chart does not use it.",
     whatYouSee: [
-      "A first metric row: `Lines kept` as kept / scraped, `Characters` after encoding into the 30-symbol vocabulary, and `Training pairs` from the cleaned run.",
-      "A second row: `Distinct trigrams` in the cleaned text, `Repetition` as one minus distinct/total trigrams, and `Raw repetition` of the unfiltered page.",
+      "Four metrics: `Lines kept` as kept / scraped, `Characters` after encoding into the 30-symbol vocabulary, `Training pairs` from the cleaned run, and `Distinct trigrams` in the cleaned text.",
+      "Two bars on one scale: `Raw repetition` of the unfiltered page above `Repetition` of the cleaned text, each one minus distinct/total trigrams.",
       "A split bar labelled `train N`, `val N`, and `test N`, sized by a 70% / 15% / remainder split of the kept lines, with validation getting at least one line.",
     ],
     howItWorks: [
@@ -143,7 +143,7 @@ const cardInfo: ModuleCardInfo = {
       "Comparison worth running: read `Repetition` with defaults (45%), turn every switch off (60%), then turn only `Strip boilerplate` on (51%).",
     ],
     notice: [
-      "`Repetition` uses the loss tone when the cleaned text is more repetitive than the raw page, which can happen if you drop the diverse sentences and keep the furniture.",
+      "The `Repetition` bar turns to the hatched loss tone when the cleaned text is more repetitive than the raw page, which can happen if you drop the diverse sentences and keep the furniture.",
       "At the defaults `Distinct trigrams` falls from 366 to 285 while repetition falls from 60% to 45%: fewer distinct sequences and less repetition at once.",
       "If you keep one line, the bar still draws a validation slice of 1 because of the `max(1, …)` floor — do not treat that as a usable split.",
     ],
@@ -160,9 +160,9 @@ const cardInfo: ModuleCardInfo = {
       "Two count-based character models, one built from the raw scrape and one from whatever the current pipeline kept. Each starts from the opening characters of its own training text, writes 300 characters, and is scored on how much of that output is a verbatim copy. The `Context length` slider is the only thing that changes how much each model can copy.",
     whatYouSee: [
       "A `Context length` slider from 1 to 12 characters, and a badge that repeats it. At 1 character the model is the same bigram the rest of the track trains.",
-      "Two columns, `Trained on the raw scrape` and `Trained on the cleaned set`. Each prints the first 170 characters of its sample and three metrics: `Copied verbatim (16+ chars)`, `Longest copied run`, and `Footer text in the sample`.",
+      "Two columns, `Trained on the raw scrape` and `Trained on the cleaned set`. Each prints the first 170 characters of its sample, with the stretches copied verbatim marked, and three metrics: `Copied verbatim (16+ chars)`, `Longest copied run`, and `Footer text in the sample`.",
       "A line under each sample saying how many of that model's contexts have only one possible next character, in which case it has no choice but to continue the text it saw.",
-      "A table with the same sweep at context lengths 1, 2, 3, 4, 5, 6, 8, and 12: the share copied verbatim for each model, and the share of the raw model's sample that is footer text. The row for the current slider value is shaded.",
+      "A chart of the same sweep at context lengths 1, 2, 3, 4, 5, 6, 8, and 12: the share copied verbatim for each model, and the share of the raw model's sample that is footer text, with a marker at the current slider value. A fold-out table under it lists the same numbers and shades the row for the slider value.",
     ],
     howItWorks: [
       "The model is a table of counts, not a trained network. For a context length `k`, every run of `k` characters in the training text records which character came next. Sampling draws the next character in proportion to those counts, seeded with 7, after being given the first `k` characters of the training text.",

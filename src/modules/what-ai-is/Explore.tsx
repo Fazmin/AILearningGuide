@@ -11,7 +11,8 @@ import {
 } from "@app/module-sdk";
 import { ERAS, ERA_YEARS, eraYearFromState } from "./eras";
 import { STEP_SIZE, downhill, gradient, leastSquares, mse, residuals } from "./fit";
-import { DataPlot, ParamPlot } from "./plots";
+import { EraTimeline, RingBoard, SignalGlyph, eraThread } from "./boards";
+import { DataPlot, LossPath, ParamPlot } from "./plots";
 import {
   OUTPUT_KINDS,
   SCENARIOS,
@@ -477,6 +478,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             <ParamPlot w={weight} b={bias} trail={trail} />
           </figure>
         </div>
+        <LossPath losses={trail.map((point) => mse(point.w, point.b))} floor={best.loss} />
         <ul className="gw-legend wai-legend" aria-hidden="true">
           <li><i className="is-forward" />current line / current (w, b)</li>
           <li><i className="is-loss" />residual ŷ − y, with its square</li>
@@ -574,16 +576,31 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           format={(value) => `${ERAS[value]?.year ?? ""} ${ERAS[value]?.title ?? ""}`}
           onChange={(value) => setState({ eraYear: ERAS[Math.min(ERAS.length - 1, Math.max(0, Math.round(value)))].year })}
         />
-        <div className="metric-row">
-          <Metric label="Year" value={`${selectedEra.year}`} />
-          <Metric label="Key idea" value={selectedEra.title} tone="forward" />
+        <EraTimeline
+          eras={ERAS}
+          current={era}
+          onSelect={(index) => setState({ eraYear: ERAS[index].year })}
+        />
+        <div className="wai-era__detail">
+          <p className="wai-era__head">
+            <b>{selectedEra.year}</b>
+            <strong>{selectedEra.title}</strong>
+            <span className={`wai-era__thread is-${eraThread(selectedEra.year)}`}>
+              {eraThread(selectedEra.year) === "symbolic" ? "symbolic AI thread" : "neural nets thread"}
+            </span>
+            <span className="wai-era__count">
+              stop {era + 1} of {ERAS.length}
+            </span>
+          </p>
+          <div className="wai-era__pair">
+            <p className="lab-note wai-era__idea">
+              <strong>Idea:</strong> {selectedEra.idea}
+            </p>
+            <p className="lab-note wai-era__stall">
+              <strong>Why it stalled:</strong> {selectedEra.stalled}
+            </p>
+          </div>
         </div>
-        <p className="lab-note">
-          <strong>Idea:</strong> {selectedEra.idea}
-        </p>
-        <p className="lab-note">
-          <strong>Why it stalled:</strong> {selectedEra.stalled}
-        </p>
       </LabSurface>
 
       <LabSurface label="Sort leftover terms" className="term-sort-card">
@@ -596,6 +613,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             </span>
           }
         />
+        <div className="wai-sort">
         <div
           className="term-listbox"
           role="listbox"
@@ -614,8 +632,9 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             if (event.key === "Enter") assign(selectedTerm.id, destination);
           }}
         >
-          {TERMS.map((item) => {
+          {TERMS.map((item, index) => {
             const guess = placed[item.id];
+            const status = guess ? (guess === item.ring ? "is-correct" : "is-corrected") : "is-unplaced";
             return (
               <button
                 key={item.id}
@@ -623,13 +642,16 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
                 role="option"
                 aria-selected={item.id === term}
                 draggable
-                className={item.id === term ? "is-current" : ""}
+                className={`${status}${item.id === term ? " is-current" : ""}`}
                 onClick={() => setState({ term: item.id })}
                 onDragStart={(event) => {
                   event.dataTransfer.setData("text/plain", item.id);
                   setState({ term: item.id });
                 }}
               >
+                <i className="wai-num" aria-hidden="true">
+                  {index + 1}
+                </i>
                 <strong>{item.label}</strong>
                 <small>
                   {guess
@@ -641,6 +663,19 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
               </button>
             );
           })}
+        </div>
+        <figure className="wai-sort__board">
+          <RingBoard
+            terms={TERMS.map((item) => ({ id: item.id, label: item.label, ring: item.ring, guess: placed[item.id] }))}
+            selected={term}
+            destination={destination}
+            onPickRing={(value) => setState({ destination: value })}
+          />
+          <figcaption>
+            Shaded band = the ring chosen under Place in ring. A placed term lands here as its list number; a dashed
+            ghost with an arrow marks a guess that was moved.
+          </figcaption>
+        </figure>
         </div>
         <div
           className="place-ring-control"
@@ -696,15 +731,33 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             </span>
           }
         />
-        <div className="mixing-grid distinction-grid signal-tiles">
-          {SIGNALS.map((item) => (
-            <div className="mixing-tile" key={item.id}>
-              <strong>
-                {item.label} · {item.source}
-              </strong>
-              <small>{item.body}</small>
-            </div>
-          ))}
+        <div className="wai-bins signal-tiles">
+          {SIGNALS.map((item) => {
+            const here = SCENARIOS.filter((entry) => signalPlaced[entry.id] !== undefined && entry.signal === item.id);
+            return (
+              <div className={`mixing-tile wai-bin${item.id === signalChoice ? " is-target" : ""}`} key={item.id}>
+                <SignalGlyph signal={item.id} />
+                <strong>
+                  {item.label} · {item.source}
+                </strong>
+                <small>{item.body}</small>
+                <ul className="wai-bin__chips" aria-label={`Scenarios sorted under ${item.label}`}>
+                  {here.map((entry) => {
+                    const guess = signalPlaced[entry.id];
+                    const moved = guess !== entry.signal;
+                    return (
+                      <li key={entry.id} className={moved ? "is-corrected" : "is-correct"}>
+                        <i aria-hidden="true">{moved ? "↪" : "✓"}</i>
+                        {entry.short}
+                        {moved && <small>moved from {signalById(guess).label}</small>}
+                      </li>
+                    );
+                  })}
+                  {here.length === 0 && <li className="is-empty">nothing sorted here yet</li>}
+                </ul>
+              </div>
+            );
+          })}
         </div>
         <div className="signal-sort">
           <div
@@ -734,7 +787,9 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
                   role="option"
                   aria-selected={item.id === scenarioId}
                   draggable
-                  className={item.id === scenarioId ? "is-current" : ""}
+                  className={`${guess ? (guess === item.signal ? "is-correct" : "is-corrected") : "is-unplaced"}${
+                    item.id === scenarioId ? " is-current" : ""
+                  }`}
                   onClick={() => setState({ scenario: item.id })}
                   onDragStart={(event) => {
                     event.dataTransfer.setData("text/plain", item.id);

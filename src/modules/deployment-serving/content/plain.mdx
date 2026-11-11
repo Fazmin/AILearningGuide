@@ -337,8 +337,8 @@ is the gap between one person’s tokens, shown as **Time per output token**. **
 person’s own tokens per second, which is one second divided by that gap.
 
 Batching raises throughput and worsens latency. This trade is what the card’s name, **Throughput and
-latency**, refers to, and its two charts show it side by side. The top chart, total tokens per
-second, climbs as you add users, while the bottom chart, each user’s own speed, sinks.
+latency**, refers to, and its two line charts show it side by side. The top one, total tokens per
+second, climbs as you add users, while the bottom one, each user’s own speed, sinks.
 
 Each extra user adds the same amount to every step, the time to read one more pile of notes. Early
 on, that is small next to the shared weights, so adding a second user costs each person only a
@@ -590,7 +590,7 @@ card as the numbers change. With one user, **Total** and **Per user** both read 
 that one person has the whole machine to themselves.
 
 At 8 users, **Total** reads 347 tok/s while **Per user** reads 43.4, and **Time per output token**
-reads 23 ms. Now keep going, and past 36 users both charts turn shaded, because the saved notes no
+reads 23 ms. Now keep going, and past 36 users both line charts turn shaded, because the saved notes no
 longer fit in 24 GiB. The shading is labelled `over 24.00 GiB beyond 36`, which marks the point
 where memory runs out.
 
@@ -693,8 +693,9 @@ while **Streams that fit** stays at 36. That is because the lab ignores the help
 memory. In a real server, the helper’s weights and notes would take some desk space too.
 
 The bar list below the readouts keeps all of this in view. It has a row for `No levers`, one row for
-each lever alone, and one for `Your selection`. Each bar’s length shows total tokens per second, and
-its label shows the cost per million tokens for that row.
+each lever alone, and one for `Your selection`. Each row has three bars, which show streams that fit,
+each user’s speed and total tokens per second. A tick on each bar marks the `No levers` value, and the
+row ends with its cost per million tokens.
 
 Two more experiments show where speculation stops helping, and the first is to drag **Acceptance
 rate** down to 0, so that every guess is wrong. **Per user** falls to 31.0 tok/s, slower than with

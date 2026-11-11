@@ -18,6 +18,7 @@ import {
   CONTEXT_MIN,
   copiedShare,
   footerShare,
+  normalized,
   recitationReport,
   SAMPLE_LENGTH,
   SAMPLE_SEED,
@@ -38,6 +39,7 @@ import {
   VALIDATION_TEXT,
   VARIANT_PAIR,
   type FunnelRow,
+  type LineResult,
   type LineVerdict,
   type PipelineOptions,
 } from "./clean";
@@ -50,6 +52,35 @@ const verdictLabel: Record<LineVerdict, string> = {
   near: "near-duplicate",
   contaminated: "held-out overlap",
 };
+
+/**
+ * Which characters of a sample sit inside a run of COPY_WINDOW or more characters found verbatim in the training
+ * text: the same rule `copiedShare` counts with, kept per character so the copied stretches can be marked.
+ */
+function copiedMask(sample: string, trainingText: string): boolean[] {
+  const source = normalized(trainingText);
+  const covered = new Array<boolean>(sample.length).fill(false);
+  for (let start = 0; start + COPY_WINDOW <= sample.length; start += 1) {
+    if (source.includes(sample.slice(start, start + COPY_WINDOW))) {
+      for (let offset = start; offset < start + COPY_WINDOW; offset += 1) covered[offset] = true;
+    }
+  }
+  return covered;
+}
+
+/** The first `length` characters of a sample, cut into stretches that are copied and stretches that are not. */
+function copiedRuns(sample: string, trainingText: string, length: number) {
+  const mask = copiedMask(sample, trainingText);
+  const runs: Array<{ text: string; copied: boolean }> = [];
+  for (let index = 0; index < Math.min(length, sample.length); index += 1) {
+    const last = runs[runs.length - 1];
+    if (last && last.copied === mask[index]) last.text += sample[index];
+    else runs.push({ text: sample[index], copied: mask[index] });
+  }
+  return runs;
+}
+
+const SHOWN_SAMPLE = 170;
 
 const TRAINING = { epochs: 25, batchSize: 16, learningRate: 0.6, seed: 4, checkpoints: 7 } as const;
 
@@ -216,6 +247,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
               key={`${entry.line}-${entry.index}`}
               className={`is-${entry.verdict}${entry.leaked ? " is-leaked" : ""}`}
             >
+              <em>{entry.index + 1}</em>
               <span>{entry.line}</span>
               <i>
                 {verdictLabel[entry.verdict]}
@@ -270,6 +302,15 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
               {shared.length === 1 ? "word" : "words"}
               {contaminated ? ` · flagged at ${CONTAMINATION_N}+` : ` · below the ${CONTAMINATION_N}-word flag`}
             </strong>
+            <div className="db-run" aria-hidden="true">
+              {Array.from({ length: CONTAMINATION_N }, (_, index) => (
+                <i key={index} className={index < shared.length ? "is-shared" : undefined} />
+              ))}
+              <em>
+                {Math.min(shared.length, CONTAMINATION_N)} of the {CONTAMINATION_N} words in a row that raise the flag
+                {shared.length > CONTAMINATION_N ? ` · +${shared.length - CONTAMINATION_N} more` : ""}
+              </em>
+            </div>
             <span>“{shared.span}”</span>
             {leak && (
               <span>
@@ -284,10 +325,11 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             kicker={`${rows[0].lines} lines in · ${rows[rows.length - 1].lines} lines out`}
             title="How much of the scrape survives each stage"
           />
-          <Funnel rows={rows} />
+          <Funnel rows={rows} results={results} />
           <p className="lab-note">
-            Bars are lines (documents) left after each stage, in the order the pipeline runs them; the hatched
-            ghost is what that stage removed. Characters are counted after encoding into the model's 30-symbol
+            Each square is one scraped line, numbered as in the list above. A row holds the lines that reach that
+            stage, in the order the pipeline runs them; a hatched square is a line that stage removed, so the next
+            row is that much narrower. Characters are counted after encoding into the model's 30-symbol
             vocabulary, which is what the trainer sees.
           </p>
         </LabSurface>
@@ -336,15 +378,28 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             <Metric label="Lines kept" value={`${cleanedLines.length} / ${scrape.length}`} />
             <Metric label="Characters" value={`${encodeTinyText(cleanedText).length}`} />
             <Metric label="Training pairs" value={`${runs.clean.tokens}`} />
-          </div>
-          <div className="metric-row db-metric-row">
             <Metric label="Distinct trigrams" value={`${quality.clean.distinct}`} tone="forward" />
-            <Metric
-              label="Repetition"
-              value={`${((1 - quality.clean.ratio) * 100).toFixed(0)}%`}
-              tone={quality.clean.ratio < quality.raw.ratio ? "loss" : "forward"}
-            />
-            <Metric label="Raw repetition" value={`${((1 - quality.raw.ratio) * 100).toFixed(0)}%`} />
+          </div>
+          <div
+            className="db-repeat"
+            role="img"
+            aria-label={`Repetition: ${((1 - quality.raw.ratio) * 100).toFixed(0)}% of the raw page's trigrams repeat an earlier one, against ${((1 - quality.clean.ratio) * 100).toFixed(0)}% of the cleaned text's.`}
+          >
+            <div className="db-repeat__row is-raw">
+              <span>Raw repetition</span>
+              <i>
+                <b style={{ width: `${(1 - quality.raw.ratio) * 100}%` }} />
+              </i>
+              <strong>{((1 - quality.raw.ratio) * 100).toFixed(0)}%</strong>
+            </div>
+            <div className={`db-repeat__row ${quality.clean.ratio < quality.raw.ratio ? "is-worse" : "is-clean"}`}>
+              <span>Repetition</span>
+              <i>
+                <b style={{ width: `${(1 - quality.clean.ratio) * 100}%` }} />
+              </i>
+              <strong>{((1 - quality.clean.ratio) * 100).toFixed(0)}%</strong>
+            </div>
+            <small>Share of trigrams that repeat an earlier one. Shorter is more varied.</small>
           </div>
           <div
             className="tg-split-bar"
@@ -395,17 +450,23 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             }}
           />
         </div>
+        <p className="db-probe-key">
+          <mark>Marked text</mark> is copied verbatim from that model's own training text, in runs of {COPY_WINDOW} or more
+          characters.
+        </p>
         <div className="db-probe-grid">
           {(
             [
-              { id: "raw", title: "Trained on the raw scrape", report: recital.raw, tone: "loss" },
-              { id: "clean", title: "Trained on the cleaned set", report: recital.clean, tone: "forward" },
+              { id: "raw", title: "Trained on the raw scrape", report: recital.raw, tone: "loss", training: rawText },
+              { id: "clean", title: "Trained on the cleaned set", report: recital.clean, tone: "forward", training: cleanedText || rawText },
             ] as const
           ).map((entry) => (
             <div key={entry.id} className="db-probe-column">
               <h4>{entry.title}</h4>
               <p className="db-probe-sample" aria-label={`Sample from the model trained on the ${entry.id === "raw" ? "raw scrape" : "cleaned set"}`}>
-                {entry.report.text.slice(0, 170)}
+                {copiedRuns(entry.report.text, entry.training, SHOWN_SAMPLE).map((run, index) =>
+                  run.copied ? <mark key={index}>{run.text}</mark> : <span key={index}>{run.text}</span>,
+                )}
               </p>
               <div className="metric-row">
                 <Metric label={`Copied verbatim (${COPY_WINDOW}+ chars)`} value={`${(entry.report.copied * 100).toFixed(0)}%`} tone={entry.tone} />
@@ -419,7 +480,44 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             </div>
           ))}
         </div>
-        <div className="db-probe-table-wrap">
+        <div className="db-probe-sweep">
+          <LineChart
+            label="Share of each sample copied verbatim, against context length"
+            xLabel="context length (characters)"
+            yLabel="share of the sample (%)"
+            xDomain={[CONTEXT_MIN, CONTEXT_MAX]}
+            yDomain={[0, 112]}
+            marker={{ x: context, label: `your setting: ${context}` }}
+            series={[
+              {
+                id: "raw",
+                name: "raw copied",
+                tone: "loss",
+                dash: "dashed",
+                points: recitalSweep.map((row) => ({ x: row.length, y: row.rawCopied * 100 })),
+                format: (value) => `${value.toFixed(0)}%`,
+              },
+              {
+                id: "clean",
+                name: "cleaned copied",
+                tone: "forward",
+                points: recitalSweep.map((row) => ({ x: row.length, y: row.cleanCopied * 100 })),
+                format: (value) => `${value.toFixed(0)}%`,
+              },
+              {
+                id: "footer",
+                name: "raw footer text",
+                tone: "muted",
+                dash: "dotted",
+                points: recitalSweep.map((row) => ({ x: row.length, y: row.rawFooter * 100 })),
+                format: (value) => `${value.toFixed(0)}%`,
+              },
+            ]}
+            footnote="The same test at eight context lengths: 1 to 6, 8 and 12. Copying switches on between 2 and 4 characters of context for both models. The legend reads the right-hand end until you point at the chart."
+          />
+        </div>
+        <details className="db-probe-table-wrap">
+          <summary>Show the eight sweeps as a table</summary>
           <table className="db-probe-table">
             <caption>
               The same sweep at eight context lengths: the share of each sample copied verbatim from its own training text
@@ -444,7 +542,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
               ))}
             </tbody>
           </table>
-        </div>
+        </details>
         <p className="lab-note">
           The model is a table of counts: every run of {context} {context === 1 ? "character" : "characters"} in the
           training text records which character followed it, and sampling draws in proportion. It starts from the first
@@ -456,14 +554,19 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
   );
 }
 
-function Funnel({ rows }: { rows: ReadonlyArray<FunnelRow> }) {
-  const rowHeight = 32;
-  const top = 4;
-  const barLeft = 96;
-  const barWidth = 132;
-  const center = barLeft + barWidth / 2;
-  const max = Math.max(1, rows[0].lines);
-  const height = top + rows.length * rowHeight + 4;
+/**
+ * The funnel drawn in units: one square per scraped line, numbered as in the line list. Each row holds the lines
+ * that reach that stage, centred, with the ones the stage removes hatched, so every row is narrower than the last
+ * by exactly the squares hatched above it.
+ */
+function Funnel({ rows, results }: { rows: ReadonlyArray<FunnelRow>; results: ReadonlyArray<LineResult> }) {
+  const width = 380;
+  const top = 2;
+  const rowHeight = 42;
+  const total = Math.max(1, results.length);
+  const pitch = Math.min(18, width / total);
+  const cell = pitch - 2;
+  const height = top + rows.length * rowHeight;
   const summary = rows
     .map((row) =>
       row.id === "scraped"
@@ -473,8 +576,9 @@ function Funnel({ rows }: { rows: ReadonlyArray<FunnelRow> }) {
           : `${row.label} off`,
     )
     .join("; ");
+  let standing = results.map((entry, index) => ({ ...entry, number: index + 1 }));
   return (
-    <svg className="db-funnel" viewBox={`0 0 380 ${height}`} role="img" aria-label={`Survival funnel: ${summary}.`}>
+    <svg className="db-funnel" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Survival funnel: ${summary}.`}>
       <defs>
         <pattern id="db-hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
           <line x1="0" y1="0" x2="0" y2="5" className="db-hatch-line" />
@@ -482,41 +586,16 @@ function Funnel({ rows }: { rows: ReadonlyArray<FunnelRow> }) {
       </defs>
       {rows.map((row, index) => {
         const y = top + index * rowHeight;
-        const previous = index === 0 ? row.lines : rows[index - 1].lines;
-        const before = (previous / max) * barWidth;
-        const after = (row.lines / max) * barWidth;
+        const incoming = standing;
+        if (row.id !== "scraped") standing = standing.filter((entry) => entry.verdict !== row.id);
+        const left = width / 2 - (incoming.length * pitch) / 2;
+        const removes = row.active && row.removedLines > 0;
         return (
           <g key={row.id} className={`db-funnel-row${row.active ? "" : " is-off"}`}>
-            <text className="db-funnel-label" x={0} y={y + 20}>
+            <text className="db-funnel-label" x={0} y={y + 12}>
               {row.label}
             </text>
-            {row.active && row.removedLines > 0 && (
-              <rect
-                className="db-funnel-ghost"
-                x={center - before / 2}
-                y={y + 5}
-                width={before}
-                height={rowHeight - 10}
-                rx={3}
-              />
-            )}
-            <rect
-              className={`db-funnel-bar${row.id === "scraped" ? " is-source" : ""}`}
-              x={center - after / 2}
-              y={y + 5}
-              width={Math.max(1, after)}
-              height={rowHeight - 10}
-              rx={3}
-            />
-            <text className="db-funnel-value" x={380} y={y + 14} textAnchor="end">
-              {row.lines} lines · {row.chars} chars
-            </text>
-            <text
-              className={`db-funnel-delta${row.active && row.removedLines > 0 ? " is-removed" : ""}`}
-              x={380}
-              y={y + 27}
-              textAnchor="end"
-            >
+            <text className={`db-funnel-delta${removes ? " is-removed" : ""}`} x={108} y={y + 12}>
               {row.id === "scraped"
                 ? "the raw page"
                 : !row.active
@@ -525,6 +604,28 @@ function Funnel({ rows }: { rows: ReadonlyArray<FunnelRow> }) {
                     ? "removes nothing here"
                     : `−${row.removedLines} lines · −${row.removedChars} chars`}
             </text>
+            <text className="db-funnel-value" x={width} y={y + 12} textAnchor="end">
+              {row.lines} lines · {row.chars} chars
+            </text>
+            {incoming.map((entry, position) => {
+              const removed = row.id !== "scraped" && entry.verdict === row.id;
+              const x = left + position * pitch + 1;
+              return (
+                <g
+                  key={entry.number}
+                  className={`db-funnel-cell${removed ? " is-removed" : ""}${row.id === "scraped" ? " is-source" : ""}`}
+                >
+                  <rect x={x} y={y + 18} width={cell} height={cell} rx={2.5} />
+                  {removed && <rect className="db-funnel-hatch" x={x} y={y + 18} width={cell} height={cell} rx={2.5} />}
+                  {cell >= 14 && (
+                    <text x={x + cell / 2} y={y + 18 + cell / 2 + 3.5} textAnchor="middle">
+                      {entry.number}
+                    </text>
+                  )}
+                  <title>{`Line ${entry.number}: ${entry.line}${removed ? ` (removed by ${row.label})` : ""}`}</title>
+                </g>
+              );
+            })}
           </g>
         );
       })}

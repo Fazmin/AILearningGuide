@@ -7,7 +7,7 @@ const cardInfo: ModuleCardInfo = {
       "The same character bigram trained at four epoch budgets, ranked under a scoring rule you choose: by default how often it gives the correct continuation a higher per-character log-probability than the distractor. Every score carries a 95% interval, and a paired comparison says whether the top two are actually separated by these items. Changing the rule re-scores the checkpoints and can reorder them.",
     whatYouSee: [
       "A `Scoring rule` selector (Length-normalised, Raw log-probability, Sample and check) and, under Sample and check, an `Attempts allowed (k)` slider from 1 to 10, with a note describing the chosen rule.",
-      "A forest plot: one row per checkpoint, the headline score with its 95% interval on the left (pass rate with a Wilson interval, or mean pass@k with a t interval), and the rule's second quantity on the right (mean margin, or mean pass@1). The leader's intervals are shaded across all rows, so overlap is visible at a glance.",
+      "A forest plot: one row per checkpoint, the headline score with its 95% interval on the left (pass rate with a Wilson interval, or mean pass@k with a t interval), and the rule's second quantity on the right (mean margin, or mean pass@1). The leader's intervals are shaded across all rows, so overlap is visible at a glance. With contamination on, a hollow mark under each row shows where that checkpoint scored without the leak, with an arrow to where it scores now.",
       "A table sorted by the headline score, then by the second quantity: `Passed` or `Mean pass@k`, `95% interval`, `Mean margin` or `Mean pass@1`, `Benchmark perplexity`, and `Control perplexity`. The leader row is highlighted.",
       "Metrics `Leader's standard error`, `Intervals overlapping the leader's`, and `Items for ±5 pts`.",
       "A callout with the leader-minus-runner-up margin difference, paired over the same items, and whether its interval excludes zero.",
@@ -44,7 +44,7 @@ const cardInfo: ModuleCardInfo = {
     whatYouSee: [
       "A kicker `Largest checkpoint · N epochs`.",
       "One row per item: the context, both scores joined by `›` or `‹` (raw totals or per-character means), the signed margin, a verdict, and a bar growing right of centre for a pass and left for a fail. Under Sample and check the row shows how many of the 20 draws picked the key, the item's pass@k, and a bar that grows from the left.",
-      "Passing and failing rows differ in border colour, bar direction, and the verdict text.",
+      "Passing and failing rows differ in border colour, bar direction, and the verdict text. With contamination on, a dark tick on each bar marks the same item's score before the leak.",
       "Metrics `Pass rate` with its 95% interval, `Mean margin`, and `Control perplexity`.",
     ],
     howItWorks: [
@@ -73,7 +73,7 @@ const cardInfo: ModuleCardInfo = {
     whatYouSee: [
       "A textarea labelled `context | correct | plausible distractor`.",
       "`Training budget multiplier` from 0.25× to 3.00× epochs.",
-      "Metrics `Training characters`, `Benchmark source`, and `Control`.",
+      "Three bars on one scale, `Training characters`, `Benchmark source`, and `Control`, each with its character count and whether it is trained on. With the leak on, the training bar grows by a hatched piece the colour of the benchmark source.",
     ],
     howItWorks: [
       "A line becomes an item when it splits on `|` into at least three non-empty parts. Extra parts are ignored and case is folded.",

@@ -8,7 +8,8 @@ const cardInfo: ModuleCardInfo = {
     whatYouSee: [
       "A kicker with the budget (600 steps of 16 pairs), the optimizer (plain SGD at rate 3) and the schedule, and a badge with the seed.",
       "Mixture preset with Uniform (1, 1, 1, 1) and General-heavy (3, 3, 3, 1), and four sliders, Harbor weight to Arithmetic weight, each from 0 to 8 with its share of every batch beside it.",
-      "A bar split into each domain's share of the batch, and a table of Weight, Share, Pairs drawn, Training pairs and Epochs per domain.",
+      "Across the top, a bar split into each domain's share of one batch; when Late phase switches the mixture, a second bar shows the late batch. A table of Weight, Share, Pairs drawn, Training pairs and Epochs per domain.",
+      "Under the sliders, a ruler for each domain whose blocks are full passes over that domain's own text, the same number as the Epochs column.",
       "Held-out loss by domain: one bar per domain plus General, the mean of the three general domains, out of 3.401, the loss of a table that knows nothing.",
       "Three metrics: General held-out, Arithmetic held-out, and the Late phase in force.",
     ],
@@ -41,7 +42,7 @@ const cardInfo: ModuleCardInfo = {
     whatYouSee: [
       "A kicker naming the three general weights the sweep holds fixed, and a badge with the current Arithmetic weight.",
       "A chart of held-out loss against Arithmetic epochs, solid for Arithmetic and dashed for General, with a marker at the current weight. The legend gives each line's value at weight 8.",
-      "A table with Arithmetic weight, Epochs, Arithmetic held-out, Gain per extra epoch and General held-out. The row of the run on the Data mixture card is highlighted.",
+      "A table with Arithmetic weight, Epochs, Arithmetic held-out, Gain per extra epoch and General held-out. The row of the run on the Data mixture card is highlighted, and each gain has a bar under it, so the shrinking return is visible down the column.",
     ],
     howItWorks: [
       "Each row is a separate training run with the same seed, so the row at the current weight is exactly the Data mixture card's run.",
@@ -71,7 +72,7 @@ const cardInfo: ModuleCardInfo = {
       "A kicker with the counts, a title, and a badge with the number of right answers out of 40.",
       "Three metrics: Arithmetic held-out, Right answers and Different answers, the number of distinct answers the probe gave across all 40 questions.",
       "Bars for the five likeliest answers, each as a share of the probability the 21 answers receive together.",
-      "Three held-out facts with the model's answer and the true one.",
+      "A grid with one mark for each of the 40 held-out facts, a tick for a right answer and a cross for a wrong one, then three of those facts with the model's answer and the true one.",
     ],
     howItWorks: [
       "Each answer is scored by the log-probability the table gives to its letters and the full stop, starting from the space after is. The answers' probabilities are then renormalized so the 21 shares add up to 100%.",
@@ -128,6 +129,7 @@ const cardInfo: ModuleCardInfo = {
       "Late phase with Same mix, Target mix and Target only, and Schedule with Warmup-stable-decay and Constant rate.",
       "A chart of the learning-rate multiplier and Arithmetic's share of each batch across the 600 steps, with a marker where the decay starts.",
       "A chart of Arithmetic and General held-out loss every 30 steps from step 90, solid for this run and dashed for the even spread.",
+      "A dot plot of the end-of-run losses on one axis: Arithmetic held-out and General held-out, with a disc for the switched run, a diamond for the even spread and a ring for no switch.",
       "A table of Arithmetic held-out, General held-out, Forgetting and Arithmetic pairs drawn, with columns Switched at decay, Spread evenly and No switch.",
     ],
     howItWorks: [

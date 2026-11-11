@@ -7,8 +7,9 @@ const cardInfo: ModuleCardInfo = {
       "Generation 0 is the character-bigram table fitted to 499 characters of human harbor notes. Every later generation is fitted to text that a generator wrote: by default the previous generation, or with the Generator control a fixed stronger teacher. The chart tracks what that loop keeps, for two regimes: synthetic text replacing the data, or synthetic text added on top of the human seed.",
     whatYouSee: [
       "The x axis is generation, 0 to 10. The y axis is whichever Measure is selected: Transitions (distinct character pairs with evidence), Coverage (share of the seed's character pairs still producible), Entropy (next-character uncertainty in nats), Real words (share of the generation's own writing that is seed words), or Unseen text (share of the character pairs in 586 characters of held-out harbor sentences that the generation can produce).",
-      "Two families of lines. Synthetic only is drawn solid in the loss tone; Real + synthetic is drawn dashed in the forward tone. Each family has eight thin lines, one per sampling seed, and a thick line through their mean. The selected Training data family is drawn stronger.",
+      "Two families of lines. Synthetic only is drawn solid in the loss tone; Real + synthetic is drawn dashed in the forward tone. Each family has eight thin lines, one per sampling seed, and a thick line through their mean. The selected Training data family is drawn stronger, and each mean line is named at its right-hand end.",
       "A dashed guide and enlarged dots at the Generation you selected. The legend and the three metrics repeat the generation-0 value and both means at that generation.",
+      "A strip of eleven small squares under the axis, one per generation: run 1's transition table for the selected Training data, with each seed pair drawn as a dot in the forward tone while it is present and in the loss tone once it is lost. The square for the selected generation is outlined.",
     ],
     howItWorks: [
       "Each model is fitted exactly: row c holds the count of each character that followed c in the training text, divided by the row total. That is the maximum-likelihood bigram table, the optimum SGD would approach.",
@@ -46,7 +47,7 @@ const cardInfo: ModuleCardInfo = {
       "The first 240 characters that the selected generation writes, from run 1 of 8, at the chosen temperature. With the real-words verifier on, each token is marked kept or struck through, which is exactly what the filter does to drafts before they become training data.",
     whatYouSee: [
       "A kicker naming the run, the Training data regime, and the temperature, and a title naming the generation. Generation 0 is the model fitted to the human seed.",
-      "The sample in monospace. When Filter is Real words only, rejected tokens are struck through and dimmed, so the verdict does not depend on colour.",
+      "The sample in monospace. Tokens that are seed words are bold and the made-up ones are dimmed. When Filter is Real words only, rejected tokens are also struck through, so the verdict does not depend on colour.",
       "Three metrics: `Real words here` (the share of tokens in this excerpt that are seed words), `Filter keeps` (the share of this excerpt's characters the verifier would keep), and `Trained on` (how many human and synthetic characters this generation was fitted to).",
     ],
     howItWorks: [
@@ -74,6 +75,7 @@ const cardInfo: ModuleCardInfo = {
     summary:
       "Four settings that decide what each generation writes and keeps: who writes the data (the model itself or a fixed stronger teacher), the sampling temperature, whether a real-words verifier filters the drafts, and how many characters each generation is fitted to.",
     whatYouSee: [
+      "A flow diagram of one round: the writer, the draft text, the training text, and the next generation, with the temperature and filter named on the arrows between them. An arrow from the next generation back to the writer closes the loop only when the model itself writes, and the human seed feeds the training text only under Real + synthetic.",
       "`Generator`: The model itself, where each generation is drafted by the previous one, or A stronger teacher, a fixed model that writes every generation's data. With the teacher on, a note says how it was trained.",
       "`Temperature` from 0.5 to 1.2, labelled sharpened below 1, flattened above 1, and the model as fitted at exactly 1.",
       "`Filter`: No filter keeps every drafted character; Real words only keeps tokens that are one of the seed's 57 words.",
@@ -111,7 +113,7 @@ const cardInfo: ModuleCardInfo = {
     summary:
       "Every character pair the human seed contains, laid out as a grid, marked present or lost in the selected generation's training text for run 1. Lost cells cluster among the pairs the seed used least.",
     whatYouSee: [
-      "A 28 × 28 grid: rows are the current character, columns the next one (space is shown as ␣). Only pairs that occur in the seed are drawn.",
+      "A 28 × 28 grid: rows are the current character, columns the next one, as the titles along its top and left edge say (space is shown as ␣). Only pairs that occur in the seed are drawn.",
       "A filled cell is a pair still present; darker means the seed used it more often. An outlined cell with a diagonal stroke is a pair that is gone.",
       "The title counts how many of the seed's 157 pairs remain. Three bars below split the lost pairs by how often the seed used them: once, 2–4 times, or 5+ times.",
     ],

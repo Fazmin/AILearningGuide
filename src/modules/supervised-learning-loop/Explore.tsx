@@ -37,12 +37,9 @@ import {
   type HoldoutSource,
   type LossKind,
 } from "./fit";
+import { DecisionPlot, EncodeDiagram, LossBars, ScoreWalk, SplitRail, TreePath, fromPlotX, fromPlotY } from "./views";
 
 const GRID = 28;
-const X_MIN = 0.6;
-const X_MAX = 4.4;
-const Y_MIN = -0.2;
-const Y_MAX = 1.2;
 const STAGES = [
   { id: "encode", name: "Encode", detail: "Row → x" },
   { id: "split", name: "Split", detail: "Train / holdout" },
@@ -58,17 +55,6 @@ const asNumber = (state: ModuleContext["state"], key: string, fallback: number) 
 const clamp = (value: number, low: number, high: number) => Math.min(high, Math.max(low, value));
 const pick = <T extends string>(value: string, allowed: readonly T[], fallback: T): T =>
   (allowed as readonly string[]).includes(value) ? (value as T) : fallback;
-
-const toPlotX = (rooms: number) => (rooms - X_MIN) / (X_MAX - X_MIN);
-const toPlotY = (park: number) => (park - Y_MIN) / (Y_MAX - Y_MIN);
-const fromPlotX = (x: number) => X_MIN + x * (X_MAX - X_MIN);
-const fromPlotY = (y: number) => Y_MIN + y * (Y_MAX - Y_MIN);
-
-/** Nudge only the mark so stacked (rooms, park) rows stay clickable. The fit ignores this. */
-const displayNudge = (id: number) => {
-  const angle = id * 2.399 + 0.55;
-  return { dx: 0.1 * Math.cos(angle), dy: 0.055 * Math.sin(angle) };
-};
 
 const fmt = (value: number, digits = 3) => (Number.isFinite(value) ? value.toFixed(digits) : "—");
 
@@ -160,6 +146,21 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
   const gap = snapshot.holdoutLoss - snapshot.trainLoss;
   const trainRows = apartments.filter((row) => row.split === "train");
   const holdRows = apartments.filter((row) => row.split === "holdout");
+  const predictions = apartments.map((row) => probability(encodeApartment(row, encoding)));
+  const lossUnit = loss === "logloss" ? "mean log-loss" : "mean squared error";
+  // The loss of answering 0.5 for every row: the mark a fit has to beat to be better than no rule.
+  const coinFlip = loss === "logloss" ? Math.log(2) : 0.25;
+  const scoredHoldouts = (["same", "shifted"] as const).map((source) => ({
+    id: source,
+    label: source === "same" ? "the same process" : "a different process",
+    snap: source === "same" ? sameSnapshot : shiftedSnapshot,
+    rows: apartmentsFor(source)
+      .filter((row) => row.split === "holdout")
+      .map((row) => {
+        const p = probability(encodeApartment(row, encoding));
+        return { row, p, right: (p >= 0.5 ? 1 : 0) === row.price };
+      }),
+  }));
 
   const hypothesisLine =
     algorithm === "tree"
@@ -259,6 +260,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
         >
           {stage === 0 && (
             <>
+              <EncodeDiagram row={current} names={names} x={currentX} />
               <VectorChip label={`${current.name} x`} values={currentX} tone="forward" />
               <p className="lab-note">
                 {encoding === "numeric"
@@ -271,6 +273,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           )}
           {stage === 1 && (
             <>
+              <SplitRail apartments={apartments} selected={selected} onSelect={(id) => setKnob({ selected: id })} />
               <div className="metric-row">
                 <Metric label="This row" value={`${current.name} · ${current.split}`} tone={current.split === "holdout" ? "loss" : "forward"} />
                 <Metric label="In the fit?" value={current.split === "train" ? "yes" : "no"} tone={current.split === "train" ? "forward" : "loss"} />
@@ -321,6 +324,15 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           )}
           {stage === 4 && (
             <>
+              <LossBars
+                label={`Train loss ${fmt(snapshot.trainLoss)} against holdout loss ${fmt(snapshot.holdoutLoss)}. The gap is ${fmt(gap)}.`}
+                unit={lossUnit}
+                gap
+                rows={[
+                  { id: "train", name: "L train", value: snapshot.trainLoss, tone: "train" },
+                  { id: "holdout", name: "L holdout", value: snapshot.holdoutLoss, tone: "holdout" },
+                ]}
+              />
               <div className="metric-row">
                 <Metric label="L holdout" value={fmt(snapshot.holdoutLoss)} tone="loss" />
                 <Metric label="L train" value={fmt(snapshot.trainLoss)} />
@@ -420,126 +432,22 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           }
           title="The boundary is the fitted rule, not a drawing"
         />
-        <svg
-          className="decision-canvas loop-canvas"
-          viewBox={`0 0 ${GRID} ${GRID}`}
-          role="img"
-          aria-label={`${algorithm} decision view at step ${step}. Train loss ${fmt(snapshot.trainLoss)}, holdout loss ${fmt(snapshot.holdoutLoss)}.`}
-          onClick={(event) => {
-            const rect = event.currentTarget.getBoundingClientRect();
-            const x = clamp((event.clientX - rect.left) / rect.width, 0, 1);
-            const y = clamp(1 - (event.clientY - rect.top) / rect.height, 0, 1);
-            const rooms = fromPlotX(x);
-            const park = fromPlotY(y);
-            let best = selected;
-            let bestDist = Infinity;
-            apartments.forEach((row) => {
-              const nudge = displayNudge(row.id);
-              const dx = row.rooms + nudge.dx - rooms;
-              const dy = row.park + nudge.dy - park;
-              const dist = dx * dx + dy * dy;
-              if (dist < bestDist) {
-                best = row.id;
-                bestDist = dist;
-              }
-            });
-            setKnob({ selected: best });
-          }}
-        >
-          {cells.map((cell, index) => (
-            <rect
-              key={index}
-              x={cell.x * GRID - 0.5}
-              y={(1 - cell.y) * GRID - 0.5}
-              width="1"
-              height="1"
-              className={`is-class-${cell.klass}`}
-              opacity={
-                usesProbability
-                  ? 0.42 + Math.min(1, Math.max(0, cell.value)) * 0.58
-                  : cell.klass
-                    ? 0.92
-                    : 0.55
-              }
-            />
-          ))}
-          {[1, 2, 3, 4].map((rooms) => (
-            <line
-              key={`vr-${rooms}`}
-              className="is-gridline"
-              x1={toPlotX(rooms) * GRID}
-              x2={toPlotX(rooms) * GRID}
-              y1="0"
-              y2={GRID}
-            />
-          ))}
-          {[0, 1].map((park) => (
-            <line
-              key={`hr-${park}`}
-              className="is-gridline"
-              x1="0"
-              x2={GRID}
-              y1={(1 - toPlotY(park)) * GRID}
-              y2={(1 - toPlotY(park)) * GRID}
-            />
-          ))}
-          {boundary && (
-            <line
-              className="is-boundary"
-              x1={toPlotX(boundary.x1) * GRID}
-              y1={(1 - toPlotY(boundary.y1)) * GRID}
-              x2={toPlotX(boundary.x2) * GRID}
-              y2={(1 - toPlotY(boundary.y2)) * GRID}
-            />
-          )}
-          {segments.map((segment, index) => {
-            if (segment.axis === "rooms") {
-              const x = toPlotX(segment.threshold) * GRID;
-              return (
-                <line
-                  key={`s-${index}`}
-                  className="is-split"
-                  x1={x}
-                  x2={x}
-                  y1={(1 - toPlotY(segment.to)) * GRID}
-                  y2={(1 - toPlotY(segment.from)) * GRID}
-                />
-              );
-            }
-            const y = (1 - toPlotY(segment.threshold)) * GRID;
-            return (
-              <line
-                key={`s-${index}`}
-                className="is-split"
-                x1={toPlotX(segment.from) * GRID}
-                x2={toPlotX(segment.to) * GRID}
-                y1={y}
-                y2={y}
-              />
-            );
-          })}
-          {apartments.map((row) => {
-            const nudge = displayNudge(row.id);
-            const cx = toPlotX(row.rooms + nudge.dx) * GRID;
-            const cy = (1 - toPlotY(row.park + nudge.dy)) * GRID;
-            return (
-              <circle
-                key={row.id}
-                cx={cx}
-                cy={cy}
-                r={row.id === selected ? 0.42 : 0.32}
-                className={`point-label-${row.price}${row.split === "holdout" ? " is-holdout" : ""}${row.id === selected ? " is-selected-point" : ""}`}
-              />
-            );
-          })}
-        </svg>
-        <div className="loop-axis-caption">
-          <span>rooms 1 → 4</span>
-          <span>park 0 → 1</span>
-        </div>
+        <DecisionPlot
+          cells={cells}
+          grid={GRID}
+          usesProbability={usesProbability}
+          boundary={boundary}
+          segments={segments}
+          apartments={apartments}
+          selected={selected}
+          predictions={predictions}
+          sliced={encoding !== "numeric"}
+          onSelect={(id) => setKnob({ selected: id })}
+          label={`${algorithm} decision view at step ${step}. Train loss ${fmt(snapshot.trainLoss)}, holdout loss ${fmt(snapshot.holdoutLoss)}. The rule gets ${predictions.filter((p, index) => (p >= 0.5 ? 1 : 0) === apartments[index].price).length} of ${apartments.length} rows right.`}
+        />
         <p className="lab-note">
-          Filled circles are train. Open circles are holdout. Marks that share (rooms, park) are nudged on the
-          plot only; every gradient and split uses the exact vector. {sliceNote}{" "}
+          Filled circles are train. Open circles are holdout. Marks that share (rooms, park) are set one above the
+          other on the plot only; every gradient and split uses the exact vector. {sliceNote}{" "}
           {algorithm === "tree"
             ? encoding === "numeric"
               ? "Opacity is the leaf's train fraction of high-price rows. Dashed segments are the tree's cuts on rooms or park, each spanning only the rectangle its parent owns."
@@ -628,20 +536,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           kicker="Authored 16-row apartment table"
           title="Only the filled split enters X and y"
         />
-        <div className="split-strip" aria-hidden="true">
-          {apartments.map((row) => (
-            <i
-              key={row.id}
-              className={`${row.split === "train" ? "is-train" : "is-test"}${row.price ? " is-positive" : ""}`}
-              title={row.name}
-            />
-          ))}
-        </div>
-        <div className="split-legend">
-          <span>Train · 12</span>
-          <span>Holdout · 4</span>
-          <span>Outline · high price</span>
-        </div>
+        <SplitRail apartments={apartments} selected={selected} />
         <div className="holdout-source-control">
           <SegmentedControl
             label="Holdout drawn from"
@@ -658,6 +553,41 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
                   : "Holdout drawn from a different process: small flats are the expensive ones.",
               );
             }}
+          />
+        </div>
+        <div className="sll-shift">
+          <p className="sll-shift__title">One fit, scored on each holdout</p>
+          {scoredHoldouts.map((item) => (
+            <div key={item.id} className={`sll-shift__row${item.id === holdoutSource ? " is-current" : ""}`}>
+              <strong>{item.label}</strong>
+              <ul>
+                {item.rows.map(({ row, p, right }) => (
+                  <li key={row.name} className={right ? "is-right" : "is-wrong"}>
+                    <b aria-hidden="true">{right ? "✓" : "✗"}</b>
+                    <span>{row.name}</span>
+                    <small>
+                      {usesProbability ? "p" : "ŷ"} {fmt(p, 2)} · y = {row.price}
+                      <span className="sr-only">, {right ? "right" : "wrong"}</span>
+                    </small>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+          <LossBars
+            label={`Holdout loss of the same fit: ${fmt(sameSnapshot.holdoutLoss)} on the same process, ${fmt(shiftedSnapshot.holdoutLoss)} on a different process. Train loss is ${fmt(snapshot.trainLoss)} in both.`}
+            unit={lossUnit}
+            rows={scoredHoldouts.map((item) => ({
+              id: item.id,
+              name: `L holdout, ${item.id === "same" ? "same" : "different"}`,
+              value: item.snap.holdoutLoss,
+              tone: "holdout" as const,
+              current: item.id === holdoutSource,
+            }))}
+            refs={[
+              { id: "train", name: "L train", value: snapshot.trainLoss },
+              { id: "coin", name: "answering 0.5 everywhere", value: coinFlip },
+            ]}
           />
         </div>
         <div className="source-table split-table">
@@ -691,7 +621,17 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
                     <td>{row.color}</td>
                     <td>{row.park ? "yes" : "no"}</td>
                     <td>{row.price}</td>
-                    <td>{fmt(p)}</td>
+                    <td className="sll-pcell">
+                      <span
+                        className={`sll-pbar ${(p >= 0.5 ? 1 : 0) === row.price ? "is-right" : "is-wrong"}`}
+                        aria-hidden="true"
+                      >
+                        <i style={{ left: `${clamp(p, 0, 1) * 100}%` }} />
+                      </span>
+                      <span>{fmt(p)}</span>
+                      <b aria-hidden="true">{(p >= 0.5 ? 1 : 0) === row.price ? "✓" : "✗"}</b>
+                      <span className="sr-only">{(p >= 0.5 ? 1 : 0) === row.price ? ", right" : ", wrong"}</span>
+                    </td>
                   </tr>
                 );
               })}
@@ -749,13 +689,19 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           kicker={`${current.name} · y = ${current.price} · ${current.split}`}
           title="One row, the same arithmetic as the curve"
         />
-        {algorithm !== "tree" && (
-          <div className="metric-row">
-            <Metric label="b" value={fmt(linear.bias)} />
-            {names.map((name, index) => (
-              <Metric key={name} label={`w_${name}`} value={fmt(linear.weights[index] ?? 0)} />
-            ))}
-          </div>
+        {algorithm === "tree" ? (
+          <TreePath tree={snapshot.tree} names={names} x={currentX} output={selectedP} target={current.price} />
+        ) : (
+          <ScoreWalk
+            names={names}
+            weights={linear.weights}
+            x={currentX}
+            bias={linear.bias}
+            link={usesProbability ? "sigmoid" : "identity"}
+            output={selectedP}
+            target={current.price}
+            rowName={current.name}
+          />
         )}
         <VectorChip label="x" values={currentX} tone="forward" />
         <FormulaWithValues

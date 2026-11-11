@@ -8,6 +8,7 @@ const cardInfo: ModuleCardInfo = {
     whatYouSee: [
       "A kicker with the tensor shapes, the precision, and the bandwidth.",
       "Operation (Matmul X·W or Elementwise add), Precision (fp32, fp16, int8: 4, 2 and 1 bytes per value), Batch rows from 1 to 4096 in doublings, Layer width d from 512 to 16384 in doublings, and Memory bandwidth from 100 to 5000 GB/s.",
+      "The operands drawn to scale, so each block's area is the bytes it moves: X, W and Y for the matmul, or X, R and Y for the add, each with its size and its share of the traffic. Beside them, how many rows use each weight and the work done per byte moved.",
       "A formula row with the operation and byte counts at the current values, and a note naming the illustrative device.",
     ],
     howItWorks: [
@@ -36,7 +37,8 @@ const cardInfo: ModuleCardInfo = {
     whatYouSee: [
       "Log–log axes: arithmetic intensity in operations per byte from 0.01 to 10k, and attainable TFLOP/s (TOP/s for int8) from 0.001 to 1000.",
       "The roof as one bent line, a dashed ridge line with its value, and a tinted memory-bound zone to its left.",
-      "A filled dot for the current operation, hollow circles for the same matmul at 1 to 4096 rows (every other one labelled), and a diamond for the other operation at the same shape.",
+      "A filled dot for the current operation, labelled with its name and attainable speed, hollow circles for the same matmul at 1 to 4096 rows (every other one labelled), and a diamond for the other operation at the same shape.",
+      "When the dot is well below the peak, a dashed arrow from the dot up to the peak line, labelled with the share of peak in use.",
       "Metrics Intensity, Ridge, Attainable, and Bound.",
     ],
     howItWorks: [
@@ -65,7 +67,7 @@ const cardInfo: ModuleCardInfo = {
       "Arithmetic time is ops divided by peak; memory time is bytes divided by bandwidth. The roofline wall-clock is the larger of the two. The table re-runs the same arithmetic after one change so you can see which change helps.",
     whatYouSee: [
       "Two bars, Arithmetic at peak and Memory traffic, with their times and the division that produced them. The one that sets the time is labelled so.",
-      "A table of wall-clock after doubling peak, doubling bandwidth, or dropping to the next smaller precision, each with its speed-up.",
+      "A table of wall-clock after doubling peak, doubling bandwidth, or dropping to the next smaller precision, each with its speed-up. Each row's bar is that wall-clock as a share of the current one, so a change that helps shows a shorter bar.",
       "Metrics Parallel outputs and Rows to reach ridge, plus a note that changes with the bound.",
     ],
     howItWorks: [

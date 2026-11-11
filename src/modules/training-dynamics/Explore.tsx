@@ -1,4 +1,4 @@
-import { useId, useMemo, type CSSProperties } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   LabSurface,
   Metric,
@@ -102,32 +102,33 @@ const logY = (loss: number, top: number, bottom: number) => {
   return bottom - ((bounded - LOSS_LOG_MIN) / (LOSS_LOG_MAX - LOSS_LOG_MIN)) * (bottom - top);
 };
 
-/* Training curves geometry: epoch 0 sits at the axis, then 1 → 10,000 on a log scale. */
-const CURVE = { left: 46, right: 466, top: 14, bottom: 206, width: 480, height: 236 };
+/** Track the rendered width so each chart is drawn in CSS pixels at any card width. */
+function useWidth(fallback: number) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(fallback);
+  useEffect(() => {
+    const node = ref.current;
+    if (!node || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(([entry]) => {
+      const next = Math.round(entry.contentRect.width);
+      if (next > 0) setWidth((current) => (Math.abs(current - next) > 2 ? next : current));
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+  return [ref, width] as const;
+}
+
+/* Training curves: epoch 0 sits at the axis, then 1 → 10,000 on a log scale. */
+const CURVE = { left: 40, right: 12, top: 12, bottom: 28, height: 236 };
 const EPOCH_GAP = 16;
-const ex = (epoch: number) =>
-  epoch <= 0
-    ? CURVE.left
-    : CURVE.left + EPOCH_GAP + (Math.log10(epoch) / 4) * (CURVE.right - CURVE.left - EPOCH_GAP);
-const cy = (loss: number) => logY(loss, CURVE.top, CURVE.bottom);
-
-/* Fitted function geometry. */
-const FIT = { left: 34, right: 466, top: 12, bottom: 196, width: 480, height: 222 };
+/* Fitted function. */
+const FIT = { left: 30, right: 12, top: 10, bottom: 26, height: 232 };
 const FIT_Y = 2;
-const fx = (x: number) => FIT.left + ((x + 1) / 2) * (FIT.right - FIT.left);
-const fy = (y: number) => {
-  const bounded = Math.min(FIT_Y + 0.6, Math.max(-FIT_Y - 0.6, y));
-  return FIT.bottom - ((bounded + FIT_Y) / (2 * FIT_Y)) * (FIT.bottom - FIT.top);
-};
-
-/* Capacity sweep geometry. */
-const SWEEP = { left: 46, right: 466, top: 14, bottom: 178, width: 480, height: 206 };
-const dx = (degree: number) =>
-  SWEEP.left + 10 + ((degree - DEGREE_MIN) / (DEGREE_MAX - DEGREE_MIN)) * (SWEEP.right - SWEEP.left - 20);
-const dy = (loss: number) => logY(loss, SWEEP.top, SWEEP.bottom);
-
-/* Split strip geometry. */
-const STRIP = { left: 12, right: 468, width: 480, height: 44 };
+/* Capacity sweep. */
+const SWEEP = { left: 40, right: 12, top: 12, bottom: 28, height: 214 };
+/* Split strip. */
+const STRIP = { left: 8, right: 252, width: 260, height: 40 };
 
 const toPoints = (points: ReadonlyArray<{ x: number; y: number }>) =>
   points.map((point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" ");
@@ -139,6 +140,34 @@ function lossAtEpoch(run: TrainRun, epoch: number) {
 
 export default function Explore({ state, setState, narrate }: ModuleContext) {
   const ids = useId().replace(/:/g, "");
+  const [curveRef, curveMeasured] = useWidth(380);
+  const [fitRef, fitMeasured] = useWidth(380);
+  const [sweepRef, sweepMeasured] = useWidth(380);
+
+  const CURVE_W = Math.max(280, curveMeasured);
+  const curveRight = CURVE_W - CURVE.right;
+  const curveBottom = CURVE.height - CURVE.bottom;
+  const ex = (value: number) =>
+    value <= 0
+      ? CURVE.left
+      : CURVE.left + EPOCH_GAP + (Math.log10(value) / 4) * (curveRight - CURVE.left - EPOCH_GAP);
+  const cy = (loss: number) => logY(loss, CURVE.top, curveBottom);
+
+  const FIT_W = Math.max(280, fitMeasured);
+  const fitRight = FIT_W - FIT.right;
+  const fitBottom = FIT.height - FIT.bottom;
+  const fx = (x: number) => FIT.left + ((x + 1) / 2) * (fitRight - FIT.left);
+  const fy = (y: number) => {
+    const bounded = Math.min(FIT_Y + 0.6, Math.max(-FIT_Y - 0.6, y));
+    return fitBottom - ((bounded + FIT_Y) / (2 * FIT_Y)) * (fitBottom - FIT.top);
+  };
+
+  const SWEEP_W = Math.max(280, sweepMeasured);
+  const sweepRight = SWEEP_W - SWEEP.right;
+  const sweepBottom = SWEEP.height - SWEEP.bottom;
+  const dx = (value: number) =>
+    SWEEP.left + 14 + ((value - DEGREE_MIN) / (DEGREE_MAX - DEGREE_MIN)) * (sweepRight - SWEEP.left - 28);
+  const dy = (loss: number) => logY(loss, SWEEP.top, sweepBottom);
   const degree = clampInt(asNumber(state, "degree", 5), DEGREE_MIN, DEGREE_MAX);
   const epochIndex = clampInt(asNumber(state, "epochIndex", CHECKPOINTS.indexOf(100)), 0, LAST_INDEX);
   const learningRateIndex = clampInt(asNumber(state, "learningRateIndex", 3), 0, LEARNING_RATES.length - 1);
@@ -176,6 +205,11 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
   const trainLine = run.checkpoints.map((checkpoint) => ({ x: ex(checkpoint.epoch), y: cy(checkpoint.train) }));
   const validationLine = run.checkpoints.map((checkpoint) => ({ x: ex(checkpoint.epoch), y: cy(checkpoint.validation) }));
   const gapArea = [...trainLine, ...[...validationLine].reverse()];
+  // Name and value of each line at the epoch marker, on whichever side has room.
+  const markerLeft = ex(epoch) > curveRight - 132;
+  const validationAbove = cy(shown.validation) <= cy(shown.train);
+  const labelY = (y: number, above: boolean) =>
+    Math.min(curveBottom - 4, Math.max(CURVE.top + 22, above ? y - 8 : y + 16));
 
   // Fitted function.
   const modelCurve = diverged
@@ -185,6 +219,14 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
         return { x: fx(x), y: fy(predict(shown.theta, x)), raw: predict(shown.theta, x) };
       });
   const peak = modelCurve.reduce((max, point) => Math.max(max, Math.abs(point.raw)), 0);
+  // The curve this run had at its lowest validation loss, kept behind the current one for comparison.
+  const bestCurve =
+    diverged || shownIndex === run.bestIndex
+      ? []
+      : Array.from({ length: 161 }, (_, index) => {
+          const x = -1 + index / 80;
+          return { x: fx(x), y: fy(predict(best.theta, x)) };
+        });
   const trueCurve = Array.from({ length: 161 }, (_, index) => {
     const x = -1 + index / 80;
     return { x: fx(x), y: fy(trueFunction(x)) };
@@ -196,6 +238,12 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
     const gone = entry.divergedAt !== null && epoch >= entry.divergedAt;
     return { degree: entry.degree, train: point.train, validation: point.validation, gone };
   });
+  // Name and value of each line at the selected degree, on whichever side has room.
+  const currentRow = sweepRows[degree - DEGREE_MIN];
+  const sweepLeft = dx(degree) > sweepRight - 140;
+  const sweepValidationAbove = dy(currentRow.validation) <= dy(currentRow.train);
+  const sweepLabelY = (y: number, above: boolean) =>
+    Math.min(sweepBottom - 4, Math.max(SWEEP.top + 26, above ? y - 8 : y + 16));
   const bestDegree = sweepRows
     .filter((row) => !row.gone)
     .reduce<(typeof sweepRows)[number] | null>(
@@ -235,69 +283,92 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             title="Training and validation loss from one real run"
             aside={<span className={`td-badge td-badge--${status}`}>{STATUS_TEXT[status]}</span>}
           />
-          <svg
-            className="td-chart"
-            viewBox={`0 0 ${CURVE.width} ${CURVE.height}`}
-            role="img"
-            aria-label={`Training and validation loss by epoch for degree ${degree}. At epoch ${formatEpoch(epoch)}, training ${formatLoss(shown.train)}, validation ${formatLoss(shown.validation)}. Lowest validation ${formatLoss(best.validation)} at epoch ${formatEpoch(best.epoch)}. Status ${status}.`}
-          >
-            <defs>
-              <clipPath id={`${ids}-curve`}>
-                <rect x={CURVE.left} y={CURVE.top - 2} width={CURVE.right - CURVE.left + 2} height={CURVE.bottom - CURVE.top + 2} />
-              </clipPath>
-            </defs>
-            {LOSS_TICKS.map((tick) => (
-              <g key={tick}>
-                <line className="td-grid" x1={CURVE.left} x2={CURVE.right} y1={cy(tick)} y2={cy(tick)} />
-                <text className="td-tick" x={CURVE.left - 6} y={cy(tick) + 3} textAnchor="end">
-                  {tick}
-                </text>
-              </g>
-            ))}
-            {[0, 1, 10, 100, 1000, 10000].map((tick) => (
-              <text key={tick} className="td-tick" x={ex(tick)} y={CURVE.bottom + 14} textAnchor="middle">
-                {tick >= 1000 ? `${tick / 1000}k` : tick}
-              </text>
-            ))}
-            <g clipPath={`url(#${ids}-curve)`}>
-              <polygon className="td-gap-area" points={toPoints(gapArea)} />
-              <line className="td-floor" x1={CURVE.left} x2={CURVE.right} y1={cy(NOISE_VARIANCE)} y2={cy(NOISE_VARIANCE)} />
-              <polyline className="td-line td-line--train" points={toPoints(trainLine)} />
-              <polyline className="td-line td-line--validation" points={toPoints(validationLine)} />
-            </g>
-            <text className="td-floor-label" x={CURVE.right - 2} y={cy(NOISE_VARIANCE) + 12} textAnchor="end">
-              noise variance {NOISE_VARIANCE.toFixed(4)}
-            </text>
-            <line className="td-epoch-marker" x1={ex(epoch)} x2={ex(epoch)} y1={CURVE.top} y2={CURVE.bottom} />
-            <circle className="td-best" cx={ex(best.epoch)} cy={cy(best.validation)} r="6.5" />
-            <text
-              className="td-best-label"
-              x={ex(best.epoch)}
-              y={cy(best.validation) + 18}
-              textAnchor={ex(best.epoch) > CURVE.right - 90 ? "end" : "middle"}
+          <div ref={curveRef}>
+            <svg
+              className="td-chart"
+              viewBox={`0 0 ${CURVE_W} ${CURVE.height}`}
+              role="img"
+              aria-label={`Training and validation loss by epoch for degree ${degree}. At epoch ${formatEpoch(epoch)}, training ${formatLoss(shown.train)}, validation ${formatLoss(shown.validation)}. Lowest validation ${formatLoss(best.validation)} at epoch ${formatEpoch(best.epoch)}. Status ${status}.`}
             >
-              lowest validation
-            </text>
-            {!diverged && (
-              <>
-                <circle className="td-dot td-dot--train" cx={ex(shown.epoch)} cy={cy(shown.train)} r="4.5" />
-                <circle className="td-dot td-dot--validation" cx={ex(shown.epoch)} cy={cy(shown.validation)} r="4.5" />
-              </>
-            )}
-            {run.divergedAt !== null && (
-              <text className="td-warning" x={CURVE.right - 4} y={CURVE.bottom - 8} textAnchor="end">
-                diverged at epoch {formatEpoch(run.divergedAt)}: loss above 10⁶
+              <defs>
+                <clipPath id={`${ids}-curve`}>
+                  <rect x={CURVE.left} y={CURVE.top - 2} width={curveRight - CURVE.left + 2} height={curveBottom - CURVE.top + 2} />
+                </clipPath>
+              </defs>
+              {LOSS_TICKS.map((tick) => (
+                <g key={tick}>
+                  <line className="td-grid" x1={CURVE.left} x2={curveRight} y1={cy(tick)} y2={cy(tick)} />
+                  <text className="td-tick" x={CURVE.left - 6} y={cy(tick) + 3} textAnchor="end">
+                    {tick}
+                  </text>
+                </g>
+              ))}
+              {[0, 1, 10, 100, 1000, 10000].map((tick) => (
+                <text key={tick} className="td-tick" x={ex(tick)} y={curveBottom + 14} textAnchor="middle">
+                  {tick >= 1000 ? `${tick / 1000}k` : tick}
+                </text>
+              ))}
+              <g clipPath={`url(#${ids}-curve)`}>
+                <polygon className="td-gap-area" points={toPoints(gapArea)} />
+                <line className="td-floor" x1={CURVE.left} x2={curveRight} y1={cy(NOISE_VARIANCE)} y2={cy(NOISE_VARIANCE)} />
+                <polyline className="td-line td-line--train" points={toPoints(trainLine)} />
+                <polyline className="td-line td-line--validation" points={toPoints(validationLine)} />
+              </g>
+              <text
+                className="td-floor-label"
+                x={markerLeft ? CURVE.left + 6 : curveRight - 2}
+                y={markerLeft ? cy(NOISE_VARIANCE) - 5 : cy(NOISE_VARIANCE) + 13}
+                textAnchor={markerLeft ? "start" : "end"}
+              >
+                {markerLeft && CURVE_W < 480 ? "σ²" : "noise variance"} {NOISE_VARIANCE.toFixed(4)}
               </text>
-            )}
-            <line className="plot-axis" x1={CURVE.left} x2={CURVE.right} y1={CURVE.bottom} y2={CURVE.bottom} />
-            <line className="plot-axis" x1={CURVE.left} x2={CURVE.left} y1={CURVE.top} y2={CURVE.bottom} />
-            <text className="td-axis-title" x={CURVE.right} y={CURVE.height - 2} textAnchor="end">
-              epoch, log scale →
-            </text>
-            <text className="td-axis-title" x={CURVE.left + 4} y={CURVE.top + 1} dominantBaseline="hanging">
-              ↑ mean squared error, log scale
-            </text>
-          </svg>
+              <line className="td-epoch-marker" x1={ex(epoch)} x2={ex(epoch)} y1={CURVE.top} y2={curveBottom} />
+              <circle className="td-best" cx={ex(best.epoch)} cy={cy(best.validation)} r="6.5" />
+              <text
+                className="td-best-label"
+                x={ex(best.epoch)}
+                y={cy(best.validation) + 18}
+                textAnchor={ex(best.epoch) > curveRight - 90 ? "end" : ex(best.epoch) < CURVE.left + 62 ? "start" : "middle"}
+              >
+                lowest validation
+              </text>
+              {!diverged && (
+                <>
+                  <circle className="td-dot td-dot--train" cx={ex(shown.epoch)} cy={cy(shown.train)} r="4.5" />
+                  <circle className="td-dot td-dot--validation" cx={ex(shown.epoch)} cy={cy(shown.validation)} r="4.5" />
+                  <text
+                    className="td-line-label td-line-label--validation"
+                    x={ex(shown.epoch) + (markerLeft ? -9 : 9)}
+                    y={labelY(cy(shown.validation), validationAbove)}
+                    textAnchor={markerLeft ? "end" : "start"}
+                  >
+                    validation {formatLoss(shown.validation)}
+                  </text>
+                  <text
+                    className="td-line-label td-line-label--train"
+                    x={ex(shown.epoch) + (markerLeft ? -9 : 9)}
+                    y={labelY(cy(shown.train), !validationAbove)}
+                    textAnchor={markerLeft ? "end" : "start"}
+                  >
+                    training {formatLoss(shown.train)}
+                  </text>
+                </>
+              )}
+              {run.divergedAt !== null && (
+                <text className="td-warning" x={curveRight - 4} y={curveBottom - 8} textAnchor="end">
+                  diverged at epoch {formatEpoch(run.divergedAt)}: loss above 10⁶
+                </text>
+              )}
+              <line className="plot-axis" x1={CURVE.left} x2={curveRight} y1={curveBottom} y2={curveBottom} />
+              <line className="plot-axis" x1={CURVE.left} x2={CURVE.left} y1={CURVE.top} y2={curveBottom} />
+              <text className="td-axis-title" x={curveRight} y={CURVE.height - 2} textAnchor="end">
+                epoch, log scale →
+              </text>
+              <text className="td-axis-title" x={CURVE.left + 4} y={CURVE.top + 1} dominantBaseline="hanging">
+                ↑ mean squared error, log scale
+              </text>
+            </svg>
+          </div>
           <div className="td-legend" aria-hidden="true">
             <span><i className="td-key td-key--train" />training (16 fitted points)</span>
             <span><i className="td-key td-key--validation" />validation (16 held-out points)</span>
@@ -323,14 +394,14 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
               role="img"
               aria-label="Thirty-two samples along x. Alternate samples go to training (filled) and validation (hollow)."
             >
-              <line className="td-strip-axis" x1={STRIP.left} x2={STRIP.right} y1="22" y2="22" />
+              <line className="td-strip-axis" x1={STRIP.left} x2={STRIP.right} y1="20" y2="20" />
               {stripSamples.map((sample) => (
                 <circle
                   key={`${sample.split}-${sample.x}`}
                   className={`td-strip-dot td-strip-dot--${sample.split}`}
                   cx={STRIP.left + ((sample.x + 1) / 2) * (STRIP.right - STRIP.left)}
-                  cy={sample.split === "train" ? 15 : 29}
-                  r="4.2"
+                  cy={sample.split === "train" ? 11 : 29}
+                  r="3.6"
                 />
               ))}
             </svg>
@@ -392,56 +463,86 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             kicker={`Degree ${degree} at epoch ${formatEpoch(shown.epoch)}`}
             title="What the model has learned so far"
           />
-          <svg
-            className="td-chart"
-            viewBox={`0 0 ${FIT.width} ${FIT.height}`}
-            role="img"
-            aria-label={`Fitted curve at epoch ${formatEpoch(shown.epoch)} with sixteen training and sixteen validation points and the true curve. Weight size ${weightNorm.toFixed(2)}.`}
-          >
-            <defs>
-              <clipPath id={`${ids}-fit`}>
-                <rect x={FIT.left} y={FIT.top} width={FIT.right - FIT.left} height={FIT.bottom - FIT.top} />
-              </clipPath>
-            </defs>
-            {[-2, -1, 0, 1, 2].map((tick) => (
-              <g key={tick}>
-                <line className="td-grid" x1={FIT.left} x2={FIT.right} y1={fy(tick)} y2={fy(tick)} />
-                <text className="td-tick" x={FIT.left - 6} y={fy(tick) + 3} textAnchor="end">
+          <div ref={fitRef}>
+            <svg
+              className="td-chart"
+              viewBox={`0 0 ${FIT_W} ${FIT.height}`}
+              role="img"
+              aria-label={`Fitted curve at epoch ${formatEpoch(shown.epoch)} with sixteen training and sixteen validation points and the true curve. Weight size ${weightNorm.toFixed(2)}.`}
+            >
+              <defs>
+                <clipPath id={`${ids}-fit`}>
+                  <rect x={FIT.left} y={FIT.top} width={fitRight - FIT.left} height={fitBottom - FIT.top} />
+                </clipPath>
+              </defs>
+              {[-2, -1, 0, 1, 2].map((tick) => (
+                <g key={tick}>
+                  <line className="td-grid" x1={FIT.left} x2={fitRight} y1={fy(tick)} y2={fy(tick)} />
+                  <text className="td-tick" x={FIT.left - 6} y={fy(tick) + 3} textAnchor="end">
+                    {tick < 0 ? `−${-tick}` : tick}
+                  </text>
+                </g>
+              ))}
+              {[-1, -0.5, 0, 0.5, 1].map((tick) => (
+                <text key={tick} className="td-tick" x={fx(tick)} y={fitBottom + 14} textAnchor="middle">
                   {tick < 0 ? `−${-tick}` : tick}
                 </text>
+              ))}
+              <g clipPath={`url(#${ids}-fit)`}>
+                <polyline className="td-true-curve" points={toPoints(trueCurve)} />
+                {bestCurve.length > 0 && <polyline className="td-best-curve" points={toPoints(bestCurve)} />}
+                {/* Each point's miss: the squared lengths of these, averaged per split, are the two losses. */}
+                {!diverged &&
+                  dataset.validation.map((sample) => (
+                    <line
+                      key={`vm-${sample.x}`}
+                      className="td-miss td-miss--validation"
+                      x1={fx(sample.x)}
+                      x2={fx(sample.x)}
+                      y1={fy(sample.y)}
+                      y2={fy(predict(shown.theta, sample.x))}
+                    />
+                  ))}
+                {!diverged &&
+                  dataset.train.map((sample) => (
+                    <line
+                      key={`tm-${sample.x}`}
+                      className="td-miss td-miss--train"
+                      x1={fx(sample.x)}
+                      x2={fx(sample.x)}
+                      y1={fy(sample.y)}
+                      y2={fy(predict(shown.theta, sample.x))}
+                    />
+                  ))}
+                {modelCurve.length > 0 && <polyline className="td-model-curve" points={toPoints(modelCurve)} />}
               </g>
-            ))}
-            {[-1, -0.5, 0, 0.5, 1].map((tick) => (
-              <text key={tick} className="td-tick" x={fx(tick)} y={FIT.bottom + 14} textAnchor="middle">
-                {tick < 0 ? `−${-tick}` : tick}
+              {dataset.validation.map((sample) => (
+                <circle key={`v-${sample.x}`} className="td-point td-point--validation" cx={fx(sample.x)} cy={fy(sample.y)} r="4.2" />
+              ))}
+              {dataset.train.map((sample) => (
+                <circle key={`t-${sample.x}`} className="td-point td-point--train" cx={fx(sample.x)} cy={fy(sample.y)} r="4.2" />
+              ))}
+              {(peak > FIT_Y || diverged) && (
+                <text className="td-warning" x={FIT.left + 8} y={FIT.top + 12}>
+                  {diverged ? "run diverged: no curve to draw" : `curve leaves the plot: peak |ŷ| = ${formatLoss(peak)}`}
+                </text>
+              )}
+              <line className="plot-axis" x1={FIT.left} x2={fitRight} y1={fitBottom} y2={fitBottom} />
+              <line className="plot-axis" x1={FIT.left} x2={FIT.left} y1={FIT.top} y2={fitBottom} />
+              <text className="td-axis-title" x={fitRight} y={FIT.height - 2} textAnchor="end">
+                x →
               </text>
-            ))}
-            <g clipPath={`url(#${ids}-fit)`}>
-              <polyline className="td-true-curve" points={toPoints(trueCurve)} />
-              {modelCurve.length > 0 && <polyline className="td-model-curve" points={toPoints(modelCurve)} />}
-            </g>
-            {dataset.validation.map((sample) => (
-              <circle key={`v-${sample.x}`} className="td-point td-point--validation" cx={fx(sample.x)} cy={fy(sample.y)} r="4.2" />
-            ))}
-            {dataset.train.map((sample) => (
-              <circle key={`t-${sample.x}`} className="td-point td-point--train" cx={fx(sample.x)} cy={fy(sample.y)} r="4.2" />
-            ))}
-            {(peak > FIT_Y || diverged) && (
-              <text className="td-warning" x={FIT.left + 8} y={FIT.top + 12}>
-                {diverged ? "run diverged: no curve to draw" : `curve leaves the plot: peak |ŷ| = ${formatLoss(peak)}`}
-              </text>
-            )}
-            <line className="plot-axis" x1={FIT.left} x2={FIT.right} y1={FIT.bottom} y2={FIT.bottom} />
-            <line className="plot-axis" x1={FIT.left} x2={FIT.left} y1={FIT.top} y2={FIT.bottom} />
-            <text className="td-axis-title" x={FIT.right} y={FIT.height - 2} textAnchor="end">
-              x →
-            </text>
-          </svg>
+            </svg>
+          </div>
           <div className="td-legend" aria-hidden="true">
             <span><i className="td-key td-key--model" />model ŷ</span>
             <span><i className="td-key td-key--true" />true curve (hidden from the model)</span>
+            {bestCurve.length > 0 && (
+              <span><i className="td-key td-key--best" />model at lowest validation (epoch {formatEpoch(best.epoch)})</span>
+            )}
             <span><i className="td-dot-key td-dot-key--train" />train</span>
             <span><i className="td-dot-key td-dot-key--validation" />validation</span>
+            <span><i className="td-key td-key--miss" />each point's miss</span>
           </div>
           <div className="metric-row">
             <Metric label="Weights" value={`${degree + 1}`} />
@@ -454,62 +555,98 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             kicker={`Every degree, same settings, epoch ${formatEpoch(epoch)}`}
             title="Loss against capacity at this moment of training"
           />
-          <svg
-            className="td-chart"
-            viewBox={`0 0 ${SWEEP.width} ${SWEEP.height}`}
-            role="img"
-            aria-label={`Loss by polynomial degree at epoch ${formatEpoch(epoch)}. ${bestDegree ? `Lowest validation at degree ${bestDegree.degree}: ${formatLoss(bestDegree.validation)}.` : "Every run diverged."}`}
-          >
-            {LOSS_TICKS.map((tick) => (
-              <g key={tick}>
-                <line className="td-grid" x1={SWEEP.left} x2={SWEEP.right} y1={dy(tick)} y2={dy(tick)} />
-                <text className="td-tick" x={SWEEP.left - 6} y={dy(tick) + 3} textAnchor="end">
-                  {tick}
-                </text>
-              </g>
-            ))}
-            <rect
-              className="td-sweep-current"
-              x={dx(degree) - 12}
-              y={SWEEP.top}
-              width="24"
-              height={SWEEP.bottom - SWEEP.top}
-            />
-            {sweepRows.map((row) => (
-              <text key={`d-${row.degree}`} className={`td-tick${row.degree === degree ? " td-tick--current" : ""}`} x={dx(row.degree)} y={SWEEP.bottom + 14} textAnchor="middle">
-                {row.degree}
-              </text>
-            ))}
-            <line className="td-floor" x1={SWEEP.left} x2={SWEEP.right} y1={dy(NOISE_VARIANCE)} y2={dy(NOISE_VARIANCE)} />
-            <polyline
-              className="td-line td-line--train"
-              points={toPoints(sweepRows.filter((row) => !row.gone).map((row) => ({ x: dx(row.degree), y: dy(row.train) })))}
-            />
-            <polyline
-              className="td-line td-line--validation"
-              points={toPoints(sweepRows.filter((row) => !row.gone).map((row) => ({ x: dx(row.degree), y: dy(row.validation) })))}
-            />
-            {sweepRows.map((row) =>
-              row.gone ? (
-                <text key={`x-${row.degree}`} className="td-warning" x={dx(row.degree)} y={SWEEP.top + 10} textAnchor="middle">
-                  ×
-                </text>
-              ) : (
-                <g key={`p-${row.degree}`}>
-                  <circle className="td-dot td-dot--train" cx={dx(row.degree)} cy={dy(row.train)} r="3" />
-                  <circle className="td-dot td-dot--validation" cx={dx(row.degree)} cy={dy(row.validation)} r="3" />
+          <div ref={sweepRef}>
+            <svg
+              className="td-chart"
+              viewBox={`0 0 ${SWEEP_W} ${SWEEP.height}`}
+              role="img"
+              aria-label={`Loss by polynomial degree at epoch ${formatEpoch(epoch)}. ${bestDegree ? `Lowest validation at degree ${bestDegree.degree}: ${formatLoss(bestDegree.validation)}.` : "Every run diverged."}`}
+            >
+              {LOSS_TICKS.map((tick) => (
+                <g key={tick}>
+                  <line className="td-grid" x1={SWEEP.left} x2={sweepRight} y1={dy(tick)} y2={dy(tick)} />
+                  <text className="td-tick" x={SWEEP.left - 6} y={dy(tick) + 3} textAnchor="end">
+                    {tick}
+                  </text>
                 </g>
-              ),
-            )}
-            {bestDegree && (
-              <circle className="td-best" cx={dx(bestDegree.degree)} cy={dy(bestDegree.validation)} r="6.5" />
-            )}
-            <line className="plot-axis" x1={SWEEP.left} x2={SWEEP.right} y1={SWEEP.bottom} y2={SWEEP.bottom} />
-            <line className="plot-axis" x1={SWEEP.left} x2={SWEEP.left} y1={SWEEP.top} y2={SWEEP.bottom} />
-            <text className="td-axis-title" x={SWEEP.right} y={SWEEP.height - 2} textAnchor="end">
-              polynomial degree →
-            </text>
-          </svg>
+              ))}
+              <rect
+                className="td-sweep-current"
+                x={dx(degree) - 12}
+                y={SWEEP.top}
+                width="24"
+                height={sweepBottom - SWEEP.top}
+              />
+              {sweepRows.map((row) => (
+                <text key={`d-${row.degree}`} className={`td-tick${row.degree === degree ? " td-tick--current" : ""}`} x={dx(row.degree)} y={sweepBottom + 14} textAnchor="middle">
+                  {row.degree}
+                </text>
+              ))}
+              <line className="td-floor" x1={SWEEP.left} x2={sweepRight} y1={dy(NOISE_VARIANCE)} y2={dy(NOISE_VARIANCE)} />
+              <polyline
+                className="td-line td-line--train"
+                points={toPoints(sweepRows.filter((row) => !row.gone).map((row) => ({ x: dx(row.degree), y: dy(row.train) })))}
+              />
+              <polyline
+                className="td-line td-line--validation"
+                points={toPoints(sweepRows.filter((row) => !row.gone).map((row) => ({ x: dx(row.degree), y: dy(row.validation) })))}
+              />
+              {sweepRows.map((row) =>
+                row.gone ? (
+                  <text key={`x-${row.degree}`} className="td-warning" x={dx(row.degree)} y={SWEEP.top + 10} textAnchor="middle">
+                    ×
+                  </text>
+                ) : (
+                  <g key={`p-${row.degree}`}>
+                    <circle className="td-dot td-dot--train" cx={dx(row.degree)} cy={dy(row.train)} r="3" />
+                    <circle className="td-dot td-dot--validation" cx={dx(row.degree)} cy={dy(row.validation)} r="3" />
+                  </g>
+                ),
+              )}
+              {bestDegree && (
+                <circle className="td-best" cx={dx(bestDegree.degree)} cy={dy(bestDegree.validation)} r="6.5" />
+              )}
+              {!currentRow.gone && (
+                <>
+                  <circle className="td-dot td-dot--train" cx={dx(degree)} cy={dy(currentRow.train)} r="4.5" />
+                  <circle className="td-dot td-dot--validation" cx={dx(degree)} cy={dy(currentRow.validation)} r="4.5" />
+                  <text
+                    className="td-line-label td-line-label--validation"
+                    x={dx(degree) + (sweepLeft ? -16 : 16)}
+                    y={sweepLabelY(dy(currentRow.validation), sweepValidationAbove)}
+                    textAnchor={sweepLeft ? "end" : "start"}
+                  >
+                    validation {formatLoss(currentRow.validation)}
+                  </text>
+                  <text
+                    className="td-line-label td-line-label--train"
+                    x={dx(degree) + (sweepLeft ? -16 : 16)}
+                    y={sweepLabelY(dy(currentRow.train), !sweepValidationAbove)}
+                    textAnchor={sweepLeft ? "end" : "start"}
+                  >
+                    training {formatLoss(currentRow.train)}
+                  </text>
+                </>
+              )}
+              <text className="td-sweep-you" x={dx(degree)} y={SWEEP.top + 11} textAnchor={degree <= 2 ? "start" : degree >= DEGREE_MAX - 1 ? "end" : "middle"}>
+                degree {degree}
+              </text>
+              <line className="plot-axis" x1={SWEEP.left} x2={sweepRight} y1={sweepBottom} y2={sweepBottom} />
+              <line className="plot-axis" x1={SWEEP.left} x2={SWEEP.left} y1={SWEEP.top} y2={sweepBottom} />
+              <text className="td-axis-title" x={SWEEP.left} y={SWEEP.height - 2}>
+                ← simpler
+              </text>
+              <text className="td-axis-title" x={sweepRight} y={SWEEP.height - 2} textAnchor="end">
+                polynomial degree, more flexible →
+              </text>
+            </svg>
+          </div>
+          <div className="td-legend" aria-hidden="true">
+            <span><i className="td-key td-key--train" />training</span>
+            <span><i className="td-key td-key--validation" />validation</span>
+            <span><i className="td-ring-key" />lowest validation</span>
+            <span><i className="td-key td-key--floor" />noise variance σ²</span>
+          </div>
           <div className="metric-row">
             <Metric
               label="Best degree now"

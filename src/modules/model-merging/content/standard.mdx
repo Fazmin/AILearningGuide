@@ -50,8 +50,8 @@ are fixed, nothing is held out, and DARE's drop mask is the only random draw you
 **New random mask**.
 
 - **Task vectors**: **Task vectors from** (`Full fine-tunes` or `LoRA rank 4`), **Recipe epochs**
-  and **Proverb epochs** shape the two vectors, mapped cell by cell with sign conflicts struck
-  through. Under the maps, **Overlapping entries** counts the entries both vectors changed, and
+  and **Proverb epochs** shape the two vectors, mapped cell by cell with a dot on every sign
+  conflict. Under the maps, **Overlapping entries** counts the entries both vectors changed, and
   **Sign conflicts** how many of those disagree in sign.
 - **Merge recipe**: **Merge method** picks `Linear blend`, `Task arithmetic`, `TIES`, `DARE` or
   `SLERP` and shows only its own controls among **Blend t**, **Scale λ**, **Keep top**,
@@ -109,7 +109,7 @@ task's own vector, and genuine **interference** from the other task.
 ## How to play with it
 
 Start on **Task vectors**. At 20 epochs each, the cosine badge reads 0.34, **Overlapping entries**
-reads 720 of 900, and **Sign conflicts** reads 96 (13%). Struck-through cells on both maps are
+reads 720 of 900, and **Sign conflicts** reads 96 (13%). Dotted cells on both maps are
 those conflicts.
 
 On **Merge recipe**, leave **Merge method** on `Linear blend` with **Blend t** at 50%. The table on

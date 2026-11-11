@@ -10,6 +10,7 @@ import {
   type ModuleContext,
 } from "@app/module-sdk";
 import { RooflinePlot } from "./RooflinePlot";
+import { TrafficShapes } from "./TrafficShapes";
 import {
   BANDWIDTH_MAX,
   BANDWIDTH_MIN,
@@ -147,6 +148,14 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             }}
           />
         </div>
+        <TrafficShapes
+          operation={operation}
+          batch={batch}
+          width={width}
+          bytesPerElement={precision.bytes}
+          opUnit={opUnit}
+          intensity={work.intensity}
+        />
         <FormulaWithValues
           label="Work versus traffic"
           expression={expression}
@@ -225,28 +234,29 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             <span role="columnheader">Wall-clock</span>
             <span role="columnheader">Effect</span>
           </div>
-          <div role="row">
-            <span role="cell">Nothing (current)</span>
-            <span role="cell">{formatSeconds(options.base)}</span>
-            <span role="cell">—</span>
-          </div>
-          <div role="row">
-            <span role="cell">2× peak arithmetic</span>
-            <span role="cell">{formatSeconds(options.doublePeak)}</span>
-            <span role="cell">{speedup(options.base, options.doublePeak)}</span>
-          </div>
-          <div role="row">
-            <span role="cell">2× memory bandwidth</span>
-            <span role="cell">{formatSeconds(options.doubleBandwidth)}</span>
-            <span role="cell">{speedup(options.base, options.doubleBandwidth)}</span>
-          </div>
-          {options.smallerPrecision !== undefined && (
-            <div role="row">
-              <span role="cell">{precision.label} → {options.smallerLabel}</span>
-              <span role="cell">{formatSeconds(options.smallerPrecision)}</span>
-              <span role="cell">{speedup(options.base, options.smallerPrecision)}</span>
-            </div>
-          )}
+          {[
+            { id: "base", label: "Nothing (current)", seconds: options.base, effect: "—" },
+            { id: "peak", label: "2× peak arithmetic", seconds: options.doublePeak, effect: speedup(options.base, options.doublePeak) },
+            { id: "bandwidth", label: "2× memory bandwidth", seconds: options.doubleBandwidth, effect: speedup(options.base, options.doubleBandwidth) },
+            ...(options.smallerPrecision !== undefined
+              ? [{ id: "precision", label: `${precision.label} → ${options.smallerLabel}`, seconds: options.smallerPrecision, effect: speedup(options.base, options.smallerPrecision) }]
+              : []),
+          ].map((row) => {
+            const share = options.base > 0 ? Math.min(1, row.seconds / options.base) : 1;
+            const kind = row.id === "base" ? "base" : share < 0.995 ? "faster" : "same";
+            return (
+              <div role="row" key={row.id} className={`wg-whatif__row wg-whatif__row--${kind}`}>
+                <span role="cell">{row.label}</span>
+                <span role="cell" className="wg-whatif__time">
+                  <span className="wg-whatif__track" aria-hidden="true">
+                    <i style={{ width: `${(share * 100).toFixed(2)}%` }} />
+                  </span>
+                  <b>{formatSeconds(row.seconds)}</b>
+                </span>
+                <span role="cell">{row.effect}</span>
+              </div>
+            );
+          })}
         </div>
         <div className="metric-row">
           <Metric

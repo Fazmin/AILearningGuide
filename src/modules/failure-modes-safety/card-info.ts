@@ -35,6 +35,7 @@ const cardInfo: ModuleCardInfo = {
     summary:
       "The card assumes the worst: the model obeys any instruction that reaches it. Under that assumption, a leak needs private data in context, attacker text in context, and a way to send data out. The three toggles set those conditions, and the outcomes follow.",
     whatYouSee: [
+      "A path diagram, read left to right: the attacker's text, the two retrieval checks, the model's context with the password in it, and three ways out. The thick red line is as far as the attack gets, a green ✕ marks the control that stopped it, and each way out is labelled possible, blocked, only if a person approves, or not used.",
       "Keyword filter on retrieved text, Retrieval sources (any page, or allowlist only), Password in the system prompt, send_email tool (runs automatically, needs approval, not offered) and Images in replies (rendered automatically, or not fetched).",
       "Three condition rows, lit when true: private data in context, attacker text reaches the model, and an unattended way to send data out, which for the image attack means an image the chat window loads and for the others means email.",
       "Metrics: Password in the reply, Password sent by email and Password in a rendered image — possible, blocked, only if a person approves, not used by this attack, or no attacker.",
@@ -67,8 +68,8 @@ const cardInfo: ModuleCardInfo = {
       "Five fixed texts go through the same case-insensitive regular expression the keyword filter uses: three attacks and two benign texts. A sixth row takes your own text. The results are computed, and they show both a filter's misses and its false alarms.",
     whatYouSee: [
       "The regular expression.",
-      "Five rows with their label, text, hostile or benign, whether the pattern matched, and a verdict: caught, missed, over-blocked or passed.",
-      "Your text: a box you type in, and one row for it showing the filter's verdict (matches the pattern and is removed, or no match and is kept), whether the simulated assistant would act on it and why, and a verdict: caught, bypass, over-blocked or passes.",
+      "A two-by-two grid that sorts the five fixed texts: hostile or benign down the side, removed or kept by the filter across the top. Each corner is a verdict with its count: caught, missed, over-blocked or passed. Green corners are right answers and red corners are wrong ones.",
+      "Your text: a box you type in, and one row for it showing the filter's verdict (matches the pattern and is removed, or no match and is kept), whether the simulated assistant would act on it and why, and a verdict: caught, bypass, over-blocked or passes. A dashed Your text marker also sits in the grid corner your text lands in.",
       "Metrics: Attacks caught and Benign blocked. They count the five fixed texts only, never yours.",
     ],
     howItWorks: [
@@ -77,7 +78,7 @@ const cardInfo: ModuleCardInfo = {
       "The simulated assistant is a second, small rule, not a model. It acts on your text when the text asks for something the lab protects: it contains a request word (tell, share, send, forward and similar) and the password, a passcode, a secret or the log, after look-alike spellings (ign0re, p@ssword) and spaced-out letters are read as letters, and with no never, not or don't in it. For your text, hostile means the assistant would act: caught = filter matched and it would act; bypass = filter did not match and it would act; over-blocked = filter matched and it would not act; passes = neither.",
     ],
     controls: [
-      "Your text is the only control; the five rows are a fixed test set.",
+      "Your text is the only control; the five texts in the grid are a fixed test set.",
       "Comparisons worth running: the literal injection against the staff security memo — the same phrase, opposite intent, same verdict from the filter. Then, in Your text, change Ignore to Disregard, then all previous to the previous, then add a never before the request.",
     ],
     notice: [

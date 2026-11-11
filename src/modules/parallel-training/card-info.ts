@@ -8,6 +8,7 @@ const cardInfo: ModuleCardInfo = {
     whatYouSee: [
       "`Model`: `Llama 3.1 8B`, `Llama 3.1 70B`, `Llama 3.1 405B`, or `Mixtral 8x7B`, and the `16,384-GPU layout` button, which loads Llama 3's 405B layout.",
       "Sliders on power-of-two ladders: `Tensor parallel` 1 to 32, `Pipeline` 1 to 16, `Data parallel` 1 to 2,048, `Expert parallel` 1 to 8 (Mixtral only, never above Data parallel), `Micro-batch size` 1 to 8 sequences of 8,192 tokens, and `Microbatches` 1 to 128 per step.",
+      "A diagram in two parts. First the model as one slab, cut into pipeline stages across and tensor slices down, with the data-parallel copies stacked behind it and the piece one GPU holds filled in. Then the first two 8-GPU nodes, with a line through the GPUs of each group that GPU 0 belongs to: solid where the group stays inside a node on NVLink, dotted where it has to leave it for InfiniBand.",
       "Metrics `GPUs`, `Nodes of 8`, `Tokens per step`, and `Parameters per GPU`, then a list saying what each degree splits, what it sends, and over which link.",
     ],
     howItWorks: [
@@ -36,7 +37,7 @@ const cardInfo: ModuleCardInfo = {
       "Mixed-precision Adam keeps 16 bytes of model state per parameter: 2 for the weights, 2 for the gradients, and 12 for the optimizer. Each GPU also keeps the activations of the microbatches it is working on. Tensor and pipeline parallelism divide every part, ZeRO lets data parallelism divide the model state, and recomputation trades activations for arithmetic.",
     whatYouSee: [
       "`ZeRO stage` 0 to 3 and `Recompute`: `None`, `Selective`, or `Full`.",
-      "A stacked bar on a GB axis with the four parts against the 80 GB line and a dashed outline on any overflow, then a bar list with each part's size and what divides it.",
+      "A stacked bar on a GB axis with the four parts against the 80 GB line and a dashed outline on any overflow, a paler bar under it for the same layout at ZeRO stage 0, then a bar list with each part's size and what divides it.",
       "Metrics `Model state`, `Activations`, `Total per GPU`, and `Fits in 80 GB`, and a note on the chosen stage and recompute mode.",
     ],
     howItWorks: [
@@ -91,7 +92,7 @@ const cardInfo: ModuleCardInfo = {
     summary:
       "Tensor parallelism all-reduces activations inside every layer, pipeline parallelism sends activations between stages, expert parallelism exchanges tokens by all-to-all, and data parallelism all-reduces gradients once per step. Each is priced as bytes over the slowest link its group uses, from bandwidth alone.",
     whatYouSee: [
-      "The `Overlap gradient sync` switch.",
+      "The `Overlap gradient sync` switch, and under it two bars on one time axis: the last backward pass and the gradient sync. The part of the sync that runs under the backward pass is hatched and the part left exposed is solid.",
       "A bar list in seconds per step: `TP all-reduce`, `PP send/receive`, `EP all-to-all` (Mixtral only), and `DP gradient sync`. Each detail line gives the time per microbatch, the bytes, the group size, and the link.",
       "Metrics `Exposed DP time`, `TP group`, and `DP group`, and a badge with the exposed time.",
     ],
@@ -120,6 +121,7 @@ const cardInfo: ModuleCardInfo = {
       "A step is the pipeline's m + p − 1 microbatch slots plus whatever data-parallel sync is left exposed. Splitting it into compute, recomputation, traffic, bubble, and exposed sync shows where the time goes; MFU is the share of the GPUs' peak arithmetic spent on the model's own work.",
     whatYouSee: [
       "A stacked strip and a bar list of `Compute`, `Recompute`, `TP, PP and EP traffic`, `Pipeline bubble`, and `Exposed DP sync`, each with its share of the step.",
+      "A bar of the GPUs' peak arithmetic from 0 to 100%: MFU, then any recomputation, then the share lost to traffic, bubble, and exposed sync up to a line at the 75% kernel efficiency, and the quarter beyond it that is out of reach.",
       "Metrics `Step time`, `Tokens/s`, `MFU`, and `HFU`, and a badge with MFU.",
     ],
     howItWorks: [
@@ -147,7 +149,7 @@ const cardInfo: ModuleCardInfo = {
       "Any one GPU failing stops a synchronous job, so the job's mean time between interruptions shrinks in proportion to its GPU count. Saving costs time, and every failure throws away the work since the last save plus a restart; Young's and Daly's formulas give the interval that loses the least.",
     whatYouSee: [
       "`Checkpoint every` 5 to 120 min, `Save time` 5 to 600 s, and `Restart time` 1 to 60 min.",
-      "A curve of the share of time lost against the interval, a dot at the current setting, and dashed lines at the Young and Daly optima, labelled with an arrow when they fall off the axis.",
+      "A curve of the share of time lost against the interval, a dot at the current setting, and dashed lines at the Young and Daly optima, labelled with an arrow when they fall off the axis. Two thinner lines split the curve into its two terms, saving and redone work, and a line under the plot gives both at the current setting.",
       "Metrics `Job MTBF`, `Young optimum`, `Daly optimum`, and `Time lost`, and a kicker with the checkpoint size.",
     ],
     howItWorks: [

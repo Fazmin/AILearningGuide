@@ -57,6 +57,22 @@ describe("PrerequisiteBar", () => {
     expect(container.querySelector(".prereq-chip.is-done")).not.toBeNull();
   });
 
+  it("folds a long list behind a count that opens it, so the lab header stays one row", () => {
+    const module = mount("ship-it");
+    const bar = container.querySelector(".module-prereqs")!;
+    const toggle = container.querySelector<HTMLButtonElement>(".module-prereqs__toggle")!;
+    expect(bar.hasAttribute("data-many")).toBe(true);
+    expect(toggle.textContent).toContain(`${module.prerequisites.length} labs`);
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    act(() => toggle.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(bar.hasAttribute("data-open")).toBe(true);
+    // Every lab is still a link, and Escape closes the list again.
+    expect(container.querySelectorAll(".prereq-chip")).toHaveLength(module.prerequisites.length);
+    act(() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+  });
+
   it("opens the prerequisite when its chip is pressed", () => {
     mount("backpropagation");
     const chip = container.querySelector<HTMLButtonElement>(".prereq-chip")!;

@@ -36,8 +36,8 @@ const cardInfo: ModuleCardInfo = {
     summary:
       "The left lane is the model: it reads tool schemas and writes text. The right lane is host code: parse, look up the tool, validate, apply policy, execute, and append the result. The first failing stage stops the rest, and its error becomes the tool message.",
     whatYouSee: [
-      "Two lanes with a dashed wall, arrows for the four crossings, and ten numbered stages.",
-      "Host stages marked ✓ pass, ✕ fail or – skipped, with the detail that decided it.",
+      "Two lanes with a dashed wall, three labelled slots where text crosses it, and ten numbered stages. A hatched block in the model lane marks the stages the model cannot see.",
+      "Host stages marked ✓ pass, ✕ fail or – skipped on one rail of marks, with the detail that decided it. Stage 9 names the stage its message came from.",
       "A header badge, executed or not executed, Approve send_email and, with a retry preset, a Turn switch.",
     ],
     howItWorks: [
@@ -65,8 +65,8 @@ const cardInfo: ModuleCardInfo = {
     summary:
       "The schema of the tool the call names is shown as sent to the model. The validator walks the parsed arguments and reports each violation with a JSON-pointer path. Validation runs only if parsing and tool lookup passed.",
     whatYouSee: [
-      "The tool's name, policy and JSON schema: types, enum lists, required properties, maxLength, pattern, and additionalProperties false.",
-      "One row per validation error, such as /dock required property is missing, or a note that validation passed or did not run.",
+      "The tool's name, policy and JSON schema: types, enum lists, required properties, maxLength, pattern, and additionalProperties false. A rule the call breaks is marked ✕ broken on its own line.",
+      "One row per argument, marked ✓ or ✕, with the value the call sent. A failing row carries its error, such as /dock required property is missing. A note says when validation passed or did not run.",
     ],
     howItWorks: [
       "Checks: type (string, integer, number, boolean, object), enum membership, required keys, keys not listed when additionalProperties is false, maxLength and pattern on strings.",
@@ -91,7 +91,7 @@ const cardInfo: ModuleCardInfo = {
     summary:
       "The conversation is a list of messages. After a tool call, the host appends a tool message with the result or the error. The next model call reads the whole list and nothing else — not the host's code, logs or notes. With an error-then-retry preset the list holds both turns, so you can see the error sitting between the two calls.",
     whatYouSee: [
-      "Five messages, or seven with a retry: system (the tool list), user, assistant (the raw call), tool (the host's JSON result), then for a retry another assistant call and tool result, and finally the next assistant turn, which is not generated here.",
+      "Five messages, or seven with a retry: system (the tool list), user, assistant (the raw call), tool (the host's JSON result), then for a retry another assistant call and tool result, and finally the next assistant turn, which is not generated here. Each message says who wrote it, and a bracket gathers them all into that next turn.",
       "Metrics: Executed (the outcome of the last call), Grammar blocks it (whether constrained decoding with these schemas could have prevented the first call), and Calls made.",
     ],
     howItWorks: [

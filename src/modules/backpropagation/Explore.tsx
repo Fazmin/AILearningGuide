@@ -1,6 +1,5 @@
 import {
   backpropSnapshot,
-  BarList,
   computationLinkPath,
   FormulaWithValues,
   LabSurface,
@@ -14,7 +13,7 @@ import {
   SurfaceHeading,
   type ModuleContext,
 } from "@app/module-sdk";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   FLOW_ACTIVATIONS,
   FLOW_BATCH,
@@ -44,6 +43,9 @@ const pick = <T extends string>(value: unknown, allowed: readonly T[], fallback:
 const FLOW_LOG_FLOOR = -13;
 const FLOW_LOG_SPAN = 20;
 const scientific = (value: number, digits = 1) => (value === 0 ? "0" : value.toExponential(digits));
+/** Where a gradient norm sits on the twenty-decade track, in percent of its length. */
+const flowPosition = (value: number) =>
+  (Math.min(FLOW_LOG_SPAN, Math.max(0, Math.log10(Math.max(value, 1e-300)) - FLOW_LOG_FLOOR)) / FLOW_LOG_SPAN) * 100;
 /** Plain decimals for ordinary sizes, scientific for anything that would run long. */
 const compact = (value: number) => (value !== 0 && (value >= 1000 || value < 0.001) ? value.toExponential(2) : value.toFixed(3));
 const ACTIVATION_NAMES: Record<FlowActivation, string> = { sigmoid: "sigmoid", tanh: "tanh", relu: "ReLU" };
@@ -56,6 +58,33 @@ const INIT_NAMES: Record<FlowInit, string> = {
 
 /** Signed fixed-point text with a true minus sign. */
 const num = (value: number, digits = 3) => `${value < 0 ? "−" : ""}${Math.abs(value).toFixed(digits)}`;
+
+/** Track the rendered width so the tangent chart is drawn in CSS pixels at any card width. */
+function useWidth(fallback: number) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(fallback);
+  useEffect(() => {
+    const node = ref.current;
+    if (!node || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(([entry]) => {
+      const next = Math.round(entry.contentRect.width);
+      if (next > 0) setWidth((current) => (Math.abs(current - next) > 2 ? next : current));
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+  return [ref, width] as const;
+}
+
+/** Decade labels under the gradient-flow bars, as positions on the twenty-decade track. */
+const FLOW_AXIS = [-12, -8, -4, 0, 4].map((power) => ({
+  power,
+  at: ((power - FLOW_LOG_FLOOR) / FLOW_LOG_SPAN) * 100,
+  text: power === 0 ? "1" : `1e${power}`,
+}));
+/** A ratio between two neighbouring layers, short enough to sit in a narrow column. */
+const ratioText = (value: number) =>
+  !Number.isFinite(value) ? "—" : value >= 100 || value < 0.01 ? value.toExponential(0) : value.toFixed(2);
 
 const nodes = {
   input: { x: 62, y: 70, label: "input x" },
@@ -152,8 +181,11 @@ export default function Explore({
   const edgeData = [
     {
       id: "input-product",
+      from: "input" as NodeId,
       source: nodes.input,
       target: nodes.multiply,
+      valueAt: { x: 142, y: 80, anchor: "start" as const },
+      factorAt: { x: 124, y: 127, anchor: "start" as const },
       forwardStep: 0,
       backwardStep: 5,
       label: `x = ${input.toFixed(2)}`,
@@ -162,8 +194,11 @@ export default function Explore({
     },
     {
       id: "weight-product",
+      from: "weight" as NodeId,
       source: nodes.weight,
       target: nodes.multiply,
+      valueAt: { x: 128, y: 203, anchor: "start" as const },
+      factorAt: { x: 124, y: 148, anchor: "start" as const },
       forwardStep: 0,
       backwardStep: 5,
       label: `w = ${num(weight, 2)}`,
@@ -172,8 +207,11 @@ export default function Explore({
     },
     {
       id: "product-sigmoid",
+      from: "multiply" as NodeId,
       source: nodes.multiply,
       target: nodes.sigmoid,
+      valueAt: { x: 341, y: 122, anchor: "middle" as const },
+      factorAt: { x: 341, y: 149, anchor: "middle" as const },
       forwardStep: 1,
       backwardStep: 4,
       label: `z = ${num(values.product)}`,
@@ -182,8 +220,11 @@ export default function Explore({
     },
     {
       id: "sigmoid-loss",
+      from: "sigmoid" as NodeId,
       source: nodes.sigmoid,
       target: nodes.loss,
+      valueAt: { x: 534, y: 122, anchor: "middle" as const },
+      factorAt: { x: 534, y: 149, anchor: "middle" as const },
       forwardStep: 2,
       backwardStep: 3,
       label: `ŷ = ${num(values.prediction)}`,
@@ -192,8 +233,11 @@ export default function Explore({
     },
     {
       id: "target-loss",
+      from: "target" as NodeId,
       source: nodes.target,
       target: nodes.loss,
+      valueAt: { x: 560, y: 212, anchor: "start" as const },
+      factorAt: { x: 560, y: 226, anchor: "start" as const },
       forwardStep: 2,
       backwardStep: -1,
       label: `y = ${target.toFixed(2)}`,
@@ -242,11 +286,14 @@ export default function Explore({
     },
   ];
 
+  const [chartRef, chartMeasured] = useWidth(360);
+  const chartWidth = Math.max(260, chartMeasured);
+  const chartHeight = Math.round(Math.min(300, Math.max(220, chartWidth * 0.6)));
   const chart = {
     left: 44,
-    right: 388,
-    top: 16,
-    bottom: 188,
+    right: chartWidth - 14,
+    top: 22,
+    bottom: chartHeight - 32,
   };
   const samples = Array.from({ length: 121 }, (_, index) => {
     const candidate = WEIGHT_RANGE[0] + (index / 120) * (WEIGHT_RANGE[1] - WEIGHT_RANGE[0]);
@@ -264,6 +311,10 @@ export default function Explore({
   const bestWeight =
     target > 0 && target < 1 ? Math.log(target / (1 - target)) / input : Number.NaN;
   const bestInView = Number.isFinite(bestWeight) && bestWeight >= WEIGHT_RANGE[0] && bestWeight <= WEIGHT_RANGE[1];
+  // Where one press of the update button would put the weight: the same arithmetic the button runs.
+  const nextWeight = clamp(weight - learningRate * values.dLossWeight, WEIGHT_RANGE[0], WEIGHT_RANGE[1]);
+  const nextLoss = backpropSnapshot(input, nextWeight, target).loss;
+  const nextMoves = Math.abs(xAt(nextWeight) - xAt(weight)) >= 3;
 
   const setPhase = (next: number) => {
     setState({ phase: next });
@@ -318,8 +369,8 @@ export default function Explore({
             const forwardActive = phase >= edge.forwardStep;
             const backwardActive = edge.backwardStep >= 0 && phase >= edge.backwardStep;
             const selected = backward ? edge.backwardStep === phase : edge.forwardStep === phase;
-            const midX = (edge.source.x + edge.target.x) / 2;
-            const midY = (edge.source.y + edge.target.y) / 2;
+            // A value rides an edge only once the node it leaves has been computed.
+            const carried = phase >= valueFrom[edge.from];
             return (
               <g
                 key={edge.id}
@@ -350,11 +401,16 @@ export default function Explore({
                     d={computationLinkPath(edge.source, edge.target)}
                   />
                 )}
-                <text className="bp-edge-value" x={midX} y={midY - 10} textAnchor="middle">
-                  {edge.label}
+                <text
+                  className={`bp-edge-value${carried ? "" : " is-pending"}`}
+                  x={edge.valueAt.x}
+                  y={edge.valueAt.y}
+                  textAnchor={edge.valueAt.anchor}
+                >
+                  {carried ? edge.label : `${edge.label.split(" = ")[0]} = ?`}
                 </text>
                 {backwardActive && (
-                  <text className="bp-edge-local" x={midX} y={midY + 17} textAnchor="middle">
+                  <text className="bp-edge-local" x={edge.factorAt.x} y={edge.factorAt.y} textAnchor={edge.factorAt.anchor}>
                     {edge.factor}
                   </text>
                 )}
@@ -381,7 +437,7 @@ export default function Explore({
                   {known ? num(nodeValue[id], id === "loss" ? 4 : 3) : "?"}
                 </text>
                 {id === "target" && backward && (
-                  <text className="bp-no-gradient" textAnchor="start" x="40" y="4">
+                  <text className="bp-no-gradient" textAnchor="end" x="-42" y="4">
                     no gradient: data
                   </text>
                 )}
@@ -441,48 +497,79 @@ export default function Explore({
             kicker="Loss versus weight, x and y held fixed"
             title="The backward pass predicts this slope"
           />
-          <svg
-            viewBox="0 0 400 214"
-            role="img"
-            aria-label={`Loss curve over weight −3 to 3 with tangent at weight ${num(weight, 2)}. Slope ${num(values.dLossWeight, 4)}.${bestInView ? ` Loss reaches zero at weight ${num(bestWeight, 2)}.` : ""}`}
-          >
-            <line className="plot-axis" x1={chart.left} x2={chart.right} y1={chart.bottom} y2={chart.bottom} />
-            <line className="plot-axis" x1={chart.left} x2={chart.left} y1={chart.top} y2={chart.bottom} />
-            {[-3, -2, -1, 0, 1, 2, 3].map((tick) => (
-              <text key={tick} className="bp-tick" x={xAt(tick)} y={chart.bottom + 13} textAnchor="middle">
-                {tick < 0 ? `−${-tick}` : tick}
-              </text>
-            ))}
-            {[0, maximumLoss / 2, maximumLoss].map((tick) => (
-              <text key={tick} className="bp-tick" x={chart.left - 5} y={yAt(tick) + 3} textAnchor="end">
-                {tick.toFixed(2)}
-              </text>
-            ))}
-            {bestInView && (
-              <g className="bp-best">
-                <line x1={xAt(bestWeight)} x2={xAt(bestWeight)} y1={chart.top} y2={chart.bottom} />
-                <text x={xAt(bestWeight) + (bestWeight > 1.8 ? -4 : 4)} y={chart.top + 10} textAnchor={bestWeight > 1.8 ? "end" : "start"}>
-                  ŷ = y at w {num(bestWeight, 2)}
+          <div ref={chartRef}>
+            <svg
+              viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+              role="img"
+              aria-label={`Loss curve over weight −3 to 3 with tangent at weight ${num(weight, 2)}. Slope ${num(values.dLossWeight, 4)}.${bestInView ? ` Loss reaches zero at weight ${num(bestWeight, 2)}.` : ""} One update at learning rate ${learningRate.toFixed(2)} would move the weight to ${num(nextWeight, 3)}, where the loss is ${nextLoss.toFixed(4)}.`}
+            >
+              <defs>
+                <marker id="bp-step-arrow" markerUnits="userSpaceOnUse" markerWidth="9" markerHeight="9" refX="7.5" refY="4.5" orient="auto">
+                  <path d="M 0 0 L 9 4.5 L 0 9 z" />
+                </marker>
+              </defs>
+              <line className="plot-axis" x1={chart.left} x2={chart.right} y1={chart.bottom} y2={chart.bottom} />
+              <line className="plot-axis" x1={chart.left} x2={chart.left} y1={chart.top} y2={chart.bottom} />
+              {[-3, -2, -1, 0, 1, 2, 3].map((tick) => (
+                <text key={tick} className="bp-tick" x={xAt(tick)} y={chart.bottom + 13} textAnchor="middle">
+                  {tick < 0 ? `−${-tick}` : tick}
                 </text>
-              </g>
-            )}
-            <path className="loss-curve" d={curve} />
-            <line
-              className="tangent-line"
-              x1={xAt(tangentStart)}
-              y1={yAt(tangentAt(tangentStart))}
-              x2={xAt(tangentEnd)}
-              y2={yAt(tangentAt(tangentEnd))}
-            />
-            <line className="marker-guide" x1={xAt(weight)} x2={xAt(weight)} y1={yAt(values.loss)} y2={chart.bottom} />
-            <circle className="loss-ball" cx={xAt(weight)} cy={yAt(values.loss)} r="7" />
-            <text className="bp-axis-title" x={chart.left + 4} y={chart.top - 4}>
-              loss L
-            </text>
-            <text className="bp-axis-title" x={chart.right} y={chart.bottom + 25} textAnchor="end">
-              weight w →
-            </text>
-          </svg>
+              ))}
+              {[0, maximumLoss / 2, maximumLoss].map((tick) => (
+                <text key={tick} className="bp-tick" x={chart.left - 5} y={yAt(tick) + 3} textAnchor="end">
+                  {tick.toFixed(2)}
+                </text>
+              ))}
+              {bestInView && (
+                <g className="bp-best">
+                  <line x1={xAt(bestWeight)} x2={xAt(bestWeight)} y1={chart.top} y2={chart.bottom} />
+                  <text x={xAt(bestWeight) + (bestWeight > 1.8 ? -4 : 4)} y={chart.top + 10} textAnchor={bestWeight > 1.8 ? "end" : "start"}>
+                    ŷ = y at w {num(bestWeight, 2)}
+                  </text>
+                </g>
+              )}
+              <path className="loss-curve" d={curve} />
+              <line
+                className="tangent-line"
+                x1={xAt(tangentStart)}
+                y1={yAt(tangentAt(tangentStart))}
+                x2={xAt(tangentEnd)}
+                y2={yAt(tangentAt(tangentEnd))}
+              />
+              {nextMoves && (
+                <g className="bp-next">
+                  <line className="bp-next__guide" x1={xAt(nextWeight)} x2={xAt(nextWeight)} y1={yAt(nextLoss)} y2={chart.bottom} />
+                  {Math.abs(xAt(nextWeight) - xAt(weight)) >= 14 && (
+                    <line
+                      className="bp-next__step"
+                      x1={xAt(weight)}
+                      x2={xAt(nextWeight) + (nextWeight > weight ? -2 : 2)}
+                      y1={chart.bottom - 6}
+                      y2={chart.bottom - 6}
+                      markerEnd="url(#bp-step-arrow)"
+                    />
+                  )}
+                  <circle className="bp-next__ball" cx={xAt(nextWeight)} cy={yAt(nextLoss)} r="6.5" />
+                </g>
+              )}
+              <line className="marker-guide" x1={xAt(weight)} x2={xAt(weight)} y1={yAt(values.loss)} y2={chart.bottom} />
+              <circle className="loss-ball" cx={xAt(weight)} cy={yAt(values.loss)} r="7" />
+              <text className="bp-axis-title" x={chart.left + 4} y={chart.top - 8}>
+                ↑ loss L
+              </text>
+              <text className="bp-axis-title" x={chart.right} y={chart.bottom + 27} textAnchor="end">
+                weight w →
+              </text>
+            </svg>
+          </div>
+          <div className="bp-tangent-key" aria-hidden="true">
+            <span><i className="bp-tangent-key__now" />now: w {num(weight, 2)}</span>
+            <span><i className="bp-tangent-key__tangent" />tangent: slope {num(values.dLossWeight, 4)}</span>
+            <span>
+              <i className="bp-tangent-key__next" />
+              after one update: w {num(nextWeight, 2)}, loss {nextLoss.toFixed(4)}
+            </span>
+          </div>
           <div className="metric-row">
             <Metric label="Loss" value={values.loss.toFixed(5)} tone="loss" />
             <Metric label="Analytic slope" value={num(values.dLossWeight, 5)} tone="gradient" />
@@ -607,18 +694,65 @@ export default function Explore({
             />
           </div>
         </div>
-        <BarList
-          label={`Gradient norm of each layer's weights, log scale from 1e-13 to 1e7, ${depth} layers`}
-          max={FLOW_LOG_SPAN}
-          items={flow.layers.map((layer) => ({
-            id: `flow-${layer.layer}`,
-            label: `Layer ${layer.layer}${layer.layer === 1 ? " · in" : layer.layer === depth ? " · out" : ""}`,
-            value: clamp(Math.log10(Math.max(layer.gradNorm, 1e-300)) - FLOW_LOG_FLOOR, 0, FLOW_LOG_SPAN),
-            display: scientific(layer.gradNorm, 1),
-            tone: "gradient",
-            emphasis: layer.layer === 1 || layer.layer === depth,
-          }))}
-        />
+        <div
+          className="bp-flow"
+          style={{
+            "--bp-flow-last": `${flowPosition(flow.layers[depth - 1].gradNorm)}%`,
+          } as CSSProperties}
+        >
+          <div className="bp-flow__head" aria-hidden="true">
+            <span>layer</span>
+            <span>gradient norm, log scale: each tick is ×10</span>
+            <span>norm</span>
+            <span>× from the layer after</span>
+          </div>
+          <ol
+            className="bp-flow__rows"
+            aria-label={`Gradient norm of each layer's weights, log scale from 1e-13 to 1e7, ${depth} layers`}
+          >
+            {flow.layers.map((layer, index) => {
+              const position = flowPosition(layer.gradNorm);
+              const last = flowPosition(flow.layers[depth - 1].gradNorm);
+              const after = flow.layers[index + 1];
+              const ends = layer.layer === 1 || layer.layer === depth;
+              return (
+                <li key={layer.layer} className={`bp-flow__row${ends ? " is-emphasis" : ""}`}>
+                  <span className="bp-flow__name">
+                    Layer {layer.layer}
+                    {layer.layer === 1 ? " · in" : layer.layer === depth ? " · out" : ""}
+                  </span>
+                  <span className="bp-flow__track" aria-hidden="true">
+                    <i className="bp-flow__fill" style={{ width: `${position}%` }} />
+                    {last - position > 0.4 && (
+                      <i className="bp-flow__lost" style={{ left: `${position}%`, width: `${last - position}%` }} />
+                    )}
+                  </span>
+                  <strong className="bp-flow__value">{scientific(layer.gradNorm, 1)}</strong>
+                  <span className="bp-flow__factor">
+                    {after ? `× ${ratioText(layer.gradNorm / after.gradNorm)}` : "start"}
+                  </span>
+                </li>
+              );
+            })}
+          </ol>
+          <div className="bp-flow__axis" aria-hidden="true">
+            <span />
+            <span className="bp-flow__ticks">
+              {FLOW_AXIS.map((tick) => (
+                <i key={tick.power} style={{ left: `${tick.at}%` }}>
+                  {tick.text}
+                </i>
+              ))}
+            </span>
+          </div>
+          <p className="bp-flow__legend" aria-hidden="true">
+            <span><i className="bp-flow__key bp-flow__key--last" />the last layer's norm, where the backward pass starts</span>
+            {depth > 1 && (
+              <span><i className="bp-flow__key bp-flow__key--lost" />lost on the way back from it</span>
+            )}
+            <span>↑ the backward pass runs up this list, from Layer {depth} to Layer 1</span>
+          </p>
+        </div>
         <div className="metric-row">
           <Metric label="Layer 1 norm" value={scientific(flow.layers[0].gradNorm, 2)} tone="gradient" />
           <Metric label={`Layer ${depth} norm`} value={scientific(flow.layers[depth - 1].gradNorm, 2)} tone="gradient" />

@@ -1,6 +1,5 @@
 import { useMemo } from "react";
 import {
-  Heatmap,
   LabSurface,
   LineChart,
   Metric,
@@ -31,6 +30,7 @@ import {
   type Population,
 } from "./metrics";
 import { ResidualPlot, RocPlot, ScoreStrip, SweepPlot } from "./plots";
+import { ClaimPlot, ConfusionGrid, ErrorBars, FoldCells, InlineBar, ReadingBars, SliceRail, type Reading } from "./views";
 
 const REGRESSION = [
   { x: 0, y: 0.2 },
@@ -82,10 +82,6 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
   const counted = useMemo(() => countMatrix(rows, baseline, threshold), [baseline, rows, threshold]);
   const positives = rows.filter((example) => example.label === 1).length;
   const ranking = useMemo(() => roc(rows), [rows]);
-  const heat = [
-    [counted.tn / Math.max(1, rows.length), counted.fp / Math.max(1, rows.length)],
-    [counted.fn / Math.max(1, rows.length), counted.tp / Math.max(1, rows.length)],
-  ];
   const positivesIn = (name: "train" | "val" | "test") =>
     examples.filter((example) => example.split === name && example.label === 1).length;
   const bestAccuracy = useMemo(() => bestThreshold(rows, "accuracy"), [rows]);
@@ -128,6 +124,64 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
         : `Threshold ${chosen.threshold.toFixed(2)} was chosen on ${tuneSplit} to raise ${goalName}. Test is still unused for that choice.`,
     );
   };
+
+  const readings: Reading[] = [
+    {
+      id: "accuracy",
+      name: "Accuracy",
+      formula: `(TP+TN)/N = ${counted.tp + counted.tn}/${counted.n}`,
+      parts: [
+        { code: `TP ${counted.tp}`, amount: counted.tp, good: true },
+        { code: `TN ${counted.tn}`, amount: counted.tn, good: true },
+        { code: `FP ${counted.fp}`, amount: counted.fp, good: false },
+        { code: `FN ${counted.fn}`, amount: counted.fn, good: false },
+      ],
+      value: counted.accuracy,
+      alert: counted.accuracy > 0.75 && (counted.recall ?? 0) === 0,
+    },
+    {
+      id: "precision",
+      name: "Precision",
+      formula: `TP/(TP+FP) = ${counted.tp}/${counted.tp + counted.fp}`,
+      parts: [
+        { code: `TP ${counted.tp}`, amount: counted.tp, good: true },
+        { code: `FP ${counted.fp}`, amount: counted.fp, good: false },
+      ],
+      value: counted.precision,
+      empty: "n/a · nothing was predicted positive (0/0)",
+    },
+    {
+      id: "recall",
+      name: "Recall",
+      formula: `TP/(TP+FN) = ${counted.tp}/${counted.tp + counted.fn}`,
+      parts: [
+        { code: `TP ${counted.tp}`, amount: counted.tp, good: true },
+        { code: `FN ${counted.fn}`, amount: counted.fn, good: false },
+      ],
+      value: counted.recall,
+      alert: counted.recall === 0,
+      empty: "n/a · no positives in this split (0/0)",
+    },
+    {
+      id: "f1",
+      name: "F1",
+      formula: `2TP/(2TP+FP+FN) = ${2 * counted.tp}/${2 * counted.tp + counted.fp + counted.fn}`,
+      parts: [
+        { code: `2 × TP ${counted.tp}`, amount: 2 * counted.tp, good: true },
+        { code: `FP ${counted.fp}`, amount: counted.fp, good: false },
+        { code: `FN ${counted.fn}`, amount: counted.fn, good: false },
+      ],
+      value: counted.f1,
+      empty: "n/a · no positives and no alarms (0/0)",
+    },
+  ];
+  const baseParts = (precision: number | null) =>
+    precision === null
+      ? []
+      : [
+          { code: `${(precision * 100).toFixed(0)} real`, amount: precision, good: true },
+          { code: `${((1 - precision) * 100).toFixed(0)} false alarms`, amount: 1 - precision, good: false },
+        ];
 
   const firing =
     baseline === "always-negative"
@@ -187,15 +241,6 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
               onChange={(value) => setState({ baseline: value })}
             />
           </div>
-          <RangeControl
-            label="Decision threshold"
-            min={0}
-            max={1}
-            step={0.01}
-            value={threshold}
-            format={(value) => value.toFixed(2)}
-            onChange={(value) => setState({ threshold: value })}
-          />
           <div className="split-control">
             <SegmentedControl
               label="Scored split"
@@ -209,6 +254,15 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
               onChange={(value) => setState({ split: value })}
             />
           </div>
+          <RangeControl
+            label="Decision threshold"
+            min={0}
+            max={1}
+            step={0.01}
+            value={threshold}
+            format={(value) => value.toFixed(2)}
+            onChange={(value) => setState({ threshold: value })}
+          />
           <ScoreStrip examples={examples} population={population} threshold={threshold} baseline={baseline} scored={scoredIds} />
           <ul className="gw-legend" aria-hidden="true">
             {rare ? (
@@ -234,6 +288,12 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
               </>
             )}
             <li>
+              <b className="eval-key is-fired">●</b>false alarm (FP)
+            </li>
+            <li>
+              <b className="eval-key is-missed">◇</b>missed positive (FN)
+            </li>
+            <li>
               <b className="eval-key is-faded">●</b>outside the scored split
             </li>
           </ul>
@@ -245,200 +305,29 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           </p>
         </LabSurface>
 
-        <LabSurface label="Train, val, test" className="split-card">
-          <SurfaceHeading
-            kicker={
-              rare
-                ? "70 / 15 / 15 · one positive, in test"
-                : `70 / 15 / 15 · ${positivesIn("train")} / ${positivesIn("val")} / ${positivesIn("test")} positives`
-            }
-            title="A holdout dies if you choose t on it"
-          />
-          <div
-            className="split-strip"
-            role="img"
-            aria-label={
-              rare
-                ? "One hundred rows: 70 train, 15 val, 15 test. Row 99 is the only positive. Row 12 is a confident false alarm."
-                : `One hundred rows: 70 train, 15 val, 15 test. Twenty are positive: ${positivesIn("train")} in train, ${positivesIn("val")} in val, ${positivesIn("test")} in test, outlined in the strip.`
-            }
-          >
-            {examples.map((example) => (
-              <i
-                key={example.id}
-                className={`is-${example.split}${example.label === 1 ? " is-positive" : ""}${rare && example.id === 12 ? " is-alarm" : ""}`}
-                title={`row ${example.id} · ${example.split} · y=${example.label} · score ${example.score.toFixed(2)}`}
-              />
-            ))}
-          </div>
-          <div className="split-legend eval-split-legend">
-            <span>
-              <i className="is-train" />
-              train 0–69
-            </span>
-            <span>
-              <i className="is-val" />
-              val 70–84
-            </span>
-            <span>
-              <i className="is-test" />
-              test 85–99
-            </span>
-            {rare ? (
-              <>
-                <span>
-                  <i className="is-positive" />
-                  row 99 · y = 1
-                </span>
-                <span>
-                  <i className="is-alarm" />
-                  row 12 · score 0.88
-                </span>
-              </>
-            ) : (
-              <span>
-                <i className="is-positive" />
-                outlined · y = 1
-              </span>
-            )}
-          </div>
-          <div className="tune-control">
-            <SegmentedControl
-              label="Choose t using"
-              value={tuneSplit}
-              options={[
-                { value: "train", label: "train" },
-                { value: "val", label: "val" },
-                { value: "test", label: "test" },
-              ]}
-              onChange={(value) => setState({ tuneSplit: value })}
-            />
-            <SegmentedControl
-              label="Maximize"
-              value={goal}
-              options={[
-                { value: "accuracy", label: "accuracy" },
-                { value: "recall", label: "recall" },
-                { value: "f1", label: "F1" },
-              ]}
-              onChange={(value) => setState({ goal: value })}
-            />
-            <button type="button" className="primary-action" onClick={applyTuned}>
-              Set t from {tuneSplit} ({chosen.threshold.toFixed(2)})
-            </button>
-          </div>
-          <div className="metric-row">
-            <Metric label="t chosen" value={chosen.threshold.toFixed(2)} />
-            <Metric
-              label={`${tuneSplit} ${goalName} at that t`}
-              value={percent(chosen.score)}
-            />
-            <Metric
-              label={`Test ${goalName}`}
-              value={percent(readingOf(testAfterTune, goal))}
-              tone={leaked ? "loss" : "forward"}
-            />
-            <Metric label="Holdout?" value={leaked ? "leaked" : "intact"} tone={leaked ? "loss" : "forward"} />
-          </div>
-          <table className="tg-board fit-table eval-leak-table" aria-label={`Intact versus leaked threshold choice, scored on ${goalName}`}>
-            <thead>
-              <tr>
-                <th scope="col">Path · {goalName}</th>
-                <th scope="col">t</th>
-                <th scope="col">Test claim</th>
-                <th scope="col">Fresh rows</th>
-                <th scope="col">Claim − fresh</th>
-              </tr>
-            </thead>
-            <tbody>
-              {[
-                { id: "val", label: "Intact · t from val", t: leak.valThreshold, claim: leak.intactTest, fresh: leak.intactFresh },
-                { id: "test", label: "Leaked · t from test", t: leak.testThreshold, claim: leak.leakedTest, fresh: leak.leakedFresh },
-              ].map((path) => (
-                <tr key={path.id} className={path.id === tuneSplit ? "is-leader" : ""}>
-                  <th scope="row">{path.label}</th>
-                  <td>{path.t.toFixed(2)}</td>
-                  <td>{percent(path.claim)}</td>
-                  <td>{percent(path.fresh)}</td>
-                  <td>{path.claim === null || path.fresh === null ? "n/a" : points(path.claim - path.fresh)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <div className="metric-row">
-            <Metric
-              label={`Leak inflation, test ${goalName}`}
-              value={points(leak.inflation)}
-              tone={leak.inflation !== null && leak.inflation > 0 ? "loss" : undefined}
-            />
-          </div>
-          <p className="lab-note">
-            {leaked
-              ? rare
-                ? "Choosing t on test is leakage. The test number then describes a threshold that already saw the holdout, including row 99. With one positive the gain is a single row; switch Population to 1 in 5 to measure it against rows the choice never saw."
-                : `Choosing t on test is leakage. The search kept whatever was lucky about these 15 rows, so the test number rises while the fresh-rows number, scored on ${FRESH_ROWS.length} rows that took no part in the choice, does not follow it.`
-              : goal !== "accuracy" && !tuneHasPositives
-                ? goal === "recall"
-                  ? `${tuneSplit === "train" ? "Train" : "Val"} holds no positives, so recall is 0/0 there for every t: the search has nothing to find and falls back to t = 1.00, which never fires. The intact path is honest and still misses row 99. Stratifying would need at least one positive per slice, and one positive cannot sit in all three.`
-                  : `${tuneSplit === "train" ? "Train" : "Val"} holds no positives, so F1 is 0 wherever the rule fires and 0/0 where it does not. The search keeps the highest t that fires at all, a threshold chosen on nothing. The intact path is honest and still misses row 99.`
-                : `t is chosen on ${tuneSplit} to raise ${goalName}, then the test slice is scored with that frozen t.${
-                    rare
-                      ? " Maximizing accuracy on an all-negative slice picks a t that never fires."
-                      : ` The Fresh rows column scores each t on ${FRESH_ROWS.length} more rows from the same process that took no part in either choice; a claim above its fresh-rows reading is an overstatement.`
-                  }`}
-          </p>
-        </LabSurface>
-
-        <LabSurface label="Confusion matrix" className="confusion-card">
+        <LabSurface label="Confusion matrix" className="confusion-card gw-wide">
           <SurfaceHeading kicker="True class versus predicted class" title="Four counts, one table" />
-          <div className="confusion-matrix">
-            <Heatmap
-              label="Confusion matrix as shares of the scored rows"
-              rows={["true 0", "true 1"]}
-              columns={["pred 0", "pred 1"]}
-              values={heat}
-            />
-            <table className="tg-board">
-              <thead>
-                <tr>
-                  <th scope="col"> </th>
-                  <th scope="col">Pred 0</th>
-                  <th scope="col">Pred 1</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <th scope="row">True 0</th>
-                  <td>{counted.tn} TN</td>
-                  <td>{counted.fp} FP</td>
-                </tr>
-                <tr className={counted.fn > 0 && counted.tp === 0 ? "is-leader" : ""}>
-                  <th scope="row">True 1</th>
-                  <td>{counted.fn} FN</td>
-                  <td>{counted.tp} TP</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+          <ConfusionGrid counted={counted} />
           <p className="lab-note">
-            Heatmap cells are shares of the {rows.length} scored rows. The table is the raw counts every scalar score on
-            this page is computed from. Accuracy = (TP+TN)/N, precision = TP/(TP+FP), recall = TP/(TP+FN), F1 =
+            Each cell holds its share of the {rows.length} scored rows, drawn with the marks from the score strip. These
+            four counts are what every scalar score on this page is computed from. Accuracy = (TP+TN)/N, precision = TP/(TP+FP), recall = TP/(TP+FN), F1 =
             2PR/(P+R) = 2TP/(2TP+FP+FN).
           </p>
         </LabSurface>
 
-        <LabSurface label="Four readings" className="metrics-card">
+        <LabSurface label="Four readings" className="metrics-card gw-wide">
           <SurfaceHeading kicker="Accuracy is not the other three" title="The same matrix, four readings" />
-          <div className="metric-row">
-            <Metric
-              label="Accuracy"
-              value={percent(counted.accuracy)}
-              tone={counted.accuracy > 0.75 && (counted.recall ?? 0) === 0 ? "loss" : "forward"}
-            />
-            <Metric label="Precision" value={percent(counted.precision)} />
-            <Metric label="Recall" value={percent(counted.recall)} tone={counted.recall === 0 ? "loss" : "forward"} />
-            <Metric label="F1" value={percent(counted.f1)} />
-          </div>
+          <ReadingBars label="Four readings of the confusion matrix" readings={readings} />
+          <ul className="gw-legend eval-reading-key" aria-hidden="true">
+            <li>
+              <i className="eval-swatch is-good" />
+              solid: rows that count for the reading
+            </li>
+            <li>
+              <i className="eval-swatch is-bad" />
+              hatched: rows that count against it
+            </li>
+          </ul>
           <p className="lab-note">
             {counted.tp === 0 && counted.fn > 0 && counted.accuracy > 0.75
               ? `${percent(counted.accuracy, 0)} accuracy, zero recall. The detector never found a positive. Majority guessing is the baseline that looks fine and is worthless.`
@@ -499,31 +388,173 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
               }
             />
           </div>
-          <p className="lab-note">
-            AUC is the chance a random positive scores above a random negative. It reads the ranking, not any one
-            threshold, so a detector can have AUC near 1 while the published threshold never fires.{" "}
-            {rare
-              ? "With a single positive the curve is one step and the number is fragile. "
-              : "With twenty positives the curve has many small steps, so one row moves it far less than with a single positive. "}
-            Calibration asks a different question — do rows scored 0.4 turn out positive 40% of the time? — and a
-            reliability plot needs many rows per bin, so this page does not draw one for either population.
-          </p>
-          <div className="metric-row">
-            <Metric label="Precision if 1 row in 5 is positive" value={percent(rateAtOneInFive)} />
-            <Metric label="Precision if 1 row in 100 is positive" value={percent(rateAtOneInHundred)} tone="loss" />
-          </div>
+          <details className="eval-more">
+            <summary>What AUC grades, and what it does not</summary>
+            <p className="lab-note">
+              AUC is the chance a random positive scores above a random negative. It reads the ranking, not any one
+              threshold, so a detector can have AUC near 1 while the published threshold never fires.{" "}
+              {rare
+                ? "With a single positive the curve is one step and the number is fragile. "
+                : "With twenty positives the curve has many small steps, so one row moves it far less than with a single positive. "}
+              Calibration asks a different question — do rows scored 0.4 turn out positive 40% of the time? — and a
+              reliability plot needs many rows per bin, so this page does not draw one for either population.
+            </p>
+          </details>
+          <ReadingBars
+            stacked
+            label="Precision of this rule at two base rates"
+            readings={[
+              {
+                id: "fifth",
+                name: "Precision if 1 row in 5 is positive",
+                formula: "of every 100 alarms",
+                parts: baseParts(rateAtOneInFive),
+                value: rateAtOneInFive,
+                empty: "n/a · no alarms, or a rate that is 0/0 on this split",
+              },
+              {
+                id: "hundredth",
+                name: "Precision if 1 row in 100 is positive",
+                formula: "of every 100 alarms",
+                parts: baseParts(rateAtOneInHundred),
+                value: rateAtOneInHundred,
+                alert: true,
+                empty: "n/a · no alarms, or a rate that is 0/0 on this split",
+              },
+            ]}
+          />
           <p className="lab-note">
             Base rate: these two readings keep this rule&apos;s true positive rate and false positive rate and change only
             the share of positives, using precision = TPR·π / (TPR·π + FPR·(1−π)). The detector does not change; its
             precision does, because the false alarms come from the negatives and there are far more of them when
             positives are rare.
           </p>
+          <details className="eval-more">
+            <summary>Why these readings are not the training loss</summary>
+            <p className="lab-note">
+              Loss versus metric: training would minimize a differentiable loss on scores (for example cross-entropy).
+              These four numbers are published readings of a thresholded matrix.{" "}
+              {rare
+                ? "Maximizing accuracy on this set prefers never firing; maximizing recall prefers t ≤ 0.42. Those two searches disagree."
+                : `On these rows accuracy peaks at t = ${bestAccuracy.threshold.toFixed(2)} and F1 at t = ${bestF1.threshold.toFixed(2)}, while recall alone is best at the lowest t that still catches every positive. The searches disagree.`}
+            </p>
+          </details>
+        </LabSurface>
+
+        <LabSurface label="Train, val, test" className="split-card">
+          <SurfaceHeading
+            kicker={
+              rare
+                ? "70 / 15 / 15 · one positive, in test"
+                : `70 / 15 / 15 · ${positivesIn("train")} / ${positivesIn("val")} / ${positivesIn("test")} positives`
+            }
+            title="A holdout dies if you choose t on it"
+          />
+          <SliceRail
+            examples={examples}
+            rare={rare}
+            tuneSplit={tuneSplit as "train" | "val" | "test"}
+            label={
+              (rare
+                ? "One hundred rows: 70 train, 15 val, 15 test. Row 99 is the only positive. Row 12 is a confident false alarm."
+                : `One hundred rows: 70 train, 15 val, 15 test. Twenty are positive: ${positivesIn("train")} in train, ${positivesIn("val")} in val, ${positivesIn("test")} in test, each marked with a diamond.`) +
+              (leaked
+                ? " The threshold is chosen on test, the same slice the claim is scored on."
+                : ` The threshold is chosen on ${tuneSplit}; the claim is scored on test.`)
+            }
+          />
+          <div className="tune-control">
+            <SegmentedControl
+              label="Choose t using"
+              value={tuneSplit}
+              options={[
+                { value: "train", label: "train" },
+                { value: "val", label: "val" },
+                { value: "test", label: "test" },
+              ]}
+              onChange={(value) => setState({ tuneSplit: value })}
+            />
+            <SegmentedControl
+              label="Maximize"
+              value={goal}
+              options={[
+                { value: "accuracy", label: "accuracy" },
+                { value: "recall", label: "recall" },
+                { value: "f1", label: "F1" },
+              ]}
+              onChange={(value) => setState({ goal: value })}
+            />
+            <button type="button" className="primary-action" onClick={applyTuned}>
+              Set t from {tuneSplit} ({chosen.threshold.toFixed(2)})
+            </button>
+          </div>
+          <div className="metric-row">
+            <Metric label="t chosen" value={chosen.threshold.toFixed(2)} />
+            <Metric
+              label={`${tuneSplit} ${goalName} at that t`}
+              value={percent(chosen.score)}
+            />
+            <Metric
+              label={`Test ${goalName}`}
+              value={percent(readingOf(testAfterTune, goal))}
+              tone={leaked ? "loss" : "forward"}
+            />
+            <Metric label="Holdout?" value={leaked ? "leaked" : "intact"} tone={leaked ? "loss" : "forward"} />
+          </div>
+          <ClaimPlot
+            goalName={goalName}
+            current={tuneSplit}
+            paths={[
+              { id: "val", label: "Intact · t from val", claim: leak.intactTest, fresh: leak.intactFresh },
+              { id: "test", label: "Leaked · t from test", claim: leak.leakedTest, fresh: leak.leakedFresh },
+            ]}
+          />
+          <table className="tg-board fit-table eval-leak-table" aria-label={`Intact versus leaked threshold choice, scored on ${goalName}`}>
+            <thead>
+              <tr>
+                <th scope="col">Path · {goalName}</th>
+                <th scope="col">t</th>
+                <th scope="col">Test claim</th>
+                <th scope="col">Fresh rows</th>
+                <th scope="col">Claim − fresh</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[
+                { id: "val", label: "Intact · t from val", t: leak.valThreshold, claim: leak.intactTest, fresh: leak.intactFresh },
+                { id: "test", label: "Leaked · t from test", t: leak.testThreshold, claim: leak.leakedTest, fresh: leak.leakedFresh },
+              ].map((path) => (
+                <tr key={path.id} className={path.id === tuneSplit ? "is-leader" : ""}>
+                  <th scope="row">{path.label}</th>
+                  <td>{path.t.toFixed(2)}</td>
+                  <td>{percent(path.claim)}</td>
+                  <td>{percent(path.fresh)}</td>
+                  <td>{path.claim === null || path.fresh === null ? "n/a" : points(path.claim - path.fresh)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="metric-row">
+            <Metric
+              label={`Leak inflation, test ${goalName}`}
+              value={points(leak.inflation)}
+              tone={leak.inflation !== null && leak.inflation > 0 ? "loss" : undefined}
+            />
+          </div>
           <p className="lab-note">
-            Loss versus metric: training would minimize a differentiable loss on scores (for example cross-entropy).
-            These four numbers are published readings of a thresholded matrix.{" "}
-            {rare
-              ? "Maximizing accuracy on this set prefers never firing; maximizing recall prefers t ≤ 0.42. Those two searches disagree."
-              : `On these rows accuracy peaks at t = ${bestAccuracy.threshold.toFixed(2)} and F1 at t = ${bestF1.threshold.toFixed(2)}, while recall alone is best at the lowest t that still catches every positive. The searches disagree.`}
+            {leaked
+              ? rare
+                ? "Choosing t on test is leakage. The test number then describes a threshold that already saw the holdout, including row 99. With one positive the gain is a single row; switch Population to 1 in 5 to measure it against rows the choice never saw."
+                : `Choosing t on test is leakage. The search kept whatever was lucky about these 15 rows, so the test number rises while the fresh-rows number, scored on ${FRESH_ROWS.length} rows that took no part in the choice, does not follow it.`
+              : goal !== "accuracy" && !tuneHasPositives
+                ? goal === "recall"
+                  ? `${tuneSplit === "train" ? "Train" : "Val"} holds no positives, so recall is 0/0 there for every t: the search has nothing to find and falls back to t = 1.00, which never fires. The intact path is honest and still misses row 99. Stratifying would need at least one positive per slice, and one positive cannot sit in all three.`
+                  : `${tuneSplit === "train" ? "Train" : "Val"} holds no positives, so F1 is 0 wherever the rule fires and 0/0 where it does not. The search keeps the highest t that fires at all, a threshold chosen on nothing. The intact path is honest and still misses row 99.`
+                : `t is chosen on ${tuneSplit} to raise ${goalName}, then the test slice is scored with that frozen t.${
+                    rare
+                      ? " Maximizing accuracy on an all-negative slice picks a t that never fires."
+                      : ` The Fresh rows column scores each t on ${FRESH_ROWS.length} more rows from the same process that took no part in either choice; a claim above its fresh-rows reading is an overstatement.`
+                  }`}
           </p>
         </LabSurface>
 
@@ -592,18 +623,11 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
               onChange={(value) => setState({ fold: value })}
             />
           </div>
-          <div className="split-strip eval-fold-strip" role="img" aria-label={`Five folds of twenty. Fold ${fold} is held out.`}>
-            {examples.map((example) => (
-              <i
-                key={example.id}
-                className={`${foldOf(example) === fold ? "is-val" : "is-train"}${example.label === 1 ? " is-positive" : ""}`}
-              />
-            ))}
-          </div>
-          <table className="tg-board fit-table">
+          <table className="tg-board fit-table eval-cv-table" aria-label={`Five folds of twenty rows. Fold ${fold} is held out.`}>
             <thead>
               <tr>
                 <th scope="col">Fold</th>
+                <th scope="col" className="eval-cv-rows">Its 20 rows · ◆ positive</th>
                 <th scope="col">Always-neg acc</th>
                 <th scope="col">Recall</th>
                 <th scope="col">Positives in fold</th>
@@ -612,8 +636,16 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             <tbody>
               {foldMatrices.map((matrix, index) => (
                 <tr key={index} className={index === fold ? "is-leader" : ""}>
-                  <td>{index}</td>
-                  <td>{(matrix.accuracy * 100).toFixed(0)}%</td>
+                  <td>
+                    {index}
+                    {index === fold ? " · held out" : ""}
+                  </td>
+                  <td className="eval-cv-rows">
+                    <FoldCells rows={examples.filter((example) => foldOf(example) === index)} held={index === fold} />
+                  </td>
+                  <td>
+                    <InlineBar value={matrix.accuracy}>{(matrix.accuracy * 100).toFixed(0)}%</InlineBar>
+                  </td>
                   <td>{percent(matrix.recall, 0)}</td>
                   <td>
                     {foldPositives[index]}
@@ -651,6 +683,15 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             onChange={(value) => setState({ outlier: value })}
           />
           <ResidualPlot points={regression} />
+          <ErrorBars
+            max={30}
+            label={`Mean absolute error ${mae.toFixed(2)}, root mean squared error ${rmse.toFixed(2)}, mean squared error ${mse.toFixed(2)}, on one scale from 0 to 30.`}
+            rows={[
+              { name: "MAE", value: mae, tone: "plain", note: "mean of |y − ŷ|" },
+              { name: "RMSE", value: rmse, tone: "loss", note: "√MSE, back in y's units" },
+              { name: "MSE", value: mse, tone: "loss", note: "mean of (y − ŷ)²" },
+            ]}
+          />
           <table className="tg-board fit-table">
             <thead>
               <tr>

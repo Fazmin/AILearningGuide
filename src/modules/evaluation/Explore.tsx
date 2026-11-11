@@ -49,16 +49,20 @@ function ForestPlot({
   n,
   rule,
   attempts,
+  before,
 }: {
   ranked: RatedCheckpoint[];
   leader: RatedCheckpoint;
   n: number;
   rule: Rule;
   attempts: number;
+  /** The same checkpoints trained without the leak, drawn hollow under each row while the leak is on. */
+  before?: RatedCheckpoint[];
 }) {
-  const rowHeight = 30;
+  const rowHeight = before ? 36 : 30;
   const top = 26;
-  const height = top + ranked.length * rowHeight + 30;
+  const plotBottom = top + ranked.length * rowHeight + 30;
+  const height = plotBottom + (before ? 18 : 0);
   const passLeft = 104;
   const passRight = 340;
   const marginLeft = 424;
@@ -93,7 +97,17 @@ function ForestPlot({
     .join(". ");
 
   return (
-    <svg className="ev-forest" viewBox={`0 0 720 ${height}`} role="img" aria-label={`Leaderboard with 95% intervals. ${summary}.`}>
+    <svg className="ev-forest" viewBox={`0 0 720 ${height}`} role="img" aria-label={`Leaderboard with 95% intervals. ${summary}.${
+        before
+          ? ` Without the leak: ${ranked
+              .map((row) => {
+                const was = before.find((entry) => entry.epochs === row.epochs);
+                return was ? `${row.epochs} epochs scored ${pct(was.score)}` : "";
+              })
+              .filter(Boolean)
+              .join(", ")}.`
+          : ""
+      }`}>
       <text x={passLeft} y={12}>
         {leftTitle}
       </text>
@@ -119,7 +133,7 @@ function ForestPlot({
       {[0, 0.25, 0.5, 0.75, 1].map((tick) => (
         <g key={`p${tick}`}>
           <line className="ev-grid" x1={passAt(tick)} x2={passAt(tick)} y1={top - 4} y2={top + ranked.length * rowHeight + 4} />
-          <text x={passAt(tick)} y={height - 12} textAnchor="middle">
+          <text x={passAt(tick)} y={plotBottom - 12} textAnchor="middle">
             {pct(tick)}
           </text>
         </g>
@@ -133,16 +147,34 @@ function ForestPlot({
             y1={top - 4}
             y2={top + ranked.length * rowHeight + 4}
           />
-          <text x={sideAt(tick)} y={height - 12} textAnchor="middle">
+          <text x={sideAt(tick)} y={plotBottom - 12} textAnchor="middle">
             {sample ? pct(tick) : tick === 0 ? "0" : signed(tick, 2)}
           </text>
         </g>
       ))}
       {ranked.map((row, index) => {
-        const y = yAt(index);
+        const y = yAt(index) - (before ? 4 : 0);
         const isLeader = row === leader;
+        const was = before?.find((entry) => entry.epochs === row.epochs);
+        const lane = y + 12;
+        const arrow = (from: number, to: number) =>
+          Math.abs(to - from) < 9
+            ? null
+            : `M${from + Math.sign(to - from) * 4},${lane}H${to - Math.sign(to - from) * 2}m${-Math.sign(to - from) * 5},-3.5l${
+                Math.sign(to - from) * 5
+              },3.5l${-Math.sign(to - from) * 5},3.5`;
         return (
           <g key={row.epochs} className={`ev-row${isLeader ? " is-leader" : ""}`}>
+            {was && (
+              <g className="ev-before">
+                <circle cx={passAt(was.score)} cy={lane} r={3.4} />
+                {arrow(passAt(was.score), passAt(row.score)) && <path d={arrow(passAt(was.score), passAt(row.score)) ?? ""} />}
+                <rect x={sideAt(was.side.mean) - 3.2} y={lane - 3.2} width={6.4} height={6.4} />
+                {arrow(sideAt(was.side.mean), sideAt(row.side.mean)) && (
+                  <path d={arrow(sideAt(was.side.mean), sideAt(row.side.mean)) ?? ""} />
+                )}
+              </g>
+            )}
             <text className="ev-row-label" x={8} y={y + 4}>
               {row.epochs} epochs {isLeader ? "★" : ""}
             </text>
@@ -164,7 +196,64 @@ function ForestPlot({
           </g>
         );
       })}
+      {before && (
+        <g className="ev-before">
+          <circle cx={passLeft + 4} cy={height - 8} r={3.4} />
+          <rect x={passLeft + 12} y={height - 11.2} width={6.4} height={6.4} />
+          <text className="ev-before-note" x={passLeft + 26} y={height - 4}>
+            hollow marks: the same checkpoint trained without the leak · arrows: how far the leak moved it
+          </text>
+        </g>
+      )}
     </svg>
+  );
+}
+
+/** The three texts as bars on one scale: what is trained on, and what is only ever scored. */
+function TextSets({
+  training,
+  cleanTraining,
+  largest,
+  source,
+  control,
+  contaminated,
+}: {
+  training: number;
+  cleanTraining: number;
+  largest: number;
+  source: number;
+  control: number;
+  contaminated: boolean;
+}) {
+  const share = (count: number) => `${((count / Math.max(1, largest)) * 100).toFixed(1)}%`;
+  return (
+    <div className="ev-texts">
+      <div className="ev-text is-training">
+        <span>Training characters</span>
+        <b>{training}</b>
+        <em aria-hidden="true">
+          <i style={{ width: share(cleanTraining) }} />
+          {contaminated && <i className="is-leak" style={{ width: share(training - cleanTraining) }} />}
+        </em>
+        <small>{contaminated ? "trained on, with the benchmark source inside" : "trained on"}</small>
+      </div>
+      <div className={`ev-text is-source${contaminated ? " is-leaked" : ""}`}>
+        <span>Benchmark source</span>
+        <b>{source}</b>
+        <em aria-hidden="true">
+          <i style={{ width: share(source) }} />
+        </em>
+        <small>{contaminated ? "leaked into the training text" : "held out: only scored"}</small>
+      </div>
+      <div className="ev-text is-control">
+        <span>Control</span>
+        <b>{control}</b>
+        <em aria-hidden="true">
+          <i style={{ width: share(control) }} />
+        </em>
+        <small>never trained on: only scored</small>
+      </div>
+    </div>
   );
 }
 
@@ -254,7 +343,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
         <p className="lab-note">{RULE_NOTES[rule]}</p>
         {n > 0 && (
           <div className="ev-forest-wrap">
-            <ForestPlot ranked={ranked} leader={leader} n={n} rule={rule} attempts={attempts} />
+            <ForestPlot ranked={ranked} leader={leader} n={n} rule={rule} attempts={attempts} before={contaminated ? clean : undefined} />
           </div>
         )}
         <div className="ev-board-scroll">
@@ -320,7 +409,14 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           title="Item by item, with both scores"
         />
         <ol className="tg-item-list ev-item-list">
-          {strongest.items.map((item, index) => (
+          {strongest.items.map((item, index) => {
+            const cleanItem = contaminated ? cleanStrongest.items[index] : undefined;
+            const cleanAt = cleanItem
+              ? sample
+                ? cleanItem.score * 100
+                : 50 + Math.max(-1, Math.min(1, cleanItem.side / marginExtent)) * 50
+              : null;
+            return (
             <li key={index} className={item.passed ? "is-pass" : "is-fail"}>
               <span>{item.context}</span>
               <code>
@@ -347,15 +443,28 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
                         }
                   }
                 />
+                {cleanAt !== null && <s style={{ left: `${cleanAt.toFixed(1)}%` }} />}
               </em>
             </li>
-          ))}
+            );
+          })}
           {strongest.items.length === 0 && (
             <p className="lab-note">
               Each line needs three parts: a context, the correct continuation, and a plausible wrong one.
             </p>
           )}
         </ol>
+        <p className="ev-bar-key">
+          {sample
+            ? `Each bar is the item's pass@${attempts}, from 0% at the left to 100% at the right.`
+            : "Each bar is the item's margin: right of the centre line the correct option wins, left of it the distractor wins."}
+          {contaminated && (
+            <>
+              {" "}
+              <s aria-hidden="true" /> The dark tick is the same item before the leak.
+            </>
+          )}
+        </p>
         <div className="metric-row">
           <Metric
             label={sample ? `Mean pass@${attempts}` : "Pass rate"}
@@ -404,11 +513,14 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             format={(value) => `${value.toFixed(2)}× epochs`}
             onChange={(value) => setState({ epochsScale: value })}
           />
-          <div className="metric-row">
-            <Metric label="Training characters" value={`${encodeTinyText(trainingText).length}`} />
-            <Metric label="Benchmark source" value={`${encodeTinyText(BENCHMARK_SOURCE).length}`} />
-            <Metric label="Control" value={`${encodeTinyText(CONTROL_TEXT).length}`} />
-          </div>
+          <TextSets
+            training={encodeTinyText(trainingText).length}
+            cleanTraining={encodeTinyText(TRAINING_TEXT).length}
+            largest={encodeTinyText(LEAKED_TEXT).length}
+            source={encodeTinyText(BENCHMARK_SOURCE).length}
+            control={encodeTinyText(CONTROL_TEXT).length}
+            contaminated={contaminated}
+          />
           <p className="lab-note">
             A good distractor is wrong but ordinary: “evening” shares almost every character pattern with “morning”, so
             only a model that learned this particular text can separate them.

@@ -7,6 +7,7 @@ const cardInfo: ModuleCardInfo = {
       "One clean digit x₀ shown at six noise levels of the shipped 100-step cosine schedule, computed exactly from q(x_t | x₀) with one seeded noise image. Beside it: the schedule's signal and noise coefficients, and the shipped network's error at predicting that noise at every level.",
     whatYouSee: [
       "A strip: x₀, then the same digit at t = 0, 19, 39, 59, 79 and 99, each labelled with √ᾱ_t. The outlined tile is the level nearest the reverse process's current step.",
+      "Two thin bars under each tile: a solid blue one as long as that step's signal share √ᾱ_t and a striped pink one as long as its noise share √(1−ᾱ_t), the same two values the Noise schedule chart plots.",
       "`Noise schedule`: √ᾱ_t as a solid line and √(1−ᾱ_t) as a dashed line against step t, with a marker at the reverse process's current level. The legend prints the values at t = 99: 0.031 and 1.000.",
       "`Noise-prediction error by step`: the trained network's mean squared error at predicting ε (solid) against always predicting zero (dotted), measured on this x₀ with one seeded ε.",
       "The status chip reads `ONNX · WASM` (or `WEBGPU`) once the error curve has come back from the model worker.",
@@ -39,7 +40,7 @@ const cardInfo: ModuleCardInfo = {
     summary:
       "The DDPM update applied 100 times from a seeded start, calling a denoiser once per step. Choose the shipped ONNX network or the exact posterior-mean denoiser for 64 VAE-drawn reference digits, then scrub through the stored trajectory from pure noise to a sample.",
     whatYouSee: [
-      "Three large images for the current position: x after k calls, and the next call's predicted clean image x̂₀ and predicted noise ε̂ (mid-grey is zero; black and white are ∓2.5).",
+      "Three large images for the current position: x after k calls, then an arrow marked denoiser, then the next call's predicted clean image x̂₀ and predicted noise ε̂ (mid-grey is zero; black and white are ∓2.5).",
       "A `Denoiser calls` slider from 0 to 100 and a filmstrip of x after 0, 10, …, 100 calls. Each thumbnail is a button that jumps there.",
       "The next update with its numbers filled in, then four readouts: calls made, the noise level t of the current x, √ᾱ and √(1−ᾱ) at that level, and the share of background pixels in x next to the clean digit's.",
       "With the Ideal denoiser, the 64 reference digits with outlines whose opacity is each reference's posterior weight at the next call; the heaviest is filled. With the Trained network, a note on how it was trained.",
@@ -109,8 +110,9 @@ const cardInfo: ModuleCardInfo = {
       "A 28 × 28 drawing or preset goes through the shipped encoder to a posterior mean and variance, then back through the decoder, once from the mean and once from a sampled latent. The card prints both terms of the training objective for this one image.",
     whatYouSee: [
       "A drawing pad with preset buttons `0`, `1`, `3` and `7` and a `Clear` button; the pressed preset is highlighted.",
-      "Two reconstructions: `decoder(μ)` and `decoder(μ + σ·ε)`, the second using a seeded ε.",
-      "Five rows: the posterior mean μ, the posterior σ, the reconstruction BCE, the KL to the prior, and the training loss BCE + 0.35 × KL, all for this one image.",
+      "A strip of boxes for the path the drawing takes: 784 pixels, encoder, 2 numbers (with μ filled in), decoder, 784 pixels.",
+      "Two reconstructions: `decoder(μ)` and `decoder(μ + σ·ε)`, the second using a seeded ε. A third image, |drawing − decoder(μ)|, is brighter wherever the drawing and the reconstruction are further apart.",
+      "Five rows: the posterior mean μ, the posterior σ, the reconstruction BCE, the KL to the prior, and the training loss BCE + 0.35 × KL, all for this one image. A bar beside them splits that loss into its BCE part and its striped 0.35 × KL part.",
       "The encoded mean appears on the Latent map as a blue diamond with a 2σ ellipse.",
     ],
     howItWorks: [

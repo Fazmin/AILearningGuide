@@ -6,7 +6,7 @@ const TOP = 14;
 const AXIS_GAP = 26;
 
 /** Track the rendered width so the SVG is drawn at 1:1 and its labels keep their pixel size. */
-function useMeasuredWidth(fallback: number) {
+export function useMeasuredWidth(fallback: number) {
   const ref = useRef<HTMLElement>(null);
   const [width, setWidth] = useState(fallback);
   useEffect(() => {

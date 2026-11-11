@@ -32,7 +32,18 @@ import {
   softmax2,
   stationaryPoints,
 } from "./curves";
-import { DerivativePlot, GaussianPlot, LossPlot, MatrixPlane, SigmoidPlot, SurprisePlot, VectorPlane } from "./plots";
+import {
+  BayesArea,
+  CountMarks,
+  DerivativePlot,
+  GaussianPlot,
+  LogitGap,
+  LossPlot,
+  MatrixPlane,
+  SigmoidPlot,
+  SurprisePlot,
+  VectorPlane,
+} from "./plots";
 
 const TOPICS = ["vectors", "matrices", "derivatives", "optimization", "probability", "logarithms"] as const;
 const PROB_IDEAS = ["counts", "bayes", "gaussian", "logit"] as const;
@@ -394,6 +405,8 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
         <div className="math-widget">
           {topic === "vectors" && (
             <>
+              <div className="myn-split">
+              <div className="myn-split__side">
               <VectorChip
                 label="a  features"
                 values={[ax, ay]}
@@ -408,6 +421,13 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
                 tone="attention"
                 onChange={(index, next) => setState(index === 0 ? { bx: next } : { by: next })}
               />
+              <p className="lab-note">
+                The dotted drop runs from the tip of a to the line of b, at a right angle. Its foot is the
+                projection ((a·b)/|b|²) b, so a·b = |b| × (signed length of that projection). Alignment,
+                not magic, is why the product is large; opposite arrows make it negative.
+              </p>
+              </div>
+              <div className="myn-split__pic">
               <VectorPlane ax={ax} ay={ay} bx={bx} by={by} />
               <ul className="gw-legend" aria-hidden="true">
                 <li><i className="is-forward" />a</li>
@@ -415,11 +435,8 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
                 <li><i className="is-forward is-dashed" />projection of a on b</li>
                 <li><i className="is-loss is-dotted" />perpendicular drop</li>
               </ul>
-              <p className="lab-note">
-                The dotted drop runs from the tip of a to the line of b, at a right angle. Its foot is the
-                projection ((a·b)/|b|²) b, so a·b = |b| × (signed length of that projection). Alignment,
-                not magic, is why the product is large; opposite arrows make it negative.
-              </p>
+              </div>
+              </div>
               <table className="tg-board fit-table">
                 <thead>
                   <tr>
@@ -459,6 +476,8 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           )}
           {topic === "matrices" && (
             <>
+              <div className="myn-split">
+              <div className="myn-split__side">
               <div className="myn-sliders">
               <RangeControl label="m00" min={-2} max={2} step={0.1} value={m00} format={(v) => v.toFixed(1)} onChange={(value) => setState({ m00: value })} />
               <RangeControl label="m01" min={-2} max={2} step={0.1} value={m01} format={(v) => v.toFixed(1)} onChange={(value) => setState({ m01: value })} />
@@ -473,13 +492,17 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
                 editable
                 onChange={(index, next) => setState(index === 0 ? { vx: next } : { vy: next })}
               />
-              <MatrixPlane m={[m00, m01, m10, m11]} b={[b0, b1]} v={[vx, vy]} />
               <ul className="gw-legend" aria-hidden="true">
                 <li><i className="is-ink is-dashed" />square, corners (±1, ±1)</li>
                 <li><i className="is-forward" />its image W·corner + b</li>
                 <li><i className="is-forward is-dashed" />Wx</li>
                 <li><i className="is-loss is-dotted" />+ b shift</li>
               </ul>
+              </div>
+              <div className="myn-split__pic">
+              <MatrixPlane m={[m00, m01, m10, m11]} b={[b0, b1]} v={[vx, vy]} />
+              </div>
+              </div>
               <table className="tg-board fit-table">
                 <thead>
                   <tr>
@@ -518,6 +541,8 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           )}
           {topic === "derivatives" && (
             <>
+              <div className="myn-split">
+              <div className="myn-split__side">
               <RangeControl
                 label="x"
                 min={-2}
@@ -536,7 +561,6 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
                 format={(v) => v.toFixed(2)}
                 onChange={(value) => setState({ nudge: value })}
               />
-              <DerivativePlot x={x} eps={nudge} />
               <ul className="gw-legend" aria-hidden="true">
                 <li><i className="is-ink" />f(x) = x²</li>
                 <li><i className="is-gradient" />tangent at x</li>
@@ -547,6 +571,11 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
                 <Metric label="slope 2x" value={slope.toFixed(3)} tone="gradient" />
                 <Metric label="secant" value={secant.toFixed(3)} />
               </div>
+              </div>
+              <div className="myn-split__pic">
+              <DerivativePlot x={x} eps={nudge} />
+              </div>
+              </div>
               <p className="lab-note">
                 The solid tangent has the true slope 2x. The dashed secant climbs Δf over a run of ε,
                 and its slope is exactly 2x + ε on this curve, so the gap is the nudge itself. In
@@ -556,6 +585,8 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           )}
           {topic === "optimization" && (
             <>
+              <div className="myn-split">
+              <div className="myn-split__side">
               <div className="math-surface-control">
                 <SegmentedControl
                   label="Loss surface"
@@ -588,13 +619,17 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
               <button type="button" className="primary-action" onClick={takeOptStep}>
                 Take a downhill step
               </button>
-              <LossPlot surface={surface} w={optW} eta={stepSize} trail={trail} />
               <ul className="gw-legend" aria-hidden="true">
                 <li><i className="is-loss" />L(w)</li>
                 <li><i className="is-gradient" />tangent, slope L′(w)</li>
                 <li><i className="is-forward is-dashed" />next step, w − η L′(w)</li>
                 <li><i className="is-ink is-dotted" />steps taken</li>
               </ul>
+              </div>
+              <div className="myn-split__pic">
+              <LossPlot surface={surface} w={optW} eta={stepSize} trail={trail} />
+              </div>
+              </div>
               <div className="metric-row">
                 <Metric label="L(w)" value={lossAt.toFixed(3)} tone="loss" />
                 <Metric label="L'(w)" value={gradAt.toFixed(3)} tone="gradient" />
@@ -624,6 +659,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
                     <thead>
                       <tr>
                         <th scope="col">x</th>
+                        <th scope="col">its 4 rows · filled = y=1</th>
                         <th scope="col">y=0</th>
                         <th scope="col">y=1</th>
                         <th scope="col">P(y=1|x)</th>
@@ -632,12 +668,18 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
                     <tbody>
                       <tr>
                         <td>0</td>
+                        <td>
+                          <CountMarks filled={1} hollow={3} label="Four rows with x = 0: three have y = 0 and one has y = 1" />
+                        </td>
                         <td>3</td>
                         <td>1</td>
                         <td>{pY1Given0.toFixed(2)}</td>
                       </tr>
                       <tr>
                         <td>1</td>
+                        <td>
+                          <CountMarks filled={3} hollow={1} label="Four rows with x = 1: one has y = 0 and three have y = 1" />
+                        </td>
                         <td>1</td>
                         <td>3</td>
                         <td>{pY1Given1.toFixed(2)}</td>
@@ -650,11 +692,40 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
                   </p>
                   <RangeControl label="Logit A" min={0.1} max={6} step={0.1} value={pA} format={(v) => v.toFixed(1)} onChange={(value) => setState({ pA: value })} />
                   <RangeControl label="Logit B" min={0.1} max={6} step={0.1} value={pB} format={(v) => v.toFixed(1)} onChange={(value) => setState({ pB: value })} />
+                  <p className="myn-bars-title" aria-hidden="true">
+                    Model distribution after softmax
+                  </p>
                   <BarList
                     label="Model distribution after softmax"
                     items={[
                       { id: "a", label: "P(A)", value: probA, display: `${(probA * 100).toFixed(1)}%`, tone: "forward" },
                       { id: "b", label: "P(B)", value: probB, display: `${(probB * 100).toFixed(1)}%`, tone: "attention" },
+                    ]}
+                    max={1}
+                  />
+                  <p className="myn-bars-title" aria-hidden="true">
+                    Likelihood of the draws A, A, B, one draw at a time: each draw multiplies the bar by its probability
+                  </p>
+                  <BarList
+                    label="Likelihood of the draws A, A, B, one draw at a time"
+                    items={[
+                      { id: "one", label: "A", value: probA, display: probA.toFixed(3), detail: "P(A)", tone: "forward" },
+                      {
+                        id: "two",
+                        label: "A, A",
+                        value: probA * probA,
+                        display: (probA * probA).toFixed(3),
+                        detail: "× P(A)",
+                        tone: "forward",
+                      },
+                      {
+                        id: "three",
+                        label: "A, A, B",
+                        value: likelihood,
+                        display: likelihood.toFixed(4),
+                        detail: "× P(B)",
+                        tone: "loss",
+                      },
                     ]}
                     max={1}
                   />
@@ -675,6 +746,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
                     <thead>
                       <tr>
                         <th scope="col">class y</th>
+                        <th scope="col">its 4 rows · filled = x=1</th>
                         <th scope="col">x=0</th>
                         <th scope="col">x=1</th>
                         <th scope="col">P(x=1|y)</th>
@@ -683,12 +755,18 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
                     <tbody>
                       <tr>
                         <td>0</td>
+                        <td>
+                          <CountMarks filled={1} hollow={3} label="Four rows of class 0: three have x = 0 and one has x = 1" />
+                        </td>
                         <td>3</td>
                         <td>1</td>
                         <td>{LIKELIHOOD_NEGATIVE.toFixed(2)}</td>
                       </tr>
                       <tr>
                         <td>1</td>
+                        <td>
+                          <CountMarks filled={3} hollow={1} label="Four rows of class 1: one has x = 0 and three have x = 1" />
+                        </td>
                         <td>1</td>
                         <td>3</td>
                         <td>{LIKELIHOOD_POSITIVE.toFixed(2)}</td>
@@ -704,6 +782,10 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
                     format={(v) => v.toFixed(2)}
                     onChange={(next) => setState({ prior: next })}
                   />
+                  <BayesArea prior={prior} likePositive={LIKELIHOOD_POSITIVE} likeNegative={LIKELIHOOD_NEGATIVE} />
+                  <p className="myn-bars-title" aria-hidden="true">
+                    Weight of each way to see x = 1 (the two filled areas)
+                  </p>
                   <BarList
                     label="Weight of each way to see x = 1"
                     items={[
@@ -767,6 +849,8 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
                       </tr>
                     </tbody>
                   </table>
+                  <div className="myn-split">
+                  <div className="myn-split__side">
                   <div className="myn-sliders">
                     <RangeControl
                       label="Mean μ"
@@ -806,13 +890,17 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
                   >
                     Fit μ and σ² to the sample
                   </button>
-                  <GaussianPlot mean={gaussMu} variance={gaussVar} x={gaussX} sample={SAMPLE} />
                   <ul className="gw-legend" aria-hidden="true">
                     <li><i className="is-ink" />density N(μ, σ²)</li>
                     <li><i className="is-gradient is-dashed" />mean μ</li>
-                    <li><i className="is-forward" />band μ ± σ</li>
+                    <li><i className="is-forward" />band μ ± σ, shaded under the curve</li>
                     <li><i className="is-loss" />the four sample values, as ticks</li>
                   </ul>
+                  </div>
+                  <div className="myn-split__pic">
+                  <GaussianPlot mean={gaussMu} variance={gaussVar} x={gaussX} sample={SAMPLE} />
+                  </div>
+                  </div>
                   <div className="metric-row">
                     <Metric label="Density at x" value={density.toFixed(4)} tone="loss" />
                     <Metric label="z = (x − μ)/σ" value={zScore.toFixed(2)} />
@@ -827,9 +915,16 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
               )}
               {probIdea === "logit" && (
                 <>
+                  <div className="myn-split">
+                  <div className="myn-split__side">
                   <RangeControl label="Logit A" min={0.1} max={6} step={0.1} value={pA} format={(v) => v.toFixed(1)} onChange={(value) => setState({ pA: value })} />
                   <RangeControl label="Logit B" min={0.1} max={6} step={0.1} value={pB} format={(v) => v.toFixed(1)} onChange={(value) => setState({ pB: value })} />
+                  </div>
+                  <div className="myn-split__pic">
+                  <LogitGap a={pA} b={pB} />
                   <SigmoidPlot z={logitZ} />
+                  </div>
+                  </div>
                   <div className="metric-row">
                     <Metric label="Logit gap z = A − B" value={logitZ.toFixed(1)} />
                     <Metric label="Softmax P(A)" value={probA.toFixed(4)} tone="forward" />
@@ -847,6 +942,8 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           )}
           {topic === "logarithms" && (
             <>
+              <div className="myn-split">
+              <div className="myn-split__side">
               <RangeControl
                 label="True p"
                 min={0.02}
@@ -871,13 +968,17 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
                 <Metric label="H(p,q)" value={crossEntropy.toFixed(3)} tone="loss" />
                 <Metric label="KL(p‖q)" value={kl.toFixed(3)} tone={kl < 0.02 ? "forward" : "loss"} />
               </div>
-              <SurprisePlot p={value} q={modelQ} />
               <ul className="gw-legend" aria-hidden="true">
                 <li><i className="is-ink" />surprise −ln u</li>
                 <li><i className="is-loss" />model: −ln q, −ln(1−q)</li>
                 <li><i className="is-ink" />hollow rings: truth −ln p, −ln(1−p)</li>
                 <li><i className="is-loss" />bar gap = KL</li>
               </ul>
+              </div>
+              <div className="myn-split__pic">
+              <SurprisePlot p={value} q={modelQ} />
+              </div>
+              </div>
               <p className="lab-note">
                 Each bar stacks two weighted surprises: p × (surprise of outcome 1) plus (1 − p) ×
                 (surprise of outcome 0). H(p) uses the truth's own probabilities; H(p,q) uses the

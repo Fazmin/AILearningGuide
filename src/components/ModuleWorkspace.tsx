@@ -8,6 +8,7 @@ import {
   ChevronRight,
   Copy,
   Eye,
+  Info,
   Maximize2,
   MessageCircle,
   PanelRightClose,
@@ -20,7 +21,7 @@ import {
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import type { LocalChatChunk } from "@app/lib/local-ai";
 import type { LabScene, ModuleState } from "@app/module-sdk";
@@ -38,6 +39,7 @@ import { LearnPanel } from "./LearnPanel";
 import { PrerequisiteBar } from "./PrerequisiteBar";
 import { GuideMarkdown } from "./GuideMarkdown";
 import { IconButton } from "./IconButton";
+import { useDismiss } from "./useDismiss";
 
 interface GuideMessage {
   id: string;
@@ -302,6 +304,33 @@ function GuidePanel({
   );
 }
 
+/**
+ * The lab's one-sentence summary. It sits behind a button beside the title so the header stays one
+ * row; while closed it is still in the page for screen readers, straight after the heading.
+ */
+function ModuleAbout({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLSpanElement>(null);
+  const id = useId();
+  const close = useCallback(() => setOpen(false), []);
+  useDismiss(ref, open, close);
+  return (
+    <span className="module-about" ref={ref} data-open={open ? "" : undefined}>
+      <button
+        type="button"
+        className="module-about__trigger"
+        aria-label="What this lab covers"
+        aria-expanded={open}
+        aria-controls={id}
+        onClick={() => setOpen(!open)}
+      >
+        <Info />
+      </button>
+      <p className="module-about__text" id={id}>{text}</p>
+    </span>
+  );
+}
+
 function ShareToast({ text }: { text: string }) {
   return <div className="share-toast" role="status"><Check />{text}</div>;
 }
@@ -473,42 +502,104 @@ export function ModuleWorkspace({ module }: { module: RegisteredModule }) {
   return (
     <main className="module-workspace" style={{ "--module-accent": module.accent } as React.CSSProperties}>
       <header className="module-header">
-        <div className="module-breadcrumb">
-          <button type="button" onClick={() => store.setView("home")}><ArrowLeft /> Learning map</button>
-          <span>/</span>
-          <span>{String(module.order).padStart(2, "0")}</span>
-          <button type="button" className="breadcrumb-connections" onClick={() => store.openConnections(module.id)}>
-            <Waypoints /> Where this fits
-          </button>
-        </div>
-        <IconButton
-          label={!store.learnOpen ? "Show Learn panel" : store.learnExpanded ? "Hide Learn panel" : "Expand Learn panel"}
-          tooltipSide="left"
-          className="learn-toggle"
-          onClick={store.cycleLearnPanel}
-        >
-          {!store.learnOpen ? <PanelRightOpen /> : store.learnExpanded ? <PanelRightClose /> : <Maximize2 />}
-        </IconButton>
+        <button type="button" className="module-back" aria-label="Learning map" onClick={() => store.setView("home")}>
+          <ArrowLeft /><span>Learning map</span>
+        </button>
         <div className="module-title">
-          <div>
-            <span>Lab {String(module.order).padStart(2, "0")}</span>
-            <h1>{module.title}</h1>
-            <p>{module.tagline}</p>
-          </div>
+          <span>Lab {String(module.order).padStart(2, "0")}</span>
+          <h1>{module.title}</h1>
+          <ModuleAbout text={module.tagline} />
+        </div>
+        <PrerequisiteBar module={module} />
+        {/* Extras that show only while there is room. They are laid out from the right, most useful
+            first, and whatever does not fit on the row wraps out of sight. */}
+        <div className="module-header__more">
+          <button type="button" className="module-fits" aria-label="Where this fits" onClick={() => store.openConnections(module.id)}>
+            <Waypoints /><span>Where this fits</span>
+          </button>
           <div className="module-meta">
             <span>{module.estimatedMinutes} min</span>
             <span>{module.steps.length} steps</span>
             {checkpointBadge && <span className={checkpointBadge.complete ? "is-passed" : ""}>{checkpointBadge.complete && <Check />} checkpoint {checkpointBadge.label}</span>}
           </div>
         </div>
-        <PrerequisiteBar module={module} />
+        <div className="module-actions">
+          <button
+            type="button"
+            className="open-guide"
+            aria-label={store.chatOpen ? "Close guide" : "Ask the guide"}
+            onClick={() => store.setChatOpen(!store.chatOpen)}
+          >
+            <MessageCircle /><span>{store.chatOpen ? "Close guide" : "Ask the guide"}</span>
+          </button>
+          <button
+            type="button"
+            className={`complete-action ${progress?.completed ? "is-complete" : ""}`}
+            aria-label={progress?.completed ? "Completed" : "Mark complete"}
+            aria-pressed={Boolean(progress?.completed)}
+            onClick={() => store.toggleModuleComplete(module.id)}
+          >
+            {progress?.completed ? <Check /> : <Eye />}
+            <span>{progress?.completed ? "Completed" : "Mark complete"}</span>
+          </button>
+          <IconButton
+            label={!store.learnOpen ? "Show Learn panel" : store.learnExpanded ? "Hide Learn panel" : "Expand Learn panel"}
+            tooltipAlign="end"
+            className="learn-toggle"
+            onClick={store.cycleLearnPanel}
+          >
+            {!store.learnOpen ? <PanelRightOpen /> : store.learnExpanded ? <PanelRightClose /> : <Maximize2 />}
+          </IconButton>
+        </div>
       </header>
 
       <div className={`workspace-body ${store.learnOpen ? (store.learnExpanded ? "learn-is-expanded" : "") : "learn-is-closed"} ${store.chatOpen ? "chat-is-open" : ""}`}>
         <section className="explore-region" aria-label={`Explore ${module.title}`}>
-          <div className="region-label">
-            <span>Step {currentStep + 1} of {module.steps.length}</span>
-            <strong>{currentStep + 1}. {module.steps[currentStep]}</strong>
+          <div className="lab-toolbar">
+            <div className="lab-toolbar__steps">
+              <IconButton
+                label="Previous step"
+                tooltipAlign="start"
+                disabled={currentStep === 0}
+                onClick={() => store.setCurrentStep(module.id, currentStep - 1)}
+              ><ChevronLeft /></IconButton>
+              <div className="step-dots" aria-label={`Step ${currentStep + 1} of ${module.steps.length}`}>
+                {module.steps.map((step, index) => (
+                  <button
+                    type="button"
+                    key={step}
+                    aria-label={`Go to step ${index + 1}: ${step}`}
+                    aria-current={index === currentStep ? "step" : undefined}
+                    className={index === currentStep ? "is-current" : index < currentStep ? "is-done" : ""}
+                    onClick={() => store.setCurrentStep(module.id, index)}
+                  ><i /><span>{step}</span></button>
+                ))}
+              </div>
+              <IconButton
+                label="Next step"
+                disabled={currentStep === module.steps.length - 1}
+                onClick={() => store.setCurrentStep(module.id, currentStep + 1)}
+              ><ChevronRight /></IconButton>
+              <span className="lab-toolbar__count" aria-hidden="true">{currentStep + 1} / {module.steps.length}</span>
+            </div>
+            <div className="lab-toolbar__tools" role="group" aria-label="Lab tools">
+              <IconButton label="Reset interactive" onClick={() => {
+                window.cancelAnimationFrame(pendingLabFrame.current);
+                setShownScene(null);
+                store.resetModuleState(module.id, module.initialState);
+                setToast("Interactive reset");
+              }}><RotateCcw /></IconButton>
+              <IconButton
+                ref={bookmarksButtonRef}
+                label="Bookmarks"
+                className={bookmarksOpen ? "is-active" : ""}
+                aria-expanded={bookmarksOpen}
+                onClick={() => setBookmarksOpen(!bookmarksOpen)}
+              >
+                {hasBookmarks ? <BookmarkCheck /> : <Bookmark />}
+              </IconButton>
+              <IconButton label="Copy a link to this state" tooltipAlign="end" onClick={() => void share()}><Copy /></IconButton>
+            </div>
           </div>
           <div className="step-instruction" key={`${module.id}-${currentStep}`} aria-live="polite">
             <span>Try this</span>
@@ -550,6 +641,17 @@ export function ModuleWorkspace({ module }: { module: RegisteredModule }) {
               onDismiss={() => setShownScene(null)}
             />
           )}
+          {/* Opens under the lab toolbar's Bookmarks button, so it lives in the lab column. */}
+          {bookmarksOpen && (
+            <BookmarksPanel
+              module={module}
+              section={store.learnOpen ? learnSection : null}
+              onClose={() => {
+                setBookmarksOpen(false);
+                bookmarksButtonRef.current?.focus();
+              }}
+            />
+          )}
         </section>
 
         {store.learnOpen && (
@@ -563,75 +665,6 @@ export function ModuleWorkspace({ module }: { module: RegisteredModule }) {
         {store.chatOpen && <GuidePanel module={module} currentStep={currentStep} currentState={currentState} />}
       </div>
 
-      <footer className="module-dock">
-        <div className="dock-steps">
-          <IconButton
-            label="Previous step"
-            disabled={currentStep === 0}
-            tooltipSide="top"
-            onClick={() => store.setCurrentStep(module.id, currentStep - 1)}
-          ><ChevronLeft /></IconButton>
-          <div className="step-dots" aria-label={`Step ${currentStep + 1} of ${module.steps.length}`}>
-            {module.steps.map((step, index) => (
-              <button
-                type="button"
-                key={step}
-                aria-label={`Go to step ${index + 1}: ${step}`}
-                aria-current={index === currentStep ? "step" : undefined}
-                className={index === currentStep ? "is-current" : index < currentStep ? "is-done" : ""}
-                onClick={() => store.setCurrentStep(module.id, index)}
-              ><i /><span>{step}</span></button>
-            ))}
-          </div>
-          <IconButton
-            label="Next step"
-            disabled={currentStep === module.steps.length - 1}
-            tooltipSide="top"
-            onClick={() => store.setCurrentStep(module.id, currentStep + 1)}
-          ><ChevronRight /></IconButton>
-        </div>
-        <div className="dock-actions">
-          <IconButton label="Reset interactive" tooltipSide="top" onClick={() => {
-            window.cancelAnimationFrame(pendingLabFrame.current);
-            setShownScene(null);
-            store.resetModuleState(module.id, module.initialState);
-            setToast("Interactive reset");
-          }}><RotateCcw /></IconButton>
-          <IconButton
-            ref={bookmarksButtonRef}
-            label="Bookmarks"
-            tooltipSide="top"
-            className={bookmarksOpen ? "is-active" : ""}
-            aria-expanded={bookmarksOpen}
-            onClick={() => setBookmarksOpen(!bookmarksOpen)}
-          >
-            {hasBookmarks ? <BookmarkCheck /> : <Bookmark />}
-          </IconButton>
-          <IconButton label="Copy a link to this state" tooltipSide="top" onClick={() => void share()}><Copy /></IconButton>
-          <button type="button" className="open-guide" onClick={() => store.setChatOpen(!store.chatOpen)}>
-            <MessageCircle /><span>{store.chatOpen ? "Close guide" : "Ask the guide"}</span>
-          </button>
-          <button
-            type="button"
-            className={`complete-action ${progress?.completed ? "is-complete" : ""}`}
-            onClick={() => store.toggleModuleComplete(module.id)}
-          >
-            {progress?.completed ? <Check /> : <Eye />}
-            <span>{progress?.completed ? "Completed" : "Mark complete"}</span>
-          </button>
-        </div>
-      </footer>
-
-      {bookmarksOpen && (
-        <BookmarksPanel
-          module={module}
-          section={store.learnOpen ? learnSection : null}
-          onClose={() => {
-            setBookmarksOpen(false);
-            bookmarksButtonRef.current?.focus();
-          }}
-        />
-      )}
       {toast && <ShareToast text={toast} />}
       <div className="sr-only" aria-live="polite">{announcement}</div>
 

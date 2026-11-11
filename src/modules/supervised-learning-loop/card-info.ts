@@ -7,7 +7,7 @@ const cardInfo: ModuleCardInfo = {
       "The loop is encode → split → choose a hypothesis class → drive a training loss down → read the holdout. Encoding, Algorithm, and Loss are independent knobs. Fit step scrubs real gradient updates; Tree depth is capacity for the CART tree.",
     whatYouSee: [
       "A five-stage flow whose detail row reprints the live vector, split, hypothesis, train loss, or holdout gap.",
-      "A stage panel with the current tensors: the feature chip, w and b, or the two losses.",
+      "A stage panel with the current tensors. Encode draws the row's three facts flowing into the slots of x, above the feature chip. Split draws the sixteen apartments as a strip cut into train and holdout. Hypothesis prints w and b. Holdout draws the two losses as bars on one scale with the gap bracketed.",
       "Encoding (rooms + park / integer codes / one-hot), Algorithm (linear / logistic / tree), and Loss (log-loss / MSE).",
       "Fit step from 0 to 48, or grown depth when the algorithm is a tree, and Tree depth from 0 to 5.",
     ],
@@ -16,7 +16,7 @@ const cardInfo: ModuleCardInfo = {
       "Linear and logistic start at w = 0, b = 0 and take mean-gradient steps on the twelve train rows. A tree is grown greedily to the chosen depth. Holdout rows never enter a gradient or a split.",
     ],
     controls: [
-      "Stage chips, Encoding, Algorithm, Loss, Fit step, and Tree depth.",
+      "Stage chips, Encoding, Algorithm, Loss, Fit step, and Tree depth. On the Split stage, clicking a cell of the strip selects that apartment.",
       "Comparison worth running: keep logistic and log-loss, switch only Encoding; then keep rooms + park and switch only Loss.",
     ],
     notice: [
@@ -34,14 +34,14 @@ const cardInfo: ModuleCardInfo = {
     summary:
       "Each cell evaluates the fitted rule at its (rooms, park) center. Logistic opacity is σ(w·x+b). The solid line is the 50% contour, which is a hyperplane in these features. Tree ticks are axis-aligned splits on rooms or park.",
     whatYouSee: [
-      "A rooms × park plane. Filled circles are train; open circles are holdout; the larger mark is the selected row.",
-      "A probability or ŷ wash, a solid hyperplane for linear and logistic, and dashed split segments for a tree, each bounded by the rectangle its parent owns.",
-      "A note that names the color slice when color is in x, or says the plane is the whole feature space when it is not.",
+      "A rooms × park plane, with rooms along the bottom and the park and no park rails named at the left. Filled circles are train; open circles are holdout; dark marks are high price and light marks are low. The selected row has a dashed ring and its name, and a ✗ sits beside every row the rule gets wrong.",
+      "A probability or ŷ wash, a solid hyperplane for linear and logistic, and dashed split segments for a tree, each bounded by the rectangle its parent owns. Where there is room, each side is labelled rule says high price or rule says low price.",
+      "A note that names the color slice when color is in x, or says the plane is the whole feature space when it is not. When color is in x, rows of another color than the slice are faded, because the wash does not apply to them.",
     ],
     howItWorks: [
       "Linear MSE colors 1[ŷ ≥ 0.5] and draws ŷ = 0.5. Logistic, and linear with log-loss, color P(y=1|x) = σ(w·x+b) and draw w·x+b = 0.",
       "When color is in the encoding, the grid holds color at the selected apartment. That is a slice, not a projection of a fitted 2-D model. Rooms + park has no slice.",
-      "Marks that share a (rooms, park) cell are nudged only on the plot. Gradients and splits use the exact vector.",
+      "Marks that share a (rooms, park) cell are set one above the other only on the plot. Gradients and splits use the exact vector.",
     ],
     controls: [
       "Click the canvas or a table name to change the selected row and, when color is in x, the slice.",
@@ -89,9 +89,10 @@ const cardInfo: ModuleCardInfo = {
     summary:
       "Sixteen authored apartments. Twelve train, four holdout. The strip and the Split column are the same cut. Holdout drawn from decides whether the four holdout rows come from the same process as the train rows or from a different one, and a two-row table scores the same fit on both. p or ŷ is the current model on that row; it is not a reason to move the row into train.",
     whatYouSee: [
-      "A 16-cell strip: train in one fill, holdout in another, high-price rows outlined.",
+      "A 16-cell strip, one cell per apartment marked with its first letter: train in one fill, holdout hatched with a dashed edge, high-price rows outlined.",
       "Holdout drawn from, two segments: the same process, or a different process.",
-      "A table of name, split, rooms, color, park, y, and the live prediction.",
+      "A panel that scores the one fit on each holdout: four chips per holdout with a ✓ or ✗, the prediction and the label, then the two holdout losses as bars on one scale, crossed by lines for L train and for the loss of answering 0.5 everywhere.",
+      "A table of name, split, rooms, color, park, y, and the live prediction, drawn as a dot on a 0-to-1 track with a tick at 0.5 and followed by a ✓ or ✗.",
       "A two-row table that scores the current fit on both holdouts: L holdout, Holdout acc, and how many of the four rows are right. The row for the selected holdout is highlighted. Metrics give L train, which is the same for both, the ratio of the two holdout losses, and the change in holdout accuracy in points.",
     ],
     howItWorks: [
@@ -121,7 +122,8 @@ const cardInfo: ModuleCardInfo = {
     summary:
       "The selected apartment is expanded into x, the current w and b (or leaf p), the model output, and that row's contribution to the mean loss. The notation matches the curve.",
     whatYouSee: [
-      "Metrics for b and each w_feature, a feature chip, and a FormulaWithValues block.",
+      "A score walk: one bar for each w_feature × feature and one for b, laid end to end on a z axis so they finish at the score z. The score drops onto the σ curve, or onto the straight ŷ = z line for linear MSE, to give the output, and the label is a dashed line. Below it sit a feature chip and a FormulaWithValues block.",
+      "For a tree, the questions it asks this row in order, ending in the leaf, and a 0-to-1 track with the leaf probability and the label.",
       "On linear + MSE, the closed-form least-squares w and b printed as a note, separate from the GD weights.",
     ],
     howItWorks: [

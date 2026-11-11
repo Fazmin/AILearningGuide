@@ -7,9 +7,9 @@ const cardInfo: ModuleCardInfo = {
       "The input square shaded by the neuron's output at each point, with the line z = 0, the weight vector w drawn perpendicular to it, and all six controls. Every mark is computed from the same `z = w₁x₁ + w₂x₂ + b` the Neuron equation card prints.",
     whatYouSee: [
       "A 30 × 30 grid of cells over x₁ and x₂ from 0 to 1, shaded by the current activation's output: graded for Sigmoid, a grey zero side and a growing green side for ReLU, two flat halves for Step. Green is z > 0 and red is z < 0.",
-      "A solid dark line, the decision boundary z = 0, and thin dashed lines at z = ±1 and ±2. They are parallel and spaced 1 / ‖w‖ apart.",
+      "A solid dark line labelled z = 0, the decision boundary, and thin dashed lines at z = ±1 and ±2, each labelled with its z where it crosses the square. They are parallel and spaced 1 / ‖w‖ apart. Each side of the boundary is labelled z > 0 or z < 0, with what the current activation outputs there.",
       "A blue arrow labelled w, starting on the boundary. It is perpendicular to the line and points toward growing z. Its drawn length grows with ‖w‖ but is scaled for display.",
-      "The probe (dark dot) at `Input x₁`, `Input x₂`, and a dotted segment from it to the nearest point on the line.",
+      "The probe (dark dot) at `Input x₁`, `Input x₂`, labelled with its two coordinates, and a dotted segment from it to the nearest point on the line.",
       "With `Corner task` on, the four corners (0,0), (0,1), (1,0), (1,1): a filled circle wants output 1, an open square wants 0, and each carries ✓ or ✗ for the current prediction.",
       "`‖w‖`, `Distance to boundary`, and `Corners correct` under the plane, plus a note that changes with the task.",
     ],
@@ -78,7 +78,7 @@ const cardInfo: ModuleCardInfo = {
       "The chosen activation plotted for z from −6 to 6, the lab's full reachable range, with the current z marked and its tangent drawn. The slope readout is the number backpropagation would multiply by at this point.",
     whatYouSee: [
       "The selected function as a solid violet curve, and the other two as faint dashed curves for comparison. Step's curve breaks at the jump rather than drawing a vertical line.",
-      "A dotted vertical guide and a dot at the current z, and a short pink tangent line whose steepness is f′(z). Step has no tangent.",
+      "A dotted vertical guide and a dot at the current z, labelled with f(z), and a short pink tangent line whose steepness is f′(z). Step has no tangent.",
       "For Sigmoid, two shaded bands beyond z = ±2.89 labelled `slope < 0.05`: the saturated regions.",
       "`z`, `f(z)`, and `Slope f′(z)`. The slope turns red when it is below 0.05.",
     ],

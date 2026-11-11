@@ -8,7 +8,7 @@ const cardInfo: ModuleCardInfo = {
     whatYouSee: [
       "The horizontal axis is the epoch: 0 at the axis, then 1 to 10,000 on a log scale, so each labelled tick is ten times the last. The vertical axis is mean squared error on a log scale from 0.003 to 30.",
       "The solid blue line is training loss and the dashed orange line is validation loss. The shaded band between them is the gap. The dotted line is the noise variance σ² = 0.0625, the expected loss of the true curve itself.",
-      "A green ring marks the lowest validation loss in the run, and the dotted vertical marker with two dots is the current `Epoch`. A red note appears if the run diverges.",
+      "A green ring marks the lowest validation loss in the run, and the dotted vertical marker with two dots is the current `Epoch`; each dot is labelled with its line's name and loss. A red note appears if the run diverges.",
       "Metrics: training loss at the current epoch, `Validation`, `Gap (val − train)`, and `Lowest validation` with its epoch. The badge is the status: fitting, underfitting, overfitting, or diverged.",
       "At the defaults (degree 5, η 0.1, full batch, λ 0, seed 1) and epoch 100 the metrics read 0.017, 0.111, 0.093, and 0.100 at epoch 11, and the status is fitting.",
     ],
@@ -75,6 +75,8 @@ const cardInfo: ModuleCardInfo = {
     whatYouSee: [
       "x from −1 to 1 and y from −2 to 2. Filled blue dots are the 16 training points; hollow orange dots are the 16 validation points.",
       "The dashed green line is the true curve, 0.8 sin(4x) + 0.4x, which the model never sees. The purple line is the model's ŷ at the current epoch.",
+      "A thin vertical segment joins every dot to the purple line: solid blue for a training point, dashed orange for a validation point. Each is that point's miss.",
+      "When the current epoch is not the one with the lowest validation loss, a dotted purple line shows the model as it was at that epoch.",
       "A red note gives the peak |ŷ| when the curve leaves the plot. Metrics: `Weights`, the degree plus one, and `Weight size ‖θ‖`, the length of the weight vector.",
     ],
     howItWorks: [
@@ -100,8 +102,8 @@ const cardInfo: ModuleCardInfo = {
     summary:
       "Training and validation loss for every degree from 1 to 13 at the current epoch, all trained with the same settings. Moving `Epoch` shows the classic U-shape of validation loss against capacity forming as training goes on.",
     whatYouSee: [
-      "The horizontal axis is polynomial degree 1 to 13; the current degree is shaded and its tick is bold. The vertical axis is mean squared error on the same log scale as the curve chart.",
-      "Blue dots and line: training loss at the current epoch. Orange dots and dashed line: validation loss. The green ring marks the degree with the lowest validation loss, and a red × at the top marks a degree whose run has diverged.",
+      "The horizontal axis is polynomial degree 1 to 13; the current degree is shaded and named at the top, and its tick is bold. The vertical axis is mean squared error on the same log scale as the curve chart.",
+      "Blue dots and line: training loss at the current epoch. Orange dots and dashed line: validation loss. At the selected degree each line is named and its loss printed. The green ring marks the degree with the lowest validation loss, and a red × at the top marks a degree whose run has diverged.",
       "Metrics: `Best degree now` with its validation loss, and `Diverged runs`.",
     ],
     howItWorks: [

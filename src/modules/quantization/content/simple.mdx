@@ -234,7 +234,7 @@ Work through the cards in order, since each step builds on the one before. Remem
 
 Each tooth is one gap of the ruler. As a weight slides toward the next tick, its error grows steadily up to half a gap. Then the weight snaps to the next tick and its error flips to the other side. So each tooth is exactly one gap wide. As you take bits away, the gaps widen, so the teeth get wider. They get taller too, but the strip rescales to fit them. Read the numbers on its left edge instead: about +0.015 at 8 bits, and about +1.27 at 2 bits.
 
-The top half of the same card is a **histogram**. That is a bar chart that counts how many weights fall in each small range of values. The ruler's ticks are drawn over it as vertical lines. A line is solid where at least one weight landed and dashed where none did. Its bars use a square-root scale. This squashes the tallest bars, so the few large weights still show up beside the pile near zero. At 7 and 8 bits there are too many ticks to draw, so the chart prints a note instead. The lines appear once you reach 6 bits.
+The middle of the same card is a **histogram**. That is a bar chart that counts how many weights fall in each small range of values. The ruler's ticks are drawn over it as vertical lines. A line is solid where at least one weight landed and dashed where none did. Its bars use a square-root scale. This squashes the tallest bars, so the few large weights still show up beside the pile near zero. At 7 and 8 bits there are too many ticks to draw, so the chart prints a note instead. The lines appear once you reach 6 bits.
 
 Here is what the readouts show at each width. **RMS rounding error** has three decimals, and **Quality cost** is as the lab prints it:
 
@@ -296,16 +296,16 @@ The last column, **llama.cpp file, Llama-3-8B**, lists the file sizes that llama
 
 Now open **The file you downloaded**. It weighs the model file this app downloads in the same way as the toy table:
 
-- **File size** reads 1.19 GiB, and the note below the bars gives the exact count, 1,280,835,840 bytes.
+- **File size** reads 1.19 GiB, and the note below the table gives the exact count, 1,280,835,840 bytes.
 - **Parameters in the file** reads 1.88 B. Here B means billion and not bytes, so this is the number of weights.
 - **Effective bits per weight** reads 5.445, which is the file's size in bits divided by its number of weights.
 - **Share of the F16 size** reads 34.0%. So the file is about a third of a plain 16-bit copy.
 
-A file built from 4-bit blocks really costs 5.445 bits per weight. That is 0.945 above the 4.5 of a `Q4_K` block. To find where those extra bits go, switch **Group tensors by** from `Block type` to `Role in the network`. This sorts the model's parts by the job each one does. Each bar is then one part of the model, sized by its share of the file's bytes. Its own bits per weight are written beside it.
+A file built from 4-bit blocks really costs 5.445 bits per weight. That is 0.945 above the 4.5 of a `Q4_K` block. To find where those extra bits go, switch **Group tensors by** from `Block type` to `Role in the network`. This sorts the model's parts by the job each one does. Each block is then one part of the model. Its width is that part's share of the weights. Its height is its bits per weight, which is also written on it.
 
-The token embedding costs 6.56 bits per weight, while the feed-forward layers cost 4.84. A model is built as a stack of repeated steps called layers. The feed-forward parts of those layers, added together, hold more weights than any other part of the model. The token embedding is the table that turns each token into a list of numbers. This recipe keeps it in the larger `Q6_K` type, which is why it costs so much per weight. The lab draws bars above 5 bits per weight in a warning colour. That helps you spot the expensive parts.
+The token embedding costs 6.56 bits per weight, while the feed-forward layers cost 4.84. A model is built as a stack of repeated steps called layers. The feed-forward parts of those layers, added together, hold more weights than any other part of the model. The token embedding is the table that turns each token into a list of numbers. This recipe keeps it in the larger `Q6_K` type, which is why it costs so much per weight. The striped top of a block is what it spends above 4.5 bits. That helps you spot the expensive parts.
 
-Back on `Block type`, the `Q6_K` bar holds 35.3% of the parameters but 42.9% of the bytes. Each of its weights costs more to store.
+Back on `Block type`, the `Q6_K` block holds 35.3% of the parameters but 42.9% of the bytes. Each of its weights costs more to store.
 
 ### Climb the float ladder
 
@@ -321,7 +321,7 @@ Finally, try 0.001. E4M3's smallest normal value is about 0.0156, so 0.001 sits 
 
 The fp8 E4M3 row shows this as `1.9531e-3`, which means 1.9531 ÷ 1,000, or about 0.00195. It marks the value subnormal. The stored value is nearly double the real one, which shows how little detail is left down there.
 
-The last two columns round the whole trained table through each format. **Toy table RMS error** is 0.0002 for fp16 but 0.0017 for bf16. So fp16 keeps the weights more than eight times closer. Its 10 mantissa bits make steps 2 × 2 × 2 = 8 times finer than the 7 of bf16. The table never comes near the fp16 limit of 65,504, so the extra range of bf16 buys nothing here.
+The last two columns of the first table round the whole trained table through each format. **Toy table RMS error** is 0.0002 for fp16 but 0.0017 for bf16. So fp16 keeps the weights more than eight times closer. Its 10 mantissa bits make steps 2 × 2 × 2 = 8 times finer than the 7 of bf16. The table never comes near the fp16 limit of 65,504, so the extra range of bf16 buys nothing here.
 
 ## What to notice
 

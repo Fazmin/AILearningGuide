@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, type CSSProperties } from "react";
 import {
   FormulaWithValues,
   LabSurface,
@@ -37,6 +37,8 @@ const OX = 34;
 const OY = 206;
 const R = 178;
 const LABEL_X = 272;
+/** Radius of the small arc that marks the selected passage's angle. */
+const ARC = 46;
 
 function Protractor({
   ranked,
@@ -120,8 +122,21 @@ function Protractor({
       <text className="emb-tick" x={OX} y={OY + 30}>
         {metric === "cosine" ? "x = cos θ (unit length)" : "x ∝ q·d = |q| |d| cos θ"}
       </text>
-      {selectedPoint && !zeroVector && (
+      {selected && selectedPoint && !zeroVector && (
         <g className="emb-drop">
+          <path
+            className="emb-angle-arc"
+            d={`M ${OX + ARC} ${OY} A ${ARC} ${ARC} 0 0 0 ${OX + ARC * Math.cos((selected.angle * Math.PI) / 180)} ${
+              OY - ARC * Math.sin((selected.angle * Math.PI) / 180)
+            }`}
+          />
+          <text
+            className="emb-angle-label"
+            x={OX + (ARC + 7) * Math.cos((selected.angle * Math.PI) / 360)}
+            y={OY - (ARC + 7) * Math.sin((selected.angle * Math.PI) / 360) - 3}
+          >
+            θ = {selected.angle.toFixed(1)}°
+          </text>
           <line x1={OX} y1={OY} x2={selectedPoint.x} y2={selectedPoint.y} />
           <line x1={selectedPoint.x} y1={selectedPoint.y} x2={selectedPoint.x} y2={OY} strokeDasharray="3 3" />
           <line className="emb-projection" x1={OX} y1={OY} x2={selectedPoint.x} y2={OY} />
@@ -207,6 +222,13 @@ export default function Explore({ state, setState }: ModuleContext) {
   const keywordLeader = [...ranked].sort((a, b) => a.keywordRank - b.keywordRank)[0];
   const products = selected ? queryVector.map((value, dimension) => value * selected.vector[dimension]) : [];
   const maxComponent = Math.max(0.01, ...queryVector, ...(selected?.vector ?? []));
+
+  // Cosine has a fixed top of 1; a dot product has none, so its bars are scaled to the best one.
+  const rankScale =
+    metric === "cosine" ? 1 : Math.max(1e-9, ...ranked.map((item) => (Number.isFinite(item.score) ? item.score : 0)));
+  const maxProduct = Math.max(1e-9, ...products);
+  const unit = (value: number) => (Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0);
+  const share = (value: number, top: number) => ({ "--emb-share": unit(value / top) }) as CSSProperties;
 
   const select = (id: string) => setState({ selected: id });
 
@@ -351,6 +373,9 @@ export default function Explore({ state, setState }: ModuleContext) {
                 <span className="emb-rank-no">#{item.rank}</span>
                 <strong>{item.title}</strong>
                 <code>{f3(item.score)}</code>
+                <span className="emb-rank-bar" aria-hidden="true">
+                  <i style={{ width: `${unit(item.score / rankScale) * 100}%` }} />
+                </span>
                 <small>
                   {metric === "cosine" ? `dot ${f3(item.dot)}` : `cos ${f3(item.cosine)}`} · shared words{" "}
                   {item.shared.length ? item.shared.join(", ") : "none"} · keyword rank #{item.keywordRank}
@@ -388,9 +413,21 @@ export default function Explore({ state, setState }: ModuleContext) {
                   {DIMENSIONS.map((name, dimension) => (
                     <tr key={name} className={products[dimension] > 0 ? "is-leader" : ""}>
                       <th scope="row">{name}</th>
-                      <td className={queryVector[dimension] > 0 ? "is-live" : ""}>{f2(queryVector[dimension])}</td>
-                      <td className={selected.vector[dimension] > 0 ? "is-live" : ""}>{f2(selected.vector[dimension])}</td>
-                      <td>{products[dimension] > 0 ? f3(products[dimension]) : "0"}</td>
+                      <td
+                        className={`emb-share is-q${queryVector[dimension] > 0 ? " is-live" : ""}`}
+                        style={share(queryVector[dimension], maxComponent)}
+                      >
+                        {f2(queryVector[dimension])}
+                      </td>
+                      <td
+                        className={`emb-share is-d${selected.vector[dimension] > 0 ? " is-live" : ""}`}
+                        style={share(selected.vector[dimension], maxComponent)}
+                      >
+                        {f2(selected.vector[dimension])}
+                      </td>
+                      <td className="emb-share is-product" style={share(products[dimension], maxProduct)}>
+                        {products[dimension] > 0 ? f3(products[dimension]) : "0"}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

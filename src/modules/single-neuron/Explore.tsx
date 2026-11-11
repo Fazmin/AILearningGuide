@@ -129,6 +129,43 @@ export default function Explore({ state, setState }: ModuleContext) {
         ? "Shade is ReLU(z): green deepens as the output grows; the grey side outputs exactly 0."
         : "Shade is step(z): flat green outputs 1, flat red outputs 0, with nothing in between.";
 
+  // Direct labels for the plane: the line itself, each side of it, and the dashed level lines.
+  const onLine = boundary
+    ? ([
+        boundary[0][0] + (boundary[1][0] - boundary[0][0]) * 0.86,
+        boundary[0][1] + (boundary[1][1] - boundary[0][1]) * 0.86,
+      ] as const)
+    : null;
+  const lineLabel =
+    onLine && Math.hypot(onLine[0] - anchor[0], onLine[1] - anchor[1]) > 0.2
+      ? onLine
+      : boundary
+        ? ([
+            boundary[0][0] + (boundary[1][0] - boundary[0][0]) * 0.14,
+            boundary[0][1] + (boundary[1][1] - boundary[0][1]) * 0.14,
+          ] as const)
+        : null;
+  const squareCorners = [
+    [0, 0],
+    [0, 1],
+    [1, 0],
+    [1, 1],
+  ].map(([u, v]) => ({ u, v, z: weightedSum(u, v, params) }));
+  const highCorner = squareCorners.reduce((best, corner) => (corner.z > best.z ? corner : best));
+  const lowCorner = squareCorners.reduce((best, corner) => (corner.z < best.z ? corner : best));
+  const sideWords: Record<ActivationKind, readonly [string, string]> = {
+    sigmoid: ["a above 0.5", "a below 0.5"],
+    relu: ["a = z", "a = 0"],
+    step: ["a = 1", "a = 0"],
+  };
+  const sideLabels = [
+    highCorner.z > 0.05 ? { ...highCorner, title: "z > 0", detail: sideWords[activation][0] } : null,
+    lowCorner.z < -0.05 ? { ...lowCorner, title: "z < 0", detail: sideWords[activation][1] } : null,
+  ].filter((item): item is { u: number; v: number; z: number; title: string; detail: string } => item !== null);
+  const probeLabelLeft = x1 > 0.5;
+  // Keep the probe's label on the side away from its dotted path to the line.
+  const probeLabelAbove = x2 < 0.12 || (foot !== null && foot[1] < x2 && x2 < 0.9);
+
   const edges = [
     { key: "x1", label: "x₁", value: x1, weight: w1, product: x1 * w1, y: 42 },
     { key: "x2", label: "x₂", value: x2, weight: w2, product: x2 * w2, y: 152 },
@@ -175,6 +212,8 @@ export default function Explore({ state, setState }: ModuleContext) {
                 {CONTOURS.map((level) => {
                   const chord = levelChord(params, level, -0.5, 1.5);
                   if (!chord) return null;
+                  const inside = levelChord(params, level);
+                  const span = inside ? Math.hypot(inside[1][0] - inside[0][0], inside[1][1] - inside[0][1]) : 0;
                   return (
                     <g key={level}>
                       <line
@@ -184,6 +223,16 @@ export default function Explore({ state, setState }: ModuleContext) {
                         x2={px(chord[1][0])}
                         y2={py(chord[1][1])}
                       />
+                      {inside && span > 0.3 && (
+                        <text
+                          className="sn-contour-label"
+                          x={px(inside[0][0] + (inside[1][0] - inside[0][0]) * 0.5)}
+                          y={py(inside[0][1] + (inside[1][1] - inside[0][1]) * 0.5) + 3.5}
+                          textAnchor="middle"
+                        >
+                          z = {level < 0 ? `−${-level}` : level}
+                        </text>
+                      )}
                     </g>
                   );
                 })}
@@ -215,6 +264,25 @@ export default function Explore({ state, setState }: ModuleContext) {
                   </g>
                 )}
               </g>
+              {sideLabels.map((side) => (
+                <text
+                  key={side.title}
+                  className="sn-side-label"
+                  x={px(side.u ? 0.76 : 0.24)}
+                  y={py(side.v ? 0.9 : 0.16)}
+                  textAnchor="middle"
+                >
+                  <tspan className="sn-side-label__title">{side.title}</tspan>
+                  <tspan x={px(side.u ? 0.76 : 0.24)} dy="13">
+                    {side.detail}
+                  </tspan>
+                </text>
+              ))}
+              {lineLabel && (
+                <text className="sn-line-label" x={px(lineLabel[0])} y={py(lineLabel[1]) + 4} textAnchor="middle">
+                  z = 0
+                </text>
+              )}
               <rect className="sn-frame" x={PAD} y={PAD} width={PLANE} height={PLANE} />
               {[0, 0.5, 1].map((tick) => (
                 <g key={tick}>
@@ -252,6 +320,14 @@ export default function Explore({ state, setState }: ModuleContext) {
                 );
               })}
               <circle className="sn-probe" cx={px(x1)} cy={py(x2)} r={6} />
+              <text
+                className="sn-probe-label"
+                x={px(x1) + (probeLabelLeft ? 8 : -8)}
+                y={py(x2) + (probeLabelAbove ? -11 : 19)}
+                textAnchor={probeLabelLeft ? "end" : "start"}
+              >
+                probe ({fmt(x1, 2)}, {fmt(x2, 2)})
+              </text>
             </svg>
             <p className="sn-legend">{regionLegend} Thin dashed lines are z = ±1 and ±2, spaced 1/‖w‖ apart.</p>
           </div>
@@ -399,10 +475,11 @@ const Z_MIN = -6;
 const Z_MAX = 6;
 
 function ActivationPlot({ kind, z }: { kind: ActivationKind; z: number }) {
-  const left = 40;
-  const right = 390;
-  const top = 14;
-  const bottom = 170;
+  // Drawn close to the width of its half-width card, so ticks and labels keep their size.
+  const left = 34;
+  const right = 322;
+  const top = 18;
+  const bottom = 176;
   const yMax = kind === "relu" ? 6 : 1;
   const yMin = kind === "relu" ? -0.5 : -0.05;
   const xAt = (value: number) => left + ((value - Z_MIN) / (Z_MAX - Z_MIN)) * (right - left);
@@ -432,7 +509,7 @@ function ActivationPlot({ kind, z }: { kind: ActivationKind; z: number }) {
   return (
     <div className="sn-curve">
       <svg
-        viewBox="0 0 400 196"
+        viewBox="0 0 330 212"
         role="img"
         aria-label={`${kind} curve. At z ${fmt(z)} the output is ${fmt(out)} and the slope is ${Number.isFinite(gradient) ? fmt(gradient, 4) : "not defined at z = 0"}.`}
       >
@@ -471,12 +548,20 @@ function ActivationPlot({ kind, z }: { kind: ActivationKind; z: number }) {
           <>
             <line className="marker-guide" x1={xAt(z)} x2={xAt(z)} y1={top} y2={bottom} />
             <circle className="sn-curve-point" cx={xAt(z)} cy={yAt(out)} r={5} />
+            <text
+              className="sn-curve-label"
+              x={xAt(z) + (z > 1.5 ? -9 : 9)}
+              y={Math.min(bottom - 8, yAt(out) + 16)}
+              textAnchor={z > 1.5 ? "end" : "start"}
+            >
+              f({fmt(z, 2)}) = {fmt(out)}
+            </text>
           </>
         )}
-        <text className="sn-axis" x={right} y={bottom + 28} textAnchor="end">
+        <text className="sn-axis" x={right} y={bottom + 30} textAnchor="end">
           z →
         </text>
-        <text className="sn-axis" x={left} y={top - 4}>
+        <text className="sn-axis" x={left} y={top - 6}>
           f(z)
         </text>
       </svg>

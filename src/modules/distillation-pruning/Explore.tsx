@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   BarList,
   LabSurface,
@@ -30,6 +30,7 @@ import {
   type ImportanceScore,
   type PruneMode,
 } from "./compress";
+import { MaskGrid, PruneChart, ShapeKey, SoftTargetBars, StageLadder, TailMeter, TemperatureSweep } from "./visuals";
 
 const corpus = TINY_CORPORA.harbor;
 const TEACHER_EPOCHS = 80;
@@ -38,8 +39,12 @@ const CONTEXTS = [" ", "h", "t", "e", "o", "s"];
 const MODES: PruneMode[] = ["unstructured", "semi", "structured"];
 const SWEEP = Array.from({ length: 10 }, (_, index) => (index / 9) * 0.9);
 const IMPORTANCE_IDS = IMPORTANCE_SCORES.map((entry) => entry.id) as string[];
+/** Every stop of the Distillation temperature slider, for the chart that shows KL at each one. */
+const TEMPERATURES = Array.from({ length: 12 }, (_, index) => 0.5 + index * 0.5);
+type SweepPoint = { t: number; kl: number };
+/** Finished temperature sweeps by student size and budget, so returning to a setting redraws at once. */
+const sweepCache = new Map<string, SweepPoint[]>();
 const withCommas = (value: number) => value.toLocaleString("en-US");
-const signedPercent = (value: number) => `${value >= 0 ? "+" : "−"}${Math.abs(value).toFixed(1)}%`;
 
 const asNumber = (state: ModuleContext["state"], key: string, fallback: number) =>
   typeof state[key] === "number" && Number.isFinite(state[key]) ? (state[key] as number) : fallback;
@@ -47,184 +52,6 @@ const asString = (state: ModuleContext["state"], key: string, fallback: string) 
   typeof state[key] === "string" ? (state[key] as string) : fallback;
 const clamp = (value: number, low: number, high: number) => Math.min(high, Math.max(low, value));
 const glyph = (character: string) => (character === " " ? "␣" : character);
-
-function SoftTargetBars({
-  labels,
-  teacher,
-  student,
-  temperature,
-  studentName,
-}: {
-  labels: number[];
-  teacher: number[];
-  student: number[];
-  temperature: number;
-  studentName: string;
-}) {
-  const order = Array.from({ length: V }, (_, k) => k)
-    .filter((k) => TINY_VOCAB[k] !== "<" && TINY_VOCAB[k] !== ">")
-    .sort((a, b) => teacher[b] - teacher[a])
-    .slice(0, 10);
-  const rest = (values: number[]) => 1 - order.reduce((sum, k) => sum + values[k], 0);
-  const rows = [
-    ...order.map((k) => ({ key: TINY_VOCAB[k], label: glyph(TINY_VOCAB[k]), l: labels[k], t: teacher[k], s: student[k] })),
-    { key: "rest", label: "rest", l: rest(labels), t: rest(teacher), s: rest(student) },
-  ];
-  const peak = Math.max(...rows.flatMap((row) => [row.l, row.t, row.s]), 0.05);
-  const left = 44;
-  const right = 560;
-  const rowHeight = 25;
-  const top = 22;
-  const height = top + rows.length * rowHeight + 8;
-  const wAt = (value: number) => (value / peak) * (right - left);
-  return (
-    <svg
-      className="dp-soft-plot"
-      viewBox={`0 0 720 ${height}`}
-      role="img"
-      aria-label={`Next-character distributions. ${rows
-        .map(
-          (row) =>
-            `${row.label}: labels ${(row.l * 100).toFixed(1)}%, teacher at T ${temperature} ${(row.t * 100).toFixed(1)}%, ${studentName} ${(row.s * 100).toFixed(1)}%`,
-        )
-        .join("; ")}.`}
-    >
-      <text x={left} y={12}>
-        next character · bars: one-hot label frequency, teacher at T = {temperature.toFixed(1)}, {studentName} at T = 1
-      </text>
-      {rows.map((row, index) => {
-        const y = top + index * rowHeight;
-        return (
-          <g key={row.key}>
-            <text className="dp-char" x={left - 8} y={y + 14} textAnchor="end">
-              {row.label}
-            </text>
-            <rect className="dp-bar is-label" x={left} y={y + 2} width={wAt(row.l)} height={6} />
-            <rect className="dp-bar is-teacher" x={left} y={y + 9} width={wAt(row.t)} height={6} />
-            <rect className="dp-bar is-student" x={left} y={y + 16} width={wAt(row.s)} height={6} />
-            <text x={left + Math.max(wAt(row.l), wAt(row.t), wAt(row.s)) + 6} y={y + 15}>
-              {(row.l * 100).toFixed(1)} · {(row.t * 100).toFixed(1)} · {(row.s * 100).toFixed(1)}%
-            </text>
-          </g>
-        );
-      })}
-    </svg>
-  );
-}
-
-function PruneChart({
-  sweep,
-  semi,
-  base,
-  share,
-  mode,
-}: {
-  sweep: Record<"unstructured" | "structured", { x: number; y: number }[]>;
-  semi: number;
-  base: number;
-  share: number;
-  mode: PruneMode;
-}) {
-  const left = 46;
-  const right = 700;
-  const top = 18;
-  const bottom = 200;
-  const yMax = Math.max(...sweep.structured.map((point) => point.y), semi) * 1.04;
-  const yMin = base * 0.96;
-  const xAt = (value: number) => left + (value / 0.9) * (right - left);
-  const yAt = (value: number) => bottom - ((value - yMin) / (yMax - yMin)) * (bottom - top);
-  const line = (points: { x: number; y: number }[]) =>
-    points.map((point, index) => `${index === 0 ? "M" : "L"}${xAt(point.x)},${yAt(point.y)}`).join(" ");
-  const yTicks = [base, (base + yMax) / 2, yMax / 1.04];
-  const markerX = mode === "semi" ? 0.5 : share;
-  return (
-    <svg
-      className="dp-mask dp-prune-plot"
-      viewBox="0 0 720 240"
-      role="img"
-      aria-label={`Perplexity against share of weights removed. Unstructured: ${sweep.unstructured.map((point) => `${Math.round(point.x * 100)}% ${point.y.toFixed(2)}`).join(", ")}. Structured: ${sweep.structured.map((point) => `${Math.round(point.x * 100)}% ${point.y.toFixed(2)}`).join(", ")}. 2:4 semi-structured at 50%: ${semi.toFixed(2)}.`}
-    >
-      <text x={left} y={10}>
-        perplexity on the harbor corpus
-      </text>
-      {yTicks.map((tick) => (
-        <g key={tick}>
-          <line className="dp-grid" x1={left} x2={right} y1={yAt(tick)} y2={yAt(tick)} />
-          <text x={left - 6} y={yAt(tick) + 3} textAnchor="end">
-            {tick.toFixed(1)}
-          </text>
-        </g>
-      ))}
-      {[0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9].map((tick) => (
-        <text key={tick} x={xAt(tick)} y={bottom + 15} textAnchor="middle">
-          {Math.round(tick * 100)}%
-        </text>
-      ))}
-      <line className="plot-axis" x1={left} x2={right} y1={bottom} y2={bottom} />
-      <line className="marker-guide" x1={xAt(markerX)} x2={xAt(markerX)} y1={top} y2={bottom} />
-      <path className="dp-curve is-unstructured" d={line(sweep.unstructured)} />
-      <path className="dp-curve is-structured" d={line(sweep.structured)} />
-      <path className="dp-semi" d={`M${xAt(0.5)},${yAt(semi) - 6} l6,6 l-6,6 l-6,-6 Z`} />
-      <text x={xAt(0.5) + 9} y={yAt(semi) + 4}>
-        2:4 · {semi.toFixed(2)}
-      </text>
-      <text x={(left + right) / 2} y={bottom + 32} textAnchor="middle">
-        share of the 900 weights set to zero
-      </text>
-    </svg>
-  );
-}
-
-function MaskGrid({ mask, source }: { mask: boolean[]; source: Float32Array }) {
-  const cell = 9;
-  const left = 16;
-  const top = 16;
-  let peak = 0;
-  for (const value of source) peak = Math.max(peak, Math.abs(value));
-  const kept = mask.filter(Boolean).length;
-  return (
-    <svg
-      className="dp-mask dp-mask-grid"
-      viewBox={`0 0 ${left + V * cell + 4} ${top + V * cell + 4}`}
-      role="img"
-      aria-label={`Weight mask: ${kept} of ${mask.length} weights kept. Rows are the context character, columns the next character. Filled cells are kept, shaded by magnitude; empty outlined cells are pruned.`}
-    >
-      {Array.from({ length: V }, (_, index) => (
-        <g key={index}>
-          {index % 5 === 0 && (
-            <>
-              <text x={left - 3} y={top + index * cell + 7} textAnchor="end">
-                {glyph(TINY_VOCAB[index])}
-              </text>
-              <text x={left + index * cell + cell / 2} y={top - 4} textAnchor="middle">
-                {glyph(TINY_VOCAB[index])}
-              </text>
-            </>
-          )}
-        </g>
-      ))}
-      {mask.map((keep, index) => {
-        const row = Math.floor(index / V);
-        const column = index % V;
-        const x = left + column * cell;
-        const y = top + row * cell;
-        return keep ? (
-          <rect
-            key={index}
-            className="dp-cell is-kept"
-            x={x + 0.5}
-            y={y + 0.5}
-            width={cell - 1}
-            height={cell - 1}
-            style={{ fillOpacity: 0.18 + 0.82 * Math.sqrt(Math.abs(source[index]) / (peak || 1)) }}
-          />
-        ) : (
-          <rect key={index} className="dp-cell is-pruned" x={x + 1} y={y + 1} width={cell - 2} height={cell - 2} />
-        );
-      })}
-    </svg>
-  );
-}
 
 export default function Explore({ state, setState, narrate }: ModuleContext) {
   const rank = clamp(Math.round(asNumber(state, "rank", 6)), 1, 12);
@@ -263,6 +90,39 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
       hardKl: corpusKl(teacher.weights, hard.weights, corpus.text),
     };
   }, [epochs, rank, teacher.weights, temperature]);
+
+  // The same soft-label run at every other temperature, for the sweep chart only. It is measured a point at a time
+  // after the controls settle, so dragging a slider never waits on it.
+  const sweepKey = `${rank}:${epochs}`;
+  const [sweep, setSweep] = useState<{ key: string; points: SweepPoint[] }>({ key: "", points: [] });
+  useEffect(() => {
+    const cached = sweepCache.get(sweepKey);
+    if (cached) {
+      setSweep({ key: sweepKey, points: cached });
+      return;
+    }
+    const points: SweepPoint[] = [];
+    let timer = window.setTimeout(function measure() {
+      const t = TEMPERATURES[points.length];
+      const run = trainTinyFactored({
+        text: corpus.text,
+        rank,
+        epochs,
+        batchSize: 16,
+        learningRate: 0.5,
+        seed: 3,
+        teacher: teacher.weights,
+        softLabels: true,
+        temperature: t,
+      });
+      points.push({ t, kl: corpusKl(teacher.weights, run.weights, corpus.text) });
+      setSweep({ key: sweepKey, points: [...points] });
+      if (points.length < TEMPERATURES.length) timer = window.setTimeout(measure, 0);
+      else sweepCache.set(sweepKey, points);
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [epochs, rank, sweepKey, teacher.weights]);
+  const sweepPoints = sweep.key === sweepKey ? sweep.points : [];
 
   const student = labels === "soft" ? students.soft : students.hard;
   const studentKl = labels === "soft" ? students.softKl : students.hardKl;
@@ -388,6 +248,16 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           <Metric label="Teacher loss" value={teacher.finalLoss.toFixed(3)} />
           <Metric label="KL to teacher" value={studentKl.toFixed(4)} tone="gradient" />
         </div>
+        <p className="tg-subhead">
+          The soft-label student at every temperature · rank {rank}, {epochs} passes
+        </p>
+        <TemperatureSweep
+          points={sweepPoints}
+          hardKl={students.hardKl}
+          temperature={temperature}
+          softKl={students.softKl}
+          complete={sweepPoints.length === TEMPERATURES.length}
+        />
         <div className={`tg-callout ${softWins ? "is-quiet" : "is-warning"}`}>
           <strong>
             {softWins
@@ -487,20 +357,14 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           student={soft.student}
           temperature={temperature}
           studentName={studentName}
+          context={context}
         />
         <div className="dp-legend" aria-hidden="true">
-          <span className="is-label">one-hot labels, averaged</span>
-          <span className="is-teacher">teacher at T = {temperature.toFixed(1)}</span>
-          <span className="is-student">{studentName}</span>
+          <span className="is-label">top bar: one-hot labels, averaged</span>
+          <span className="is-teacher">middle: teacher at T = {temperature.toFixed(1)}</span>
+          <span className="is-student">bottom: {studentName} at T = 1</span>
         </div>
-        <div className="metric-row">
-          <Metric label="Teacher mass on unseen next characters, T = 1" value={`${(soft.unseenAt1 * 100).toFixed(1)}%`} />
-          <Metric
-            label={`Same, at T = ${temperature.toFixed(1)}`}
-            value={`${(soft.unseenAtT * 100).toFixed(1)}%`}
-            tone="gradient"
-          />
-        </div>
+        <TailMeter atOne={soft.unseenAt1} atT={soft.unseenAtT} temperature={temperature} />
         <p className="lab-note">
           A one-hot label is a single character; averaged over the corpus it becomes the grey frequencies. This bigram
           teacher learned almost exactly those frequencies plus a thin tail on characters it never saw here, so its
@@ -546,14 +410,21 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
                 ? "identical to the teacher"
                 : `${[...prunedSample].filter((character, index) => character !== teacherSample[index]).length} of ${prunedSample.length} characters differ`}
             </span>
-            <p>{prunedSample}</p>
+            <p>
+              {[...prunedSample].map((character, index) =>
+                character !== teacherSample[index] ? (
+                  <mark key={index} className="dp-diff">
+                    {character}
+                  </mark>
+                ) : (
+                  character
+                ),
+              )}
+            </p>
           </div>
         </div>
-        <p className="lab-note">
-          Scattered zeros still sit inside a dense matrix multiply, so unstructured sparsity saves storage (with a sparse
-          format) and little time. 2:4 keeps two of every four weights, a pattern sparse tensor cores can skip for up to
-          about twice the matmul throughput. Removing whole rows shrinks the matrix itself.
-        </p>
+        <p className="tg-subhead">What each shape of zeros saves</p>
+        <ShapeKey mode={pruneMode} />
       </LabSurface>
 
       <LabSurface label="Pruning" className="tg-prune-panel">
@@ -568,18 +439,20 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           base={teacherPerplexity}
           share={pruneFraction}
           mode={pruneMode}
+          current={prunedPerplexity}
         />
-        <div className="dp-legend" aria-hidden="true">
-          <span className="is-unstructured">unstructured</span>
-          <span className="is-structured">structured (whole rows)</span>
-          <span className="is-semi">2:4 at 50%</span>
-        </div>
         <div className="dp-prune-layout">
           <figure className="dp-mask-figure">
-            <MaskGrid mask={pruned.mask} source={teacher.weights} />
+            <MaskGrid mask={pruned.mask} source={teacher.weights} removedRows={pruned.removedRows} />
           </figure>
           <div className="dp-mask-side">
             <p className="tg-subhead">The current mask</p>
+            <ul className="dp-mask-key" aria-hidden="true">
+              <li className="is-kept">kept · darker means a larger weight</li>
+              <li className="is-pruned">
+                set to zero · {pruned.removed} of {teacher.weights.length}
+              </li>
+            </ul>
             <p className="lab-note">
               Rows are the context character, columns the next character. Filled cells are kept, shaded by
               magnitude; empty outlined cells are zero. Unstructured zeros scatter wherever weights are small, 2:4
@@ -631,19 +504,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             onChange={(value) => setState({ composeBits: value })}
           />
         </div>
-        <BarList
-          label="Stored size in bytes after each stage, with its perplexity and change against the teacher"
-          items={pipeline.stages.map((stage) => ({
-            id: stage.id,
-            label: stage.label,
-            value: stage.bytes,
-            display: `${withCommas(stage.bytes)} B`,
-            tone: stage.id === "quantized" ? "gradient" : stage.id === "teacher" ? "loss" : "forward",
-            emphasis: stage.id === "quantized",
-            detail: `${withCommas(stage.values)} values · ${(stage.bits / stage.values).toFixed(1)} bits each, metadata and mask included · perplexity ${stage.perplexity.toFixed(3)} (${signedPercent((stage.perplexity / teacherStage.perplexity - 1) * 100)} on the teacher)`,
-          }))}
-          max={teacherStage.bytes}
-        />
+        <StageLadder stages={pipeline.stages} rank={rank} share={composeShare} bits={composeBits} />
         <p className="tg-subhead">Perplexity after the prune stage at {Math.round(composeShare * 100)}% · same student, three importance scores · lower is better</p>
         <BarList
           label="Perplexity after pruning for each importance score, drawn as the rise over the unpruned student, lower is better"

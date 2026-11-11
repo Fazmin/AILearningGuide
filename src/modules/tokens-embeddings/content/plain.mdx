@@ -283,7 +283,7 @@ Click any bar to make that word the new query, which lets you walk from word to 
 
 Under the bars you will also see the first 6 of the word's 50 numbers. For `queen` they start with ordinary decimals such as 0.38 and 1.82, and none of them has a label saying what it means. Two readouts sit below those numbers: **Frequency rank** shows how common the word is in GloVe's list, where `the` is number 1 and `queen` is number 1,939. **Vector length ‖v‖** shows how long the word's arrow is, which is the one thing cosine similarity ignores.
 
-Then scroll to **Embedding projection** and switch **Projection** between `UMAP` and `PCA` while `queen` is the query. Dashed lines, called spokes, join queen to its ten true neighbours, so a long spoke means the map pulled a real neighbour far away. Watch the badge change between "keeps 5 of 10 neighbours" and "keeps 0 of 10 neighbours".
+Then scroll to **Embedding projection** and switch **Projection** between `UMAP` and `PCA` while `queen` is the query. Lines called spokes join queen to its ten true neighbours. A spoke is solid where the map kept that neighbour close and dashed where it did not, so a long dashed spoke means the map pulled a real neighbour far away. Watch the badge change between "keeps 5 of 10 neighbours" and "keeps 0 of 10 neighbours".
 
 Under PCA, queen's real neighbours spread out across the map, and the badge reads 0. That is the shadow effect at work. Many unrelated words, such as `miami` and `grabbed`, land almost on top of queen, closer than even `princess`, so they fill all ten of its nearest dots.
 

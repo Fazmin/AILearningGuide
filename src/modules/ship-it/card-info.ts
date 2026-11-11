@@ -6,7 +6,7 @@ const cardInfo: ModuleCardInfo = {
     summary:
       "The knobs for pretraining a base table, adapting it to a second task with a merged low-rank adapter, and aligning it with DPO. Each one changes what the later cards measure.",
     whatYouSee: [
-      "`Base training epochs`, `LoRA rank`, `Adapter epochs`, `Replay sentences`, `DPO steps`, and `DPO beta`, each with its current value beside the label.",
+      "`Base training epochs`, `LoRA rank`, `Adapter epochs`, `Replay sentences`, `DPO steps`, and `DPO beta`, each with its current value beside the label, grouped under the stage it belongs to: 1 Pretrain, 2 Adapt, 3 Align.",
       "A note listing which sentences each stage trains on and which two sentences of each corpus are held out.",
     ],
     howItWorks: [
@@ -33,6 +33,7 @@ const cardInfo: ModuleCardInfo = {
     summary:
       "Held-out loss on the recipe text and the harbor text after each of four stages, the six-item benchmark counts for both, and the preference-pair result from DPO. Changes between stages are written in words, not only signs.",
     whatYouSee: [
+      "A chart with one arrow per stage across the top and a mark where each stage ends. Each held-out loss is drawn as its change from the base model, so both lines start at zero and up is worse: a solid line with dots for recipe text, a dashed line with squares for harbor text. Moves above 0.02 nats are labelled on the line.",
       "A table with a row per stage (Base model, After adapting, After aligning, As shipped) and columns for recipe-text loss, harbor-text loss, and benchmark items answered correctly out of six.",
       "Small notes beside each loss: the change from the stage above, labelled `worse` or `better` when it moves by more than 0.02 nats.",
       "Four metrics: base-to-shipped change in each loss, the share of preference pairs ordered correctly, and the reward margin.",
@@ -58,7 +59,9 @@ const cardInfo: ModuleCardInfo = {
     summary:
       "Two checks decided by held-out loss, read on the model as it would ship: the recipe text must improve by at least a set amount, and the harbor text may not get worse by more than a set amount. The benchmark appears beside them as advisory evidence.",
     whatYouSee: [
-      "A `Gate: pass` or `Gate: fail` badge, two sliders for the thresholds, and one line per check with `Pass` or `Fail`, the loss it measured, and the base model's value.",
+      "A `Gate: pass` or `Gate: fail` badge, two sliders for the thresholds, and one block per check with `Pass` or `Fail`, a number line, and a sentence giving the loss it measured and the base model's value.",
+      "Each number line marks the base model at zero, the shipped model's change as a dot, and the pass mark its slider sets as a dashed line; the shaded side of the mark passes. Both lines share one scale.",
+      "A drawing of the six-item quiz: for recipe items and harbor items, the count before and after as a dot on a 0 to 100% scale, each with its 95% range as a bar, and the stretch the two ranges share shaded.",
       "A note giving each benchmark's counts before and after, their 95% intervals, and whether the intervals overlap.",
     ],
     howItWorks: [
@@ -85,8 +88,10 @@ const cardInfo: ModuleCardInfo = {
       "Optionally prune the aligned table, then quantize it to a named format, which changes the model the gate reads; then size an imagined 8B-class deployment for the format, user count, and context length chosen.",
     whatYouSee: [
       "A segmented control for `Weight format` (F16, Q8_0, Q5_K_M, Q4_K_M, Q4_0), and sliders for `Prune`, `Concurrent users`, and `Context length`.",
+      "A two-row drawing of what compressing did: each held-out loss After aligning as a ring and As shipped as a dot on one scale, with the change written beside it.",
       "A first row of metrics from the toy: its file size and bits per weight at that format, and the recipe and harbor loss as shipped, coloured by whether they moved more than 0.02 nats from After aligning.",
       "A second row for the imagined deployment: 8B-class weights, KV cache for all streams, streams that fit, and tokens per second per user.",
+      "A memory bar on a GiB axis: runtime, weights, one slice of KV cache per stream, the empty slots more streams could take, and a heavy line at the 24 GiB limit.",
       "A callout stating the headroom or the overshoot against a 24 GiB accelerator.",
     ],
     howItWorks: [
@@ -113,6 +118,7 @@ const cardInfo: ModuleCardInfo = {
       "One verdict that combines the quality gate and the serving budget, the artifact it applies to, every stage that made something worse, and, when the answer is hold, which condition failed and what to try.",
     whatYouSee: [
       "A `Verdict: ship` or `Verdict: hold` badge and a headline.",
+      "Three condition tiles, `Recipe gain`, `Harbor kept`, and `Budget fits`, each marked Pass or Fail with its numbers, leading to a `Verdict` tile that reads Ship only when all three pass.",
       "A summary of the artifact (format, pruning, adapter rank), the gate result, the serving budget, and the stage-to-stage regressions.",
       "On hold, a callout with each failing condition's measured numbers and a suggested next move.",
     ],

@@ -8,8 +8,8 @@ const cardInfo: ModuleCardInfo = {
     whatYouSee: [
       "`Parameters` from 100M to 1T and `Training tokens` from 1B to 30T, both on logarithmic tracks so each notch is the same percentage change.",
       "`Fit`, a two-way switch between `Hoffmann 2022` (the constants printed in the Chinchilla paper) and `Epoch 2024 refit` (the replication by Besiroglu et al.).",
-      "`Budget`, with `Free` and `Hold compute`. The box under it states what the sliders are doing in words, and `Fit optimum here` names the best split at your current compute.",
-      "`N from dimensions`: `Layers L` from 1 to 128, `Width d` from 64 to 16,384 in steps of 64, a line reading `12 × L × d² = N weights` with the weights per block, and a `Use as Parameters` button.",
+      "`Budget`, with `Free` and `Hold compute`. Under it, a dot on a log track shows the budget C = 6ND and reads `held` under `Hold compute`. The box also states what the sliders are doing in words, and `Fit optimum here` names the best split at your current compute.",
+      "`N from dimensions`: `Layers L` from 1 to 128, `Width d` from 64 to 16,384 in steps of 64, two dots on one track from 100M to 1T that compare 12 · L · d² with the `Parameters` slider, a line reading `12 × L × d² = N weights` with the weights per block, and a `Use as Parameters` button.",
     ],
     howItWorks: [
       "Compute is `C = 6ND` FLOPs: about 2 operations per parameter per token in the forward pass and 4 in the backward pass of a dense transformer.",
@@ -41,9 +41,9 @@ const cardInfo: ModuleCardInfo = {
     summary:
       "Each thin curve holds training compute fixed and sweeps model size, so moving right means a bigger model trained on fewer tokens. Every curve is U-shaped, and its lowest point is the compute-optimal size for that budget. The thick curve is your own budget.",
     whatYouSee: [
-      "The x-axis is parameters N on a log scale from 100M to 1T; the y-axis is predicted loss in nats per token. Thin curves are budgets from 10¹⁹ to 10²⁵ FLOPs, labelled where they leave the plot.",
+      "The x-axis is parameters N on a log scale from 100M to 1T; the y-axis is predicted loss in nats per token. Thin curves are budgets from 10¹⁹ to 10²⁵ FLOPs, labelled where they leave the plot. A dashed red line near the bottom is the floor E, which no curve reaches.",
       "A small dot at the bottom of each thin curve, joined by the dashed compute-optimal frontier. The dotted line joins the points that spend each budget at 20 tokens per parameter.",
-      "Your run is the filled circle on the thick curve. On that curve the diamond is the fit's optimum and the hollow square is the 20:1 split. Two crosses mark Chinchilla (70B on 1.4T tokens) and Gopher (280B on 300B tokens) at the loss this fit predicts for them.",
+      "Your run is the filled circle on the thick curve. On that curve the diamond is the fit's optimum and the hollow square is the 20:1 split; the three are labelled `your run`, `best split` and `20:1`, and when your run sits well above the diamond a vertical line labelled `gap` measures the difference. Two crosses mark Chinchilla (70B on 1.4T tokens) and Gopher (280B on 300B tokens) at the loss this fit predicts for them.",
       "Readouts: `Predicted loss`, `Compute C = 6ND`, `Tokens per parameter`, and `Gap to optimum`, the loss above the diamond at the same compute. The legend repeats each marker's size, tokens and loss as text.",
     ],
     howItWorks: [
@@ -74,7 +74,7 @@ const cardInfo: ModuleCardInfo = {
     whatYouSee: [
       "A worked line: the formula, your N and D in scientific notation, then the evaluated terms, with the size term in the forward colour, the data term in the gradient colour, and the total.",
       "Two bars, `Your run` and `Optimum, same C`, showing loss above the floor. The solid segment is the size term and the hatched segment is the data term; each segment prints its value and the row ends with their sum.",
-      "`Doubling N lowers L by` and `Doubling D lowers L by`, with a sentence naming which one is larger.",
+      "`Doubling N lowers L by` and `Doubling D lowers L by`, each with a bar on one shared scale and a `better buy` tag on the larger, then a sentence naming which one is larger.",
     ],
     howItWorks: [
       "Doubling N multiplies the size term by 2^−α, so it lowers L by (A/N^α)·(1 − 2^−α). Doubling D lowers L by (B/D^β)·(1 − 2^−β). Either doubling doubles C.",
@@ -100,7 +100,7 @@ const cardInfo: ModuleCardInfo = {
       "Along the compute-optimal frontier, loss minus the floor E falls as a pure power of compute. On log-log axes that is a straight line, which is what lets labs extrapolate from small runs to large ones.",
     whatYouSee: [
       "The x-axis is training compute from 10¹⁸ to 10²⁶ FLOPs; the y-axis is L − E. Both are logarithmic.",
-      "The dashed frontier is straight. The dotted 20:1 line nearly overlaps it. Your run is the dot, with a short dashed drop to the frontier at the same compute.",
+      "The dashed frontier is straight. The dotted 20:1 line nearly overlaps it. Your run is the dot, with a short dashed drop to the frontier at the same compute. A small step drawn on the line shows one tenfold increase in compute and the share of L − E it keeps.",
       "`Slope` and `10× compute keeps`, which is 10 to the power of the slope, written as the share of reducible loss that survives a tenfold budget.",
     ],
     howItWorks: [

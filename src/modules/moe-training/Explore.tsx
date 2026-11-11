@@ -30,6 +30,7 @@ import {
   type Balancing,
   type MoeRun,
 } from "./moe";
+import { CapacityBars, CellBar, CharacterGroups, LossCell, ParamBars, RouteDiagram, SplitBars, type ParamRow } from "./visuals";
 import {
   AUX_LADDER,
   BIAS_LADDER,
@@ -107,6 +108,18 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
   const route = routeCharacter(params, example.character);
   const best = route.next.indexOf(Math.max(...route.next));
 
+  const skipped = route.z.map((_, e) => e).filter((e) => !route.chosen.includes(e));
+  const routeSpoken = `${quoted(example.character)} runs ${listNames(
+    route.chosen.map((e) => `${expertName(e)} with gate ${route.gates[e].toFixed(2)}`),
+  )}${skipped.length ? `; ${listNames(skipped.map(expertName))} ${skipped.length === 1 ? "is" : "are"} skipped` : ""}. Top guess for the next character: ${quoted(best)}, ${percent(route.next[best])}.`;
+  const nextRanked = route.next
+    .map((share, character) => ({ label: charName(character) === "space" ? "␣" : charName(character), share }))
+    .sort((left, right) => right.share - left.share)
+    .slice(0, 4);
+
+  /** The first epoch boundary at which the router is down to k experts, if it ever is. */
+  const collapseEpoch = experts > topK ? history.findIndex((point, epoch) => epoch > 0 && point.effective < topK + 0.05) : -1;
+
   const loadSeries: LineSeries[] = [
     ...shares.map((_, e) => ({
       id: `e${e}`,
@@ -138,7 +151,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
     if (specialView === "corpus") {
       const rows = final.byCorpus.map(normalise);
       const gap = Math.max(...rows.flatMap((row) => row.map((share, e) => Math.abs(share - shares[e]))));
-      return { labels: CORPUS_IDS.map((_, index) => CORPUS_LABELS[index]), rows, gap, purity: 0 };
+      return { labels: [...CORPUS_IDS.map((_, index) => CORPUS_LABELS[index]), "All three"], rows: [...rows, [...shares]], gap, purity: 0 };
     }
     const rows = PRESENT.map((entry) => normalise(final.byCharacter[entry.character]));
     const totalPairs = PRESENT.reduce((sum, entry) => sum + entry.total, 0);
@@ -147,8 +160,52 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
   }, [final, shares, specialView]);
   /** Every character an expert receives any choices of. At top-1 each character appears under exactly one expert. */
   const groups = shares.map((_, e) =>
-    PRESENT.filter((entry) => final.byCharacter[entry.character][e] > 0).map((entry) => charName(entry.character)),
+    PRESENT.filter((entry) => final.byCharacter[entry.character][e] > 0).map((entry) => ({
+      name: charName(entry.character),
+      pairs: entry.total,
+    })),
   );
+
+  const sharedSegments = [
+    { id: "embedding", label: "embed", size: counts.embedding, kind: "shared" as const },
+    { id: "router", label: "", size: counts.router, kind: "shared" as const },
+  ];
+  const paramRows: ParamRow[] = [
+    {
+      label: `Stored: all ${experts} expert${experts === 1 ? "" : "s"}`,
+      total: counts.total,
+      segments: [
+        ...sharedSegments,
+        ...shares.map((_, e) => ({
+          id: `e${e}`,
+          label: expertName(e),
+          size: counts.perExpert,
+          kind: route.chosen.includes(e) ? ("active" as const) : ("idle" as const),
+        })),
+      ],
+    },
+    {
+      label: `Run for one token, here ${quoted(example.character)}`,
+      total: counts.active,
+      segments: [
+        ...sharedSegments,
+        ...route.chosen
+          .slice()
+          .sort((left, right) => left - right)
+          .map((e) => ({ id: `e${e}`, label: expertName(e), size: counts.perExpert, kind: "active" as const })),
+      ],
+    },
+    {
+      label: "Dense baseline: 1 expert",
+      total: denseCounts.total,
+      segments: [
+        { id: "embedding", label: "embed", size: denseCounts.embedding, kind: "shared" as const },
+        { id: "router", label: "", size: denseCounts.router, kind: "shared" as const },
+        { id: "e0", label: "E1", size: denseCounts.perExpert, kind: "active" as const },
+      ],
+    },
+  ];
+  const paramSpoken = `The lab stores ${count(counts.total)} weights: an embedding of ${counts.embedding}, a router of ${counts.router} and ${experts} expert${experts === 1 ? "" : "s"} of ${counts.perExpert} each. One token runs ${count(counts.active)} of them. The one-expert dense baseline stores and runs ${count(denseCounts.total)}.`;
 
   const auxIndex = Math.max(0, AUX_LADDER.indexOf(auxWeight as (typeof AUX_LADDER)[number]));
   const biasIndex = Math.max(0, BIAS_LADDER.indexOf(biasStep as (typeof BIAS_LADDER)[number]));
@@ -220,6 +277,17 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             format={(index) => `${charName(PRESENT[index].character)} · ${PRESENT[index].total} pairs`}
             onChange={(index) => setExampleIndex(index)}
           />
+          <RouteDiagram
+            token={charName(example.character) === "space" ? "␣" : charName(example.character)}
+            tokenNote={`${charName(example.character) === "space" ? "space · " : ""}${example.total} pairs`}
+            spoken={routeSpoken}
+            z={route.z}
+            bias={route.bias}
+            gates={route.gates}
+            chosen={route.chosen}
+            next={nextRanked}
+            topK={topK}
+          />
           <div className="moe-table-wrap">
             <table className="moe-table">
               <caption>
@@ -282,6 +350,13 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           yLabel="share of choices"
           xDomain={[0, epochs]}
           yDomain={[0, 1]}
+          marker={collapseEpoch > 0 ? { x: collapseEpoch, label: `down to ${topK} expert${topK === 1 ? "" : "s"} by epoch ${collapseEpoch}` } : undefined}
+        />
+        <SplitBars
+          rows={[
+            { label: "Before training", shares: history[0].shares, note: `${history[0].effective.toFixed(2)} effective` },
+            { label: `After ${epochs} epoch${epochs === 1 ? "" : "s"}`, shares, note: `${final.effective.toFixed(2)} effective` },
+          ]}
         />
         <div className="metric-row">
           <Metric label="Effective experts" value={final.effective.toFixed(2)} tone="forward" />
@@ -361,7 +436,11 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
         </p>
         <div className="moe-table-wrap">
           <table className="moe-table">
-            <caption>Same seed, experts, top-k, capacity and epochs, with and without balancing, beside the one-expert model.</caption>
+            <caption>
+              Same seed, experts, top-k, capacity and epochs, with and without balancing, beside the one-expert model. The
+              bar under each Loss starts at the dense baseline: left is lower (better), right is higher, and a full bar is
+              0.1.
+            </caption>
             <thead>
               <tr>
                 <th scope="col">Run</th>
@@ -374,16 +453,28 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
               {compareRows.map((row) => (
                 <tr key={row.name} className={row.selected ? "is-selected" : undefined}>
                   <th scope="row">{row.name}</th>
-                  <td>{row.run.final.effective.toFixed(2)}</td>
-                  <td>{loss(row.run.final.loss)}</td>
-                  <td>{row.run.final.meanGate.toFixed(2)}</td>
+                  <td>
+                    <CellBar value={row.run.final.effective} max={experts} text={row.run.final.effective.toFixed(2)} />
+                  </td>
+                  <td>
+                    <LossCell value={row.run.final.loss} baseline={dense.final.loss} reach={0.1} text={loss(row.run.final.loss)} />
+                  </td>
+                  <td>
+                    <CellBar value={row.run.final.meanGate} max={1} text={row.run.final.meanGate.toFixed(2)} />
+                  </td>
                 </tr>
               ))}
               <tr>
                 <th scope="row">Dense baseline</th>
-                <td>1.00</td>
-                <td>{loss(dense.final.loss)}</td>
-                <td>1.00</td>
+                <td>
+                  <CellBar value={1} max={experts} text="1.00" tone="muted" />
+                </td>
+                <td>
+                  <LossCell value={dense.final.loss} baseline={dense.final.loss} reach={0.1} text={loss(dense.final.loss)} />
+                </td>
+                <td>
+                  <CellBar value={1} max={1} text="1.00" tone="muted" />
+                </td>
               </tr>
             </tbody>
           </table>
@@ -446,18 +537,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           <Metric label="Unserved tokens" value={percent(final.unserved)} />
           <Metric label="Loss" value={loss(final.loss)} />
         </div>
-        <BarList
-          label="Each expert's share of the router's choices, with the share its seats can serve"
-          items={shares.map((share, e) => ({
-            id: `c${e}`,
-            label: expertName(e),
-            value: share,
-            display: percent(share),
-            detail: Number.isFinite(seats) ? `room for ${percent(seatShare)}` : undefined,
-            tone: share > seatShare + 0.005 ? ("loss" as const) : ("forward" as const),
-          }))}
-          max={1}
-        />
+        <CapacityBars shares={shares} room={Number.isFinite(seats) ? seatShare : null} dropped={final.dropped} />
         <p className="lab-note">
           A token that loses every expert predicts all 30 characters equally, a loss of ln 30 = 3.401, because this toy has no
           residual stream to carry it past the layer. The cap is applied the same way when the final weights are scored.
@@ -482,25 +562,29 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           }}
         />
         <div className={`moe-heatmap moe-heatmap--${specialView}`}>
-          <Heatmap
-            label={`Share of each ${specialView === "chars" ? "character's" : "corpus's"} choices that goes to each expert. Each row sums to 100%.`}
-            rows={grid.labels}
-            columns={shares.map((_, e) => expertName(e))}
-            values={grid.rows}
-          />
+          <div className="moe-heatmap__blocks">
+            {(specialView === "chars" ? [0, 1] : [0]).map((half) => {
+              const cut = specialView === "chars" ? Math.ceil(grid.labels.length / 2) : grid.labels.length;
+              return (
+                <Heatmap
+                  key={half}
+                  label={`Share of each ${specialView === "chars" ? "character's" : "corpus's"} choices that goes to each expert${specialView === "chars" ? (half === 0 ? ", first half of the characters" : ", second half of the characters") : ""}. Each row sums to 100%.`}
+                  rows={grid.labels.slice(half * cut, half * cut + cut)}
+                  columns={shares.map((_, e) => expertName(e))}
+                  values={grid.rows.slice(half * cut, half * cut + cut)}
+                />
+              );
+            })}
+          </div>
         </div>
         {specialView === "chars" ? (
           <>
             <div className="metric-row">
               <Metric label="Top expert's share per character" value={percent(grid.purity)} tone="forward" />
             </div>
-            <ul className="moe-groups" aria-label="The characters each expert receives">
-              {groups.map((names, e) => (
-                <li key={e}>
-                  <b>{expertName(e)}</b> {names.length ? names.join(" ") : "no characters"}
-                </li>
-              ))}
-            </ul>
+            <h4 className="tg-subhead moe-groups__title">The same grid, sorted: the characters each expert receives</h4>
+            <CharacterGroups groups={groups} heaviest={Math.max(...PRESENT.map((entry) => entry.total))} />
+            <p className="moe-groups__key">A darker tile is a character that starts more pairs.</p>
           </>
         ) : (
           <div className="metric-row">
@@ -524,6 +608,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           <Metric label="Active per token" value={count(counts.active)} tone="forward" />
           <Metric label="Loss" value={loss(final.loss)} tone="loss" />
         </div>
+        <ParamBars rows={paramRows} scale={parameterCounts(EXPERTS_MAX, 1).total} spoken={paramSpoken} />
         <div className="moe-formulas">
           <FormulaWithValues
             label="Total"
@@ -558,21 +643,27 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
                 <th scope="row">This lab, {experts} expert{experts === 1 ? "" : "s"}, top-{topK}</th>
                 <td>{count(counts.total)}</td>
                 <td>{count(counts.active)}</td>
-                <td>{percent(counts.active / counts.total)}</td>
+                <td>
+                  <CellBar value={counts.active / counts.total} max={1} text={percent(counts.active / counts.total)} />
+                </td>
                 <td>{loss(final.loss)}</td>
               </tr>
               <tr>
                 <th scope="row">Dense baseline, 1 expert</th>
                 <td>{count(denseCounts.total)}</td>
                 <td>{count(denseCounts.active)}</td>
-                <td>100%</td>
+                <td>
+                  <CellBar value={1} max={1} text="100%" tone="muted" />
+                </td>
                 <td>{loss(dense.final.loss)}</td>
               </tr>
               <tr>
                 <th scope="row">{MIXTRAL_8X7B.name}, published</th>
                 <td>{billions(MIXTRAL_8X7B.total)}</td>
                 <td>{billions(MIXTRAL_8X7B.active)}</td>
-                <td>{percent(MIXTRAL_8X7B.active / MIXTRAL_8X7B.total)}</td>
+                <td>
+                  <CellBar value={MIXTRAL_8X7B.active / MIXTRAL_8X7B.total} max={1} text={percent(MIXTRAL_8X7B.active / MIXTRAL_8X7B.total)} tone="muted" />
+                </td>
                 <td>not comparable</td>
               </tr>
             </tbody>

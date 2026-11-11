@@ -181,7 +181,7 @@ So each user gets one token every 23 ms, which is 43.4 tokens per second. Togeth
 
 Those two numbers have names. **Throughput** is the total tokens per second across everyone, and the card shows it as **Total**. **Latency** is how long one person waits. Here it is the gap between one person's tokens, shown as **Time per output token**. **Per user** shows each person's own tokens per second, which is one second divided by that gap.
 
-Batching raises throughput and worsens latency. That trade gives the card its name, **Throughput and latency**, and its two charts show it side by side. The top chart, total tokens per second, climbs as you add users. The bottom chart, each user's own speed, sinks.
+Batching raises throughput and worsens latency. That trade gives the card its name, **Throughput and latency**. Its two line charts show it side by side. The top one, total tokens per second, climbs as you add users. The bottom one, each user's own speed, sinks.
 
 Each extra user adds the same amount to every step. That amount is the time to read one more pile of notes. Early on, that is small next to the shared weights. So a second user costs each person only a little speed, from 73.3 down to 66.8 tokens a second.
 
@@ -312,7 +312,7 @@ The lab starts at `8B`, `Q4_K_M`, 8 users, 4,096 tokens and `Continuous batching
 
 **Try this:** Drag **Concurrent users** from 1 up to 64. Watch the **Throughput and latency** card as the numbers change. With one user, **Total** and **Per user** both read 73.3 tok/s. That one person has the whole machine.
 
-At 8 users, **Total** reads 347 tok/s, **Per user** reads 43.4 and **Time per output token** reads 23 ms. Now keep going. Past 36 users, both charts turn shaded, because the saved notes no longer fit in 24 GiB. The shading is labelled `over 24.00 GiB beyond 36`, which marks the point where memory runs out.
+At 8 users, **Total** reads 347 tok/s, **Per user** reads 43.4 and **Time per output token** reads 23 ms. Now keep going. Past 36 users, both line charts turn shaded, because the saved notes no longer fit in 24 GiB. The shading is labelled `over 24.00 GiB beyond 36`, which marks the point where memory runs out.
 
 At 64 users, the **Memory budget** badge reads 37.58 GiB. That is more than one and a half times what the machine has. The warning below the bar says you are over budget by 13.58 GiB. It adds that only 36 streams fit at this context.
 
@@ -362,7 +362,7 @@ Switch paging off and set **KV cache type** to `q8_0`. Now 69 streams fit, and e
 
 Set the cache back to `fp16` and switch on **Speculative decoding**. **Per user** jumps from 43.4 to 104 tok/s, which is 2.4 times faster. **Cost per million tokens** falls from $0.80 to $0.33, while **Streams that fit** stays at 36. That is because the lab ignores the helper model's own memory. In a real server, the helper's weights and notes would take some desk space too.
 
-The bar list below the readouts keeps all of this in view. It has a row for `No levers`, one row for each lever alone, and one for `Your selection`. Each bar's length shows total tokens per second. Its label shows the cost per million tokens for that row.
+The bar list below the readouts keeps all of this in view. It has a row for `No levers`, one row for each lever alone, and one for `Your selection`. Each row has three bars. They show streams that fit, each user's speed, and total tokens per second. A tick on each bar marks the `No levers` value. The row ends with its cost per million tokens.
 
 Two more experiments show where speculation stops helping. First, drag **Acceptance rate** down to 0, so that every guess is wrong. **Per user** falls to 31.0 tok/s. That is slower than with no levers at all, because you are paying for guesses that never get used.
 

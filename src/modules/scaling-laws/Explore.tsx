@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   LabSurface,
   Metric,
@@ -82,13 +82,143 @@ function LogRange({
   );
 }
 
+/* ---------- log-scale tracks in the controls card ---------- */
+
+const trackPct = (value: number, low: number, high: number) =>
+  `${clamp(((Math.log10(value) - low) / (high - low)) * 100, 0, 100)}%`;
+
+/** Compute on a log track: both sliders push the same dot, and Hold compute pins it. */
+function BudgetMeter({ parameters, tokens, hold }: { parameters: number; tokens: number; hold: boolean }) {
+  const compute = trainingFlops(parameters, tokens);
+  const low = 17.5;
+  const high = 26.5;
+  return (
+    <div
+      className={`sl-meter ${hold ? "is-held" : ""}`}
+      role="img"
+      aria-label={`Compute is 6 times ${formatCount(parameters)} parameters times ${formatCount(tokens)} tokens, ${formatFlops(compute)} FLOPs. ${hold ? "It is held fixed." : "It moves when either slider moves."}`}
+    >
+      <p className="sl-meter__sum">
+        <span>C =</span> 6 × <b>{formatCount(parameters)}</b> × <b>{formatCount(tokens)}</b> ={" "}
+        <strong>{formatFlops(compute)}</strong> <span>FLOPs</span>
+      </p>
+      <div className="sl-track">
+        {FAMILY.map((exponent) => (
+          <i key={exponent} className="sl-track__tick" style={{ left: trackPct(Math.pow(10, exponent), low, high) }}>
+            {exponent % 2 === 1 && <small>{`10${superscript(exponent)}`}</small>}
+          </i>
+        ))}
+        <b className="sl-track__dot" style={{ left: trackPct(compute, low, high) }}>
+          <small>{hold ? "held" : "your budget"}</small>
+        </b>
+      </div>
+    </div>
+  );
+}
+
+/** N from the two dimension sliders against the Parameters slider, on one log track from 100M to 1T. */
+function DimensionTrack({ fromDimensions, parameters }: { fromDimensions: number; parameters: number }) {
+  const rows = [
+    { id: "dims", name: "12 · L · d²", value: fromDimensions },
+    { id: "slider", name: "Parameters", value: parameters },
+  ];
+  const outside = fromDimensions < PARAMETER_RANGE.min * 1e9 || fromDimensions > PARAMETER_RANGE.max * 1e9;
+  return (
+    <div
+      className="sl-dimtrack"
+      role="img"
+      aria-label={`12 times L times d squared is ${formatCount(fromDimensions)}${outside ? ", outside the slider's range" : ""}; the Parameters slider is at ${formatCount(parameters)}.`}
+    >
+      {rows.map((row) => (
+        <div key={row.id} className={`sl-dimtrack__row sl-dimtrack__row--${row.id}`}>
+          <span>{row.name}</span>
+          <div className="sl-track">
+            {[8, 9, 10, 11, 12].map((exponent) => (
+              <i key={exponent} className="sl-track__tick" style={{ left: trackPct(Math.pow(10, exponent), 8, 12) }} />
+            ))}
+            <b className="sl-track__dot" style={{ left: trackPct(row.value, 8, 12) }} />
+          </div>
+          <strong>{formatCount(row.value)}</strong>
+        </div>
+      ))}
+      <div className="sl-dimtrack__row sl-dimtrack__row--axis" aria-hidden="true">
+        <span />
+        <div className="sl-track sl-track--axis">
+          {["100M", "1B", "10B", "100B", "1T"].map((label, index) => (
+            <i key={label} className="sl-track__tick" style={{ left: `${index * 25}%` }}>
+              <small>{label}</small>
+            </i>
+          ))}
+        </div>
+        <strong />
+      </div>
+    </div>
+  );
+}
+
 /* ---------- isoFLOP chart ---------- */
 
 const ISO_X = { min: 8, max: 12 };
-const ISO_Y = { min: 1.7, max: 3.8 };
+const ISO_Y = { min: 1.6, max: 3.8 };
 const FAMILY = [19, 20, 21, 22, 23, 24, 25];
 
 type CurvePoint = { parameters: number; loss: number };
+type Pixel = { x: number; y: number };
+type Box = { x: number; y: number; width: number; height: number };
+
+/** Distance from a point to a box, 0 when the point is inside it. */
+const gapToBox = (point: Pixel, box: Box) =>
+  Math.hypot(
+    Math.max(box.x - point.x, 0, point.x - box.x - box.width),
+    Math.max(box.y - point.y, 0, point.y - box.y - box.height),
+  );
+
+const boxesTouch = (a: Box, b: Box, pad = 3) =>
+  a.x < b.x + b.width + pad && b.x < a.x + a.width + pad && a.y < b.y + b.height + pad && b.y < a.y + a.height + pad;
+
+/**
+ * Picks the spot around `anchor` where a short text label is furthest from every drawn line.
+ * The lines it avoids do not depend on the reader's run, so the label stays put while sliders move.
+ */
+function placeLabel(
+  anchor: Pixel,
+  text: string,
+  obstacles: ReadonlyArray<Pixel>,
+  bounds: { left: number; right: number; top: number; bottom: number },
+  taken: ReadonlyArray<Box>,
+) {
+  const width = text.length * 6.4 + 4;
+  const height = 12;
+  const fallback: Box = { x: anchor.x - width / 2, y: anchor.y + 9, width, height };
+  let best = { box: fallback, score: -Infinity, reach: 9 };
+  for (const dy of [-8, 19, 23, 27, 31, 35, 39, 43, -20, -32]) {
+    for (const side of [1, -1, 0]) {
+      const box: Box = {
+        x: side === 1 ? anchor.x + 7 : side === -1 ? anchor.x - 7 - width : anchor.x - width / 2,
+        y: anchor.y + dy - 10,
+        width,
+        height,
+      };
+      if (
+        box.x < bounds.left + 2 ||
+        box.x + width > bounds.right - 2 ||
+        box.y < bounds.top + 2 ||
+        box.y + height > bounds.bottom - 1
+      )
+        continue;
+      let clear = 9;
+      for (const obstacle of obstacles) {
+        clear = Math.min(clear, gapToBox(obstacle, box));
+        if (clear === 0) break;
+      }
+      if (taken.some((other) => boxesTouch(box, other))) clear = -4;
+      const reach = gapToBox(anchor, box);
+      const score = clear - reach * 0.06;
+      if (score > best.score) best = { box, score, reach };
+    }
+  }
+  return best;
+}
 
 /**
  * Chart geometry in CSS pixels. The chart is drawn at its measured width so that
@@ -98,7 +228,7 @@ function isoGeometry(measured: number) {
   const width = Math.max(320, Math.round(measured));
   const box = {
     width,
-    height: Math.round(Math.min(360, Math.max(250, width * 0.52))),
+    height: Math.round(Math.min(380, Math.max(270, width * 0.55))),
     left: 50,
     right: 34,
     top: 24,
@@ -141,7 +271,30 @@ function isoGeometry(measured: number) {
     }
     return path.trim();
   };
-  return { box, isoX, isoY, inIsoX, curveExit, curvePath };
+  /** Pixel samples along a curve, at most 3px apart, for keeping labels off it. */
+  const curvePixels = (points: ReadonlyArray<CurvePoint>) => {
+    const pixels: Pixel[] = [];
+    let previous: Pixel | undefined;
+    for (const point of points) {
+      if (!Number.isFinite(point.loss) || point.loss > ISO_Y.max + 0.4) {
+        previous = undefined;
+        continue;
+      }
+      const next = { x: isoX(point.parameters), y: isoY(point.loss) };
+      if (previous) {
+        const steps = Math.max(1, Math.ceil(Math.hypot(next.x - previous.x, next.y - previous.y) / 3));
+        for (let step = 1; step <= steps; step += 1) {
+          pixels.push({
+            x: previous.x + ((next.x - previous.x) * step) / steps,
+            y: previous.y + ((next.y - previous.y) * step) / steps,
+          });
+        }
+      } else pixels.push(next);
+      previous = next;
+    }
+    return pixels;
+  };
+  return { box, isoX, isoY, inIsoX, curveExit, curvePath, curvePixels };
 }
 
 function useMeasuredWidth(fallback: number) {
@@ -160,23 +313,91 @@ function useMeasuredWidth(fallback: number) {
   return [ref, width] as const;
 }
 
+/** Spreads labels that share an edge so that no two sit closer than `gap`, staying inside low..high. */
+function spread(values: number[], gap: number, low: number, high: number) {
+  const order = values.map((value, index) => ({ value, index })).sort((a, b) => a.value - b.value);
+  for (let index = 1; index < order.length; index += 1)
+    order[index].value = Math.max(order[index].value, order[index - 1].value + gap);
+  for (let index = order.length - 1; index >= 0; index -= 1) {
+    const limit = index === order.length - 1 ? high : order[index + 1].value - gap;
+    order[index].value = Math.min(order[index].value, limit);
+  }
+  const result = [...values];
+  for (const entry of order) result[entry.index] = Math.max(low, entry.value);
+  return result;
+}
+
 function IsoFlopChart({ fit, parameters, tokens }: { fit: ScalingFit; parameters: number; tokens: number }) {
   const [frame, measured] = useMeasuredWidth(640);
-  const { box: ISO, isoX, isoY, inIsoX, curveExit, curvePath } = isoGeometry(measured);
+  const { box: ISO, isoX, isoY, inIsoX, curveExit, curvePath, curvePixels } = isoGeometry(measured);
   const compute = trainingFlops(parameters, tokens);
   const loss = lossTerms(fit, parameters, tokens).total;
   const optimum = optimalAllocation(fit, compute);
   const rule = ratioAllocation(fit, compute);
-  const frontier = Array.from({ length: 81 }, (_, index) =>
-    optimalAllocation(fit, Math.pow(10, 17.5 + index * 0.1)),
-  );
-  const ruleLocus = Array.from({ length: 81 }, (_, index) =>
-    ratioAllocation(fit, Math.pow(10, 17.5 + index * 0.1)),
-  );
-  const references = [
-    { id: "chinchilla", name: "Chinchilla", ...CHINCHILLA },
-    { id: "gopher", name: "Gopher", ...GOPHER },
-  ].map((entry) => ({ ...entry, loss: lossTerms(fit, entry.parameters, entry.tokens).total }));
+  const plotRight = ISO.width - ISO.right;
+  const plotBottom = ISO.height - ISO.bottom;
+  const floorY = isoY(fit.E);
+  const wide = ISO.width >= 540;
+
+  // Everything that does not move with the reader's run: the budget curves, the two loci and the
+  // labels for the two real models, which are placed in the widest gap between those lines.
+  const fixed = useMemo(() => {
+    const family = FAMILY.map((exponent) => {
+      const points = isoFlopCurve(fit, Math.pow(10, exponent), ISO_X.min, ISO_X.max, 120);
+      return { exponent, points, best: optimalAllocation(fit, Math.pow(10, exponent)), exit: curveExit(points) };
+    });
+    const frontier = Array.from({ length: 81 }, (_, index) =>
+      optimalAllocation(fit, Math.pow(10, 17.5 + index * 0.1)),
+    );
+    const ruleLocus = Array.from({ length: 81 }, (_, index) =>
+      ratioAllocation(fit, Math.pow(10, 17.5 + index * 0.1)),
+    );
+    const references = [
+      { id: "chinchilla", name: "Chinchilla", ...CHINCHILLA },
+      { id: "gopher", name: "Gopher", ...GOPHER },
+    ].map((entry) => ({ ...entry, loss: lossTerms(fit, entry.parameters, entry.tokens).total }));
+    const obstacles = [
+      ...family.flatMap((curve) => curvePixels(curve.points)),
+      ...curvePixels(frontier),
+      ...curvePixels(ruleLocus),
+      ...references.map((entry) => ({ x: isoX(entry.parameters), y: isoY(entry.loss) })),
+    ];
+    const bounds = { left: ISO.left, right: ISO.width - ISO.right, top: ISO.top, bottom: isoY(fit.E) };
+    const taken: Box[] = [];
+    const placed = references.map((entry) => {
+      const anchor = { x: isoX(entry.parameters), y: isoY(entry.loss) };
+      const own = obstacles.filter((point) => point.x !== anchor.x || point.y !== anchor.y);
+      const spot = placeLabel(anchor, entry.name, own, bounds, taken);
+      taken.push(spot.box);
+      return { ...entry, anchor, spot };
+    });
+    // Budget labels: keep neighbours on the right edge and along the top edge apart.
+    const rightIndex = family.map((curve, index) => (curve.exit.anchor === "start" ? index : -1)).filter((index) => index >= 0);
+    const rightY = spread(rightIndex.map((index) => family[index].exit.y), 12, ISO.top + 8, ISO.height - ISO.bottom + 3);
+    const topIndex = family.map((curve, index) => (curve.exit.anchor === "middle" ? index : -1)).filter((index) => index >= 0);
+    const topX = spread(topIndex.map((index) => family[index].exit.x), 30, ISO.left + 150, ISO.width - ISO.right - 4);
+    const labels = family.map((curve, index) => {
+      const right = rightIndex.indexOf(index);
+      const top = topIndex.indexOf(index);
+      return {
+        exponent: curve.exponent,
+        anchor: curve.exit.anchor,
+        x: top >= 0 ? topX[top] : curve.exit.x,
+        y: right >= 0 ? rightY[right] : curve.exit.y,
+      };
+    });
+    // Room for the frontier caption in the empty corner under the curves, above the floor caption.
+    const captionRight = ISO.left + 10 + 140;
+    const lowestCurve = Math.max(
+      ISO.top,
+      ...obstacles.filter((point) => point.x >= ISO.left && point.x <= captionRight).map((point) => point.y),
+    );
+    const captionRoom = isoY(fit.E) - 15 - (lowestCurve + 4);
+    const caption = { top: lowestCurve + 4, lines: captionRoom >= 26 ? 2 : captionRoom >= 13 ? 1 : 0 };
+    return { family, frontier, ruleLocus, placed, labels, caption };
+    // The geometry helpers depend only on the measured width.
+  }, [fit, ISO.width]);
+
   const xTicks = [
     { value: 1e8, label: "100M" },
     { value: 1e9, label: "1B" },
@@ -185,8 +406,23 @@ function IsoFlopChart({ fit, parameters, tokens }: { fit: ScalingFit; parameters
     { value: 1e12, label: "1T" },
   ];
   const yTicks = [2, 2.5, 3, 3.5];
-  const plotRight = ISO.width - ISO.right;
-  const plotBottom = ISO.height - ISO.bottom;
+
+  // Marks on the reader's own curve.
+  const user = { x: isoX(parameters), y: isoY(loss) };
+  const best = { x: isoX(optimum.parameters), y: isoY(optimum.loss) };
+  const twenty = { x: isoX(rule.parameters), y: isoY(rule.loss) };
+  const userVisible = loss <= ISO_Y.max;
+  const gap = loss - optimum.loss;
+  const gapPx = best.y - Math.max(user.y, ISO.top);
+  const showGap = gapPx >= 14 && inIsoX(optimum.parameters);
+  const userRight = user.x >= best.x;
+  const bestLeft = best.x <= twenty.x;
+  // The frontier label sits in the empty corner under the frontier; its leader ends on the dashed line.
+  const frontierTip = optimalAllocation(fit, Math.pow(10, 21.5));
+  const frontierLabel = { x: ISO.left + 10, y: fixed.caption.top + 9 };
+  // The corner caption shares the top margin with the budget labels of curves that leave through the top.
+  const firstTopLabel = Math.min(...fixed.labels.filter((label) => label.anchor === "middle").map((label) => label.x));
+  const cornerRoom = wide && firstTopLabel > ISO.left + 272;
 
   return (
     <div ref={frame} className="sl-iso-frame">
@@ -196,12 +432,15 @@ function IsoFlopChart({ fit, parameters, tokens }: { fit: ScalingFit; parameters
         height={ISO.height}
         viewBox={`0 0 ${ISO.width} ${ISO.height}`}
         role="img"
-        aria-label={`IsoFLOP curves from the ${fit.label} fit. Your run: ${formatCount(parameters)} parameters on ${formatCount(tokens)} tokens, ${formatFlops(compute)} FLOPs, predicted loss ${loss.toFixed(3)}. The fit's optimum at this compute is ${formatCount(optimum.parameters)} parameters on ${formatCount(optimum.tokens)} tokens, loss ${optimum.loss.toFixed(3)}. Twenty tokens per parameter would be ${formatCount(rule.parameters)} parameters, loss ${rule.loss.toFixed(3)}.`}
+        aria-label={`IsoFLOP curves from the ${fit.label} fit. Your run: ${formatCount(parameters)} parameters on ${formatCount(tokens)} tokens, ${formatFlops(compute)} FLOPs, predicted loss ${loss.toFixed(3)}. The fit's optimum at this compute is ${formatCount(optimum.parameters)} parameters on ${formatCount(optimum.tokens)} tokens, loss ${optimum.loss.toFixed(3)}. Twenty tokens per parameter would be ${formatCount(rule.parameters)} parameters, loss ${rule.loss.toFixed(3)}. No curve reaches the floor E = ${fit.E}.`}
       >
         <defs>
           <clipPath id="sl-iso-plot">
             <rect x={ISO.left} y={ISO.top} width={plotRight - ISO.left} height={plotBottom - ISO.top} />
           </clipPath>
+          <pattern id="sl-iso-floor" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+            <line className="sl-floor-hatch" x1="0" x2="0" y1="0" y2="6" />
+          </pattern>
         </defs>
         {xTicks.map((tick) => (
           <g key={tick.label}>
@@ -225,10 +464,25 @@ function IsoFlopChart({ fit, parameters, tokens }: { fit: ScalingFit; parameters
             </text>
           </g>
         ))}
+        <rect
+          className="sl-floor-zone"
+          x={ISO.left}
+          y={floorY}
+          width={plotRight - ISO.left}
+          height={Math.max(0, plotBottom - floorY)}
+          fill="url(#sl-iso-floor)"
+        />
+        <line className="sl-floor" x1={ISO.left} x2={plotRight} y1={floorY} y2={floorY} />
         <line className="sl-axis" x1={ISO.left} x2={plotRight} y1={plotBottom} y2={plotBottom} />
         <line className="sl-axis" x1={ISO.left} x2={ISO.left} y1={ISO.top} y2={plotBottom} />
         <text className="sl-axis-label" x={(ISO.left + plotRight) / 2} y={ISO.height - 6} textAnchor="middle">
-          parameters N (log scale) · each curve holds C = 6ND fixed
+          parameters N (log scale)
+        </text>
+        <text className="sl-axis-label sl-axis-label--hint" x={ISO.left} y={ISO.height - 6}>
+          {wide ? "← smaller model, more tokens" : "← more tokens"}
+        </text>
+        <text className="sl-axis-label sl-axis-label--hint" x={plotRight} y={ISO.height - 6} textAnchor="end">
+          {wide ? "bigger model, fewer tokens →" : "fewer tokens →"}
         </text>
         <text
           className="sl-axis-label"
@@ -239,72 +493,120 @@ function IsoFlopChart({ fit, parameters, tokens }: { fit: ScalingFit; parameters
         </text>
 
         <g clipPath="url(#sl-iso-plot)">
-          {FAMILY.map((exponent) => {
-            const points = isoFlopCurve(fit, Math.pow(10, exponent), ISO_X.min, ISO_X.max, 120);
-            const best = optimalAllocation(fit, Math.pow(10, exponent));
+          {fixed.family.map((curve) => (
+            <g key={curve.exponent} className="sl-family">
+              <path d={curvePath(curve.points)} />
+              {inIsoX(curve.best.parameters) && (
+                <circle cx={isoX(curve.best.parameters)} cy={isoY(curve.best.loss)} r={2.6} />
+              )}
+            </g>
+          ))}
+          <path className="sl-frontier" d={curvePath(fixed.frontier)} />
+          <path className="sl-rule-locus" d={curvePath(fixed.ruleLocus)} />
+          <path className="sl-user-curve" d={curvePath(isoFlopCurve(fit, compute, ISO_X.min, ISO_X.max, 160))} />
+
+          <text className="sl-note sl-note--floor" x={ISO.left + 10} y={floorY - 6}>
+            {wide ? `floor E = ${fit.E} · no budget gets below this line` : `floor E = ${fit.E}`}
+          </text>
+          {wide && fixed.caption.lines > 0 && (
+            <g className="sl-note sl-note--frontier">
+              <line
+                x1={frontierLabel.x + 138}
+                y1={frontierLabel.y - 4}
+                x2={isoX(frontierTip.parameters) - 4}
+                y2={isoY(frontierTip.loss) + 5}
+              />
+              <text x={frontierLabel.x} y={frontierLabel.y}>
+                {fixed.caption.lines > 1 ? "compute-optimal frontier:" : "compute-optimal frontier"}
+              </text>
+              {fixed.caption.lines > 1 && (
+                <text x={frontierLabel.x} y={frontierLabel.y + 13}>
+                  the bottom of every curve
+                </text>
+              )}
+            </g>
+          )}
+
+          {fixed.placed.map((entry) => {
+            const { box, reach } = entry.spot;
+            const tip = {
+              x: Math.min(Math.max(entry.anchor.x, box.x + 6), box.x + box.width - 6),
+              y: box.y > entry.anchor.y ? box.y + 1 : box.y + box.height - 1,
+            };
             return (
-              <g key={exponent} className="sl-family">
-                <path d={curvePath(points)} />
-                {inIsoX(best.parameters) && (
-                  <circle cx={isoX(best.parameters)} cy={isoY(best.loss)} r={2.6} />
+              <g key={entry.id} className="sl-reference">
+                {reach > 12 && (
+                  <line
+                    className="sl-reference__leader"
+                    x1={entry.anchor.x}
+                    y1={entry.anchor.y + (tip.y > entry.anchor.y ? 6 : -6)}
+                    x2={tip.x}
+                    y2={tip.y}
+                  />
                 )}
+                <path
+                  d={`M${entry.anchor.x - 4} ${entry.anchor.y - 4} l8 8 M${entry.anchor.x - 4} ${entry.anchor.y + 4} l8 -8`}
+                />
+                <text x={box.x + 2} y={box.y + 10}>
+                  {entry.name}
+                </text>
               </g>
             );
           })}
-          <path
-            className="sl-frontier"
-            d={curvePath(frontier.map((point) => ({ parameters: point.parameters, loss: point.loss })))}
-          />
-          <path
-            className="sl-rule-locus"
-            d={curvePath(ruleLocus.map((point) => ({ parameters: point.parameters, loss: point.loss })))}
-          />
-          <path
-            className="sl-user-curve"
-            d={curvePath(isoFlopCurve(fit, compute, ISO_X.min, ISO_X.max, 160))}
-          />
-          {references.map((entry) => (
-            <g key={entry.id} className="sl-reference">
-              <path
-                d={`M${isoX(entry.parameters) - 4} ${isoY(entry.loss) - 4} l8 8 M${isoX(entry.parameters) - 4} ${isoY(entry.loss) + 4} l8 -8`}
-              />
+
+          {showGap && (
+            <g className="sl-gap">
+              <line className="sl-gap__level" x1={best.x} x2={user.x} y1={best.y} y2={best.y} />
+              <line className="sl-gap__drop" x1={user.x} x2={user.x} y1={Math.max(user.y, ISO.top)} y2={best.y} />
               <text
-                x={isoX(entry.parameters) + (entry.id === "gopher" ? -8 : 0)}
-                y={isoY(entry.loss) + (entry.id === "gopher" ? -8 : 17)}
-                textAnchor={entry.id === "gopher" ? "end" : "middle"}
+                x={user.x + (userRight ? -7 : 7)}
+                y={(Math.max(user.y, ISO.top) + best.y) / 2 + 4}
+                textAnchor={userRight ? "end" : "start"}
               >
-                {entry.name}
+                {`gap ${gap.toFixed(3)}`}
               </text>
             </g>
-          ))}
+          )}
           {inIsoX(rule.parameters) && (
-            <rect
-              className="sl-rule-mark"
-              x={isoX(rule.parameters) - 4.5}
-              y={isoY(rule.loss) - 4.5}
-              width={9}
-              height={9}
-            />
+            <g className="sl-mark">
+              <rect className="sl-rule-mark" x={twenty.x - 4.5} y={twenty.y - 4.5} width={9} height={9} />
+              <text x={twenty.x + (bestLeft ? 8 : -8)} y={twenty.y + 17} textAnchor={bestLeft ? "start" : "end"}>
+                20:1
+              </text>
+            </g>
           )}
           {inIsoX(optimum.parameters) && (
-            <path
-              className="sl-optimum-mark"
-              d={`M${isoX(optimum.parameters)} ${isoY(optimum.loss) - 6.5} l6.5 6.5 l-6.5 6.5 l-6.5 -6.5 Z`}
-            />
+            <g className="sl-mark">
+              <path
+                className="sl-optimum-mark"
+                d={`M${best.x} ${best.y - 6.5} l6.5 6.5 l-6.5 6.5 l-6.5 -6.5 Z`}
+              />
+              <text x={best.x + (bestLeft ? -8 : 8)} y={best.y + 17} textAnchor={bestLeft ? "end" : "start"}>
+                best split
+              </text>
+            </g>
           )}
-          <circle className="sl-user-halo" cx={isoX(parameters)} cy={isoY(loss)} r={10} />
-          <circle className="sl-user-mark" cx={isoX(parameters)} cy={isoY(loss)} r={5.5} />
+          <circle className="sl-user-halo" cx={user.x} cy={user.y} r={10} />
+          <circle className="sl-user-mark" cx={user.x} cy={user.y} r={5.5} />
+          {userVisible && (
+            <g className="sl-mark sl-mark--user">
+              <text
+                x={user.x + (userRight ? 9 : -9)}
+                y={user.y - 11 < ISO.top + 10 ? user.y + 20 : user.y - 11}
+                textAnchor={userRight ? "start" : "end"}
+              >
+                your run
+              </text>
+            </g>
+          )}
         </g>
-        {FAMILY.map((exponent) => {
-          const exit = curveExit(isoFlopCurve(fit, Math.pow(10, exponent), ISO_X.min, ISO_X.max, 120));
-          return (
-            <text key={exponent} className="sl-curve-label" x={exit.x} y={exit.y} textAnchor={exit.anchor}>
-              {`10${superscript(exponent)}`}
-            </text>
-          );
-        })}
-        <text className="sl-curve-label sl-curve-label--corner" x={ISO.left + 4} y={ISO.top - 6}>
-          C in FLOPs:
+        {fixed.labels.map((label) => (
+          <text key={label.exponent} className="sl-curve-label" x={label.x} y={label.y} textAnchor={label.anchor}>
+            {`10${superscript(label.exponent)}`}
+          </text>
+        ))}
+        <text className="sl-curve-label sl-curve-label--corner" x={ISO.left + 4} y={ISO.top - 7}>
+          {cornerRoom ? "each thin curve: one budget C, in FLOPs" : "C in FLOPs:"}
         </text>
       </svg>
     </div>
@@ -313,17 +615,19 @@ function IsoFlopChart({ fit, parameters, tokens }: { fit: ScalingFit; parameters
 
 /* ---------- frontier power-law chart ---------- */
 
-const PL = { width: 330, height: 236, left: 48, right: 10, top: 10, bottom: 38 };
 const PL_X = { min: 18, max: 26 };
 const PL_Y = { min: Math.log10(0.05), max: Math.log10(3) };
-const plX = (compute: number) =>
-  PL.left + ((Math.log10(compute) - PL_X.min) / (PL_X.max - PL_X.min)) * (PL.width - PL.left - PL.right);
-const plY = (reducible: number) =>
-  PL.top +
-  ((PL_Y.max - Math.log10(Math.max(1e-6, reducible))) / (PL_Y.max - PL_Y.min)) *
-    (PL.height - PL.top - PL.bottom);
 
 function FrontierChart({ fit, parameters, tokens }: { fit: ScalingFit; parameters: number; tokens: number }) {
+  const [frame, measured] = useMeasuredWidth(302);
+  const width = Math.max(260, Math.round(measured));
+  const PL = { width, height: Math.round(Math.min(330, Math.max(230, width * 0.8))), left: 50, right: 12, top: 12, bottom: 38 };
+  const plX = (c: number) =>
+    PL.left + ((Math.log10(c) - PL_X.min) / (PL_X.max - PL_X.min)) * (PL.width - PL.left - PL.right);
+  const plY = (reducibleLoss: number) =>
+    PL.top +
+    ((PL_Y.max - Math.log10(Math.max(1e-6, reducibleLoss))) / (PL_Y.max - PL_Y.min)) *
+      (PL.height - PL.top - PL.bottom);
   const compute = trainingFlops(parameters, tokens);
   const reducible = lossTerms(fit, parameters, tokens).total - fit.E;
   const exponent = frontierLossExponent(fit);
@@ -342,59 +646,93 @@ function FrontierChart({ fit, parameters, tokens }: { fit: ScalingFit; parameter
   const plotRight = PL.width - PL.right;
   const plotBottom = PL.height - PL.bottom;
   const onFrontier = optimalAllocation(fit, compute).loss - fit.E;
+  const keeps = Math.pow(10, -exponent);
+
+  // One tenfold step drawn on the line: a decade across, and the drop it buys. It moves out of the
+  // way when the reader's own dot is nearby.
+  const logC = Math.log10(compute);
+  const stepFrom = logC > 21.4 && logC < 24.9 ? 19 : 23;
+  const stepA = { x: plX(Math.pow(10, stepFrom)), y: plY(optimalAllocation(fit, Math.pow(10, stepFrom)).loss - fit.E) };
+  const stepB = {
+    x: plX(Math.pow(10, stepFrom + 1)),
+    y: plY(optimalAllocation(fit, Math.pow(10, stepFrom + 1)).loss - fit.E),
+  };
+  const user = { x: plX(compute), y: plY(reducible) };
+  const userLabelRight = user.x < plotRight - 70;
 
   return (
-    <svg
-      className="sl-power"
-      viewBox={`0 0 ${PL.width} ${PL.height}`}
-      role="img"
-      aria-label={`Log-log plot of reducible loss, predicted loss minus the floor ${fit.E}, against compute. The frontier is a straight line with slope minus ${exponent.toFixed(3)}. Your run sits at ${reducible.toFixed(3)} against ${onFrontier.toFixed(3)} on the frontier at the same compute.`}
-    >
-      {[18, 20, 22, 24, 26].map((tick) => (
-        <g key={tick}>
-          <line
-            className="sl-grid"
-            x1={plX(Math.pow(10, tick))}
-            x2={plX(Math.pow(10, tick))}
-            y1={PL.top}
-            y2={plotBottom}
-          />
-          <text className="sl-tick" x={plX(Math.pow(10, tick))} y={plotBottom + 14} textAnchor="middle">
-            {`10${superscript(tick)}`}
-          </text>
-        </g>
-      ))}
-      {[0.1, 0.2, 0.5, 1, 2].map((tick) => (
-        <g key={tick}>
-          <line className="sl-grid" x1={PL.left} x2={plotRight} y1={plY(tick)} y2={plY(tick)} />
-          <text className="sl-tick" x={PL.left - 6} y={plY(tick) + 3.5} textAnchor="end">
-            {tick}
-          </text>
-        </g>
-      ))}
-      <line className="sl-axis" x1={PL.left} x2={plotRight} y1={plotBottom} y2={plotBottom} />
-      <line className="sl-axis" x1={PL.left} x2={PL.left} y1={PL.top} y2={plotBottom} />
-      <text className="sl-axis-label" x={(PL.left + plotRight) / 2} y={PL.height - 6} textAnchor="middle">
-        training compute C (FLOPs, log scale)
-      </text>
-      <text
-        className="sl-axis-label"
-        transform={`translate(12 ${(PL.top + plotBottom) / 2}) rotate(-90)`}
-        textAnchor="middle"
+    <div ref={frame} className="sl-power-frame">
+      <svg
+        className="sl-power"
+        width={PL.width}
+        height={PL.height}
+        viewBox={`0 0 ${PL.width} ${PL.height}`}
+        role="img"
+        aria-label={`Log-log plot of reducible loss, predicted loss minus the floor ${fit.E}, against compute. The frontier is a straight line with slope minus ${exponent.toFixed(3)}, so ten times the compute keeps ${(keeps * 100).toFixed(0)} percent of it. Your run sits at ${reducible.toFixed(3)} against ${onFrontier.toFixed(3)} on the frontier at the same compute.`}
       >
-        {`L − E (log)`}
-      </text>
-      <path className="sl-rule-locus" d={path(rule)} />
-      <path className="sl-frontier" d={path(line)} />
-      <line
-        className="sl-drop"
-        x1={plX(compute)}
-        x2={plX(compute)}
-        y1={plY(reducible)}
-        y2={plY(onFrontier)}
-      />
-      <circle className="sl-user-mark" cx={plX(compute)} cy={plY(reducible)} r={5} />
-    </svg>
+        {[18, 20, 22, 24, 26].map((tick) => (
+          <g key={tick}>
+            <line
+              className="sl-grid"
+              x1={plX(Math.pow(10, tick))}
+              x2={plX(Math.pow(10, tick))}
+              y1={PL.top}
+              y2={plotBottom}
+            />
+            <text className="sl-tick" x={plX(Math.pow(10, tick))} y={plotBottom + 14} textAnchor="middle">
+              {`10${superscript(tick)}`}
+            </text>
+          </g>
+        ))}
+        {[0.1, 0.2, 0.5, 1, 2].map((tick) => (
+          <g key={tick}>
+            <line className="sl-grid" x1={PL.left} x2={plotRight} y1={plY(tick)} y2={plY(tick)} />
+            <text className="sl-tick" x={PL.left - 6} y={plY(tick) + 3.5} textAnchor="end">
+              {tick}
+            </text>
+          </g>
+        ))}
+        <line className="sl-axis" x1={PL.left} x2={plotRight} y1={plotBottom} y2={plotBottom} />
+        <line className="sl-axis" x1={PL.left} x2={PL.left} y1={PL.top} y2={plotBottom} />
+        <text className="sl-axis-label" x={(PL.left + plotRight) / 2} y={PL.height - 6} textAnchor="middle">
+          training compute C (FLOPs, log scale)
+        </text>
+        <text
+          className="sl-axis-label"
+          transform={`translate(12 ${(PL.top + plotBottom) / 2}) rotate(-90)`}
+          textAnchor="middle"
+        >
+          {`loss above floor, L − E (log)`}
+        </text>
+        <path className="sl-rule-locus" d={path(rule)} />
+        <path className="sl-frontier" d={path(line)} />
+        <g className="sl-step">
+          <path d={`M${stepA.x} ${stepA.y} H${stepB.x} V${stepB.y}`} />
+          <text x={(stepA.x + stepB.x) / 2} y={stepA.y - 6} textAnchor="middle">
+            10× compute
+          </text>
+          <text x={stepB.x + 6} y={(stepA.y + stepB.y) / 2 + 4}>
+            {`keeps ${(keeps * 100).toFixed(0)}%`}
+          </text>
+        </g>
+        <text className="sl-note sl-note--frontier" x={PL.left + 8} y={plotBottom - 22}>
+          dashed: best split at each budget
+        </text>
+        <text className="sl-note sl-note--rule" x={PL.left + 8} y={plotBottom - 9}>
+          dotted: 20 tokens per parameter
+        </text>
+        <line className="sl-drop" x1={user.x} x2={user.x} y1={user.y} y2={plY(onFrontier)} />
+        <circle className="sl-user-mark" cx={user.x} cy={user.y} r={5} />
+        <text
+          className="sl-mark sl-mark--user"
+          x={user.x + (userLabelRight ? 9 : -9)}
+          y={Math.max(PL.top + 10, user.y - 9)}
+          textAnchor={userLabelRight ? "start" : "end"}
+        >
+          your run
+        </text>
+      </svg>
+    </div>
   );
 }
 
@@ -526,6 +864,7 @@ export default function Explore({ state, setState }: ModuleContext) {
               ]}
               onChange={(value) => setState({ budget: value })}
             />
+            <BudgetMeter parameters={parameters} tokens={tokens} hold={hold} />
             <p>
               {hold
                 ? `Held at ${formatFlops(compute)} FLOPs. Moving one slider now moves the other, so your dot slides along the highlighted curve.`
@@ -562,6 +901,7 @@ export default function Explore({ state, setState }: ModuleContext) {
             format={(value) => value.toLocaleString("en-US")}
             onChange={(value) => setState({ width: clampWidth(value) })}
           />
+          <DimensionTrack fromDimensions={dimensionN} parameters={parameters} />
           <p className="sl-dimensions__result">
             12 × {layers} × {width.toLocaleString("en-US")}² = <strong>{formatCount(dimensionN)}</strong> weights
             ({blockWeights(width).toLocaleString("en-US")} per block).{" "}
@@ -671,17 +1011,23 @@ export default function Explore({ state, setState }: ModuleContext) {
             <span>Bars and totals are loss above the floor E = {fit.E}.</span>
           </div>
         </div>
-        <div className="metric-row">
-          <Metric
-            label="Doubling N lowers L by"
-            value={doubleN.toFixed(3)}
-            tone={doubleN > doubleD ? "forward" : undefined}
-          />
-          <Metric
-            label="Doubling D lowers L by"
-            value={doubleD.toFixed(3)}
-            tone={doubleD > doubleN ? "forward" : undefined}
-          />
+        <div className="sl-doubling" role="group" aria-label="What the next doubling of each resource buys">
+          {[
+            { id: "size", label: "Doubling N lowers L by", value: doubleN, wins: doubleN > doubleD },
+            { id: "data", label: "Doubling D lowers L by", value: doubleD, wins: doubleD > doubleN },
+          ].map((row) => (
+            <div key={row.id} className={`sl-doubling__row ${row.wins ? "is-better" : ""}`}>
+              <span>{row.label}</span>
+              <strong>{row.value.toFixed(3)}</strong>
+              <div className="sl-doubling__bar" aria-hidden="true">
+                <i
+                  className={`sl-term--${row.id}`}
+                  style={{ width: `${(row.value / Math.max(doubleN, doubleD, 1e-9)) * 100}%` }}
+                />
+              </div>
+              <em>{row.wins ? "better buy" : ""}</em>
+            </div>
+          ))}
         </div>
         <p className="lab-note">
           {verdict} Either doubling doubles C. At the optimum the marginal gains match: α·(A/N^α) = β·(B/D^β).

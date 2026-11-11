@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   BarList,
   LabSurface,
@@ -66,6 +66,25 @@ const DASHES: Record<OptimizerId, string> = {
 };
 
 const clamp = (value: number, low: number, high: number) => Math.min(high, Math.max(low, value));
+
+/** The rendered width of an element, so a chart in a narrow card is drawn at its real size. */
+function useWidth<T extends HTMLElement>(fallback: number) {
+  const ref = useRef<T>(null);
+  const [width, setWidth] = useState(fallback);
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (!element || typeof ResizeObserver === "undefined") return;
+    const read = () => {
+      const next = Math.round(element.getBoundingClientRect().width);
+      if (next > 0) setWidth((current) => (Math.abs(current - next) > 1 ? next : current));
+    };
+    read();
+    const observer = new ResizeObserver(read);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  return [ref, width] as const;
+}
 const loss = (value: number) => (Number.isFinite(value) ? value.toFixed(3) : "diverged");
 const percent = (value: number) => `${(value * 100).toFixed(value < 0.01 ? 2 : 1)}%`;
 /** Three decimals down to 0.001, then scientific: 0.543, 0.001, 2.1 × 10⁻⁶. */
@@ -153,6 +172,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
   const memory = stateRows(stateFloats);
   const adamMixed = teachingMemory.memoryBreakdown(LARGE_PARAMETERS, "mixed", "adam");
   const largeBytesOf = (id: OptimizerId) => memory.find((row) => row.optimizer === id)?.largeBytes ?? 0;
+  const largestState = Math.max(1, ...memory.map((row) => row.largeBytes));
 
   return (
     <div className="tg-lab op-lab">
@@ -349,6 +369,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           />
         </div>
         <EarlyChart current={adamw} other={counterpart} biasOn={biasCorrection} warmupSteps={warmupSteps} />
+        <FirstStepBars current={adamw.firstStepMove} other={counterpart.firstStepMove} biasOn={biasCorrection} rate={adamRate} />
         <div className="metric-row">
           <Metric label="First-step move" value={adamw.firstStepMove.toFixed(3)} tone="gradient" />
           <Metric label="Early peak loss" value={loss(adamw.earlyPeakLoss)} tone="loss" />
@@ -410,7 +431,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           <table className="op-table op-kept-table">
             <caption>
               Each row's size after training, as a share of the same run with no decay. Space is the busiest input
-              row; k and q are among the rarest.
+              row; k and q are among the rarest. The bars use a log scale from 0.1% to 100%, with marks at 1% and 10%.
             </caption>
             <thead>
               <tr>
@@ -424,7 +445,14 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
                 <tr key={row.character}>
                   <th scope="row">{row.label}</th>
                   <td>{row.visits}</td>
-                  <td>{percent(row.kept)}</td>
+                  <td>
+                    <span className="op-kept-cell">
+                      <span className="op-kept-bar" aria-hidden="true">
+                        <i style={{ width: `${(keptShare(row.kept) * 100).toFixed(1)}%` }} />
+                      </span>
+                      <span>{percent(row.kept)}</span>
+                    </span>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -553,7 +581,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           aside={<span className="tg-badge">fp32 · 4 bytes a float</span>}
         />
         <div className="op-table-wrap">
-          <table className="op-table">
+          <table className="op-table op-state-table">
             <caption>
               Optimizer state is the buffers an optimizer carries from one step to the next. The lab column is the
               trainer's own count; the 7.5 billion column is arithmetic.
@@ -570,9 +598,23 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
               {memory.map((row) => (
                 <tr key={row.optimizer} className={row.optimizer === selected ? "is-selected" : undefined}>
                   <th scope="row">{optimizerChoice(row.optimizer).label}</th>
-                  <td>{row.buffers}</td>
+                  <td>
+                    <span className="op-buffers" aria-hidden="true">
+                      {Array.from({ length: row.buffers }, (_, index) => (
+                        <i key={index} />
+                      ))}
+                    </span>
+                    {row.buffers}
+                  </td>
                   <td>{teachingMemory.formatBytes(row.labBytes)}</td>
-                  <td>{teachingMemory.formatBytes(row.largeBytes)}</td>
+                  <td>
+                    <span className="op-state-cell">
+                      <span className="op-state-bar" aria-hidden="true">
+                        <i style={{ width: `${((row.largeBytes / largestState) * 100).toFixed(1)}%` }} />
+                      </span>
+                      <span>{teachingMemory.formatBytes(row.largeBytes)}</span>
+                    </span>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -597,6 +639,9 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
   );
 }
 
+/** A kept share's place on a log scale from 0.1% (0) to 100% (1), so 3.6% and 0.12% can be told apart. */
+const keptShare = (kept: number) => clamp((Math.log10(Math.max(1e-9, kept)) + 3) / 3, 0.012, 1);
+
 /** Non-default Adam settings, listed beside its row in the race table. */
 function adamNotes(settings: AdamSettings): string {
   const notes: string[] = [];
@@ -611,7 +656,7 @@ function adamNotes(settings: AdamSettings): string {
 /* The race chart spans the full lab width, so its frame is wider than the half-width cards' charts. */
 const CW = 720;
 const CL = 46;
-const CR = 708;
+const CR = 600;
 
 function RaceChart({
   runs,
@@ -639,6 +684,19 @@ function RaceChart({
   const ticks = [low, (low + high) / 2, high];
   const order = series.filter((entry) => entry.id !== selected).concat(series.filter((entry) => entry.id === selected));
   const what = curves === "held" ? "held-out" : "training";
+  // Each line is named where it ends, with its final loss; labels are nudged apart so none overlap.
+  const ends = series
+    .map((entry) => {
+      const final = entry.values[entry.values.length - 1] ?? Number.NaN;
+      return { id: entry.id, final, y: yAt(final), at: yAt(final) };
+    })
+    .sort((a, b) => a.y - b.y);
+  ends.forEach((end, index) => {
+    end.at = Math.max(T + 4, end.at, index > 0 ? ends[index - 1].at + 14 : -Infinity);
+  });
+  for (let index = ends.length - 1; index >= 0; index -= 1) {
+    ends[index].at = Math.min(ends[index].at, index === ends.length - 1 ? B - 2 : ends[index + 1].at - 14);
+  }
   return (
     <svg
       className="op-chart"
@@ -675,6 +733,15 @@ function RaceChart({
           strokeDasharray={DASHES[entry.id] || undefined}
         />
       ))}
+      {ends.map((end) => (
+        <g key={end.id} className={`op-end op-tone--${TONES[end.id]}${end.id === selected ? " is-selected" : ""}`}>
+          <path d={`M${CR + 3},${end.y.toFixed(1)}L${CR + 12},${end.at.toFixed(1)}`} />
+          <circle cx={CR} cy={end.y.toFixed(1)} r={end.id === selected ? 3.6 : 2.8} />
+          <text x={CR + 15} y={(end.at + 3.5).toFixed(1)}>
+            {labelOf(end.id)} {loss(end.final)}
+          </text>
+        </g>
+      ))}
       <text className="op-axis-label" x={CL} y={H - 2}>
         epoch
       </text>
@@ -696,12 +763,13 @@ function EarlyChart({
   biasOn: boolean;
   warmupSteps: number;
 }) {
-  const W = 360;
-  const H = 190;
+  const [ref, width] = useWidth<HTMLElement>(302);
+  const W = clamp(width, 240, 620);
+  const H = clamp(Math.round(W * 0.62), 180, 250);
   const L = 34;
-  const R = 352;
-  const T = 12;
-  const B = 160;
+  const R = W - 10;
+  const T = 14;
+  const B = H - 34;
   const shown = (run: RaceRun) => run.batchLoss.slice(0, EARLY_STEPS);
   const values = [...shown(current), ...shown(other)].filter(Number.isFinite);
   const high = clamp(Math.ceil((values.length ? Math.max(...values) : 3.6) + 0.2), 4, 9);
@@ -713,8 +781,12 @@ function EarlyChart({
       .map((value, step) => `${step === 0 ? "M" : "L"}${xAt(step).toFixed(1)},${yAt(value).toFixed(1)}`)
       .join(" ");
   const warmEnd = Math.min(EARLY_STEPS - 1, warmupSteps);
+  // Each line is named at its right end: the higher one above itself, the lower one below.
+  const endOf = (run: RaceRun) => yAt(shown(run)[EARLY_STEPS - 1] ?? Number.NaN);
+  const currentAbove = endOf(current) <= endOf(other);
+  const labelY = (y: number, above: boolean) => clamp(above ? y - 8 : y + 15, T + 9, B - 5);
   return (
-    <figure className="op-early">
+    <figure className="op-early" ref={ref}>
       <svg
         viewBox={`0 0 ${W} ${H}`}
         role="img"
@@ -723,22 +795,36 @@ function EarlyChart({
         )}; with it ${biasOn ? "off" : "on"} the peak is ${loss(other.earlyPeakLoss)}.`}
       >
         {warmupSteps > 0 && (
-          <rect className="op-warmup" x={L} y={T} width={Math.max(0, xAt(warmEnd) - L)} height={B - T} />
+          <>
+            <rect className="op-warmup" x={L} y={T} width={Math.max(0, xAt(warmEnd) - L)} height={B - T} />
+            <text className="op-chart-note" x={L + 5} y={B - 6}>
+              warmup{warmupSteps > EARLY_STEPS ? ` (runs to step ${warmupSteps})` : ""}
+            </text>
+          </>
         )}
         {[low, (low + high) / 2, high].map((tick) => (
           <g key={tick}>
             <line className="op-grid" x1={L} x2={R} y1={yAt(tick)} y2={yAt(tick)} />
-            <text className="op-tick" x={L - 4} y={yAt(tick) + 3} textAnchor="end">
+            <text className="op-tick" x={L - 5} y={yAt(tick) + 3.5} textAnchor="end">
               {tick.toFixed(1)}
             </text>
           </g>
         ))}
         <line className="plot-axis" x1={L} x2={R} y1={B} y2={B} />
         <line className="op-baseline" x1={L} x2={R} y1={yAt(UNIFORM_CROSS_ENTROPY)} y2={yAt(UNIFORM_CROSS_ENTROPY)} />
+        <text className="op-chart-note" x={L + 5} y={yAt(UNIFORM_CROSS_ENTROPY) - 5}>
+          knows nothing · {UNIFORM_CROSS_ENTROPY.toFixed(3)}
+        </text>
         <path className="op-early-line is-other" d={line(other)} />
         <path className="op-early-line is-current" d={line(current)} />
+        <text className="op-line-name is-other" x={R - 2} y={labelY(endOf(other), !currentAbove)} textAnchor="end">
+          correction {biasOn ? "off" : "on"}
+        </text>
+        <text className="op-line-name is-current" x={R - 2} y={labelY(endOf(current), currentAbove)} textAnchor="end">
+          correction {biasOn ? "on" : "off"} · this run
+        </text>
         {[1, 20, 40, EARLY_STEPS].map((step) => (
-          <text key={step} className="op-tick" x={xAt(step - 1)} y={B + 12} textAnchor="middle">
+          <text key={step} className="op-tick" x={xAt(step - 1)} y={B + 13} textAnchor={step === EARLY_STEPS ? "end" : "middle"}>
             {step}
           </text>
         ))}
@@ -754,6 +840,44 @@ function EarlyChart({
   );
 }
 
+/** The first step of the run and of its counterpart as two bars on one scale, with the rate marked. */
+function FirstStepBars({ current, other, biasOn, rate }: { current: number; other: number; biasOn: boolean; rate: number }) {
+  const top = Math.max(current, other, rate) * 1.08 || 1;
+  const share = (value: number) => `${((Math.max(0, value) / top) * 100).toFixed(1)}%`;
+  const times = (value: number) => (rate > 0 ? `${(value / rate).toFixed(2)}× the rate` : "");
+  const rows = [
+    { key: "current", name: `Correction ${biasOn ? "on" : "off"} · this run`, value: current },
+    { key: "other", name: `Correction ${biasOn ? "off" : "on"}`, value: other },
+  ];
+  return (
+    <div
+      className="op-first"
+      role="img"
+      aria-label={`Largest change to any one weight on step 1. Bias correction ${biasOn ? "on" : "off"}: ${current.toFixed(3)}, ${times(
+        current,
+      )}. Bias correction ${biasOn ? "off" : "on"}: ${other.toFixed(3)}, ${times(other)}. The rate is ${formatRate(rate)}.`}
+    >
+      <p className="op-first__title">First-step move: the largest change to one weight on step 1</p>
+      <div className="op-first__rows" style={{ "--op-rate": share(rate) } as CSSProperties}>
+        {rows.map((row) => (
+          <div key={row.key} className={`op-first__row is-${row.key}`}>
+            <span className="op-first__name">{row.name}</span>
+            <span className="op-first__track">
+              <i style={{ width: share(row.value) }} />
+            </span>
+            <b>
+              {row.value.toFixed(3)} <small>{times(row.value)}</small>
+            </b>
+          </div>
+        ))}
+        <span className={`op-first__rate${rate / top > 0.6 ? " is-flipped" : ""}`}>
+          <span>{rate / top > 0.6 ? `rate ${formatRate(rate)} ↑` : `↑ rate ${formatRate(rate)}`}</span>
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function SpectrumChart({
   before,
   after,
@@ -763,18 +887,19 @@ function SpectrumChart({
   after: SpectrumSummary;
   iterations: number;
 }) {
-  const W = 560;
-  const H = 210;
-  const L = 34;
-  const R = 552;
-  const T = 12;
-  const B = 178;
+  const [ref, width] = useWidth<HTMLElement>(302);
+  const W = clamp(width, 240, 720);
+  const H = clamp(Math.round(W * 0.6), 190, 260);
+  const L = 30;
+  const R = W - 6;
+  const T = 14;
+  const B = H - 32;
   const top = 1.3;
   const slots = Math.max(before.values.length, after.values.length, 1);
   const slot = (R - L) / slots;
   const yAt = (value: number) => B - (clamp(value, 0, top) / top) * (B - T);
   return (
-    <figure className="op-spectrum">
+    <figure className="op-spectrum" ref={ref}>
       <svg
         viewBox={`0 0 ${W} ${H}`}
         role="img"
@@ -788,7 +913,7 @@ function SpectrumChart({
         {[0, 0.5, 1].map((tick) => (
           <g key={tick}>
             <line className={tick === 1 ? "op-unit" : "op-grid"} x1={L} x2={R} y1={yAt(tick)} y2={yAt(tick)} />
-            <text className="op-tick" x={L - 4} y={yAt(tick) + 3} textAnchor="end">
+            <text className="op-tick" x={L - 5} y={yAt(tick) + 3.5} textAnchor="end">
               {tick.toFixed(1)}
             </text>
           </g>
@@ -798,23 +923,29 @@ function SpectrumChart({
           const x = L + index * slot;
           const was = before.values[index] ?? 0;
           const now = after.values[index] ?? 0;
-          const width = Math.max(1, slot * 0.36);
+          const barWidth = Math.max(1.5, slot * 0.4);
           return (
             <g key={index}>
-              <rect className="op-bar is-before" x={x + slot * 0.12} y={yAt(was)} width={width} height={B - yAt(was)} />
-              <rect className="op-bar is-after" x={x + slot * 0.52} y={yAt(now)} width={width} height={B - yAt(now)} />
-              {now <= ZERO_SINGULAR && <circle className="op-zero" cx={x + slot * 0.5} cy={B - 3} r={1.8} />}
+              <rect className="op-bar is-before" x={x + slot * 0.08} y={yAt(was)} width={barWidth} height={B - yAt(was)} />
+              <rect className="op-bar is-after" x={x + slot * 0.5} y={yAt(now)} width={barWidth} height={B - yAt(now)} />
+              {now <= ZERO_SINGULAR && <circle className="op-zero" cx={x + slot * 0.5} cy={B - 4} r={Math.min(3, slot * 0.3)} />}
             </g>
           );
         })}
-        <text className="op-tick" x={L + slot * 0.5} y={B + 12} textAnchor="middle">
+        <text className="op-chart-note op-chart-note--unit" x={R - 3} y={yAt(1) - 5} textAnchor="end">
+          all equal
+        </text>
+        <text className="op-tick" x={L + slot * 0.5} y={B + 13} textAnchor="middle">
           1
         </text>
-        <text className="op-tick" x={R - slot * 0.5} y={B + 12} textAnchor="middle">
+        <text className="op-tick" x={R - slot * 0.5} y={B + 13} textAnchor="middle">
           {slots}
         </text>
+        <text className="op-axis-label" x={(L + R) / 2} y={B + 13} textAnchor="middle">
+          direction, largest first
+        </text>
         <text className="op-axis-label" x={L} y={H - 4}>
-          direction, largest singular value first · shaded: {BAND_LOW} to {BAND_HIGH}
+          singular value · shaded: {BAND_LOW} to {BAND_HIGH}
         </text>
       </svg>
       <figcaption>
@@ -822,6 +953,92 @@ function SpectrumChart({
         <span className="op-key is-after" aria-hidden="true" /> after {iterations} {iterations === 1 ? "iteration" : "iterations"}{" "}
         <span className="op-key is-zero" aria-hidden="true" /> zero direction
       </figcaption>
+    </figure>
+  );
+}
+
+/** Held-out loss against the rate multiple: one U-shaped line per optimizer, its lowest point ringed. */
+function TuneChart({ rows }: { rows: ReadonlyArray<SweepRow> }) {
+  const [ref, width] = useWidth<HTMLElement>(302);
+  const W = clamp(width, 240, 720);
+  const H = clamp(Math.round(W * 0.62), 190, 260);
+  const L = 36;
+  const R = W - 70;
+  const T = 20;
+  const B = H - 34;
+  const finite = rows.flatMap((row) => row.points.map((point) => point.heldOut)).filter(Number.isFinite);
+  const low = Math.floor(((finite.length ? Math.min(...finite) : 2) - 0.02) * 10) / 10;
+  const high = Math.min(UNIFORM_CROSS_ENTROPY, Math.ceil(((finite.length ? Math.max(...finite) : 3) + 0.02) * 10) / 10);
+  const xAt = (index: number) => L + 8 + (index / Math.max(1, SWEEP_FACTORS.length - 1)) * (R - L - 16);
+  const yAt = (value: number) => B - ((clamp(Number.isFinite(value) ? value : high, low, high) - low) / Math.max(1e-9, high - low)) * (B - T);
+  const ticks = [low, (low + high) / 2, high];
+  const ends = rows
+    .map((row) => {
+      const y = yAt(row.points[row.points.length - 1]?.heldOut ?? Number.NaN);
+      return { id: row.optimizer, y, at: y };
+    })
+    .sort((a, b) => a.y - b.y);
+  ends.forEach((end, index) => {
+    end.at = Math.max(T + 4, end.at, index > 0 ? ends[index - 1].at + 13 : -Infinity);
+  });
+  for (let index = ends.length - 1; index >= 0; index -= 1) {
+    ends[index].at = Math.min(ends[index].at, index === ends.length - 1 ? B - 2 : ends[index + 1].at - 13);
+  }
+  return (
+    <figure className="op-tune-chart" ref={ref}>
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        role="img"
+        aria-label={`Held-out loss at five multiples of each optimizer's default rate. ${rows
+          .map(
+            (row) =>
+              `${optimizerChoice(row.optimizer).label}: lowest ${loss(row.best.heldOut)} at ${formatRate(row.best.rate)}, ${loss(
+                row.atDefault.heldOut,
+              )} at its default`,
+          )
+          .join("; ")}.`}
+      >
+        {ticks.map((tick) => (
+          <g key={tick}>
+            <line className="op-grid" x1={L} x2={R} y1={yAt(tick)} y2={yAt(tick)} />
+            <text className="op-tick" x={L - 5} y={yAt(tick) + 3.5} textAnchor="end">
+              {tick.toFixed(2)}
+            </text>
+          </g>
+        ))}
+        <line className="plot-axis" x1={L} x2={R} y1={B} y2={B} />
+        {SWEEP_FACTORS.map((factor, index) => (
+          <text key={factor} className="op-tick" x={xAt(index)} y={B + 13} textAnchor="middle">
+            {factor === 1 ? "default" : `×${factor}`}
+          </text>
+        ))}
+        {rows.map((row) => (
+          <g key={row.optimizer} className={`op-tune-line op-tone--${TONES[row.optimizer]}`}>
+            <path
+              d={row.points.map((point, index) => `${index === 0 ? "M" : "L"}${xAt(index).toFixed(1)},${yAt(point.heldOut).toFixed(1)}`).join(" ")}
+              strokeDasharray={DASHES[row.optimizer] || undefined}
+            />
+            {row.points.map((point, index) => (
+              <circle key={point.rate} className={point === row.best ? "is-best" : undefined} cx={xAt(index)} cy={yAt(point.heldOut)} r={point === row.best ? 4.5 : 2.2} />
+            ))}
+          </g>
+        ))}
+        {ends.map((end) => (
+          <g key={end.id} className={`op-end op-tone--${TONES[end.id]}`}>
+            <path d={`M${xAt(SWEEP_FACTORS.length - 1) + 4},${end.y.toFixed(1)}L${R + 4},${end.at.toFixed(1)}`} />
+            <text x={R + 7} y={(end.at + 3.5).toFixed(1)}>
+              {optimizerChoice(end.id).label}
+            </text>
+          </g>
+        ))}
+        <text className="op-axis-label" x={L} y={H - 4}>
+          rate, as a multiple of the default
+        </text>
+        <text className="op-axis-label" x={4} y={9}>
+          held-out loss
+        </text>
+      </svg>
+      <figcaption>Each line is one optimizer at five rates. The ring marks its lowest held-out loss; lower is better.</figcaption>
     </figure>
   );
 }
@@ -835,6 +1052,7 @@ function TuneTable({ rows }: { rows: ReadonlyArray<SweepRow> }) {
   const sgd = rows.find((row) => row.optimizer === "sgd");
   return (
     <>
+      <TuneChart rows={rows} />
       <div className="op-table-wrap">
         <table className="op-table op-tune-table">
           <caption>

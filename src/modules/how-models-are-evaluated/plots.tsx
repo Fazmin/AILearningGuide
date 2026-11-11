@@ -1,4 +1,4 @@
-import { countMatrix, roc, sweep, type Baseline, type Example, type Population } from "./metrics";
+import { countMatrix, predictRow, roc, sweep, type Baseline, type Example, type Population } from "./metrics";
 
 const scale = (d0: number, d1: number, r0: number, r1: number) => (value: number) =>
   r0 + ((value - d0) / (d1 - d0)) * (r1 - r0);
@@ -21,13 +21,19 @@ export function ScoreStrip({
   baseline: Baseline;
   scored: ReadonlySet<number>;
 }) {
-  const width = 460;
-  const height = 160;
-  const left = 16;
-  const right = width - 16;
+  // As wide as the Decision threshold slider above it, so the t line sits under the slider's thumb.
+  const width = 670;
+  const height = 168;
+  const left = 12;
+  const right = width - 12;
   const bottom = height - 34;
   const xs = scale(0, 1, left, right);
   const binWidth = 0.012;
+  const counted = countMatrix(
+    examples.filter((example) => scored.has(example.id)),
+    baseline,
+    threshold,
+  );
   const stacks = new Map<number, number>();
   const placed = examples.map((example) => {
     const bin = Math.round(example.score / binWidth);
@@ -61,14 +67,20 @@ export function ScoreStrip({
       className="gw-plot eval-strip"
       viewBox={`0 0 ${width} ${height}`}
       role="img"
-      aria-label={`All ${examples.length} scores on an axis from 0 to 1. ${predicted} ${description}`}
+      aria-label={`All ${examples.length} scores on an axis from 0 to 1. ${predicted} ${description} On the scored rows: ${counted.tn} true negatives, ${counted.fn} false negatives, ${counted.fp} false positives, ${counted.tp} true positives.`}
     >
       <rect className="eval-fire" x={cut} y={12} width={Math.max(0, right - cut)} height={bottom - 12} />
-      <text className="gw-note" x={right - 4} y={24} textAnchor="end">
+      <text className="gw-note" x={right - 6} y={25} textAnchor="end">
         predicted 1 →
       </text>
-      <text className="gw-note" x={left + 4} y={24}>
+      <text className="gw-label eval-count" x={right - 6} y={41} textAnchor="end">
+        FP {counted.fp} · TP {counted.tp}
+      </text>
+      <text className="gw-note" x={left + 6} y={25}>
         ← predicted 0
+      </text>
+      <text className="gw-label eval-count" x={left + 6} y={41}>
+        TN {counted.tn} · FN {counted.fn}
       </text>
       <line className="gw-axis" x1={left} x2={right} y1={bottom} y2={bottom} />
       {[0, 0.2, 0.4, 0.6, 0.8, 1].map((value) => (
@@ -84,12 +96,13 @@ export function ScoreStrip({
       </text>
       {placed.map(({ example, x, level }) => {
         const faded = !scored.has(example.id);
+        const fires = !faded && predictRow(example, baseline, threshold) === 1;
         if (example.label === 1) {
           const y = dotY(level);
           return (
             <path
               key={example.id}
-              className={`eval-positive${faded ? " is-faded" : ""}`}
+              className={`eval-positive${faded ? " is-faded" : fires ? "" : " is-missed"}`}
               d={`M${x} ${y - 6} l6 6 l-6 6 l-6 -6 z`}
             />
           );
@@ -97,7 +110,7 @@ export function ScoreStrip({
         return (
           <circle
             key={example.id}
-            className={`eval-negative${rare && example.id === 12 ? " is-alarm" : ""}${faded ? " is-faded" : ""}`}
+            className={`eval-negative${rare && example.id === 12 ? " is-alarm" : ""}${fires ? " is-fired" : ""}${faded ? " is-faded" : ""}`}
             cx={x}
             cy={dotY(level)}
             r="3.4"
@@ -117,7 +130,7 @@ export function ScoreStrip({
       {baseline === "learned" && (
         <g>
           <line className="eval-threshold" x1={cut} x2={cut} y1={10} y2={bottom} />
-          <text className="gw-label" x={cut + (threshold > 0.8 ? -4 : 4)} y={44} textAnchor={threshold > 0.8 ? "end" : "start"}>
+          <text className="gw-label gw-halo" x={cut + (threshold > 0.5 ? -5 : 5)} y={58} textAnchor={threshold > 0.5 ? "end" : "start"}>
             t = {threshold.toFixed(2)}
           </text>
         </g>
@@ -135,8 +148,9 @@ const LINES = [
 
 /** Every reading of the matrix at every threshold on the scored rows, with the current t marked. */
 export function SweepPlot({ rows, threshold }: { rows: readonly Example[]; threshold: number }) {
-  const width = 460;
-  const height = 210;
+  // Close to the width it is drawn at beside the ROC plot, so its text keeps its size.
+  const width = 420;
+  const height = 224;
   const left = 38;
   const right = width - 12;
   const top = 14;
@@ -207,7 +221,8 @@ export function SweepPlot({ rows, threshold }: { rows: readonly Example[]; thres
         const labels = LINES.map((line) => ({ line, value: at[line.key] }))
           .filter((item): item is { line: (typeof LINES)[number]; value: number } => item.value !== null)
           .sort((a, b) => b.value - a.value)
-          .map((item) => ({ ...item, y: ys(item.value) + 3.5 }));
+          // Sit each label just above its line, so a flat stretch of the line does not run through the text.
+          .map((item) => ({ ...item, y: Math.max(top - 3, ys(item.value) - 5) }));
         for (let index = 1; index < labels.length; index += 1) {
           labels[index].y = Math.max(labels[index].y, labels[index - 1].y + 11);
         }

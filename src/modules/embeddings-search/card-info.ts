@@ -35,7 +35,7 @@ const cardInfo: ModuleCardInfo = {
       "The query points along the x-axis. Each passage is drawn at its true angle θ to q. In cosine mode every dot sits on the unit arc, so its x-coordinate is cos θ. In dot-product mode each dot sits at its raw length |d|, so its x-coordinate is |d| cos θ, proportional to q·d.",
     whatYouSee: [
       "A quarter circle with 30° and 60° spokes and the query arrow along the x-axis, ticked in cosine or dot-product units.",
-      "Filled dots are the current top-k, hollow dots are the rest; the selected passage is purple with a line down to its projection on the query axis.",
+      "Filled dots are the current top-k, hollow dots are the rest; the selected passage is purple with a line down to its projection on the query axis and a small arc that marks its angle θ.",
       "Labels on the right with rank, θ and score, and metrics for the selected passage's θ, cos θ and |d|.",
     ],
     howItWorks: [
@@ -62,7 +62,7 @@ const cardInfo: ModuleCardInfo = {
       "Every stored vector is scored against q with the chosen metric and sorted. The top-k are highlighted. Each row also lists the words it shares with the query and its rank under a plain shared-word count, for comparison with keyword search.",
     whatYouSee: [
       "Top-k from 1 to 5.",
-      "Six ranked rows with rank, title and score, plus the other score, the shared content words and the keyword rank.",
+      "Six ranked rows with rank, title and score, plus the other score, the shared content words and the keyword rank. A bar under each title draws the score on one shared scale.",
       "A note naming the passage keyword ranking would put first.",
     ],
     howItWorks: [
@@ -89,7 +89,7 @@ const cardInfo: ModuleCardInfo = {
       "For the selected passage, each dimension multiplies q's value by d's value. The products add up to the dot product. Dividing by |q| and |d| gives the cosine, and arccos gives θ. These are the same numbers the other cards draw.",
     whatYouSee: [
       "The selected passage's text.",
-      "A table with one row per dimension: q, d and q × d, highlighted where the product is non-zero, and a total row with |q|, |d| and Σ.",
+      "A table with one row per dimension: q, d and q × d, highlighted where the product is non-zero, and a total row with |q|, |d| and Σ. Each number sits on a bar of its own size: blue for q, purple for d.",
       "Two formula blocks: the dot product with its rank under dot product, and the cosine with θ.",
     ],
     howItWorks: [

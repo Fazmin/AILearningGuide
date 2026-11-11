@@ -32,6 +32,7 @@ const cardInfo: ModuleCardInfo = {
       "The walk is the greedy constrained decode: at each step the lab takes the most probable legal token. The emitted text so far is the prefix; the matcher's state after that prefix is what decides the next mask. Unconstrained pick shows what the model would have emitted without the mask.",
     whatYouSee: [
       "The emitted tokens as chips, followed by a dashed `?` for the position being decided. `Grammar accepts next` states the matcher's state in words, such as `true or false` or `more letters or \")`.",
+      "A track of the grammar's characters, from start to end. Characters already written are filled and grouped by the token that wrote them, and the characters the grammar accepts next are outlined.",
       "`Decode step`, a step controller whose buttons are the tokens of the walk, including the end-of-sequence token `⟨eos⟩`.",
       "`Unconstrained pick` (the model's top token before masking, marked ✗ if illegal), `Pick after mask`, and `Legal tokens` out of 24.",
     ],
@@ -58,6 +59,7 @@ const cardInfo: ModuleCardInfo = {
     summary:
       "The model's next-token probabilities before and after the mask. Illegal tokens drop to zero, and each legal token's probability is divided by Z, the total probability the legal tokens had. The result sums to one and keeps the model's ratios between legal tokens.",
     whatYouSee: [
+      "Two bars above the table. `Before` is the model's whole probability, with the legal tokens solid and the masked tokens hatched red. `After` is the legal part alone, stretched back to 100%.",
       "Rows sorted by the model's probability. `model p` is the softmax over all 24 tokens; the bar is hatched red when the token is masked. `mask` says `✓ legal` or `✗ masked`, and a masked token's chip is struck through.",
       "`after mask` is the renormalized probability. The outlined row is the pick. A legal token that spans two grammar symbols carries a `↔` tag naming them, such as `{ and \"ok\"`.",
       "Tokens that are illegal and below 1% are folded into a final `+N more tokens` row with their combined mass.",
@@ -86,7 +88,7 @@ const cardInfo: ModuleCardInfo = {
     summary:
       "A separate two-step example with an enum field that allows only Oslo or Bergen. Masking token by token commits to a prefix before seeing whether the model would continue it legally, so it samples whole strings in different proportions than the model's own probabilities restricted to valid strings.",
     whatYouSee: [
-      "A token tree: the first value token splits into `\"O` 55%, `\"B` 30% and a masked `\"P` 15%. After `\"O` the model continues with `slo\"` or the masked `ttawa\"`; after `\"B`, with `ergen\"` 90% or the masked `ern\"`. Dashed red branches are masked.",
+      "A token tree: the first value token splits into `\"O` 55%, `\"B` 30% and a masked `\"P` 15%. After `\"O` the model continues with `slo\"` or the masked `ttawa\"`; after `\"B`, with `ergen\"` 90% or the masked `ern\"`. Dashed red branches are masked, and each branch is as thick as its probability.",
       "`P(slo\" after \"O)`, a slider for the model's probability of the legal continuation after `\"O`.",
       "Two bars: `Per-step mask`, the share of Oslo and Bergen that token-by-token masking produces, and `Model, conditioned on a valid string`, the share the model itself assigns once invalid strings are ruled out.",
     ],

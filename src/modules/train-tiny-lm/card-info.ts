@@ -43,7 +43,7 @@ const cardInfo: ModuleCardInfo = {
       "The x axis is epoch and the y axis is loss in nats per token, from just below the lowest curve up to 3.50.",
       "Four curves. Factored model: solid for the training split, dashed for held out, with the band between them shaded and the final gap printed. Full table: thin solid for training and thin dotted for held out. A dotted `knows nothing` line sits at ln 30 = 3.401.",
       "Circled markers A, B, and C on the solid curve at epoch 0, the halfway epoch, and the last epoch. The three sample boxes below carry the same letters, the epoch and step, and the training loss there.",
-      "A legend printing all four final losses. They match the model card. If a run diverges, its curves stop at the last epoch whose loss was a number and its legend entries read `diverged`.",
+      "A legend printing all four final losses. They match the model card. If a run diverges, its curves stop at the last epoch whose loss was a number, a cross marks that point, and its legend entries read `diverged`.",
     ],
     howItWorks: [
       "Both runs get the same training text and the same recipe from the Training recipe card, with seed 9. At the defaults that is batch 16, learning rate 0.5, a constant step size, and no clipping. The only difference between the runs is the parameterization: a 30 by r matrix times an r by 30 matrix against a single 30 by 30 table.",
@@ -74,6 +74,7 @@ const cardInfo: ModuleCardInfo = {
       "The two dials that size the run once the corpus is fixed: how many weights the factored model gets, and how many passes it takes over the data. Both retrain everything as you drag them; the rest of the recipe lives on the Training recipe card.",
     whatYouSee: [
       "A Model size slider from 1 to 12 whose readout gives the rank and the resulting weight count, which is two times rank times 30.",
+      "Two bars on one scale under Model size: the factored model's weight count against the full table's 900.",
       "An Epochs slider from 1 to 30 whose readout counts passes over the training split.",
       "A callout naming which model currently fits better, with a paragraph explaining why: when the factored model wins, the shared output factor; when the full table wins, the factored model's missing capacity.",
       "A note restating the arithmetic — rank r keeps two times r times 30 weights against 900 — and warning that past rank 15 the factorization saves nothing at all.",
@@ -108,7 +109,7 @@ const cardInfo: ModuleCardInfo = {
     summary:
       "The settings the earlier labs fixed, now as controls: which text the model reads, the peak learning rate, the schedule, the batch size, and a gradient clip. Both models on the page retrain on every change, and the whole recipe is saved in this lab's state so it can be copied and shared.",
     whatYouSee: [
-      "A Training text switch between Cleaned scrape, the default, and Raw scrape, with a sentence under it counting the scrape's lines and characters and what cleaning removes. For Harbor weather notes: 14 lines and 696 characters, of which cleaning removes 3 boilerplate, 2 too-short, 2 repeated and 1 near-repeated line, keeping 6 lines and 379 characters.",
+      "A Training text switch between Cleaned scrape, the default, and Raw scrape. Under it, a strip with one block per scraped line, as wide as the line is long and patterned by what cleaning does to it; with Cleaned scrape the dropped lines are faded. Then a sentence counting the scrape's lines and characters and what cleaning removes. For Harbor weather notes: 14 lines and 696 characters, of which cleaning removes 3 boilerplate, 2 too-short, 2 repeated and 1 near-repeated line, keeping 6 lines and 379 characters.",
       "Learning rate, a slider whose eight notches double from 0.125 to 16. Schedule, four buttons: Constant, Cosine decay, Warmup + decay, One cycle. Batch size, from 2 to 64 pairs. Gradient clip, from off to 1.50.",
       "Five readouts for the factored model: Held out, its held-out loss; Footer lines, its loss on the three boilerplate lines the raw scrape contains; Steps; Peak gradient norm, the largest batch gradient norm of the run measured before any clipping; and Clipped steps, how many steps the clip rescaled.",
       "A warning that appears only when the loss stops being a number. The run halts at that step and the charts, legend, and model card print `diverged` instead of a loss.",

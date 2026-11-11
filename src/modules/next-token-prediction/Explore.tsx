@@ -80,6 +80,24 @@ const MODEL_INFO: Record<
   },
 };
 
+/** The cost in bits of a uniform guess over the alphabet: the natural top of every bits scale here. */
+const MAX_BITS = Math.log2(VOCAB_SIZE);
+const PARAMETER_COUNT: Record<ModelId, number> = {
+  bigram: VOCAB_SIZE * VOCAB_SIZE,
+  rnn: metadata.rnn.parameters,
+  transformer: metadata.transformer.parameters,
+};
+const PARAMETER_MAX = Math.max(...Object.values(PARAMETER_COUNT));
+
+/** A bar on the shared 0 to log2(vocabulary) bits scale. The number is always printed beside it. */
+function BitsBar({ bits, tone = "loss" }: { bits: number | undefined; tone?: "loss" | "forward" }) {
+  return (
+    <span className={`ntp-meter ntp-meter--${tone}`} aria-hidden="true">
+      <i style={{ width: `${bits === undefined ? 0 : Math.min(100, (bits / MAX_BITS) * 100).toFixed(2)}%` }} />
+    </span>
+  );
+}
+
 const ordinal = (value: number) => {
   const tens = value % 100;
   if (tens >= 11 && tens <= 13) return `${value}th`;
@@ -625,11 +643,26 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           kicker="Same 66-symbol alphabet, same Tiny Shakespeare text"
           title="How much of the context each model can use"
         />
+        <p className="ntp-compare__key">
+          <span>
+            <i className="ntp-key ntp-key--reach" aria-hidden="true" /> Each strip is the text on the tape, oldest character on the left; the
+            filled part is what that model can read.
+          </span>
+          <span>
+            <i className="ntp-key ntp-key--bits" aria-hidden="true" /> Bit bars share one scale, 0 to {MAX_BITS.toFixed(2)} bits (a blind guess
+            among {VOCAB_SIZE} characters). On the loss rows, shorter is better.
+          </span>
+        </p>
         <div className="ntp-compare">
           {comparison.map((item) => (
             <article key={item.id} className={item.id === model ? "is-current" : ""} aria-label={`${MODEL_INFO[item.id].name}`}>
               <header>
                 <strong>{MODEL_INFO[item.id].name}</strong>
+                <span className={`ntp-reach ntp-reach--${item.id}${chars.length > 80 ? " is-dense" : ""}`} aria-hidden="true">
+                  {chars.map((_, position) => (
+                    <i key={position} className={position >= contextStart(item.id, chars.length) ? "is-seen" : ""} />
+                  ))}
+                </span>
                 <small>sees {seesText(item.id, chars.length)}</small>
               </header>
               {item.view.status === "error" ? (
@@ -654,27 +687,38 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
               <dl>
                 <div>
                   <dt>Next-character entropy</dt>
-                  <dd>{item.entropy === undefined ? "—" : `${item.entropy.toFixed(2)} bits`}</dd>
+                  <dd>
+                    <BitsBar bits={item.entropy} tone="forward" />
+                    {item.entropy === undefined ? "—" : `${item.entropy.toFixed(2)} bits`}
+                  </dd>
                 </div>
                 <div>
                   <dt>Mean surprisal on this text</dt>
-                  <dd>{item.text ? `${item.text.bits.toFixed(2)} bits · ${item.text.count} chars` : "—"}</dd>
+                  <dd>
+                    <BitsBar bits={item.text?.bits} />
+                    {item.text ? `${item.text.bits.toFixed(2)} bits · ${item.text.count} chars` : "—"}
+                  </dd>
                 </div>
                 <div>
                   <dt>Held-out loss</dt>
                   <dd>
+                    <BitsBar bits={MODEL_INFO[item.id].heldOut} />
                     {MODEL_INFO[item.id].heldOut.toFixed(2)} bits <small>{MODEL_INFO[item.id].heldOutNote}</small>
                   </dd>
                 </div>
                 <div>
                   <dt>Whole-corpus loss</dt>
                   <dd>
+                    <BitsBar bits={MODEL_INFO[item.id].wholeCorpus} />
                     {MODEL_INFO[item.id].wholeCorpus.toFixed(2)} bits <small>{MODEL_INFO[item.id].wholeNote}</small>
                   </dd>
                 </div>
                 <div>
                   <dt>Size and training</dt>
                   <dd>
+                    <span className="ntp-meter ntp-meter--size" aria-hidden="true">
+                      <i style={{ width: `${Math.max(0.6, (PARAMETER_COUNT[item.id] / PARAMETER_MAX) * 100).toFixed(2)}%` }} />
+                    </span>
                     {MODEL_INFO[item.id].params} <small>{MODEL_INFO[item.id].budget}</small>
                   </dd>
                 </div>
@@ -779,11 +823,19 @@ function LensPanel({ stage, index, finalIndex, first }: { stage: LensStage; inde
       <dl>
         <div>
           <dt>Entropy of this readout</dt>
-          <dd>{stage.entropyBits.toFixed(2)} bits</dd>
+          <dd>
+            <BitsBar bits={stage.entropyBits} />
+            {stage.entropyBits.toFixed(2)} bits
+          </dd>
         </div>
         <div>
           <dt>{`Finished model's choice “${displayToken(tokenText(finalIndex, vocabulary))}”`}</dt>
-          <dd>{`${ordinal(stage.finalRank)} of ${VOCAB_SIZE} · ${formatPercent(stage.finalProbability)}`}</dd>
+          <dd>
+            <span className="ntp-meter ntp-meter--forward" aria-hidden="true">
+              <i style={{ width: `${(stage.finalProbability * 100).toFixed(2)}%` }} />
+            </span>
+            {`${ordinal(stage.finalRank)} of ${VOCAB_SIZE} · ${formatPercent(stage.finalProbability)}`}
+          </dd>
         </div>
       </dl>
     </article>

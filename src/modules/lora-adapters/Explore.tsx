@@ -45,6 +45,7 @@ import {
   type TargetId,
 } from "./calculator";
 import { centerRows, checkMerge, energyCaptured, numericalRank, singularValues } from "./lowrank";
+import { ServingPaths, ShareBars } from "./visuals";
 
 const source = TINY_CORPORA.harbor;
 const target = TINY_CORPORA.recipes;
@@ -143,7 +144,7 @@ function ProductDiagram({
   const bX = productX - gap - rank * cell;
   const aY = productY - gap - rank * cell;
   const width = productX + size + 12;
-  const height = productY + size + 30;
+  const height = productY + size + 47;
   const allZero = maxAbs(up) === 0;
   return (
     <svg
@@ -152,25 +153,33 @@ function ProductDiagram({
       role="img"
       aria-label={`B is ${V} by ${rank}, A is ${rank} by ${V}, and their scaled product is the ${V} by ${V} update. ${allZero ? "B is still all zeros, so the update is exactly zero." : `Largest update entry ${maxAbs(delta).toFixed(2)} after removing each row's mean.`}`}
     >
-      <text className="lra-product__title" x={productX} y={aY - 8}>
+      <text className="lra-product__title" x={productX} y={aY - 19}>
         A · {rank} × {V} · random start
       </text>
+      <text className="lra-product__note" x={productX} y={aY - 6}>
+        {rank * V} trainable weights
+      </text>
       <MatrixCells values={down} rows={rank} columns={V} x={productX} y={aY} cell={cell} />
-      <text className="lra-product__title" x={bX - 6} y={productY + size + 16} textAnchor="start">
+      <text className="lra-product__title" x={productX - gap} y={productY + size + 17} textAnchor="end">
         B · {V} × {rank}
       </text>
-      <text className="lra-product__note" x={bX - 6} y={productY + size + 27} textAnchor="start">
+      <text className="lra-product__note" x={productX - gap} y={productY + size + 30} textAnchor="end">
         zero start
+      </text>
+      <text className="lra-product__note" x={productX - gap} y={productY + size + 42} textAnchor="end">
+        {V * rank} trainable weights
       </text>
       <MatrixCells values={up} rows={V} columns={rank} x={bX} y={productY} cell={cell} />
       <MatrixCells values={delta} rows={V} columns={V} x={productX} y={productY} cell={cell} />
-      <text className="lra-product__title" x={productX + size} y={productY + size + 16} textAnchor="end">
+      <text className="lra-product__title" x={productX + size} y={productY + size + 17} textAnchor="end">
         ΔW = {scaleText} · B · A · 30 × 30
       </text>
-      <text className="lra-product__note" x={productX + size} y={productY + size + 27} textAnchor="end">
+      <text className="lra-product__note" x={productX + size} y={productY + size + 30} textAnchor="end">
         each row&rsquo;s mean removed
       </text>
-
+      <text className="lra-product__note" x={productX + size} y={productY + size + 42} textAnchor="end">
+        {V * V} entries, computed, not stored
+      </text>
     </svg>
   );
 }
@@ -181,7 +190,7 @@ function FullDeltaMap({ delta }: { delta: Float64Array }) {
   return (
     <svg
       className="lra-full"
-      viewBox={`0 0 ${size + 4} ${size + 32}`}
+      viewBox={`0 0 ${size + 4} ${size + 36}`}
       role="img"
       aria-label={`Full fine-tune update, ${V} by ${V}, row means removed. Largest entry ${maxAbs(delta).toFixed(2)}.`}
     >
@@ -189,7 +198,7 @@ function FullDeltaMap({ delta }: { delta: Float64Array }) {
       <text className="lra-product__title" x={2} y={size + 18}>
         full fine-tune ΔW · 900 trained
       </text>
-      <text className="lra-product__note" x={2} y={size + 29}>
+      <text className="lra-product__note" x={2} y={size + 31}>
         same epochs, each row&rsquo;s mean removed
       </text>
     </svg>
@@ -526,6 +535,12 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
               }}
             />
           </div>
+          <ServingPaths
+            mode={merged ? "merged" : adapterOn ? "adapted" : "base"}
+            baseWeights={lora.fullParameters}
+            adapterWeights={lora.trainableParameters}
+            scaleText={`(${alpha}/${rank})`}
+          />
           <div className="metric-row lra-metrics">
             <Metric label="Target loss" value={(active ? targetAdapted : targetBase).toFixed(3)} tone="forward" />
             <Metric
@@ -672,6 +687,14 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           }
           tone="gradient"
         />
+        {calc.targets.length > 0 && (
+          <ShareBars
+            rows={[
+              { id: "toy", label: `The toy, rank ${rank}`, share: toyFraction, text: formatShare(toyFraction) },
+              { id: "real", label: `${architecture.name}, rank ${rank}`, share: realAtToyRank, text: formatShare(realAtToyRank) },
+            ]}
+          />
+        )}
         <div className="tg-callout">
           <strong>
             The toy at rank {rank} trains {formatShare(toyFraction)} of its table. This model, at the same rank and

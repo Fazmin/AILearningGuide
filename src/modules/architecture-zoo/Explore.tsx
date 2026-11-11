@@ -1,7 +1,6 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import {
-  BarList,
   FormulaWithValues,
   LabSurface,
   Metric,
@@ -28,6 +27,7 @@ import {
   wiringStats,
   type WiringId,
 } from "./zoo";
+import { WiringDiagram } from "./WiringDiagram";
 
 const WIDTH = 64;
 const FFN_HIDDEN = 4 * WIDTH;
@@ -76,6 +76,12 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
   const inputs = columnMeans(pixels);
   const rnn = useMemo(() => rnnForward(inputs, recurrentWeight), [inputs.join(","), recurrentWeight]); // eslint-disable-line react-hooks/exhaustive-deps
   const laterFactors = rnn.jacobian.slice(rnnStep + 1);
+  const influenceMax = Math.max(1e-12, ...rnn.influence.map(Math.abs));
+  /** ∂h_k/∂x_t for the selected column t: what is left of its signal after each later hop. */
+  const survives = rnn.hidden.map((_, k) =>
+    k < rnnStep ? 0 : rnn.jacobian.slice(rnnStep + 1, k + 1).reduce((product, factor) => product * factor, 1 - rnn.hidden[rnnStep] ** 2),
+  );
+  const [focus, setFocus] = useState(4);
 
   const matrix = dependencyMatrix(wiring, SIZE, convLayers);
   const stats = WIRINGS.map((item) => ({ ...item, stats: wiringStats(item.id, SIZE, WIDTH) }));
@@ -142,15 +148,41 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             onChange={(value) => setState({ filter: value })}
           />
         </div>
-        <div className="az-filter-row">
+        <div className="az-dot">
+          <div
+            className="az-window"
+            role="img"
+            aria-label={`Pixels in the 3 by 3 window around ${rowCol(cell)}, row by row: ${neighbourhood.join(", ")}`}
+          >
+            {neighbourhood.map((value, index) => (
+              <span key={index} className={[value ? "is-on" : "", value && filter.kernel[index] !== 0 ? "is-used" : ""].filter(Boolean).join(" ")}>
+                {value}
+              </span>
+            ))}
+            <small>window at {rowCol(cell)}</small>
+          </div>
+          <span className="az-dot__op" aria-hidden="true">×</span>
           <div className="az-kernel" role="img" aria-label={`Kernel weights, row by row: ${filter.kernel.join(", ")}`}>
             {filter.kernel.map((weight, index) => (
-              <span key={index} className={weight > 0 ? "is-positive" : weight < 0 ? "is-negative" : ""}>
+              <span
+                key={index}
+                className={[weight > 0 ? "is-positive" : weight < 0 ? "is-negative" : "", neighbourhood[index] && weight !== 0 ? "is-used" : ""].filter(Boolean).join(" ")}
+              >
                 {signed(weight)}
               </span>
             ))}
             <small>kernel</small>
           </div>
+          <span className="az-dot__op" aria-hidden="true">=</span>
+          <div className="az-dot__sum" aria-hidden="true">
+            <strong className={response[selectedRow][selectedColumn] > 0 ? "is-positive" : response[selectedRow][selectedColumn] < 0 ? "is-negative" : ""}>
+              {signed(response[selectedRow][selectedColumn])}
+            </strong>
+            <small>output {rowCol(cell)}</small>
+          </div>
+        </div>
+        <div className="az-response-wrap">
+          <span className="az-response__caption" aria-hidden="true">Response map: that sum at all 64 positions</span>
           <div className="az-response" role="grid" aria-label="Filter response: the kernel's dot product with each 3 by 3 window. Select a cell to inspect it.">
             {response.flat().map((value, index) => (
               <button
@@ -217,7 +249,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
               <li
                 key={index}
                 className={[index === rnnStep ? "is-current" : "", onPath ? "is-path" : ""].filter(Boolean).join(" ")}
-                style={{ "--az-h": Math.abs(value) } as CSSProperties}
+                style={{ "--az-h": Math.abs(value), "--az-flow": Math.min(1, Math.abs(survives[index])) } as CSSProperties}
               >
                 <button
                   type="button"
@@ -234,18 +266,28 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             );
           })}
         </ol>
-        <BarList
-          label="Gradient of the final hidden state with respect to each column's input"
-          selectedId={`t${rnnStep}`}
-          onSelect={(id) => setState({ rnnStep: Number(id.slice(1)) })}
-          items={rnn.influence.map((value, index) => ({
-            id: `t${index}`,
-            label: `∂h7/∂x${index} · col ${index + 1}`,
-            value: Math.abs(value),
-            display: small(value),
-            tone: index === rnnStep ? "loss" : "muted",
-          }))}
-        />
+        <p className="az-chain-key">
+          <i aria-hidden="true" /> Column {rnnStep + 1}’s signal on its way to h7. The line is as thick as what is left of it after each × factor.
+        </p>
+        <div className="az-fade" role="group" aria-label="Gradient of the final hidden state with respect to each column's input">
+          {rnn.influence.map((value, index) => (
+            <button
+              key={index}
+              type="button"
+              className={index === rnnStep ? "is-selected" : ""}
+              aria-pressed={index === rnnStep}
+              aria-label={`∂h7/∂x${index}, column ${index + 1}: ${small(value)}`}
+              onClick={() => setState({ rnnStep: index })}
+            >
+              <span className="az-fade__value">{small(value)}</span>
+              <span className="az-fade__track" aria-hidden="true">
+                <i style={{ height: `${((Math.abs(value) / influenceMax) * 100).toFixed(2)}%` }} />
+              </span>
+              <span className="az-fade__name">∂h7/∂x{index}</span>
+              <span className="az-fade__col">col {index + 1}</span>
+            </button>
+          ))}
+        </div>
         <FormulaWithValues
           label={`Column ${rnnStep + 1} → h7`}
           expression={`(1 − h${rnnStep}²)${laterFactors.map((factor) => ` × ${factor.toFixed(2)}`).join("")}`}
@@ -298,12 +340,12 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
               <span key={`h${s}`} className="az-matrix__head" aria-hidden="true">{s + 1}</span>
             ))}
             {matrix.map((row, t) => [
-              <span key={`r${t}`} className="az-matrix__head" aria-hidden="true">{t + 1}</span>,
+              <span key={`r${t}`} className={`az-matrix__head${t === focus ? " is-focus" : ""}`} aria-hidden="true">{t + 1}</span>,
               ...row.map((hop, s) => (
                 <span
                   key={`${t}-${s}`}
                   aria-hidden="true"
-                  className={hop === null ? "az-matrix__cell is-blocked" : hop === 1 ? "az-matrix__cell is-direct" : "az-matrix__cell is-chain"}
+                  className={`${hop === null ? "az-matrix__cell is-blocked" : hop === 1 ? "az-matrix__cell is-direct" : "az-matrix__cell is-chain"}${t === focus ? " is-focus" : ""}`}
                   style={hop === null ? undefined : ({ "--az-hop": Math.min(1, (hop - 1) / (SIZE - 1)) } as CSSProperties)}
                 >
                   {hop ?? "·"}
@@ -311,6 +353,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
               )),
             ])}
           </div>
+          <WiringDiagram wiring={wiring} label={current.label} layers={convLayers} matrix={matrix} focus={focus} onFocus={setFocus} />
           <ul className="az-matrix-legend">
             <li><i className="az-key az-key--direct" /> 1 = one layer or step between input and output</li>
             <li><i className="az-key az-key--chain" /> 2–8 = hops through a chain of steps or layers</li>
@@ -406,9 +449,31 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             <div role="row" className="az-routing__row az-routing__row--foot">
               <span role="rowheader">load</span>
               {load.map((tokens, expert) => (
-                <span role="cell" key={expert} className={tokens === 0 ? "is-idle" : ""}>{tokens}</span>
+                <span role="cell" key={expert} className={tokens === 0 ? "is-idle" : ""}>
+                  <i aria-hidden="true" style={{ "--az-load": tokens / SIZE } as CSSProperties} />
+                  <b>{tokens}</b>
+                </span>
               ))}
             </div>
+          </div>
+        </div>
+        <div
+          className="az-capacity"
+          role="img"
+          aria-label={`Stored against used: ${experts} experts hold ${count(moe.total)} weights, and one token runs ${perToken} of them, ${count(moe.active)} weights.`}
+        >
+          <div className="az-capacity__blocks" aria-hidden="true">
+            {Array.from({ length: experts }, (_, expert) => (
+              <i key={expert} className={expert < perToken ? "is-active" : ""} />
+            ))}
+          </div>
+          <div className="az-capacity__labels" aria-hidden="true">
+            <span className="az-capacity__active">
+              <b>{count(moe.active)}</b> weights run for one token · any {perToken} of the {experts} experts
+            </span>
+            <span>
+              <b>{count(moe.total)}</b> stored
+            </span>
           </div>
         </div>
         <div className="metric-row">

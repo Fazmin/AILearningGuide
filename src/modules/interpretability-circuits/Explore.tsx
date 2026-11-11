@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import {
   LabSurface,
   Metric,
@@ -9,7 +9,7 @@ import {
   type ModuleContext,
 } from "@app/module-sdk";
 import cache from "./assets/interpretability-cache.json";
-import { AttentionGrid, PatchGrid, PositionBars, TokenStrip } from "./CircuitViews";
+import { AttentionArcs, AttentionGrid, PatchGrid, PositionBars, StripeBars, TokenStrip } from "./CircuitViews";
 import { runTransformer, weightsFromOnnx, type TransformerWeights } from "./engine";
 import {
   cachedPatchSweep,
@@ -311,8 +311,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           {tokens.length - 1}: the second repeat onward, where the current letter has already appeared once.
         </p>
 
-        <div className="ci-attn-layout">
-          <div className="ci-attention">
+        <div className="ci-attention">
             <div className="ci-head-picker" role="group" aria-label="Choose the head to show">
               {ALL_HEADS.map((id, index) => {
                 const layer = Math.floor(index / HEADS);
@@ -329,6 +328,28 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
                 );
               })}
             </div>
+            {attentionWeights && (
+              <figure className="ci-arcs-figure">
+                <figcaption>
+                  <strong>
+                    Where L{attnLayer + 1} H{attnHead + 1} looks from the last letter
+                  </strong>
+                  <span>a thicker arc is more attention · the boxes are the same two keys the grid outlines</span>
+                </figcaption>
+                <AttentionArcs
+                  tokens={gridTokens}
+                  weights={attentionWeights}
+                  period={gridPeriod}
+                  head={`Layer ${attnLayer + 1} head ${attnHead + 1}`}
+                />
+              </figure>
+            )}
+          <div className="ci-attn-layout">
+          <div className="ci-attn-grid">
+            <p className="ci-attn-axes">
+              Every letter&apos;s row at once: each <b>row</b> is a letter doing the looking, each <b>column</b> a letter it can
+              see. The arcs above are the bottom row.
+            </p>
             {attentionWeights ? (
               <AttentionGrid
                 tokens={gridTokens}
@@ -384,6 +405,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
               Mean attention from each query i ≥ {period} to the two keys. Read the columns against the key outlines in the grid.
             </p>
           </div>
+          </div>
         </div>
       </LabSurface>
 
@@ -422,10 +444,24 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
                     <strong>{id.replace("H", " H")}</strong>
                     <span>{off ? "off" : "on"}</span>
                     <small>alone {single ? signed((single.mean - score.mean) * 100, 1) : "…"} pts</small>
+                    <i
+                      className="ci-heads__left"
+                      aria-hidden="true"
+                      style={
+                        {
+                          "--left": single ? clamp(single.mean, 0, 1) : clamp(score.mean, 0, 1),
+                          "--intact": clamp(score.mean, 0, 1),
+                        } as CSSProperties
+                      }
+                    />
                   </button>
                 );
               })}
             </div>
+            <p className="ci-heads__key" aria-hidden="true">
+              <i /> bar in each head: copy accuracy left when that head alone is switched off · the tick marks the intact
+              accuracy
+            </p>
             <div className="ci-heads__actions">
               <button type="button" className="ci-chip-button" onClick={() => setState({ ablated: ALL_HEADS.slice(0, HEADS) })}>
                 Ablate layer 1
@@ -455,11 +491,20 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
                     value={`${stripeIntact.map((entry) => entry.induction.toFixed(2)).join(" · ")} → ${stripeAblated.map((entry) => entry.induction.toFixed(2)).join(" · ")}`}
                   />
                 </div>
+                <StripeBars
+                  rows={stripeIntact.map((entry, index) => ({
+                    name: entry.id.replace("H", " H"),
+                    intact: entry.induction,
+                    ablated: stripeAblated[index]?.induction ?? 0,
+                  }))}
+                />
                 <PositionBars
                   positions={copyPositions(prompt)}
                   tokens={tokens}
                   intact={score.perPosition}
                   ablated={ablatedScore.perPosition}
+                  intactMean={score.mean}
+                  ablatedMean={ablatedScore.mean}
                   label={`Probability of the correct next letter at each position: intact mean ${pct(score.mean)}, with ablations ${pct(ablatedScore.mean)}.`}
                 />
                 <ul className="ci-key">
@@ -523,24 +568,6 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
         )}
         {sweep ? (
           <>
-            <div className="ci-pair">
-              <div>
-                <span>clean</span>
-                <TokenStrip
-                  tokens={sweepTokens}
-                  marks={Object.fromEntries(sweep.differing.map((index) => [index, "differs"]))}
-                  label={`Clean prompt: ${sweep.clean}`}
-                />
-              </div>
-              <div>
-                <span>corrupted</span>
-                <TokenStrip
-                  tokens={Array.from(sweep.corrupt)}
-                  marks={Object.fromEntries(sweep.differing.map((index) => [index, "differs"]))}
-                  label={`Corrupted prompt: ${sweep.corrupt}`}
-                />
-              </div>
-            </div>
             <p className="ci-small">
               Metric, read at the last position: <code>{sweep.metric}</code>
             </p>
@@ -561,6 +588,29 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
                 metric, so every recovery below divides by a tiny number and is not a stable measurement.
               </p>
             )}
+            <p className="ci-patch-lead">
+              Read down a column: the clean letter, the corrupted letter, then how much of the gap comes back when the clean
+              vector at that position is pasted in after block 1 and after block 2. Numbers are percent recovered.
+            </p>
+            <div className="ci-pair" style={{ "--columns": sweepTokens.length } as CSSProperties}>
+              <div>
+                <span>clean</span>
+                <TokenStrip
+                  tokens={sweepTokens}
+                  marks={Object.fromEntries(sweep.differing.map((index) => [index, "differs"]))}
+                  picked={patchPosition}
+                  label={`Clean prompt: ${sweep.clean}`}
+                />
+              </div>
+              <div>
+                <span>corrupted</span>
+                <TokenStrip
+                  tokens={Array.from(sweep.corrupt)}
+                  marks={Object.fromEntries(sweep.differing.map((index) => [index, "differs"]))}
+                  label={`Corrupted prompt: ${sweep.corrupt}`}
+                />
+              </div>
+            </div>
             <PatchGrid
               tokens={sweepTokens}
               recovery={sweep.recovery}

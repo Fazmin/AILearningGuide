@@ -52,6 +52,29 @@ const MAX_ROWS = 8;
 const KINDS: readonly HeldOutKind[] = ["paraphrase", "typo", "unseen"];
 const KIND_COUNTS = KINDS.map((kind) => HELD_OUT_QUERIES.filter((query) => query.kind === kind).length);
 
+/** Where the first relevant passage sits among all the passages: #1 at the left end, last at the right. */
+function RankTrack({ rank, from }: { rank: number | null; from?: number | null }) {
+  const last = PASSAGES.length;
+  const at = (value: number) => ((value - 1) / (last - 1)) * 100;
+  const moved = from !== undefined && from !== null && rank !== null && from !== rank;
+  return (
+    <span className={`etr-rank-track${rank === null ? " is-unranked" : rank === 1 ? " is-top" : ""}`} aria-hidden="true">
+      <i className="etr-rank-track__end">#1</i>
+      <span className="etr-rank-track__line">
+        {moved && (
+          <u
+            className={rank < from ? "is-up" : "is-down"}
+            style={{ left: `${at(Math.min(rank, from))}%`, width: `${Math.abs(at(rank) - at(from))}%` }}
+          />
+        )}
+        {from !== undefined && from !== null && <s style={{ left: `${at(from)}%` }} />}
+        {rank !== null && <b style={{ left: `${at(rank)}%` }} />}
+      </span>
+      <i className="etr-rank-track__end">#{last}</i>
+    </span>
+  );
+}
+
 function hitsByKind(rankings: readonly (readonly number[])[]) {
   return KINDS.map((kind) =>
     HELD_OUT_QUERIES.filter((query, index) => query.kind === kind && firstRelevantRank(rankings[index], HELD_OUT_RELEVANT[index]) === 1).length,
@@ -78,6 +101,7 @@ export default function Explore({ state, setState }: ModuleContext) {
   const reranker = useMemo(() => trainReranker(trainCosines(snapshot.weights, space)), [snapshot, space]);
   const reranked = useMemo(() => rerankHeldOut(reranker, space.rankings, space.cosine, HELD_OUT_RELEVANT), [reranker, space]);
   const projection = useMemo(() => principalAxes(space.passages, dim), [space, dim]);
+  const startProjection = useMemo(() => principalAxes(start.passages, dim), [start, dim]);
   const firstFour = useMemo(() => truncatedRecallAt1(space, 4), [space]);
 
   const pipeline: RetrievalScore = rerank ? reranked.score : score;
@@ -258,7 +282,7 @@ export default function Explore({ state, setState }: ModuleContext) {
                         <td
                           key={column}
                           className={`${isAnswer ? "is-answer" : ""}${isTwin ? " is-twin" : ""}${masked ? " is-masked" : ""}`.trim()}
-                          style={{ "--etr-share": masked ? 0 : rowShares[column] } as CSSProperties}
+                          style={{ "--etr-share": masked ? 0 : rowShares[column], "--etr-heat": masked ? 0 : Math.sqrt(rowShares[column]) } as CSSProperties}
                         >
                           <b>{masked ? "—" : share(rowShares[column])}</b>
                           <small>cos {f2(snapshot.scores.cosines[r][column])}</small>
@@ -267,7 +291,7 @@ export default function Explore({ state, setState }: ModuleContext) {
                       );
                     })}
                     {hiddenColumns > 0 && (
-                      <td style={{ "--etr-share": hiddenShare } as CSSProperties}>
+                      <td style={{ "--etr-share": hiddenShare, "--etr-heat": Math.sqrt(Math.max(0, hiddenShare)) } as CSSProperties}>
                         <b>{share(hiddenShare)}</b>
                         <small>together</small>
                       </td>
@@ -278,6 +302,21 @@ export default function Explore({ state, setState }: ModuleContext) {
             </tbody>
           </table>
         </div>
+        <ul className="etr-batch-key" aria-hidden="true">
+          <li className="etr-batch-key__ramp">
+            <small>0%</small>
+            {[0.02, 0.1, 0.3, 0.6, 1].map((part) => (
+              <i key={part} style={{ background: `color-mix(in srgb, var(--module-accent) ${Math.sqrt(part) * 52}%, transparent)` }} />
+            ))}
+            <small>100% of the row</small>
+          </li>
+          <li>
+            <i className="is-answer" /> the row&rsquo;s own answer
+          </li>
+          <li>
+            <i className="is-twin" /> duplicate of the answer
+          </li>
+        </ul>
         {shown.rows.length > rowCount && (
           <p className="etr-table-note">{`Showing the first ${rowCount} of ${shown.rows.length} rows; the loss averages all of them.`}</p>
         )}
@@ -378,11 +417,23 @@ export default function Explore({ state, setState }: ModuleContext) {
               {scoreRows.map((row) => (
                 <tr key={row.id} className={row.current ? "is-leader" : ""}>
                   <th scope="row">{row.label}</th>
-                  <td>{pct(row.result.recall1)}</td>
-                  <td>{pct(row.result.recall5)}</td>
-                  <td>{f2(row.result.mrr)}</td>
+                  <td className="etr-databar" style={{ "--etr-fill": row.result.recall1 } as CSSProperties}>
+                    <span>{pct(row.result.recall1)}</span>
+                  </td>
+                  <td className="etr-databar" style={{ "--etr-fill": row.result.recall5 } as CSSProperties}>
+                    <span>{pct(row.result.recall5)}</span>
+                  </td>
+                  <td className="etr-databar" style={{ "--etr-fill": row.result.mrr } as CSSProperties}>
+                    <span>{f2(row.result.mrr)}</span>
+                  </td>
                   {row.kinds.map((hits, index) => (
-                    <td key={KINDS[index]}>{hits}</td>
+                    <td
+                      key={KINDS[index]}
+                      className="etr-databar is-count"
+                      style={{ "--etr-fill": hits / Math.max(1, KIND_COUNTS[index]) } as CSSProperties}
+                    >
+                      <span>{hits}</span>
+                    </td>
                   ))}
                   <td>{row.passes}</td>
                 </tr>
@@ -405,7 +456,28 @@ export default function Explore({ state, setState }: ModuleContext) {
           title="A shadow of the space: bunched before training, spread after"
           aside={<span className="tg-badge">projection</span>}
         />
-        <EmbeddingMap space={space} projection={projection} selectedQuery={queryIndex} step={step} meanCosine={meanCosine} />
+        <div className="etr-map-pair">
+          <EmbeddingMap
+            space={start}
+            projection={startProjection}
+            selectedQuery={queryIndex}
+            step={0}
+            meanCosine={startCosine}
+            heading="Before training · step 0"
+            quiet
+          />
+          <span className="etr-map-pair__arrow" aria-hidden="true">
+            →
+          </span>
+          <EmbeddingMap
+            space={space}
+            projection={projection}
+            selectedQuery={queryIndex}
+            step={step}
+            meanCosine={meanCosine}
+            heading={step === 0 ? "Now · step 0, nothing trained yet" : `Now · step ${step}`}
+          />
+        </div>
         <ul className="etr-map-legend">
           <li>
             <i className="is-passage" /> passage, named by its topic
@@ -464,7 +536,10 @@ export default function Explore({ state, setState }: ModuleContext) {
               {rankRows.map((row) => (
                 <tr key={row.id} className={(row.id === "rerank") === rerank && row.id !== "start" && row.id !== "bm25" ? "is-leader" : ""}>
                   <th scope="row">{row.label}</th>
-                  <td>{rankText(firstRelevantRank(row.ranking, relevant))}</td>
+                  <td className="etr-rank-cell">
+                    <RankTrack rank={firstRelevantRank(row.ranking, relevant)} />
+                    <span className="etr-rank-cell__value">{rankText(firstRelevantRank(row.ranking, relevant))}</span>
+                  </td>
                   <td className="etr-top-passage">{row.ranking.length ? PASSAGES[row.ranking[0]].title : "no passage shares a word"}</td>
                 </tr>
               ))}
@@ -478,6 +553,7 @@ export default function Explore({ state, setState }: ModuleContext) {
                 <th scope="col">passage</th>
                 <th scope="col">step 0</th>
                 <th scope="col">{`step ${step}`}</th>
+                <th scope="col" className="etr-move-head">{`step 0 ○ → ● step ${step}`}</th>
                 <th scope="col">cosine</th>
                 <th scope="col">BM25</th>
               </tr>
@@ -492,7 +568,12 @@ export default function Explore({ state, setState }: ModuleContext) {
                   </th>
                   <td>{rankText(rankOf(rankingStart, index))}</td>
                   <td>{rankText(rankOf(rankingNow, index))}</td>
-                  <td>{f2(cosineNow[index])}</td>
+                  <td className="etr-rank-cell">
+                    <RankTrack rank={rankOf(rankingNow, index)} from={rankOf(rankingStart, index)} />
+                  </td>
+                  <td className="etr-databar" style={{ "--etr-fill": Math.max(0, cosineNow[index]) } as CSSProperties}>
+                    <span>{f2(cosineNow[index])}</span>
+                  </td>
                   <td>{rankText(rankOf(rankingBm25, index))}</td>
                 </tr>
               ))}

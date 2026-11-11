@@ -80,6 +80,7 @@ const cardInfo: ModuleCardInfo = {
       "Edges from every unit to every unit in the next column. Thickness grows with |w| (capped at |w| = 3); positive weights are solid green, negative weights dashed red.",
       "Under each tile, the unit's name and its value at the probe. The small dot inside each tile marks the probe.",
       "`Probe x₁`, `Probe x₂`, and a formula row showing the output unit's weighted sum at the probe.",
+      "Below the diagram, a plot of the same training points as the output unit receives them. When the last hidden layer has two units, each point is drawn at its two hidden values, h1 across and h2 up, shaded by ŷ, with the output unit's one straight cut as a dashed line. With any other width, each point is drawn at the output unit's weighted sum z, on the sigmoid curve that turns z into ŷ. A pile of five or more points carries its count where there is room, a ring marks a wrong answer, and the cross is the probe.",
     ],
     howItWorks: [
       "Each tile is a 14 × 14 grid of forward passes through the network at the selected epoch.",
@@ -87,7 +88,7 @@ const cardInfo: ModuleCardInfo = {
       "The formula row is the output unit exactly: `ŷ = σ(Σ wᵢ·hᵢ + c)` with the trained weights and the last hidden layer's values at the probe.",
     ],
     controls: [
-      "`Probe x₁` and `Probe x₂` (−1 to 1) move the probe; every value under a tile updates.",
+      "`Probe x₁` and `Probe x₂` (−1 to 1) move the probe; every value under a tile updates, and so does the cross on the lower plot.",
       "The architecture and epoch come from Network training controls.",
     ],
     notice: [
@@ -108,7 +109,8 @@ const cardInfo: ModuleCardInfo = {
     summary:
       "Two fixed networks with 85 parameters each train from the same seed on the dataset and activation chosen in Network training controls: one hidden layer of 21 units, and two hidden layers of 7. Everything shown is measured from real training, so you can see whether the shape of a budget changes what is learned.",
     whatYouSee: [
-      "Two small decision surfaces, one per network, at the epoch set by `Training epochs`. Shade is the output ŷ, circles are label 1 and squares are label 0, as on Decision surface.",
+      "Two small decision surfaces, one per network, at the epoch set by `Training epochs`. Shade is the output ŷ, circles are label 1 and squares are label 0, and a ring marks a point that network gets wrong, as on Decision surface.",
+      "Beside each surface, the network's shape drawn as columns of dots, one dot per unit: 2 inputs, then 21 units in one column or 7 and 7 in two, then 1 output.",
       "Under each surface: `Accuracy`, `Training loss`, and `Parameters` at that epoch. A badge in the heading gives the two-layer network's accuracy minus the one-layer network's, in percentage points.",
       "A chart of training accuracy for epochs 0 to 300 for both networks, the one-layer curve dashed, with a guide at the current epoch. The legend prints each curve's accuracy at epoch 300, which is the chart's text alternative.",
     ],
@@ -140,8 +142,9 @@ const cardInfo: ModuleCardInfo = {
       "Two fixed networks, a narrow one of 3 units and a large one of two layers of 6, train on the Ring's 60 points and are scored at every epoch on 120 fresh ring points they never train on. Label noise flips 12 of the 60 training labels, so the card can show training accuracy and held-out accuracy pulling apart.",
     whatYouSee: [
       "`Training labels`: Clean, or 20% flipped, which swaps the label of 12 of the 60 training points, the same 12 every time. Held-out labels are always correct.",
+      "For each network, a small decision surface over its 60 training points at the current epoch. With 20% flipped, a diamond marks each of the 12 points whose label was swapped.",
       "`Curves`: Accuracy or Loss. For each network, a chart over epochs 0 to 300 with a solid training curve, a dashed held-out curve, and a guide at the current epoch. The legend prints each curve's value at epoch 300.",
-      "Under each chart: `Training accuracy`, `Held-out accuracy`, `Gap` (training minus held-out, in percentage points), and `Held-out loss` at the current epoch.",
+      "Under each chart: `Training accuracy` and `Held-out accuracy` as two bars on one scale from 0 to 100%, with the stretch between their ends hatched, then `Gap` (training minus held-out, in percentage points) and `Held-out loss`, all at the current epoch.",
     ],
     howItWorks: [
       "Both networks are trained as on Network training controls, always with tanh units, from the lab's seed: full-batch gradient descent, learning rate 0.5, momentum 0.9. The narrow one is 2 → 3 → 1 with 13 parameters; the large one is 2 → 6 → 6 → 1 with 67.",

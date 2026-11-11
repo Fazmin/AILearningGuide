@@ -207,6 +207,67 @@ function Highlighted({ chunk, span }: { chunk: Chunk; span: Question["span"] }):
   });
 }
 
+/** A count out of a small total as filled and empty pips, so three columns compare at a glance. */
+function Pips({ count, total, tone }: { count: number; total: number; tone: "good" | "bad" }) {
+  return (
+    <span className={`rag-pips is-${tone}`} aria-hidden="true">
+      {Array.from({ length: total }, (_, index) => (
+        <i key={index} className={index < count ? "is-on" : ""} />
+      ))}
+    </span>
+  );
+}
+
+const OUTCOME_MARK: Record<PipelineScore["outcome"], string> = {
+  "answered-right": "✓",
+  "answered-wrong": "✕",
+  "abstained-right": "–",
+  "abstained-wrong": "–",
+};
+
+/** The assembled prompt, split into the three parts a reader should tell apart. The text is unchanged. */
+function PromptParts({ prompt, retrieved, span }: { prompt: string; retrieved: readonly Chunk[]; span: Question["span"] }) {
+  const [system = "", context = "", ask = ""] = prompt.split("\n\n");
+  const [contextHead, ...passages] = context.split("\n");
+  const gap = (text: string, key?: number) => (
+    <span key={key} className="rag-prompt-gap">
+      {text}
+    </span>
+  );
+  return (
+    <>
+      <span className="rag-prompt-part is-system" data-part="instruction">
+        {system}
+      </span>
+      {gap("\n\n")}
+      <span className="rag-prompt-part is-context" data-part="retrieved passages">
+        {contextHead}
+        {passages.flatMap((line, index) => {
+          const chunk = retrieved[index];
+          const lead = chunk && line.endsWith(chunk.text) ? line.slice(0, line.length - chunk.text.length) : null;
+          return [
+            gap("\n", index * 2),
+            <span key={index * 2 + 1} className={chunk ? "rag-prompt-passage" : undefined}>
+              {chunk && lead !== null ? (
+                <>
+                  <b>{lead}</b>
+                  <Highlighted chunk={chunk} span={span} />
+                </>
+              ) : (
+                line
+              )}
+            </span>,
+          ];
+        })}
+      </span>
+      {gap("\n\n")}
+      <span className="rag-prompt-part is-question" data-part="question">
+        {ask}
+      </span>
+    </>
+  );
+}
+
 export default function Explore({ state, setState }: ModuleContext) {
   const questionId = (QUESTIONS.some((item) => item.id === asString(state, "question", "hours"))
     ? asString(state, "question", "hours")
@@ -285,6 +346,20 @@ export default function Explore({ state, setState }: ModuleContext) {
       rank ? `${label} #${rank} → 1/(${RRF_K}+${rank}) = ${(1 / (RRF_K + rank)).toFixed(4)}` : `${label} —`;
     return `${part("BM25", chunk.bm25Rank)} · ${part("dense", chunk.denseRank)}`;
   };
+  // The same score, drawn: a bar per chunk on one shared scale, cut into the pieces that add up to it.
+  const barValue = (chunk: RankedChunk) =>
+    retriever === "bm25" ? chunk.score : retriever === "dense" ? chunk.cosine : chunk.rrf;
+  const barMax = Math.max(1e-9, ...shown.map(barValue));
+  const barPieces = (chunk: RankedChunk): { label: string; value: number; kind: "bm25" | "dense" }[] => {
+    if (retriever === "bm25") {
+      return chunk.contributions.map((entry) => ({ label: entry.term, value: entry.weight, kind: "bm25" as const }));
+    }
+    if (retriever === "dense") return chunk.cosine > 0 ? [{ label: "cosine", value: chunk.cosine, kind: "dense" }] : [];
+    const piece = (label: string, rank: number | null, kind: "bm25" | "dense") =>
+      rank ? [{ label: `${label} #${rank}`, value: 1 / (RRF_K + rank), kind }] : [];
+    return [...piece("BM25", chunk.bm25Rank, "bm25"), ...piece("dense", chunk.denseRank, "dense")];
+  };
+  const leftOut = shown.length - retrieved.length;
   const totals = Object.fromEntries(RETRIEVERS.map((item) => [item, scoreTotals(scores, item)])) as Record<
     Retriever,
     ReturnType<typeof scoreTotals>
@@ -418,9 +493,9 @@ export default function Explore({ state, setState }: ModuleContext) {
           onChange={(value) => setState({ topK: value })}
         />
         <ol className="rag-rank-list">
-          {shown.map((chunk) => {
+          {shown.flatMap((chunk, position) => {
             const rank = retrievedRank.get(chunk.id);
-            return (
+            const item = (
               <li key={chunk.id} className={rank ? "is-retrieved" : chunk.score === 0 ? "is-zero" : ""}>
                 <header>
                   <span className="rag-rank-no">{rank ? `[${rank}]` : `#${chunk.rank}`}</span>
@@ -429,12 +504,35 @@ export default function Explore({ state, setState }: ModuleContext) {
                   </strong>
                   <code>{scoreLabel(chunk)}</code>
                 </header>
+                {barPieces(chunk).length > 0 && (
+                  <span className="rag-rank-bar" aria-hidden="true">
+                    {barPieces(chunk).map((piece) => (
+                      <i
+                        key={piece.label}
+                        className={`is-${piece.kind}`}
+                        style={{ width: `${(piece.value / barMax) * 100}%` }}
+                      >
+                        {piece.label}
+                      </i>
+                    ))}
+                  </span>
+                )}
                 <p>
                   <Highlighted chunk={chunk} span={question.span} />
                 </p>
                 <small>{detailLine(chunk)}</small>
               </li>
             );
+            const isCut = position === retrieved.length - 1 && leftOut > 0;
+            return isCut
+              ? [
+                  item,
+                  <li key="cut" className="rag-rank-cut">
+                    ▲ {retrieved.length === 1 ? "this chunk goes" : `these ${retrieved.length} go`} into the prompt · ▼
+                    the rest are left out
+                  </li>,
+                ]
+              : [item];
           })}
         </ol>
         <p className="lab-note">
@@ -468,7 +566,7 @@ export default function Explore({ state, setState }: ModuleContext) {
           title="What the model would actually read"
         />
         <pre className="rag-prompt" aria-label="Assembled prompt text">
-          {prompt}
+          <PromptParts prompt={prompt} retrieved={retrieved} span={question.span} />
         </pre>
         <p className="lab-note">
           Retrieval ends here. A generator sees only this text; it cannot see chunks that were not retrieved, or
@@ -568,11 +666,25 @@ export default function Explore({ state, setState }: ModuleContext) {
                     const score = row.scores[item];
                     return (
                       <td key={item} className={`is-${score.outcome}`}>
-                        <strong>{cellLabel(score)}</strong>
-                        <small>
-                          {score.contextRecall === null ? "no answer exists" : `recall ${percent(score.contextRecall)}`} ·{" "}
-                          {score.faithful === null ? "nothing quoted" : score.faithful ? "supported" : "unsupported"}
-                        </small>
+                        <span className="rag-cell">
+                          <i className="rag-cell-mark" aria-hidden="true">
+                            {OUTCOME_MARK[score.outcome]}
+                          </i>
+                          <span>
+                            <strong>{cellLabel(score)}</strong>
+                            <small>
+                              {score.contextRecall === null
+                                ? "no answer exists"
+                                : `recall ${percent(score.contextRecall)}`}{" "}
+                              · {score.faithful === null ? "nothing quoted" : score.faithful ? "supported" : "unsupported"}
+                            </small>
+                            {score.contextRecall !== null && (
+                              <span className="rag-recall" aria-hidden="true">
+                                <i style={{ width: `${score.contextRecall * 100}%` }} />
+                              </span>
+                            )}
+                          </span>
+                        </span>
                       </td>
                     );
                   })}
@@ -585,6 +697,9 @@ export default function Explore({ state, setState }: ModuleContext) {
                 {RETRIEVERS.map((item) => (
                   <td key={item}>
                     {percent(totals[item].meanRecall)} <small>of {totals[item].answerable} answerable</small>
+                    <span className="rag-recall" aria-hidden="true">
+                      <i style={{ width: `${(totals[item].meanRecall ?? 0) * 100}%` }} />
+                    </span>
                   </td>
                 ))}
               </tr>
@@ -593,6 +708,7 @@ export default function Explore({ state, setState }: ModuleContext) {
                 {RETRIEVERS.map((item) => (
                   <td key={item}>
                     {totals[item].faithful} of {totals[item].quoted}
+                    <Pips count={totals[item].faithful} total={totals[item].quoted} tone="good" />
                   </td>
                 ))}
               </tr>
@@ -601,6 +717,7 @@ export default function Explore({ state, setState }: ModuleContext) {
                 {RETRIEVERS.map((item) => (
                   <td key={item}>
                     {totals[item].correct} of {totals[item].answerable}
+                    <Pips count={totals[item].correct} total={totals[item].answerable} tone="good" />
                   </td>
                 ))}
               </tr>
@@ -617,6 +734,7 @@ export default function Explore({ state, setState }: ModuleContext) {
                 {RETRIEVERS.map((item) => (
                   <td key={item}>
                     {totals[item].confidentErrors} of {totals[item].questions}
+                    <Pips count={totals[item].confidentErrors} total={totals[item].questions} tone="bad" />
                   </td>
                 ))}
               </tr>
@@ -625,21 +743,25 @@ export default function Explore({ state, setState }: ModuleContext) {
                 {RETRIEVERS.map((item) => (
                   <td key={item}>
                     {totals[item].handled} of {totals[item].questions}
+                    <Pips count={totals[item].handled} total={totals[item].questions} tone="good" />
                   </td>
                 ))}
               </tr>
             </tfoot>
           </table>
         </div>
-        <p className="lab-note">
-          Context recall is the share of the gold evidence’s words that reached the prompt. The support check passes
-          when the quoted sentence appears word for word in the passage it cites; this reader only quotes, so it passes
-          whenever it answers, and it cannot tell whether the quote answers the question. A wrong answer with full
-          recall is a reader failure; a wrong answer with less is a retrieval failure. The wind question has no answer
-          in the corpus, so answering it at all is the error: its cell reads wrong unless the Grounding check below
-          makes the pipeline abstain. Handled correctly counts right answers and right abstentions together, out of all
-          five questions.
-        </p>
+        <details className="rag-more">
+          <summary>How each cell is graded</summary>
+          <p className="lab-note">
+            Context recall is the share of the gold evidence’s words that reached the prompt. The support check passes
+            when the quoted sentence appears word for word in the passage it cites; this reader only quotes, so it passes
+            whenever it answers, and it cannot tell whether the quote answers the question. A wrong answer with full
+            recall is a reader failure; a wrong answer with less is a retrieval failure. The wind question has no answer
+            in the corpus, so answering it at all is the error: its cell reads wrong unless the Grounding check below
+            makes the pipeline abstain. Handled correctly counts right answers and right abstentions together, out of all
+            five questions.
+          </p>
+        </details>
       </LabSurface>
 
       <LabSurface label="Grounding check" className="rag-score-card rag-ground-card">
@@ -666,7 +788,12 @@ export default function Explore({ state, setState }: ModuleContext) {
             <thead>
               <tr>
                 <th scope="col">Question</th>
-                <th scope="col">Best chunk score</th>
+                <th scope="col">
+                  Best chunk score
+                  <small className="rag-track-key">
+                    bar from 0 to {scale.max} · {threshold > 0 ? `line at ${threshold.toFixed(scale.decimals)}` : "check off"}
+                  </small>
+                </th>
                 <th scope="col">Reader alone</th>
                 <th scope="col">With the check</th>
               </tr>
@@ -675,11 +802,38 @@ export default function Explore({ state, setState }: ModuleContext) {
               {groundRows.map(({ question: item, score }) => (
                 <tr key={item.id} className={item.id === question.id ? "is-current" : ""}>
                   <th scope="row">{item.label}</th>
-                  <td>{score.topScore === null ? "nothing retrieved" : shownScore(score.topScore)}</td>
+                  <td className="rag-track-cell">
+                    <span className="rag-track-row">
+                      <span className={`rag-track${score.abstained ? " is-abstained" : ""}`} aria-hidden="true">
+                        {threshold > 0 && (
+                          <i className="rag-track-zone" style={{ width: `${(threshold / scale.max) * 100}%` }} />
+                        )}
+                        {score.topScore !== null && (
+                          <i
+                            className="rag-track-bar"
+                            style={{ width: `${Math.min(1, score.topScore / scale.max) * 100}%` }}
+                          />
+                        )}
+                        {threshold > 0 && (
+                          <i className="rag-track-line" style={{ left: `${(threshold / scale.max) * 100}%` }} />
+                        )}
+                      </span>
+                      <span className="rag-track-value">
+                        {score.topScore === null ? "nothing retrieved" : shownScore(score.topScore)}
+                      </span>
+                    </span>
+                  </td>
                   <td>{score.topScore === null ? "nothing to quote" : READER_ALONE[score.ungated]}</td>
                   <td className={`is-${score.outcome}`}>
-                    <strong>{OUTCOME_LABEL[score.outcome]}</strong>
-                    <small>{groundDetail(item, score)}</small>
+                    <span className="rag-cell">
+                      <i className="rag-cell-mark" aria-hidden="true">
+                        {OUTCOME_MARK[score.outcome]}
+                      </i>
+                      <span>
+                        <strong>{OUTCOME_LABEL[score.outcome]}</strong>
+                        <small>{groundDetail(item, score)}</small>
+                      </span>
+                    </span>
                   </td>
                 </tr>
               ))}
@@ -740,13 +894,16 @@ export default function Explore({ state, setState }: ModuleContext) {
           marker={{ x: threshold, label: threshold === 0 ? "off" : threshold.toFixed(scale.decimals) }}
           footnote="Each line ends at the right-hand edge of the slider. Precision has no value once nothing is answered, so its line stops where the last answer is dropped."
         />
-        <p className="lab-note">
-          The check reads only the best retrieved chunk’s score, on the active retriever’s own scale, so the same
-          slider position means something different for BM25, Dense and Hybrid. A score measures how well a chunk
-          matches the question, not whether it answers it, so no threshold can promise a right answer or a right
-          refusal: lowering the wrong answers also lowers the right ones whenever they score alike. Real systems
-          calibrate a threshold on labelled questions and add a verifier or a model that can say “I do not know”.
-        </p>
+        <details className="rag-more">
+          <summary>Why no threshold is safe</summary>
+          <p className="lab-note">
+            The check reads only the best retrieved chunk’s score, on the active retriever’s own scale, so the same
+            slider position means something different for BM25, Dense and Hybrid. A score measures how well a chunk
+            matches the question, not whether it answers it, so no threshold can promise a right answer or a right
+            refusal: lowering the wrong answers also lowers the right ones whenever they score alike. Real systems
+            calibrate a threshold on labelled questions and add a verifier or a model that can say “I do not know”.
+          </p>
+        </details>
       </LabSurface>
     </div>
   );

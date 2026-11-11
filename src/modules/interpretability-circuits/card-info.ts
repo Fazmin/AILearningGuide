@@ -9,7 +9,8 @@ const cardInfo: ModuleCardInfo = {
       "`Repeat period`, from 6 to 13 letters. 11 and 13 are marked `unseen`: the model's synthetic training repeats used every period from 4 to 31 except 11, 13, 17 and 19.",
       "The prompt as letter chips, with alternate periods shaded and a green outline on the previous occurrence of the next letter, then a `next` box with the letter the repeat calls for and the model's top guess.",
       "Three readouts: `Copy accuracy`, the probability of the right letter at the end, and the top three next letters.",
-      "Eight head buttons and a query × key grid for the chosen head: rows are the letter doing the looking, columns the letters it can see, and darker purple means more attention weight. Solid green outlines mark key i − period + 1 and dashed amber outlines mark key i − 1, for each query in the second repeat. A line under the grid names the one offset that takes the most of the chosen head's attention.",
+      "Eight head buttons, then the prompt drawn again with arcs from the last letter to every letter the chosen head attends to. A thicker arc is more attention, the two largest shares are written on their arcs, and the solid green and dashed amber boxes are the same two keys the grid outlines.",
+      "A query × key grid for the chosen head: rows are the letter doing the looking, columns the letters it can see, and darker purple means more attention weight. Solid green outlines mark key i − period + 1 and dashed amber outlines mark key i − 1, for each query in the second repeat. A line under the grid names the one offset that takes the most of the chosen head's attention.",
       "A table with each head's mean attention on the previous letter and on the key after the previous occurrence, and a status chip comparing this forward pass with ONNX Runtime.",
     ],
     howItWorks: [
@@ -43,10 +44,10 @@ const cardInfo: ModuleCardInfo = {
       "Switch any of the eight heads off, either by zeroing its output or by replacing it with its average over random repeats, then read copy accuracy and the induction heads' attention on the current prompt. Each button also says what removing that head alone costs, so you can compare single and joint ablations and compare the two ways of ablating.",
     whatYouSee: [
       "An `Ablation` control with `Zero` and `Mean`, which sets what replaces a switched-off head's output.",
-      "Eight toggles, L1 H1 to L2 H4. Each shows `on` or `off` (struck through, dashed red border when off) and `alone ±x pts`, the change in copy accuracy when only that head is removed, under the chosen ablation.",
+      "Eight toggles, L1 H1 to L2 H4. Each shows `on` or `off` (struck through, dashed red border when off) and `alone ±x pts`, the change in copy accuracy when only that head is removed, under the chosen ablation. The bar in each button is the copy accuracy left after that single removal, with a tick at the intact accuracy.",
       "`Ablate layer 1`, `Ablate layer 2` and `Restore all` shortcuts.",
-      "Readouts: copy accuracy intact, with the chosen heads off, the change in percentage points, and the model's top next letter with those heads off; then `Attention on the induction key, L2 H2 · L2 H3`, the intact values, an arrow, and the values with the chosen heads off.",
-      "Paired bars for every scored position: outlined blue for the intact model, solid red with the chosen heads off, with the letter and position under each pair.",
+      "Readouts: copy accuracy intact, with the chosen heads off, the change in percentage points, and the model's top next letter with those heads off; then `Attention on the induction key, L2 H2 · L2 H3`, the intact values, an arrow, and the values with the chosen heads off. Two bars under it draw the same numbers: an outline at the intact value and a red fill at the value with the chosen heads off.",
+      "Paired bars for every scored position: outlined blue for the intact model, solid red with the chosen heads off, with the letter and position under each pair. A dashed blue line and a dotted red line across the bars mark the two means, which are the two copy accuracies.",
     ],
     howItWorks: [
       "Zero-ablation multiplies that head's attention-weighted values by 0 before the output projection W_O. W_O's bias and every other head are untouched, and the whole forward pass reruns.",
@@ -80,9 +81,9 @@ const cardInfo: ModuleCardInfo = {
       "Run the model on a clean prompt and on a corrupted copy, then paste one residual-stream vector from the clean run into the corrupted run and measure how much of the metric comes back. Every cell is one such experiment, run live; two sweeps precomputed in the shipped cache are included for comparison.",
     whatYouSee: [
       "`Sweep`: the live copy task, or the cached `speaker` and `letters` sweeps from `interpretability-cache.json`. For the live sweep, `Corrupt` chooses which letter is replaced: the letter to copy, or an unrelated one.",
-      "The clean and corrupted prompts as chips, with the replaced position outlined in amber.",
       "The metric, then readouts: its value on the clean run, on the corrupted run, the gap between them and, for live sweeps, each run's top next letter. A warning appears when the gap is under 1 logit.",
-      "A grid with rows `After block 1` and `After block 2` and a column per position. Green cells recover the metric, red cells push it the other way, and the colour saturates at ±100%.",
+      "The clean and corrupted prompts as chips, with the replaced position outlined in amber and a heavy underline on the clean letter above the selected cell.",
+      "Directly under the prompts and sharing their columns, a grid with rows `After block 1` and `After block 2`. Green cells recover the metric, red cells push it the other way, and the colour saturates at ±100%. A cell that moves the metric by 10% of the gap or more prints its percentage, except in the longer cached speaker sweep.",
       "A readout for the selected cell with its exact recovery and, for live sweeps, the metric after patching.",
     ],
     howItWorks: [

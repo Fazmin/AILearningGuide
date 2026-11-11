@@ -4,12 +4,12 @@ const cardInfo: ModuleCardInfo = {
   "Prompt as context": {
     title: "Examples as evidence about the task",
     summary:
-      "The literal prompt on the left is all a model gets. On the right, six candidate rules are each run on every example word. A rule that gets any example wrong drops out; the survivors share the weight equally, and their answers for the query become an answer distribution. No weights change anywhere.",
+      "The literal prompt at the top is all a model gets. Under it, six candidate rules are each run on every example word. A rule that gets any example wrong drops out; the survivors share the weight equally, and their answers for the query become an answer distribution. No weights change anywhere.",
     whatYouSee: [
       "The prompt text: an optional instruction line, the shown examples, and the query line ending in ?.",
       "Examples (0–5), Prompt strategy (Examples only or State a rule), and Query (florin, letter, soravel).",
-      "A rule table. Each cell is the rule's output for that example word, with ✓ or ✗. The first ✗ is bold. The next column is what the rule would answer for the query, and Weight is its share, or where it dropped out.",
-      "Answer bars for the query; the letter count is highlighted. Metrics: P(query → its letter count), rules still fitting, and weights changed, which is always 0.",
+      "A rule table. Each cell is the rule's output for that example word, with ✓ or ✗. The first ✗ in a row is a solid red chip, and the cells after it are dashed outlines. The next column is what the rule would answer for the query, and Weight is its share, drawn as a bar, or where it dropped out.",
+      "Answer bars for the query; the letter count is highlighted, and under each bar are the rules that gave that answer. Metrics: P(query → its letter count), rules still fitting, and weights changed, which is always 0.",
     ],
     howItWorks: [
       "The rules are real functions: count the letters, count distinct letters, consonants + 1, vowels + 3, count consonants, count vowels (a, e, i, o, u).",
@@ -37,6 +37,7 @@ const cardInfo: ModuleCardInfo = {
       "The last token of the prompt is the arrow. The head attends to tokens that came right after an earlier arrow, prefers the one whose line started with the same word, and copies what it finds. For a word already in the prompt that retrieves the answer; for a new word it can only offer every earlier answer.",
     whatYouSee: [
       "The prompt split into word tokens, with ⏎ for line breaks. Shading and the percentage under each token are the attention weight from the final arrow, marked now.",
+      "Underlines that tie tokens together. The query and the final arrow are underlined as looking for this. Each earlier arrow and the token after it are underlined as same →: copy, or as same word and →: copy when the word before the arrow is the query too.",
       "Bars for the head's predicted next token, highlighting the query's letter count.",
       "The heading states whether the query appeared earlier in the prompt.",
     ],
@@ -67,8 +68,9 @@ const cardInfo: ModuleCardInfo = {
       "Hops k (1–8), Per-pass budget b (1–8), and Scratchpad (off or on).",
       "The context the model reads: the table and the task, then the tokens written so far. The scratch line holds what the early passes wrote; the answer line is the last token.",
       "One row per forward pass: where it starts (the prompt, or a token read back from the scratchpad), its silent lookups, which are never written down, and the one token it writes, marked scratch or answer.",
+      "In those rows a lookup chain is circles joined by arrows, dashed empty circles are budget the pass did not need, and written tokens are squares. With the scratchpad off and a chain that is too long, a dashed row marked never run shows the lookups left over and the correct node.",
       "Answer, Correct answer from the table, and Passes. Each pass writes exactly one token, so passes and tokens written are the same count.",
-      "A table of every hop count at the current b: the correct node, the no-scratchpad answer with ✓ or ✗, and the scratchpad answer with its pass count.",
+      "A table of every hop count at the current b: the correct node, the no-scratchpad answer with ✓ or ✗, and the scratchpad answer with its pass count. Beside each answer is one small square per hop, filled where a pass covered that hop and dashed where none did, with a gap wherever the scratchpad starts a new pass.",
     ],
     howItWorks: [
       "The table is one cycle through ten nodes, C → H → A → J → E → B → G → D → I → F → C, and every task starts at C. A cycle of ten means a wrong answer is never right by coincidence for k up to 8.",

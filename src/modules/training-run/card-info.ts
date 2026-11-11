@@ -9,6 +9,7 @@ const cardInfo: ModuleCardInfo = {
       "A kicker `Stage N of 7` and a badge naming the corpus `Harbor weather notes`.",
       "A looping stage strip: Dataset, Batch, Forward, Loss, Backward, Optimizer step, Checkpoint. The current stage is marked; earlier ones are marked done.",
       "A title and a paragraph that change with the stage, plus three metrics that belong to that stage only.",
+      "A drawing for five of the stages. Dataset: the first characters of the text with the pairs they form underneath. Batch: one epoch as a bar cut into batches, with one batch filled in, and a small block per epoch. Forward: all 30 next-character probabilities after `the fo` as bars, with the favourite and the real next character marked. Loss: this checkpoint's loss as a bar against the knows-nothing baseline, with a tick every 0.69 nats. Backward: the gradient strip.",
       "Dataset reports Characters, Training pairs, and Vocabulary 30. Batch reports batch size, batches per epoch, and total steps. Forward reports the top two next-character predictions after `the fo` and the row width. Loss reports this checkpoint's loss, its perplexity, and the uniform baseline 3.401. Backward reports the gradient norm of one real pair, the last logged batch norm, and the peak batch norm, and draws that pair's gradient as a strip of 30 bars. Optimizer step reports the fixed learning rate 0.6, how many of the 30 rows actually moved, and steps taken. Checkpoint reports how many snapshots were saved, the selected step, and its loss.",
     ],
     howItWorks: [
@@ -111,7 +112,8 @@ const cardInfo: ModuleCardInfo = {
       "A kicker with the learning rate 0.6 and the seed, a badge counting presses (at most 24), and two buttons: `Step one batch` and `Back to the checkpoint`.",
       "A line naming the step (for example `Step 0 → 1`), the epoch and batch it came from, and how many pairs it held, then one chip per pair written as previous character, arrow, next character. A space is drawn as `␣`.",
       "Four metrics: `Batch loss, before → after` on the pairs in the batch; `Batch gradient norm`, the length of the whole batch gradient; `Whole-corpus loss, before → after` on all 498 pairs; and `Weights changed`, as a count out of 900 and a count of rows.",
-      "A table of up to eight rows, largest gradient first. Each row is a previous character. It lists how many pairs in the batch began with it, the length of that row's gradient, the next character that row was asked for most often (its target), and that target's logit and probability before and after.",
+      "A strip of 30 cells, one per row of the weight table. The rows this batch moved are outlined and shaded, more strongly for a larger row gradient, with the number of pairs that began with that character; the rows it did not touch are blank.",
+      "A table of up to eight rows, largest gradient first. A bar under each row gradient shows its size next to the others. Each row is a previous character. It lists how many pairs in the batch began with it, the length of that row's gradient, the next character that row was asked for most often (its target), and that target's logit and probability before and after.",
     ],
     howItWorks: [
       "The trainer shuffles the 498 pairs once per epoch with a seeded generator and cuts the shuffle into batches. A checkpoint saved at step `s` therefore has a known next batch: batch `s mod batches-per-epoch` of epoch `floor(s / batches-per-epoch)`. The card rebuilds that batch from the same seed.",
@@ -143,6 +145,7 @@ const cardInfo: ModuleCardInfo = {
       "Three segmented controls: `Model size` (this lab's 900 weights, then 125 million, 1.5 billion, 7.5 billion, and 70 billion), `Precision` (fp32 or Mixed 16-bit), and `Optimizer` (SGD, Momentum, or Adam).",
       "A stacked bar whose segments are weights, gradients, and optimizer state, with their sizes written inside. Segment width is proportional to bytes. With SGD in fp32 the optimizer-state segment disappears.",
       "A table with the same numbers: bytes per parameter and the total for each part, the optimizer state broken into its pieces (fp32 master copy, momentum, variance), a total row, and an `Activations` row that says they are not included. The badge repeats the total.",
+      "A row of boxes, one per 32 GB device the model state needs, each filled as far as the state reaches; the last box is usually only partly full.",
       "Three metrics: bytes per parameter, optimizer state as a multiple of the weights, and how many 32 GB devices the model state alone would need.",
     ],
     howItWorks: [

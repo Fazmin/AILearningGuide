@@ -8,7 +8,7 @@ import {
   SurfaceHeading,
   type ModuleContext,
 } from "@app/module-sdk";
-import { CAP_MAX, runAgent, TASKS, type AgentEvent, type TaskId } from "./loop";
+import { CAP_MAX, countTokens, runAgent, SYSTEM_PROMPT, TASKS, type AgentEvent, type AgentRun, type TaskId } from "./loop";
 import {
   CATCH_RANGE,
   completionCurve,
@@ -40,9 +40,22 @@ function activeNodes(event: AgentEvent | undefined): Node[] {
   return event.reason === "final answer" ? ["answer"] : ["gate", "halt"];
 }
 
+type Edge = "read" | "decide" | "yes" | "no" | "check" | "pass" | "fail";
+
+/** The arrows the run has just travelled to reach the current event. */
+function activeEdges(event: AgentEvent | undefined): Edge[] {
+  if (!event) return [];
+  if (event.kind === "model") return event.call > 1 ? ["pass", "read", "decide"] : ["read", "decide"];
+  if (event.kind === "tool") return ["no", "check"];
+  return event.reason === "final answer" ? ["yes"] : ["fail"];
+}
+
 function LoopDiagram({ event, cap, guard, contextTokens }: { event?: AgentEvent; cap: number; guard: boolean; contextTokens: number }) {
   const on = activeNodes(event);
+  const lit = activeEdges(event);
   const cls = (node: Node, extra = "") => `agent-node${on.includes(node) ? " is-active" : ""}${extra}`;
+  const edge = (id: Edge, extra = "") => `agent-edge${lit.includes(id) ? " is-active" : ""}${extra}`;
+  const head = (id: Edge) => (lit.includes(id) ? "url(#agent-arrow-on)" : "url(#agent-arrow)");
   const haltLabel = event?.kind === "stop" && event.reason === "host stop rule" ? "Stop · host rule" : "Stop · step cap";
   const describe =
     event?.kind === "model"
@@ -57,6 +70,9 @@ function LoopDiagram({ event, cap, guard, contextTokens }: { event?: AgentEvent;
       <defs>
         <marker id="agent-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
           <path d="M 0 0 L 10 5 L 0 10 z" className="agent-arrowhead" />
+        </marker>
+        <marker id="agent-arrow-on" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" className="agent-arrowhead is-active" />
         </marker>
       </defs>
       <g className={cls("context")}>
@@ -95,16 +111,16 @@ function LoopDiagram({ event, cap, guard, contextTokens }: { event?: AgentEvent;
         <rect x="10" y="150" width="150" height="40" rx="10" />
         <text x="85" y="174" textAnchor="middle">{haltLabel}</text>
       </g>
-      <path className="agent-edge" d="M 130 91 L 168 91" markerEnd="url(#agent-arrow)" />
-      <path className="agent-edge" d="M 296 91 L 330 91" markerEnd="url(#agent-arrow)" />
-      <path className="agent-edge" d="M 418 76 C 440 40 460 32 484 32" markerEnd="url(#agent-arrow)" />
-      <text className="agent-edge-label" x="424" y="50">yes</text>
-      <path className="agent-edge" d="M 440 91 L 484 91" markerEnd="url(#agent-arrow)" />
+      <path className={edge("read")} d="M 130 91 L 168 91" markerEnd={head("read")} />
+      <path className={edge("decide")} d="M 296 91 L 330 91" markerEnd={head("decide")} />
+      <path className={edge("yes")} d="M 418 76 C 440 40 460 32 484 32" markerEnd={head("yes")} />
+      <text className="agent-edge-label" x="428" y="40" textAnchor="end">yes</text>
+      <path className={edge("no")} d="M 440 91 L 484 91" markerEnd={head("no")} />
       <text className="agent-edge-label" x="452" y="84">no</text>
-      <path className="agent-edge" d="M 566 114 C 566 150 540 168 492 168" markerEnd="url(#agent-arrow)" />
-      <path className="agent-edge" d="M 300 160 C 200 150 90 150 70 122" markerEnd="url(#agent-arrow)" />
+      <path className={edge("check")} d="M 566 114 C 566 150 540 168 492 168" markerEnd={head("check")} />
+      <path className={edge("pass")} d="M 300 160 C 200 150 90 150 70 122" markerEnd={head("pass")} />
       <text className="agent-edge-label" x="190" y="146">pass: next call</text>
-      <path className="agent-edge is-dashed" d="M 300 180 L 162 175" markerEnd="url(#agent-arrow)" />
+      <path className={edge("fail", " is-dashed")} d="M 300 180 L 162 175" markerEnd={head("fail")} />
       <text className="agent-edge-label" x="206" y="194">fail</text>
     </svg>
   );
@@ -172,6 +188,266 @@ function ContextBars({ events, cap, tick }: { events: AgentEvent[]; cap: number;
   );
 }
 
+/**
+ * The transcript as one bar, each message as wide as its token count. It fills as Replay step moves,
+ * and a bracket marks the part the latest model call read: the whole bar up to its own output.
+ */
+function ContextStrip({ task, events, tick }: { task: TaskId; events: AgentEvent[]; tick: number }) {
+  const parts: { key: string; kind: string; label: string; short: string; tokens: number; at: number }[] = [
+    { key: "system", kind: "base", label: "system prompt", short: "system", tokens: countTokens(SYSTEM_PROMPT), at: -1 },
+    { key: "user", kind: "base", label: "user message", short: "user", tokens: countTokens(TASKS[task].user), at: -1 },
+  ];
+  events.forEach((event, index) => {
+    if (event.kind === "model") {
+      parts.push({
+        key: `m${index}`,
+        kind: event.final ? "answer" : "call",
+        label: event.final ? "answer" : `call ${event.call}`,
+        short: event.final ? "ans" : String(event.call),
+        tokens: event.outputTokens,
+        at: index,
+      });
+    } else if (event.kind === "tool") {
+      parts.push({
+        key: `t${index}`,
+        kind: event.failed ? "error" : "result",
+        label: event.failed ? `error ${event.call}` : `result ${event.call}`,
+        short: String(event.call),
+        tokens: countTokens(event.text),
+        at: index,
+      });
+    }
+  });
+  const total = Math.max(1, parts.reduce((sum, part) => sum + part.tokens, 0));
+  let readerIndex = -1;
+  events.slice(0, tick + 1).forEach((event, index) => {
+    if (event.kind === "model") readerIndex = index;
+  });
+  const reader = events[readerIndex];
+  const readTokens = reader && reader.kind === "model" ? reader.inputTokens : 0;
+  const written = parts.filter((part) => part.at <= tick).reduce((sum, part) => sum + part.tokens, 0);
+  return (
+    <div
+      className="agent-context"
+      role="img"
+      aria-label={`The transcript so far holds ${written} tokens: ${parts
+        .filter((part) => part.at <= tick)
+        .map((part) => `${part.label} ${part.tokens}`)
+        .join(", ")}.${reader && reader.kind === "model" ? ` Model call ${reader.call} read the first ${readTokens}.` : ""}`}
+    >
+      <div className="agent-context-head" aria-hidden="true">
+        <span>The transcript, one block per message, as wide as its tokens</span>
+        <code>
+          {written} of {total} tokens written
+        </code>
+      </div>
+      {reader && reader.kind === "model" && (
+        <div className="agent-context-read" style={{ width: `${(readTokens / total) * 100}%` }} aria-hidden="true">
+          <span>
+            model call {reader.call} read all of this · {readTokens} tokens
+          </span>
+        </div>
+      )}
+      <div className="agent-context-strip" aria-hidden="true">
+        {parts.map((part) => {
+          // The strip is about 660px wide at the default card width; a label is shown only where it fits.
+          const room = (part.tokens / total) * 640;
+          const fits = (text: string) => room >= text.length * 6.4 + 8;
+          return (
+            <i
+              key={part.key}
+              className={`is-${part.kind}${part.at > tick ? " is-future" : ""}${part.at === tick ? " is-new" : ""}`}
+              style={{ flexGrow: part.tokens }}
+              title={`${part.label}: ${part.tokens} tokens`}
+            >
+              {fits(part.label) ? part.label : fits(part.short) ? part.short : ""}
+            </i>
+          );
+        })}
+      </div>
+      <div className="agent-context-key" aria-hidden="true">
+        <span>
+          <i className="is-base" /> system prompt + user message
+        </span>
+        <span>
+          <i className="is-call" /> written by the model
+        </span>
+        <span>
+          <i className="is-result" /> tool result
+        </span>
+        <span>
+          <i className="is-error" /> tool error
+        </span>
+        <span>
+          <i className="is-future" /> not written yet
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** One slot per model call the cap could allow: used, allowed but unused, or past the cap. */
+function CallSlots({ run, cap }: { run: AgentRun; cap: number }) {
+  const models = run.events.filter((event): event is Extract<AgentEvent, { kind: "model" }> => event.kind === "model");
+  const tools = run.events.filter((event): event is Extract<AgentEvent, { kind: "tool" }> => event.kind === "tool");
+  return (
+    <div
+      className="agent-slots"
+      role="img"
+      aria-label={`${run.calls} of ${cap} allowed model calls used. The run stopped by ${run.stop}.`}
+    >
+      <span className="agent-slots-title" aria-hidden="true">
+        {run.calls} of {cap} allowed call{cap === 1 ? "" : "s"} used
+      </span>
+      <ol aria-hidden="true">
+        {Array.from({ length: CAP_MAX }, (_, index) => {
+          const call = index + 1;
+          const model = models[index];
+          const tool = tools.find((item) => item.call === call);
+          const state =
+            call > cap ? "is-over" : !model ? "is-unused" : model.final ? "is-answer" : tool?.failed ? "is-failed" : "is-ok";
+          const glyph = state === "is-answer" ? "A" : state === "is-failed" ? "✕" : state === "is-ok" ? "✓" : "";
+          return (
+            <li key={call} className={`${state}${call === cap ? " is-cap" : ""}${call === run.calls ? " is-last" : ""}`}>
+              <b>{glyph}</b>
+              <small>{call}</small>
+            </li>
+          );
+        })}
+      </ol>
+      <p className="agent-slots-key" aria-hidden="true">
+        <span>
+          <i className="is-ok">✓</i> tool ran
+        </span>
+        <span>
+          <i className="is-failed">✕</i> tool failed
+        </span>
+        <span>
+          <i className="is-answer">A</i> answer
+        </span>
+        <span>
+          <i className="is-capmark" /> step cap
+        </span>
+      </p>
+      <p className={`agent-stop-line${run.stop === "final answer" ? " is-answer" : ""}`} aria-hidden="true">
+        stopped after call {run.calls} by <b>{run.stop}</b>
+      </p>
+    </div>
+  );
+}
+
+/**
+ * One run, step by step: how many runs out of 100 are still fully right after each step. A gate shows as a wall
+ * where the reviewer sends caught runs back, so the bars after it start from a higher level.
+ */
+function RunStrip({
+  success,
+  steps,
+  gateAt,
+  catchShare,
+  finish,
+}: {
+  success: number;
+  steps: number;
+  gateAt: number;
+  catchShare: number;
+  finish: number;
+}) {
+  const left = 44;
+  const right = 552;
+  const top = 30;
+  const bottom = 126;
+  const band = (right - left) / steps;
+  const barWidth = Math.min(30, band * 0.74);
+  const y = (value: number) => bottom - value * (bottom - top);
+  const prefix = success ** gateAt;
+  const afterGate = gateAt > 0 ? prefix + (1 - prefix) * catchShare * prefix : 1;
+  const plainAfter = (step: number) => success ** step;
+  const runAfter = (step: number) => (gateAt > 0 && step > gateAt ? afterGate * success ** (step - gateAt) : success ** step);
+  const lifted = gateAt > 0 && afterGate - prefix > 0.0005;
+  const gateX = left + band * gateAt;
+  const ticks = [1, 5, 10, 15, 20, 25, 30].filter((value) => value <= steps);
+  if (!ticks.includes(steps)) ticks.push(steps);
+  const lastX = left + band * (steps - 0.5);
+  const gateAtEnd = gateAt === steps;
+  return (
+    <svg
+      className="agent-run"
+      viewBox="0 0 664 150"
+      role="img"
+      aria-label={`Share of runs still fully right after each step: ${percent(plainAfter(1))} after step 1${
+        gateAt > 0
+          ? `, ${percent(prefix)} after step ${gateAt}, raised to ${percent(afterGate)} by the reviewer`
+          : ""
+      }, and ${percent(finish)} at the end of step ${steps}.`}
+    >
+      <text className="agent-run-title" x={left} y="12">
+        of all runs, the share still fully right after each step
+      </text>
+      <line className="agent-run-axis" x1={left} x2={right} y1={bottom} y2={bottom} />
+      <text className="agent-run-tick" x={left - 6} y={y(1) + 3} textAnchor="end">100%</text>
+      <text className="agent-run-tick" x={left - 6} y={y(0.5) + 3} textAnchor="end">50%</text>
+      <text className="agent-run-tick" x={left - 6} y={bottom + 3} textAnchor="end">0</text>
+      <line className="agent-run-half" x1={left} x2={right} y1={y(0.5)} y2={y(0.5)} />
+      {Array.from({ length: steps }, (_, index) => {
+        const step = index + 1;
+        const x = left + band * index + (band - barWidth) / 2;
+        const value = runAfter(step);
+        const ghost = lifted && step > gateAt ? plainAfter(step) : null;
+        return (
+          <g key={step}>
+            <rect
+              className={`agent-run-bar${value < 0.5 ? " is-below" : ""}`}
+              x={x}
+              y={y(value)}
+              width={barWidth}
+              height={Math.max(0.5, bottom - y(value))}
+              rx="1.5"
+            />
+            {ghost !== null && (
+              <line className="agent-run-ghost" x1={x - 1} x2={x + barWidth + 1} y1={y(ghost)} y2={y(ghost)} />
+            )}
+          </g>
+        );
+      })}
+      {ticks.map((value) => (
+        <text key={value} className="agent-run-tick" x={left + band * (value - 0.5)} y={bottom + 13} textAnchor="middle">
+          {value}
+        </text>
+      ))}
+      <text className="agent-run-tick" x={right} y={bottom + 24} textAnchor="end">
+        step of this run
+      </text>
+      {gateAt > 0 && (
+        <g className="agent-run-gate">
+          <line x1={gateX} x2={gateX} y1={top - 8} y2={bottom + 4} />
+          {lifted && <path className="agent-run-lift" d={`M ${gateX} ${y(prefix)} L ${gateX} ${y(afterGate) + 5}`} />}
+          {lifted && (
+            <path
+              className="agent-run-lift-head"
+              d={`M ${gateX - 4.5} ${y(afterGate) + 6} L ${gateX} ${y(afterGate) - 1} L ${gateX + 4.5} ${y(afterGate) + 6} z`}
+            />
+          )}
+          <text x={gateX + (gateAt > steps * 0.55 ? -6 : 6)} y={top - 1} textAnchor={gateAt > steps * 0.55 ? "end" : "start"}>
+            {lifted
+              ? `gate: reviewer lifts ${percent(prefix)} to ${percent(afterGate)}`
+              : "gate: the reviewer catches nothing"}
+          </text>
+        </g>
+      )}
+      <circle className="agent-run-end" cx={gateAtEnd ? gateX : lastX} cy={y(finish)} r="4" />
+      <text className="agent-run-end-label" x={right + 10} y={y(finish) + 4}>
+        {percent(finish)} finish
+      </text>
+      {lifted && (
+        <text className="agent-run-ghost-label" x={right + 10} y={Math.max(y(plainAfter(steps)) + 4, y(finish) + 17)}>
+          {percent(plainAfter(steps))} without it
+        </text>
+      )}
+    </svg>
+  );
+}
+
 export default function Explore({ state, setState }: ModuleContext) {
   const task = asTask(state.task);
   const stepCap = clamp(Math.round(asNumber(state, "stepCap", 4)), 1, CAP_MAX);
@@ -229,6 +505,7 @@ export default function Explore({ state, setState }: ModuleContext) {
           />
         </div>
         <LoopDiagram event={event} cap={stepCap} guard={guard} contextTokens={contextNow} />
+        <ContextStrip task={task} events={run.events} tick={tick} />
         <RangeControl
           label="Replay step"
           min={0}
@@ -302,9 +579,12 @@ export default function Explore({ state, setState }: ModuleContext) {
             onChange={(value) => setState({ guard: value, tick: 99 })}
           />
         </div>
+        <CallSlots run={run} cap={stepCap} />
         <div className="metric-row agent-metrics">
           <Metric label="Model calls" value={`${run.calls}`} />
           <Metric label="Tool runs" value={`${toolRuns} (${failures} failed)`} tone={failures ? "loss" : undefined} />
+        </div>
+        <div className="metric-row agent-metrics">
           <Metric label="Stop reason" value={run.stop} tone={run.stop === "final answer" ? "forward" : "loss"} />
         </div>
         <div className="metric-row agent-metrics">
@@ -383,6 +663,13 @@ export default function Explore({ state, setState }: ModuleContext) {
             onChange={(value) => setState({ catchRate: value })}
           />
         </div>
+        <RunStrip
+          success={successShare}
+          steps={runSteps}
+          gateAt={gateAt}
+          catchShare={catchRate / 100}
+          finish={gatedChance ?? plainChance}
+        />
         <div className="metric-row agent-metrics">
           <Metric label="Completes end to end" value={percent(plainChance)} tone={plainChance < 0.5 ? "loss" : "forward"} />
           <Metric
@@ -423,28 +710,42 @@ export default function Explore({ state, setState }: ModuleContext) {
                   },
                 ]
               : []),
+            {
+              id: "half",
+              name: "half the time",
+              tone: "muted",
+              dash: "dotted",
+              points: [
+                { x: 1, y: 0.5 },
+                { x: RUN_STEPS_RANGE.max, y: 0.5 },
+              ],
+              format: (value) => percent(value, 0),
+            },
           ]}
         />
-        <div className="source-table agent-rel-table">
-          <table className="tg-board" aria-label="Chance a run completes, by number of steps">
-            <thead>
-              <tr>
-                <th scope="col">Steps</th>
-                <th scope="col">No gate</th>
-                <th scope="col">{gate ? `Gate after step ${gateAfter}` : "With a gate"}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tableSteps.map((count) => (
-                <tr key={count} aria-current={count === runSteps ? "true" : undefined}>
-                  <th scope="row">{count === runSteps ? `${count} (current)` : count}</th>
-                  <td>{percent(completionProbability(successShare, count))}</td>
-                  <td>{gate ? percent(completionProbability(successShare, count, gate)) : "–"}</td>
+        <details className="agent-rel-details">
+          <summary>The same chances as a table</summary>
+          <div className="source-table agent-rel-table">
+            <table className="tg-board" aria-label="Chance a run completes, by number of steps">
+              <thead>
+                <tr>
+                  <th scope="col">Steps</th>
+                  <th scope="col">No gate</th>
+                  <th scope="col">{gate ? `Gate after step ${gateAfter}` : "With a gate"}</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {tableSteps.map((count) => (
+                  <tr key={count} aria-current={count === runSteps ? "true" : undefined}>
+                    <th scope="row">{count === runSteps ? `${count} (current)` : count}</th>
+                    <td>{percent(completionProbability(successShare, count))}</td>
+                    <td>{gate ? percent(completionProbability(successShare, count, gate)) : "–"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </details>
         <p className="lab-note">
           Every figure is a formula, not a sample. It assumes each step succeeds independently with the same chance, that
           the agent cannot see its own wrong steps, and that the reviewer is the only check. A caught run is redone once,

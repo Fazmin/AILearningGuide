@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BarList, LineChart, Metric, RangeControl, type BarListItem, type ModuleContext } from "@app/module-sdk";
+import { LineChart, Metric, RangeControl, type ModuleContext } from "@app/module-sdk";
 import cache from "./assets/sae-top-activations.json";
-import { showChar } from "./FeatureViews";
+import { NullStrip, showChar, SteerList, type SteerRow } from "./FeatureViews";
 import { formatChange, formatProbability, formatScore, pct } from "./format";
 import { layerTwoResidual, loadTransformerWeights, type SaeRun, type Status } from "./runtime";
 import { WIDTH, testLabel, type SaeWeights } from "./sae";
@@ -54,31 +54,22 @@ export interface SteerViewProps {
   narrate: ModuleContext["narrate"];
 }
 
-const characterItems = (
+/** The six most likely next characters, plus the label character if it is not among them. */
+const characterRows = (
   distribution: ReturnType<typeof distributionOf>,
   target: number,
-  ceiling: number,
-  tone: BarListItem["tone"],
-): BarListItem[] => {
-  const top = topTokens(distribution, TOP);
-  const items: BarListItem[] = top.map((entry) => ({
-    id: String(entry.id),
-    label: `${showToken(entry.id)}${entry.id === target ? " (label)" : ""}`,
-    value: entry.probability,
-    display: formatProbability(entry.probability),
-    tone: entry.id === target ? "attention" : tone,
+  before?: ReturnType<typeof distributionOf>,
+): SteerRow[] => {
+  const ids = topTokens(distribution, TOP).map((entry) => entry.id);
+  if (!ids.includes(target)) ids.push(target);
+  return ids.map((id) => ({
+    id: String(id),
+    label: `${showToken(id)}${id === target ? " (label)" : ""}`,
+    target: id === target,
+    value: distribution.probabilities[id] ?? 0,
+    display: formatProbability(distribution.probabilities[id] ?? 0),
+    baseline: before ? before.probabilities[id] ?? 0 : undefined,
   }));
-  if (!top.some((entry) => entry.id === target)) {
-    const probability = distribution.probabilities[target] ?? 0;
-    items.push({
-      id: String(target),
-      label: `${showToken(target)} (label)`,
-      value: Math.min(probability, ceiling),
-      display: formatProbability(probability),
-      tone: "attention",
-    });
-  }
-  return items;
 };
 
 export function SteerView({ text, position, feature, strength, seed, run, aligned, runStatus, sae, setState, narrate }: SteerViewProps) {
@@ -271,21 +262,24 @@ export function SteerView({ text, position, feature, strength, seed, run, aligne
       </p>
 
       {result ? (
+        <>
         <div className="sf-steer-lists">
           <div>
             <strong>Before: unsteered</strong>
-            <BarList
+            <SteerList
               label="Most likely next characters before steering"
               max={ceiling}
-              items={characterItems(result.before, target, ceiling, "forward")}
+              tone="forward"
+              rows={characterRows(result.before, target)}
             />
           </div>
           <div>
             <strong>After: +{strength} along #{entry.feature}</strong>
-            <BarList
+            <SteerList
               label="Most likely next characters after steering along the feature direction"
               max={ceiling}
-              items={characterItems(result.after, target, ceiling, "gradient")}
+              tone="gradient"
+              rows={characterRows(result.after, target, result.before)}
             />
           </div>
           <div>
@@ -293,13 +287,19 @@ export function SteerView({ text, position, feature, strength, seed, run, aligne
               Control: +{strength} along random direction {seed}
               {controlDelta === null ? "" : ` (log p ${formatChange(controlDelta)})`}
             </strong>
-            <BarList
+            <SteerList
               label="Most likely next characters after adding a random direction of the same length"
               max={ceiling}
-              items={characterItems(result.control, target, ceiling, "muted")}
+              tone="muted"
+              rows={characterRows(result.control, target, result.before)}
             />
           </div>
         </div>
+        <p className="sf-steer-key" aria-hidden="true">
+          <i /> the tick on a bar is that character&apos;s probability before steering, so the gap between tick and bar end is
+          what the push changed
+        </p>
+        </>
       ) : (
         <p className="sf-empty" role="status">
           {weights.status === "error" ? "The transformer weights did not load." : "Waiting for the models and the decoder directions…"}
@@ -319,6 +319,17 @@ export function SteerView({ text, position, feature, strength, seed, run, aligne
         />
         <Metric label="Feature vs random, in SDs" value={row ? (strength === 0 ? "—" : formatScore(row.score)) : "—"} tone="loss" />
       </div>
+      {row && delta !== null && strength > 0 && (
+        <NullStrip
+          name={`#${entry.feature}`}
+          feature={delta}
+          low={row.nullMin}
+          high={row.nullMax}
+          count={NULL_DIRECTIONS}
+          format={formatChange}
+          verdict={`${Math.abs(row.score).toFixed(1)} SDs ${row.score < 0 ? "below" : "above"} the random mean`}
+        />
+      )}
       <p className="sf-small" role="status">{verdict}</p>
       {result && strength > 0 && (
         <p className="sf-small">

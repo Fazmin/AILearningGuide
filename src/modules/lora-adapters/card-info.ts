@@ -8,7 +8,7 @@ const cardInfo: ModuleCardInfo = {
     whatYouSee: [
       "A kicker `rank r · alpha α · scale α/r` and a badge `N of 900 weights train`.",
       "`Rank` (1 to 12, printed with r · 60 weights), `Alpha` (1 to 24, printed with the scale), a warning whenever alpha ≠ rank with a button to set them equal, and a bar list comparing `Full fine-tuning` (d · k = 900) with `LoRA rank r` (r · (d + k)), each with its target loss.",
-      "A matrix-product diagram: A across the top, B down the left, and ΔW = (α/r)·B·A where they meet. Blue cells raise a logit, red lower it, and each matrix is shaded against its own largest entry.",
+      "A matrix-product diagram: A across the top, B down the left, and ΔW = (α/r)·B·A where they meet, with the trainable count printed on A and on B. Blue cells raise a logit, red lower it, and each matrix is shaded against its own largest entry.",
       "A chart of how much of each update's squared size its first k directions hold, for the LoRA ΔW (solid) and a full fine-tune's ΔW at the same epochs (dashed), with a guide at k = r. The full fine-tune's ΔW is drawn beside it.",
       "A formula row `W + (α / r) · B · A` and a detail line on how many of the full run's 900 weights actually move.",
     ],
@@ -71,6 +71,7 @@ const cardInfo: ModuleCardInfo = {
       "The serving choice LoRA exists to give you: run the base, run the base plus adapter, or add (α/r)·B·A into W once. The merge is checked against the unmerged path, logit by logit.",
     whatYouSee: [
       "A `Serving` control: `Base only` and `Base + adapter`, or a single option `Merged — nothing left to swap` after you merge.",
+      "A path diagram for the served model: the input x through the frozen table W, and through the adapter A then B when it is attached, the two added. Detached, the adapter path is dashed; merged, one box holds W plus the update and the adapter is gone.",
       "Three metrics: `Target loss` and `Source loss` of whatever is being served, and `Serving weights` as 900, 900 + 60r, or 900 once merged.",
       "A sample from the served table: prompt `the `, temperature 0.7, seed 12, 76 characters.",
       "A button `Merge the adapter into W`, and a callout that reports the largest logit gap between the merged table and the unmerged path, plus the recipe loss through the unmerged path.",
@@ -105,7 +106,7 @@ const cardInfo: ModuleCardInfo = {
       "A kicker naming the architecture with its model dimension d and layer count, and a badge with the base model's parameter count.",
       "Architecture, a choice of Llama 3.2 1B, Llama 3 8B, Llama 3 70B, or Custom. Target matrices, five toggle buttons: q, k, v, o, and MLP. Model dimension d from 256 to 16,384, Layers from 1 to 126, Adapter rank r from 1 to 256, and Adapter precision of 32, 16, 8, or 4 bits.",
       "Three metrics: Trainable parameters, Share of the base model, and Adapter size at the chosen precision in megabytes of 10^6 bytes.",
-      "A bar list of trainable parameters for each targeted matrix across every layer, a formula row with the live totals, and a callout comparing the toy at its current Rank with this architecture at the same rank and targets.",
+      "A bar list of trainable parameters for each targeted matrix across every layer, a formula row with the live totals, and two bars and a callout comparing the toy at its current Rank with this architecture at the same rank and targets. Each bar is a whole model and the filled part is what the adapter trains.",
     ],
     howItWorks: [
       "A LoRA pair on a matrix with `inputs` columns and `outputs` rows holds rank × (inputs + outputs) numbers: B is outputs by rank and A is rank by inputs. The query projection is d by heads × head dimension, key and value are d by key-value heads × head dimension, the output projection reverses the query's shape, and the MLP is three matrices between d and the feed-forward width.",

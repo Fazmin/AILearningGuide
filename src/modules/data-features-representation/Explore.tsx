@@ -28,6 +28,7 @@ import {
   type Encoding,
   type FeatureAxis,
 } from "./encode";
+import { MiniGrid, VocabLine, VoteLine, swarmRows } from "./pictures";
 import {
   CLEAN,
   HANDLINGS,
@@ -264,6 +265,25 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
   const matched = cuts.filter((item) => item.hit).length;
   const lowYard = cuts.filter((item) => item.predicted === 0);
   const highYard = cuts.filter((item) => item.predicted === 1);
+  // Houses stand at their stamp's value on the gate's 0-to-5 ruler; equal values stack upward.
+  const railRows = swarmRows(
+    cuts.map((item) => item.value),
+    0.5,
+  );
+  const railDepth = Math.max(0, ...railRows) + 1;
+  const gateAt = `${(threshold / 5) * 100}%`;
+  const railCaption =
+    featureAxis === "rooms"
+      ? encoding === "normalized"
+        ? "rooms ÷ 4, the number on the slip"
+        : "rooms, the number on the slip"
+      : featureAxis === "park"
+        ? "park slot: 0 = no park, 1 = park"
+        : encoding === "onehot"
+          ? "red slot: 1 = red door, 0 = any other door"
+          : encoding === "normalized"
+            ? "door-color stamp ÷ 5"
+            : "door-color stamp";
 
   const embedRanks = useMemo(() => {
     const here = EMBEDDED[selected];
@@ -314,6 +334,19 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
   const cleanLoo = leaveOneOut(cleanRows);
   const answerWord = (answer: number) => (answer === 1 ? "high" : "low");
   const messActive = mess.missing || mess.duplicate || mess.mislabel;
+  const cleanDistances = new Map(cleanRows.map((row) => [row.key, distanceToQuery(row)]));
+  const voterKeys = new Set(messAnswer.neighbors.map((item) => item.row.key));
+  const voteMarks = messRows.map((row) => ({
+    key: row.key,
+    name: row.key === "row-duplicate" ? `${row.name} copy` : row.name,
+    distance: distanceToQuery(row),
+    high: row.price === 1,
+    voter: voterKeys.has(row.key),
+    dropped: row.dropped,
+    cleanDistance: cleanDistances.get(row.key) ?? null,
+    note: row.flag,
+  }));
+  const voteReach = messAnswer.neighbors[messAnswer.neighbors.length - 1]?.distance ?? 0;
   const messNotes: string[] = [];
   if (mess.missing) {
     const target = messRows[MISSING_ROW];
@@ -487,47 +520,53 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           />
         </div>
         <div
-          className="dfr-yards"
-          role="img"
+          className="dfr-rail"
+          role="group"
           aria-label={`Gate at ${threshold.toFixed(1)} on ${featureAxis}. ${matched} of 6 tags match.`}
         >
-          <section>
-            <header>Predicted low</header>
-            <div>
-              {lowYard.map((item) => (
-                <HouseMark
+          <div className="dfr-rail__field" style={{ height: `${railDepth * 4.6 + 4.4}rem` }}>
+            <div className="dfr-rail__track">
+              <i className="dfr-rail__zone is-low" style={{ width: `calc(${gateAt} + 2.4rem)` }} aria-hidden="true" />
+              <i className="dfr-rail__zone is-high" style={{ left: gateAt }} aria-hidden="true" />
+              {cuts.map((item, index) => (
+                <div
                   key={item.row.id}
-                  row={item.row}
-                  compact
-                  selected={item.row.id === selected}
-                  miss={!item.hit}
-                  onClick={() => setState({ selected: item.row.id })}
-                />
+                  className="dfr-rail__pin"
+                  style={{
+                    left: `${Math.min(1, Math.max(0, item.value / 5)) * 100}%`,
+                    bottom: `${railRows[index] * 4.6}rem`,
+                  }}
+                >
+                  <HouseMark
+                    row={item.row}
+                    compact
+                    selected={item.row.id === selected}
+                    miss={!item.hit}
+                    onClick={() => setState({ selected: item.row.id })}
+                  />
+                </div>
               ))}
-              {lowYard.length === 0 && <p>Empty yard</p>}
+              <div className="dfr-rail__gate" style={{ left: gateAt }}>
+                <b />
+                <span>
+                  gate t = {threshold.toFixed(1)}
+                  <small>1[{featureAxis} ≥ t]</small>
+                </span>
+              </div>
             </div>
-          </section>
-          <div className="dfr-fence">
-            <b />
-            <span>t = {threshold.toFixed(1)}</span>
-            <small>1[{featureAxis} ≥ t]</small>
+            <header className="is-low">← Predicted low{lowYard.length === 0 ? " · empty yard" : ""}</header>
+            <header className="is-high">Predicted high{highYard.length === 0 ? " · empty yard" : ""} →</header>
           </div>
-          <section>
-            <header>Predicted high</header>
-            <div>
-              {highYard.map((item) => (
-                <HouseMark
-                  key={item.row.id}
-                  row={item.row}
-                  compact
-                  selected={item.row.id === selected}
-                  miss={!item.hit}
-                  onClick={() => setState({ selected: item.row.id })}
-                />
+          <div className="dfr-rail__axis" aria-hidden="true">
+            <div className="dfr-rail__track">
+              {[0, 1, 2, 3, 4, 5].map((tick) => (
+                <span key={tick} style={{ left: `${tick * 20}%` }}>
+                  {tick}
+                </span>
               ))}
-              {highYard.length === 0 && <p>Empty yard</p>}
             </div>
-          </section>
+            <em>{railCaption}</em>
+          </div>
         </div>
         <div className="metric-row">
           <Metric label="Tags the gate matches" value={`${matched} of 6`} tone={matched < 5 ? "loss" : "forward"} />
@@ -648,7 +687,8 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           <thead>
             <tr>
               <th scope="col">Template</th>
-              <th scope="col">Pixels, row by row</th>
+              <th scope="col">Pixels, row by row · ringed = differs from yours</th>
+              <th scope="col">Pixels that differ</th>
               <th scope="col">Distance</th>
               <th scope="col">Rank</th>
             </tr>
@@ -657,8 +697,20 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             {templateRanks.map((item, index) => (
               <tr key={item.id} className={index === 0 ? "is-leader" : ""}>
                 <th scope="row">{item.label}</th>
-                <td>{`${item.pixels.slice(0, 3)} ${item.pixels.slice(3, 6)} ${item.pixels.slice(6)}`}</td>
-                <td>{item.distance.toFixed(2)}</td>
+                <td>
+                  <span className="dfr-mini-cell">
+                    <MiniGrid
+                      pixels={item.pixels}
+                      against={pixels}
+                      label={`The ${item.label} template. ${Math.round(item.distance ** 2)} of its 9 pixels differ from your drawing.`}
+                    />
+                    <code>{`${item.pixels.slice(0, 3)} ${item.pixels.slice(3, 6)} ${item.pixels.slice(6)}`}</code>
+                  </span>
+                </td>
+                <td>{Math.round(item.distance ** 2)}</td>
+                <td>
+                  √{Math.round(item.distance ** 2)} = {item.distance.toFixed(2)}
+                </td>
                 <td>{index === 0 ? "nearest" : `#${index + 1}`}</td>
               </tr>
             ))}
@@ -697,7 +749,8 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             ))}
           </tbody>
         </table>
-        <div className="metric-row">
+        <VocabLine used={tokens.map((token) => token.id)} />
+        <div className="metric-row dfr-metrics-3">
           <Metric label="Nearest template" value={templateRanks[0].label} tone="forward" />
           <Metric label="Distance to it" value={templateRanks[0].distance.toFixed(2)} />
           <Metric label="Sentence as IDs" value={`[${tokens.map((token) => token.id).join(", ")}]`} />
@@ -758,6 +811,31 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             onChange={(value) => setState({ messMislabel: value === "on" })}
           />
         </div>
+        <VoteLine
+          marks={voteMarks}
+          kth={voteReach}
+          label={`Every listing placed by its distance from the new listing. The ${K} nearest are ${messAnswer.neighbors
+            .map((item) => `${item.row.name} at ${item.distance.toFixed(2)}, tagged ${answerWord(item.row.price)}`)
+            .join("; ")}. ${messAnswer.high} of ${messAnswer.neighbors.length} are high, so the answer is ${answerWord(
+            messAnswer.answer,
+          )}.`}
+        />
+        <p className="dfr-vote__tally">
+          <span>The {K} nearest vote:</span>
+          <b className="is-high">{messAnswer.high} high</b>
+          <b className="is-low">{messAnswer.neighbors.length - messAnswer.high} low</b>
+          <span>→ answer</span>
+          <strong className={messAnswer.answer !== cleanAnswer.answer ? "is-changed" : ""}>
+            {answerWord(messAnswer.answer)}
+          </strong>
+          <em>
+            {messAnswer.answer === cleanAnswer.answer
+              ? messActive
+                ? `same as the clean table`
+                : "this is the clean table"
+              : `the clean table said ${answerWord(cleanAnswer.answer)}`}
+          </em>
+        </p>
         <table className="tg-board fit-table" aria-label="The six listings with the chosen mess applied">
           <thead>
             <tr>
@@ -782,7 +860,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             ))}
           </tbody>
         </table>
-        <div className="metric-row">
+        <div className="metric-row dfr-metrics-3">
           <Metric label="Rows in the summary" value={`${messSummary.count}`} />
           <Metric label="Mean rooms" value={messSummary.meanRooms.toFixed(2)} tone={messSummary.meanRooms !== cleanSummary.meanRooms ? "loss" : undefined} />
           <Metric label="High-price share" value={`${(messSummary.highShare * 100).toFixed(1)}%`} tone={messSummary.highShare !== cleanSummary.highShare ? "loss" : undefined} />

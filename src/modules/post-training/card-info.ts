@@ -8,8 +8,9 @@ const cardInfo: ModuleCardInfo = {
     whatYouSee: [
       "A five-stage strip, Pretrained → SFT → Preferences → Reward model → Policy + KL, each with a live readout. The highlighted stage follows the lesson step.",
       "SFT steps, from 0 to 12.",
+      "Three stacked bars, base, SFT, and tuned, each split into the six responses A to F, with grey ribbons between them showing where each response's share went. Solid segments are the responses a careful rater scores high (B, C, F); hatched ones score low (A, D, E). The number at the right of each bar is that row's average gold score.",
       "Six response cards. Each shows the text, the three features the reward model sees (word count, whether it names the mechanism, whether it opens with praise), and three bars: base, SFT, and tuned.",
-      "r is the fitted reward-model score and gold is the authored careful-rater score. The outlined card is the tuned policy's most likely response.",
+      "r is the fitted reward-model score and gold is the authored careful-rater score. Each has a marker on a track: a round one for r, placed between the lowest and highest reward, and a diamond for gold, placed from 0 to 1. The outlined card is the tuned policy's most likely response.",
       "The badge repeats the tuned policy's expected gold score.",
     ],
     howItWorks: [
@@ -37,8 +38,8 @@ const cardInfo: ModuleCardInfo = {
     summary:
       "Six pairs of responses. Each click records which one you prefer, and the reward model is refitted from scratch on every labeled pair. Unlabelled pairs are ignored. The probabilities are the fitted model's Bradley–Terry predictions.",
     whatYouSee: [
-      "Six rows. The pressed button is your preferred response; a dashed row is unlabelled.",
-      "Under each row, P(A ≻ B) = σ(r_A − r_B) from the current fit, shown even for unlabelled pairs.",
+      "Six rows. The pressed button is your preferred response; a dashed row is unlabelled. Each button carries a small bar and a count for how many words that response has.",
+      "Under each row, a bar filled from the left by P(A ≻ B) = σ(r_A − r_B) from the current fit, with a dashed tick at one half and the number written below. It is shown even for unlabelled pairs.",
       "Presets: Restore default labels, Label like the gold rater, and Clear all.",
     ],
     howItWorks: [
@@ -66,6 +67,7 @@ const cardInfo: ModuleCardInfo = {
       "The reward model is r(y) = w·φ(y) with φ = [words ÷ 10, names mechanism, opens with praise]. It is fitted by 200 steps of full-batch gradient ascent on the Bradley–Terry log-likelihood of your labeled pairs, from w = 0, with a small L2 penalty.",
     whatYouSee: [
       "Three weight bars with signed values. Blue raises reward; red lowers it.",
+      "Two columns of the six responses: the scorer's order by r on the left and the careful rater's order by gold on the right, with a line joining each response to itself. A thick red line is a response the scorer ranks two or more places too high; a dashed blue line is one it ranks two or more places too low.",
       "The training loss, mean −log σ(r_win − r_lose), over 200 steps. It starts at ln 2 = 0.693 because all rewards start equal.",
       "Pairs used, Labels fitted (labeled pairs the scorer now orders your way), and Agrees with gold (of all 15 response pairs, how many it orders the way the gold score does).",
     ],

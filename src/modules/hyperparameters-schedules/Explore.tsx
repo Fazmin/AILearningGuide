@@ -168,6 +168,30 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           inspectRate={inspectRate}
           inspectStep={inspectStep}
         />
+        <div className="hp-rates" role="list" aria-label={`Learning rate of each schedule at epoch ${inspect}`}>
+          {TINY_SCHEDULES.map((entry, index) => {
+            const rate = peakLearningRate * scheduleFactor(entry.value, inspectProgress, warmup);
+            return (
+              <div
+                key={entry.value}
+                role="listitem"
+                className={`hp-rates__item hp-tone--${tones[index]}${index === selectedIndex ? " is-selected" : ""}`}
+              >
+                <svg viewBox="0 0 22 6" aria-hidden="true">
+                  <line x1="1" x2="21" y1="3" y2="3" strokeDasharray={index === selectedIndex ? undefined : dashes[index] || "14 4"} />
+                </svg>
+                <span>{entry.label}</span>
+                <i>
+                  <b style={{ width: `${Math.min(100, (rate / peakLearningRate) * 100)}%` }} />
+                </i>
+                <strong>{rate.toFixed(3)}</strong>
+              </div>
+            );
+          })}
+          <small>
+            Step size of each schedule at epoch {inspect}, as a share of the peak {peakLearningRate.toFixed(2)}.
+          </small>
+        </div>
         <div className="hp-inspect-control">
           <RangeControl
             label="Inspect epoch"
@@ -246,6 +270,12 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             </span>
           ))}
         </div>
+        <FinalStrip
+          labels={runs.map((entry) => entry.schedule.label)}
+          finals={runs.map((entry) => entry.run.finalLoss)}
+          seeds={seedSummaries ? seedSummaries.map((summary) => summary.finals) : null}
+          selected={selectedIndex}
+        />
         <p className="lab-note">
           Each point is the cross-entropy over the whole corpus at an epoch boundary, measured on the saved
           weights, so the last point of each curve is its final loss. The dotted line at{" "}
@@ -428,6 +458,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           />
         </div>
         <DepthChart report={depth} />
+        <DepthBars report={depth} />
         <div className="hp-table-wrap">
           <table className="hp-depth-table">
             <caption>
@@ -518,6 +549,7 @@ function ScheduleChart({
   const warmupEnd = Math.min(0.9, Math.max(0.01, warmup));
   const endShare = finalShare(schedule);
   const inspectX = xAt(Math.min(1, inspect / EPOCHS));
+  const selectedIndex = Math.max(0, TINY_SCHEDULES.findIndex((entry) => entry.value === schedule));
   const endText = `${(endShare * 100).toFixed(0)}% of peak (${(peak * endShare).toFixed(peak * endShare < 1 ? 3 : 2)})`;
   const phases = usesWarmup(schedule)
     ? [
@@ -585,12 +617,17 @@ function ScheduleChart({
       <line className="plot-axis" x1={L} x2={L} y1={T} y2={B} />
       {TINY_SCHEDULES.map((entry, index) =>
         entry.value === schedule ? null : (
-          <path key={entry.value} className="hp-shape is-muted" d={curve(entry.value)} strokeDasharray={dashes[index] || "7 4"} />
+          <path
+            key={entry.value}
+            className={`hp-shape is-muted hp-tone--${tones[index]}`}
+            d={curve(entry.value)}
+            strokeDasharray={dashes[index] || "14 4"}
+          />
         ),
       )}
-      <path className="hp-shape is-selected" d={curve(schedule)} />
+      <path className={`hp-shape is-selected hp-tone--${tones[selectedIndex]}`} d={curve(schedule)} />
       <line className="hp-marker" x1={inspectX} x2={inspectX} y1={T} y2={B} />
-      <circle className="hp-dot" cx={inspectX} cy={yAt(inspectRate)} r={4.2} />
+      <circle className={`hp-dot hp-tone--${tones[selectedIndex]}`} cx={inspectX} cy={yAt(inspectRate)} r={4.2} />
       <text
         className="hp-dot-label"
         x={inspectX + (inspect > EPOCHS * 0.7 ? -8 : 8)}
@@ -720,12 +757,12 @@ function GradientTrace({
   clip: number;
   label: string;
 }) {
-  const w = 260;
-  const h = 124;
-  const left = 26;
-  const right = 256;
-  const T = 10;
-  const B = 100;
+  const w = 228;
+  const h = 176;
+  const left = 28;
+  const right = 222;
+  const T = 22;
+  const B = 138;
   const top = 1.5;
   const xAt = (step: number) => left + (step / Math.max(1, steps)) * (right - left);
   const yAt = (norm: number) => B - (clamp(norm, 0, top) / top) * (B - T);
@@ -753,17 +790,29 @@ function GradientTrace({
         <text className="hp-bound-label" x={right} y={yAt(GRADIENT_BOUND) - 3} textAnchor="end">
           √2 bound
         </text>
+        <g className={points.length > 2000 ? "is-dense" : undefined}>
+          <path className="hp-trace-dots" d={dots(points.filter((point) => !(clip > 0 && point.norm > clip)))} />
+          <path className="hp-trace-dots is-clipped" d={dots(points.filter((point) => clip > 0 && point.norm > clip))} />
+        </g>
         {clip > 0 && (
           <>
+            <line className="hp-clip-halo" x1={left} x2={right} y1={yAt(clip)} y2={yAt(clip)} />
             <line className="hp-clip" x1={left} x2={right} y1={yAt(clip)} y2={yAt(clip)} />
-            <text className="hp-clip-label" x={left + 4} y={yAt(clip) - 3}>
+            <text className="hp-clip-label" x={left + 4} y={yAt(clip) + (clip > 1.2 ? 11 : -4)}>
               clip {clip.toFixed(2)}
             </text>
           </>
         )}
-        <path className="hp-trace-dots" d={dots(points.filter((point) => !(clip > 0 && point.norm > clip)))} />
-        <path className="hp-trace-dots is-clipped" d={dots(points.filter((point) => clip > 0 && point.norm > clip))} />
-        <text className="hp-axis-label" x={left} y={h - 4}>
+        <line className="plot-axis" x1={left} x2={right} y1={B} y2={B} />
+        {[0, Math.round(steps / 2), steps].map((step, index) => (
+          <text key={step} className="hp-tick" x={xAt(step)} y={B + 13} textAnchor={index === 0 ? "start" : index === 2 ? "end" : "middle"}>
+            {step}
+          </text>
+        ))}
+        <text className="hp-axis-label" x={0} y={10}>
+          batch-gradient norm
+        </text>
+        <text className="hp-axis-label" x={left} y={h - 5}>
           optimizer step · {label}
         </text>
       </svg>
@@ -862,6 +911,7 @@ function DepthChart({ report }: { report: ReturnType<typeof depthReport> }) {
     values.map((norm, index) => `${index === 0 ? "M" : "L"}${xAt(index + 1).toFixed(1)},${yAt(norm).toFixed(1)}`).join(" ");
   const input = report.norms[0];
   const output = report.norms[layers - 1];
+  const endY = (y: number) => clamp(y, DEPTH_T + 26, DEPTH_B - 5);
   return (
     <svg
       className="hp-chart hp-depth-chart"
@@ -895,8 +945,27 @@ function DepthChart({ report }: { report: ReturnType<typeof depthReport> }) {
           </text>
         </>
       )}
+      <text className="hp-depth-flow" x={DEPTH_R - 6} y={DEPTH_T + 13} textAnchor="end">
+        ← the backward pass runs from the output to the input, ×{report.gain.toFixed(2)} at every layer
+      </text>
       <path className="hp-depth-line is-raw" d={line(report.norms)} />
       {report.clip > 0 && <path className="hp-depth-line is-clipped" d={line(report.clipped)} />}
+      <circle className="hp-depth-end is-raw" cx={xAt(1)} cy={yAt(input)} r={4} />
+      <circle className="hp-depth-end is-raw" cx={xAt(layers)} cy={yAt(output)} r={4} />
+      <text className="hp-depth-label is-raw" x={xAt(1) + 8} y={endY(yAt(input) - 8)}>
+        input layer: {formatMagnitude(input)}
+      </text>
+      <text className="hp-depth-label is-raw" x={xAt(layers) - 8} y={endY(yAt(output) - 8)} textAnchor="end">
+        output layer: {formatMagnitude(output)}
+      </text>
+      {report.clip > 0 && report.binding && (
+        <>
+          <circle className="hp-depth-end is-clipped" cx={xAt(1)} cy={yAt(report.clipped[0])} r={3.4} />
+          <text className="hp-depth-label is-clipped" x={xAt(1) + 8} y={endY(yAt(report.clipped[0]) + 15)}>
+            after the clip: {formatMagnitude(report.clipped[0])}
+          </text>
+        </>
+      )}
       <text className="hp-tick" x={DEPTH_L} y={DEPTH_B + 14}>
         layer 1 (input)
       </text>
@@ -906,6 +975,181 @@ function DepthChart({ report }: { report: ReturnType<typeof depthReport> }) {
       <text className="hp-axis-label" x={4} y={12}>
         gradient length, log scale (values beyond 1e±8 pinned to the edge)
       </text>
+    </svg>
+  );
+}
+
+/**
+ * The same gradient lengths as the log chart above, drawn to scale: one bar per layer, the longest at full
+ * height. A log axis turns growth into a gentle slope, and this strip shows how lopsided the lengths really are.
+ */
+function DepthBars({ report }: { report: ReturnType<typeof depthReport> }) {
+  const layers = report.layers;
+  const top = 16;
+  const bottom = 78;
+  const longest = Math.max(...report.norms, 1e-300);
+  const xAt = (layer: number) => DEPTH_L + ((layer - 1) / Math.max(1, layers - 1)) * (DEPTH_R - DEPTH_L);
+  const barWidth = Math.max(2, Math.min(14, ((DEPTH_R - DEPTH_L) / Math.max(1, layers - 1)) * 0.72));
+  const heightOf = (norm: number) => (Math.max(0, norm) / longest) * (bottom - top);
+  const showClip = report.clip > 0 && report.binding;
+  const inputShare = report.norms[0] / longest;
+  const outputShare = report.norms[layers - 1] / longest;
+  const share = (value: number) => (value >= 0.001 ? `${(value * 100).toFixed(value >= 0.1 ? 0 : 1)}%` : "under 0.1%");
+  return (
+    <svg
+      className="hp-chart hp-depth-bars"
+      viewBox={`0 0 ${DEPTH_W} ${bottom + 20}`}
+      role="img"
+      aria-label={`The same gradient lengths to scale, as a share of the longest. The input layer's is ${share(inputShare)} and the output layer's ${share(outputShare)}.${showClip ? ` After the clip every bar is ${share(report.scale)} of its height.` : ""}`}
+    >
+      <line className="hp-grid" x1={DEPTH_L} x2={DEPTH_R} y1={top} y2={top} />
+      <text className="hp-tick" x={DEPTH_L - 12} y={top + 3} textAnchor="end">
+        100%
+      </text>
+      <text className="hp-tick" x={DEPTH_L - 12} y={bottom + 3} textAnchor="end">
+        0
+      </text>
+      {report.norms.map((norm, index) => (
+        <rect
+          key={index}
+          className={`hp-depth-bar${showClip ? " is-ghost" : ""}`}
+          x={xAt(index + 1) - barWidth / 2}
+          y={bottom - heightOf(norm)}
+          width={barWidth}
+          height={Math.max(0.6, heightOf(norm))}
+        />
+      ))}
+      {showClip &&
+        report.clipped.map((norm, index) => (
+          <rect
+            key={index}
+            className="hp-depth-bar is-clipped"
+            x={xAt(index + 1) - barWidth / 2}
+            y={bottom - Math.max(0.8, heightOf(norm))}
+            width={barWidth}
+            height={Math.max(0.8, heightOf(norm))}
+          />
+        ))}
+      <line className="plot-axis" x1={DEPTH_L - barWidth / 2} x2={DEPTH_R + barWidth / 2} y1={bottom} y2={bottom} />
+      <text className="hp-axis-label" x={DEPTH_L - barWidth / 2} y={bottom + 15}>
+        the same lengths to scale: one bar per layer, longest = 100%
+      </text>
+      {showClip && (
+        <text className="hp-depth-label is-clipped" x={DEPTH_R} y={top + 12} textAnchor="end">
+          after the clip: every bar is {share(report.scale)} of its height
+        </text>
+      )}
+    </svg>
+  );
+}
+
+/**
+ * Where each schedule ends, on one zoomed axis: a dot for seed 1's final loss and, with five seeds on, a dot for
+ * every seed and a band from the lowest to the highest. Bands that overlap are schedules one run cannot rank.
+ */
+function FinalStrip({
+  labels,
+  finals,
+  seeds,
+  selected,
+}: {
+  labels: ReadonlyArray<string>;
+  finals: ReadonlyArray<number>;
+  /** Per schedule, the final loss of each seed; null when only seed 1 is trained. */
+  seeds: ReadonlyArray<ReadonlyArray<number>> | null;
+  selected: number;
+}) {
+  const width = 384;
+  const left = 104;
+  const right = 296;
+  const top = 20;
+  const rowHeight = 22;
+  const bottom = top + labels.length * rowHeight;
+  const all = [...finals, ...(seeds ?? []).flat()].filter(Number.isFinite);
+  const lowest = all.length ? Math.min(...all) : 0;
+  const highest = all.length ? Math.max(...all) : 1;
+  const pad = Math.max(0.004, (highest - lowest) * 0.1);
+  const low = lowest - pad;
+  const high = highest + pad;
+  const xAt = (loss: number) => left + ((clamp(Number.isFinite(loss) ? loss : high, low, high) - low) / (high - low)) * (right - left);
+  // Round tick values: 1, 2 or 5 times a power of ten, at most four across the axis.
+  const rawStep = (high - low) / 3;
+  const power = 10 ** Math.floor(Math.log10(rawStep));
+  const tickStep = (rawStep / power <= 1 ? 1 : rawStep / power <= 2 ? 2 : rawStep / power <= 5 ? 5 : 10) * power;
+  const ticks: number[] = [];
+  for (let tick = Math.ceil(low / tickStep) * tickStep; tick <= high + 1e-9 && ticks.length < 6; tick += tickStep) ticks.push(tick);
+  const digits = tickStep < 0.01 ? 3 : tickStep < 0.1 ? 2 : 1;
+  const baselineInside = UNIFORM_CROSS_ENTROPY > low && UNIFORM_CROSS_ENTROPY < high;
+  return (
+    <svg
+      className="hp-chart hp-final-strip"
+      viewBox={`0 0 ${width} ${bottom + 30}`}
+      role="img"
+      aria-label={`Final loss of each schedule on one axis from ${low.toFixed(digits)} to ${high.toFixed(digits)} nats per token, lower is better. ${labels
+        .map((label, index) => {
+          const own = (seeds?.[index] ?? []).filter(Number.isFinite);
+          return own.length > 1
+            ? `${label}: ${Math.min(...own).toFixed(3)} to ${Math.max(...own).toFixed(3)} across five seeds`
+            : `${label}: ${Number.isFinite(finals[index]) ? finals[index].toFixed(3) : "diverged"}`;
+        })
+        .join("; ")}.`}
+    >
+      <text className="hp-axis-label" x={0} y={10}>
+        final loss (nats/token)
+      </text>
+      <text className="hp-axis-label hp-final-strip__better" x={right} y={10} textAnchor="end">
+        ← lower is better
+      </text>
+      {ticks.map((tick) => (
+        <g key={tick}>
+          <line className="hp-grid" x1={xAt(tick)} x2={xAt(tick)} y1={top - 2} y2={bottom + 2} />
+          <text className="hp-tick" x={xAt(tick)} y={bottom + 14} textAnchor="middle">
+            {tick.toFixed(digits)}
+          </text>
+        </g>
+      ))}
+      {baselineInside && (
+        <>
+          <line className="hp-baseline" x1={xAt(UNIFORM_CROSS_ENTROPY)} x2={xAt(UNIFORM_CROSS_ENTROPY)} y1={top - 2} y2={bottom + 2} />
+          <text className="hp-baseline-label" x={xAt(UNIFORM_CROSS_ENTROPY)} y={bottom + 26} textAnchor="middle">
+            knows nothing
+          </text>
+        </>
+      )}
+      {labels.map((label, index) => {
+        const y = top + index * rowHeight + rowHeight / 2;
+        const own = (seeds?.[index] ?? []).filter(Number.isFinite);
+        const final = finals[index];
+        return (
+          <g key={label} className={`hp-final-strip__row hp-tone--${tones[index]}${index === selected ? " is-selected" : ""}`}>
+            <text className="hp-final-strip__label" x={0} y={y + 3.5}>
+              {label}
+            </text>
+            <line className="hp-final-strip__track" x1={left} x2={right} y1={y} y2={y} />
+            {own.length > 1 && (
+              <rect
+                className="hp-final-strip__band"
+                x={xAt(Math.min(...own))}
+                y={y - 6}
+                width={Math.max(2, xAt(Math.max(...own)) - xAt(Math.min(...own)))}
+                height={12}
+                rx={2}
+              />
+            )}
+            {own.slice(1).map((value, seedIndex) => (
+              <circle key={seedIndex} className="hp-final-strip__seed" cx={xAt(value)} cy={y} r={2.6} />
+            ))}
+            <circle className="hp-final-strip__dot" cx={xAt(final)} cy={y} r={index === selected ? 5 : 4} />
+            <text className="hp-final-strip__value" x={width} y={y + 3.5} textAnchor="end">
+              {own.length > 1
+                ? `spread ${(Math.max(...own) - Math.min(...own)).toFixed(3)}`
+                : Number.isFinite(final)
+                  ? final.toFixed(3)
+                  : "diverged"}
+            </text>
+          </g>
+        );
+      })}
     </svg>
   );
 }

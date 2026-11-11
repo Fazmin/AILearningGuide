@@ -8,7 +8,7 @@ const cardInfo: ModuleCardInfo = {
     whatYouSee: [
       "Six nodes, `input x`, `weight w`, `multiply z`, `sigmoid ŷ`, `target y`, and `loss L`, each showing its forward value. A value not yet computed shows `?` inside a dashed ring.",
       "Once the backward pass reaches a node, a pink pill under it shows that node's gradient: `∂L/∂L 1`, then `∂L/∂ŷ`, `∂L/∂z`, and finally `∂L/∂w` and `∂L/∂x` together.",
-      "Blue labels above each edge are the forward values it carries. Once the backward pass crosses an edge, a pink `× factor` below it shows the local derivative that edge multiplies in, and a dashed pink stroke with a reversed arrow marks the gradient's path.",
+      "Blue labels beside each edge are the forward values it carries; a value not yet computed reads `?`. Once the backward pass crosses an edge, a pink `× factor` beside it shows the local derivative that edge multiplies in, and a dashed pink stroke with a reversed arrow marks the gradient's path.",
       "The tape: six rows, three forward (blue edge) and three backward (pink edge), each with its formula, the numbers substituted in, and the result. Rows ahead of the current step are dimmed with `?`.",
       "At the defaults (x 0.80, w 0.60, y 0.90) the tape reads z 0.480, ŷ 0.618, L 0.0797, then ∂L/∂ŷ −0.565, ∂L/∂z −0.1333, and ∂L/∂w −0.1066, with ∂L/∂x −0.0800.",
     ],
@@ -43,6 +43,7 @@ const cardInfo: ModuleCardInfo = {
     whatYouSee: [
       "The horizontal axis is `weight w` from −3 to 3. The vertical axis is `loss L` from 0 to the tallest point of the current curve, labelled at 0, half, and full; the scale refits when `Input x` or `Target y` changes.",
       "The loss curve sampled at 121 weights, a ball at the current weight with a dashed guide to the axis, and a dashed tangent through the ball.",
+      "A dashed pink ring on the curve where one press of `Apply w ← w − η∂L/∂w` would put the weight, with an arrow along the axis when the move is long enough to draw. The key under the chart prints that weight and its loss.",
       "A green dashed line where ŷ = y, the weight at which the loss reaches zero, when it lies in view. At the defaults it sits at w 2.75.",
       "Metrics `Loss`, `Analytic slope` from the chain rule, and `Numeric check` from a central difference.",
     ],
@@ -53,7 +54,7 @@ const cardInfo: ModuleCardInfo = {
       "The tangent is `L + (∂L/∂w)(w′ − w)` for w′ within 0.72 of the current weight, drawn through the same scales as the curve.",
     ],
     controls: [
-      "This card has no controls of its own. `Weight w` moves the ball, `Input x` and `Target y` reshape the curve, and `Apply w ← w − η∂L/∂w` takes one step.",
+      "This card has no controls of its own. `Weight w` moves the ball, `Input x` and `Target y` reshape the curve, `Learning rate` moves the dashed ring, and `Apply w ← w − η∂L/∂w` takes one step.",
       "Comparison worth running: drag `Weight w` across the range and watch `Analytic slope` and `Numeric check` agree in every printed digit. Then press the update button and watch the ball move downhill along the tangent.",
     ],
     notice: [
@@ -105,7 +106,8 @@ const cardInfo: ModuleCardInfo = {
       "A multilayer perceptron with 1 to 12 hidden layers of 16 units and one sigmoid output is backpropagated once, at its random starting weights, on a fixed batch of 32 examples. Each bar is the exact norm of the loss's gradient with respect to one layer's weights, so you can watch the product of local derivatives shrink, hold steady, or blow up as you stack layers.",
     whatYouSee: [
       "`Network depth` (1 to 12), `Activation` (sigmoid, tanh, ReLU), `Initial weight scale` (small with standard deviation 0.1, Glorot, He, large with standard deviation 1.0), and `Skip connections` (off, on).",
-      "One bar per hidden layer, Layer 1 nearest the input and the last layer nearest the output, with its gradient norm printed beside it. Bar length is the number of decades above 1e-13, up to 1e7, so equal steps mean equal ratios, not equal differences.",
+      "One bar per hidden layer, Layer 1 nearest the input and the last layer nearest the output, with its gradient norm printed beside it. Bar length is the number of decades above 1e-13, up to 1e7, so equal steps mean equal ratios, not equal differences. A faint tick marks every decade, and the scale is labelled under the bars.",
+      "A dashed line marks the last layer's norm, where the backward pass starts. The hatched stretch between a shorter bar and that line is what was lost on the way back. The last column gives each layer's norm divided by the norm of the layer after it.",
       "Four metrics: the norm at Layer 1, the norm at the last layer, their ratio, and Loss at the start. A badge in the heading repeats the ratio.",
       "A collapsible table of the same numbers, with two more columns: the mean slope f′(z) of each layer's units over the batch, and the root-mean-square of the layer's output.",
     ],

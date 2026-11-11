@@ -10,6 +10,7 @@ import {
 } from "@app/module-sdk";
 import { FORMAT_NAMES, RECIPE_BOUNDS, STAGE_LABELS, runPipeline } from "./pipeline";
 import { normalizeRecipe } from "./state";
+import { BudgetBar, CompressDrift, GateGauge, QuizRanges, StageTrack } from "./visuals";
 
 const { formatBytes, GIB, HARDWARE } = teachingServing;
 
@@ -42,6 +43,31 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
   const headroom = HARDWARE.vramBytes - serving.totalBytes;
   const [targetLow, targetHigh] = RECIPE_BOUNDS.gateTarget;
   const [controlLow, controlHigh] = RECIPE_BOUNDS.gateControl;
+  // The gate's two comparisons as changes from the base model, the quantity its number lines draw.
+  const recipeChange = last.metrics.targetLoss - first.metrics.targetLoss;
+  const harborChange = last.metrics.controlLoss - first.metrics.controlLoss;
+  const gaugeLow = Math.min(-targetHigh - 0.05, recipeChange - 0.05, harborChange - 0.05);
+  const gaugeHigh = Math.max(controlHigh + 0.05, recipeChange + 0.05, harborChange + 0.05);
+  const conditions = [
+    {
+      id: "recipe",
+      passed: gate.checks[0].passed,
+      name: "Recipe gain",
+      detail: `${signed(recipeChange)} · needs ${signed(-recipe.gateTarget)} or lower`,
+    },
+    {
+      id: "harbor",
+      passed: gate.checks[1].passed,
+      name: "Harbor kept",
+      detail: `${signed(harborChange)} · allows up to ${signed(recipe.gateControl)}`,
+    },
+    {
+      id: "budget",
+      passed: serving.fits,
+      name: "Budget fits",
+      detail: `${(serving.totalBytes / GIB).toFixed(2)} of ${(HARDWARE.vramBytes / GIB).toFixed(0)} GiB`,
+    },
+  ];
 
   const set = (patch: Record<string, string | number>, message: string) => {
     setState(patch);
@@ -67,7 +93,13 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
     <div className="tg-lab ship-lab">
       <LabSurface label="Training recipe" className="ship-recipe">
         <SurfaceHeading kicker="Stages 1 to 3" title="Pretrain, adapt, align" />
-        <div className="ship-controls">
+        <div className="ship-stage-group">
+          <p className="ship-stage-tag">
+            <b>1</b>
+            <strong>Pretrain</strong>
+            <small>on harbor text</small>
+          </p>
+          <div className="ship-controls">
           <RangeControl
             label="Base training epochs"
             min={RECIPE_BOUNDS.baseEpochs[0]}
@@ -77,6 +109,15 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             format={(value) => `${value} epochs`}
             onChange={(value) => set({ baseEpochs: value }, `Base model trains for ${value} epochs on harbor text.`)}
           />
+          </div>
+        </div>
+        <div className="ship-stage-group">
+          <p className="ship-stage-tag">
+            <b>2</b>
+            <strong>Adapt</strong>
+            <small>to recipe text</small>
+          </p>
+          <div className="ship-controls">
           <RangeControl
             label="LoRA rank"
             min={RECIPE_BOUNDS.loraRank[0]}
@@ -106,6 +147,15 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
               set({ replay: value }, value === 0 ? "No harbor text mixed into adaptation." : `${value} harbor sentences mixed into adaptation.`)
             }
           />
+          </div>
+        </div>
+        <div className="ship-stage-group">
+          <p className="ship-stage-tag">
+            <b>3</b>
+            <strong>Align</strong>
+            <small>on preference pairs</small>
+          </p>
+          <div className="ship-controls">
           <RangeControl
             label="DPO steps"
             min={RECIPE_BOUNDS.dpoSteps[0]}
@@ -124,6 +174,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             format={(value) => value.toFixed(2)}
             onChange={(value) => set({ beta: value }, `DPO beta ${value.toFixed(2)}.`)}
           />
+          </div>
         </div>
         <p className="lab-note">
           Stage 1 trains the 900-weight character table on six harbor sentences. Stage 2 trains a low-rank adapter on the
@@ -135,6 +186,8 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
 
       <LabSurface label="Stage by stage" className="ship-stages">
         <SurfaceHeading kicker="Held-out text" title="What each stage did to the model" />
+        <p className="ship-figure-title">Change in held-out loss from the base model, in nats per character</p>
+        <StageTrack stages={stages} recipe={recipe} />
         <table className="ship-table">
           <caption>Held-out loss in nats per character, and benchmark items answered correctly out of six</caption>
           <thead>
@@ -231,10 +284,20 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             <li key={check.id} className={check.passed ? "is-pass" : "is-fail"}>
               <b>{check.passed ? "Pass" : "Fail"}</b>
               <strong>{check.id === "target" ? "Gains on the recipe text" : "Keeps the harbor text"}</strong>
+              <GateGauge
+                kind={check.id === "target" ? "recipe" : "harbor"}
+                change={check.id === "target" ? recipeChange : harborChange}
+                mark={check.id === "target" ? -recipe.gateTarget : recipe.gateControl}
+                passed={check.passed}
+                low={gaugeLow}
+                high={gaugeHigh}
+              />
               <span>{check.detail}</span>
             </li>
           ))}
         </ul>
+        <p className="ship-figure-title">The six-item quiz, for comparison: each count with its 95% range</p>
+        <QuizRanges base={first} shipped={last} />
         <p className="lab-note">{gate.advisory}</p>
       </LabSurface>
 
@@ -275,6 +338,8 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             onChange={(value) => set({ context: value }, `Context ${value} tokens.`)}
           />
         </div>
+        <p className="ship-figure-title">What compressing did to the toy’s held-out loss</p>
+        <CompressDrift aligned={stages[2]} shipped={last} />
         <div className="metric-row">
           <Metric label="Toy file at this format" value={formatBytes(shipping.toyBytes)} />
           <Metric label="Toy bits per weight" value={shipping.toyBitsPerWeight.toFixed(2)} />
@@ -295,6 +360,8 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           <Metric label="Streams that fit" value={`${serving.maxStreams}`} tone={serving.maxStreams >= recipe.users ? "forward" : "loss"} />
           <Metric label="Per user" value={`${tokens(serving.perUserTokensPerSecond)} tok/s`} />
         </div>
+        <p className="ship-figure-title">Memory of the imagined 8B-class deployment, in GiB</p>
+        <BudgetBar serving={serving} users={recipe.users} limitBytes={HARDWARE.vramBytes} overheadBytes={HARDWARE.overheadBytes} />
         <div className={`tg-callout ${serving.fits ? "is-quiet" : "is-warning"}`}>
           <strong>
             {serving.fits
@@ -316,6 +383,25 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           title={release.verdict === "ship" ? "Ship it" : "Hold the release"}
           aside={<span className={`tg-badge ${release.verdict === "ship" ? "" : "is-warning"}`.trim()}>{release.verdict === "ship" ? "Verdict: ship" : "Verdict: hold"}</span>}
         />
+        <ol
+          className="ship-verdict"
+          aria-label={`Three conditions decide the verdict. ${conditions.map((check) => `${check.name}: ${check.passed ? "pass" : "fail"}`).join(". ")}. Verdict: ${release.verdict}.`}
+        >
+          {conditions.map((check) => (
+            <li key={check.id} className={check.passed ? "is-pass" : "is-fail"}>
+              <b>{check.passed ? "✓ Pass" : "✕ Fail"}</b>
+              <strong>{check.name}</strong>
+              <span>{check.detail}</span>
+            </li>
+          ))}
+          <li className={`ship-verdict__out ${release.verdict === "ship" ? "is-pass" : "is-fail"}`}>
+            <b>Verdict</b>
+            <strong>{release.verdict === "ship" ? "Ship" : "Hold"}</strong>
+            <span>
+              {release.verdict === "ship" ? "all three hold" : `${conditions.filter((check) => !check.passed).length} of 3 failed`}
+            </span>
+          </li>
+        </ol>
         <dl className="ship-report-list">
           <div>
             <dt>Artifact</dt>

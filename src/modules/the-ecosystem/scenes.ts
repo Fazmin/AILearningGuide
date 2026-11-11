@@ -11,7 +11,7 @@ const scenes: LabScene[] = [
     id: "base-and-fine-tune",
     sections: ["Base model and fine-tune", "What it is"],
     title: "Base model, no fine-tunes",
-    look: "Read the Base model and Fine-tunes rows at the top of the model card, before any of the controls.",
+    look: "Read the Base model and Fine-tunes rows, the first two under the box picture, before using any of the controls.",
     step: 0,
     focus: "Sample model card",
   },

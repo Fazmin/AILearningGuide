@@ -10,6 +10,7 @@ const cardInfo: ModuleCardInfo = {
       "`Student size` from rank 1 to 12, printed as `rank r · 60r weights`.",
       "`Distillation temperature` from 0.5 to 6, and `Student epochs` from 1 to 40.",
       "Metrics `Student loss` (hard-label corpus cross-entropy of the selected student), `Teacher loss`, and `KL to teacher`, plus a callout comparing the two students' KL.",
+      "A chart of the soft-label student's KL to the teacher at every temperature stop, for the current rank and epochs: a dashed level line for the one-hot student, a ring at your temperature, and a mark at the closest stop. Its other points fill in a moment after you change the size or the epochs.",
     ],
     howItWorks: [
       "Soft labels minimize T² · KL(softmax(teacher/T) ‖ softmax(student/T)) at every corpus position. Its gradient with respect to the student's logits is T · (student_T − teacher_T), which keeps step sizes comparable across temperatures.",
@@ -64,8 +65,8 @@ const cardInfo: ModuleCardInfo = {
       "For one context character, three next-character distributions side by side: the one-hot labels averaged over the corpus (the frequencies a hard-label student chases), the teacher at the current temperature (the soft target), and the selected student at T = 1.",
     whatYouSee: [
       "`Context character`: ␣, h, t, e, o, or s, and a kicker counting how many different characters follow it in the corpus.",
-      "For the teacher's ten most likely next characters plus a `rest` row: grey bar for label frequency, accent bar for the teacher at T, blue bar for the student, and the three percentages.",
-      "Metrics for the teacher's probability mass on next characters that never follow this context in the corpus, at T = 1 and at the current T.",
+      "For the teacher's ten most likely next characters plus a `rest` row: grey bar for label frequency, accent bar for the teacher at T, blue bar for the student, and the three percentages in columns of the same order. Rows for characters that never follow this context in the corpus are shaded.",
+      "Two readouts, each with a bar on a 0 to 100% scale, for the teacher's probability mass on next characters that never follow this context in the corpus, at T = 1 and at the current T.",
     ],
     howItWorks: [
       "Label frequency counts corpus bigrams starting with the context. Teacher and student bars are row softmaxes of their logit tables.",
@@ -92,7 +93,8 @@ const cardInfo: ModuleCardInfo = {
     whatYouSee: [
       "`Pruned share` from 0% to 90%, reading `fixed at 50% by 2:4` in 2:4 mode.",
       "`Pruning mode`: `Unstructured`, `2:4 semi-structured`, or `Structured rows`.",
-      "Samples from the teacher and the pruned table: prompt “the ”, temperature 0.7, 68 characters, seed 4, with a count of differing characters.",
+      "Samples from the teacher and the pruned table: prompt “the ”, temperature 0.7, 68 characters, seed 4, with a count of differing characters and each differing character marked.",
+      "Three small pictures of the zero patterns, `Zeros anywhere`, `Two of every four`, and `Whole rows`, each with what it saves; the selected mode's picture is outlined.",
     ],
     howItWorks: [
       "Unstructured zeroes the round(share × 900) smallest-magnitude weights anywhere.",
@@ -105,7 +107,7 @@ const cardInfo: ModuleCardInfo = {
     ],
     notice: [
       "Identical samples at a non-zero share are possible: the removed weights may be ones this draw never needed.",
-      "The note under the samples is the serving distinction: scattered zeros do not skip work, a 2:4 pattern can on supporting hardware, and removed rows shrink the matrix.",
+      "The three pictures under the samples are the serving distinction: scattered zeros do not skip work, a 2:4 pattern can on supporting hardware, and removed rows shrink the matrix.",
     ],
     limits: [
       "In this lab: nothing is timed, so the speed claims are stated from how dense and sparse kernels work, not measured.",
@@ -118,8 +120,8 @@ const cardInfo: ModuleCardInfo = {
     summary:
       "Perplexity of the teacher with a rising share of weights set to zero, for unstructured and whole-row pruning, with the fixed 2:4 point at 50%, and a 30 × 30 map of which weights the current setting kept.",
     whatYouSee: [
-      "A chart of share removed (0–90%) against perplexity: solid unstructured, dashed structured, a diamond for 2:4, and a marker at the current share.",
-      "A mask grid: rows are context characters, columns next characters. Filled cells are kept and shaded by magnitude; empty outlined cells are zero.",
+      "A chart of share removed (0–90%) against perplexity: solid unstructured, dashed structured, a diamond for 2:4, and a marker at the current share with a ring on the current mode's curve and a label giving your setting's share and perplexity.",
+      "A mask grid: rows are context characters, columns next characters, each labelled with its character. Filled cells are kept and shaded by magnitude; empty outlined cells are zero.",
       "Metrics `Unpruned`, `Pruned`, and `Rows removed`.",
     ],
     howItWorks: [
@@ -146,7 +148,7 @@ const cardInfo: ModuleCardInfo = {
       "The student from the cards above is stored as its two factors, pruned by an importance score, then quantized, and its stored size and corpus perplexity are re-measured after each stage. A second bar list holds the pruned share fixed and compares three importance scores: magnitude, activation-weighted, and measured ablation.",
     whatYouSee: [
       "`Importance score` (`Magnitude`, `Activation-weighted`, `Measured ablation`), `Share pruned from the student` (0 to 90%), and `Final bit width` (2 to 8). The student itself comes from Student controls.",
-      "A bar list with one row per stage, `Teacher`, `Distilled student`, `Pruned`, and `Quantized`: bar length is stored bytes, and the detail line gives the stored values, bits each, and perplexity with its change on the teacher's 6.600. The badge is the teacher's size over the final size.",
+      "A bar list with one row per stage, `Teacher`, `Distilled student`, `Pruned`, and `Quantized`: bar length is stored bytes, a mark beside it places the perplexity on its own scale with its change on the teacher's 6.600, and the detail line gives the stored values and bits each. Between rows, the step taken is named with the bytes it saved and the perplexity it cost. The badge is the teacher's size over the final size.",
       "A second bar list with the three scores' perplexity after the prune stage at the current share, drawn as the rise over the unpruned student, with the passes each score needs to compute.",
       "Metrics `Final perplexity`, `Final size`, `Passes to score`, and `Values kept`.",
     ],

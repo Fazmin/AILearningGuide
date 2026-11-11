@@ -7,7 +7,7 @@ const cardInfo: ModuleCardInfo = {
       "Four complete training runs of the 30 × 30 bigram table on the first six Harbor sentences, one per optimizer, each at its own learning rate, scored at every epoch on that training text and on two held-out sentences no run ever sees. Only the optimizer and its rate differ between the runs.",
     whatYouSee: [
       "Four sliders, `SGD rate`, `Momentum rate`, `AdamW rate` and `Muon rate`, each with nine notches from a tenth of that optimizer's default to ten times it. The defaults are 1, 0.1, 0.03 and 0.05.",
-      "A `Curves` switch between `Training loss` and `Held-out loss`, and a chart of that loss at each of the 26 epoch boundaries for all four runs: SGD solid, Momentum dashed, AdamW dotted and Muon dash-dot, each in its own colour, with the optimizer chosen on `Step size per row` drawn thicker. A dotted line marks ln 30 = 3.401, a model that knows nothing.",
+      "A `Curves` switch between `Training loss` and `Held-out loss`, and a chart of that loss at each of the 26 epoch boundaries for all four runs: SGD solid, Momentum dashed, AdamW dotted and Muon dash-dot, each in its own colour, with the optimizer chosen on `Step size per row` drawn thicker. Each line is named where it ends, with its final loss. A dotted line marks ln 30 = 3.401, a model that knows nothing.",
       "A table with each run's rate, final training loss and held-out loss, the lowest held-out value marked. The AdamW row is renamed `Adam + L2` when decay goes into the gradient, and lists any setting changed on the Adam cards.",
       "Three metrics: `Lowest held out`, `Lowest training loss`, and `Held-out spread`, the highest held-out loss minus the lowest.",
     ],
@@ -68,7 +68,8 @@ const cardInfo: ModuleCardInfo = {
       "The AdamW run's batch loss over its first 60 steps, with bias correction on or off and an optional warmup, plus the largest single-weight change on step 1. With the correction, Adam's first step equals the rate for every weight that has a gradient; without it, the step is about 3.16 times the rate.",
     whatYouSee: [
       "A `Bias correction` switch, On or Off, and a `Warmup` slider from off to 30% of the run in 5% notches, with its length in steps. A badge repeats the AdamW rate, which is set on `Optimizer race`.",
-      "A chart of batch loss for steps 1 to 60: solid for the current run, dashed for the same run with bias correction flipped, a dotted line at ln 30 = 3.401, and a shaded strip over the warmup.",
+      "A chart of batch loss for steps 1 to 60: solid for the current run, dashed for the same run with bias correction flipped, a dotted line at ln 30 = 3.401, and a shaded strip over the warmup. Each line is named at its right end.",
+      "Two bars on one scale for the first-step move of the current run and of the run with bias correction flipped, each printed as a multiple of the rate, with a dashed line at the rate itself.",
       "Three metrics: `First-step move`, the largest change any weight made on step 1; `Early peak loss`, the highest batch loss in steps 1 to 60; and the run's `Held out` loss.",
     ],
     howItWorks: [
@@ -97,7 +98,7 @@ const cardInfo: ModuleCardInfo = {
     whatYouSee: [
       "A `Weight decay` slider with notches off, 0.0001, 0.0003, 0.001, 0.003, 0.01, 0.03, 0.1 and 0.3, and a `Decay mode` switch: `L2 in gradient` or `Decoupled`.",
       "Three metrics: `Weight norm`, the length of all 900 trained weights taken as one vector; `Held out`; and `Shrink per step`.",
-      "A table of three rows, space, k and q, with the batches each appeared in and its size after training as a share of the same run without decay, and a callout naming how the current mode pulls.",
+      "A table of three rows, space, k and q, with the batches each appeared in and its size after training as a share of the same run without decay, drawn as a bar on a log scale from 0.1% to 100%, and a callout naming how the current mode pulls.",
     ],
     howItWorks: [
       "Decoupled: each step multiplies every weight by 1 − rate × decay, outside the moment arithmetic, as PyTorch's AdamW does (the trainer's `adamw`). L2 in gradient: decay × weight is added to the gradient, which then feeds both moments (the trainer's `adam`).",
@@ -155,6 +156,7 @@ const cardInfo: ModuleCardInfo = {
       "`Tune each` trains every optimizer at five rates, a tenth, three tenths, one, three and ten times its default, with every other setting at the lab's defaults, and keeps the rate with the lowest held-out loss. It turns the race at defaults into a comparison of each optimizer at its best rate on the same grid.",
     whatYouSee: [
       "A `Tune each` button, a progress bar while the 20 runs train, and a badge counting the runs done.",
+      "A chart of held-out loss against the rate multiple, one line per optimizer, with a ring on each line's lowest point.",
       "A table with a row per optimizer and a column per multiple of its default. Each cell is the held-out loss with its rate underneath, and the lowest in each row is marked.",
       "Three metrics, `Tuned winner`, `SGD, default to tuned` and `AdamW, default to tuned`, and a callout listing every optimizer's best against the noise of the shuffle seed.",
     ],
@@ -183,7 +185,7 @@ const cardInfo: ModuleCardInfo = {
     summary:
       "How many floats each optimizer keeps per weight between steps, counted from the trainer for this lab's 900 weights and multiplied out for a 7.5-billion-weight model. The lab column is measured from the trainer; the large-model column is arithmetic with the course's memory helper.",
     whatYouSee: [
-      "A table with each optimizer's floats per weight, the bytes for this lab's 900 weights, and the bytes for 7.5 billion weights, with the optimizer chosen on `Step size per row` highlighted.",
+      "A table with each optimizer's floats per weight, drawn as one square per float, the bytes for this lab's 900 weights, and the bytes for 7.5 billion weights as a bar, with the optimizer chosen on `Step size per row` highlighted.",
       "Two metrics: `AdamW over SGD, 7.5 billion`, the extra state AdamW keeps, and `Mixed-precision Adam, all model states`.",
     ],
     howItWorks: [

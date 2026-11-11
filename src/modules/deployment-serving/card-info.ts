@@ -37,8 +37,8 @@ const cardInfo: ModuleCardInfo = {
     summary:
       "A stacked bar of the configuration's memory against a 24 GiB limit: weights, a KV cache divided into one slice per stream, and a flat 1 GiB for activations and runtime buffers. Streams that fit is how many full-context streams the leftover memory can hold.",
     whatYouSee: [
-      "A bar on a GiB axis with segments for weights, KV cache, and activations + runtime, thin dividers between streams inside the KV segment, a heavy line at the 24 GiB limit, and a dashed outline on any overflow.",
-      "A legend with each segment's size, and metrics `Per token, per stream`, `Per stream at this context`, `Streams that fit`, and `Headroom`.",
+      "A bar on a GiB axis with segments for activations + runtime (labelled `runtime`), weights, and KV cache, each labelled with its size, thin dividers between streams inside the KV segment, dashed slots for the streams that would still fit, a heavy line at the 24 GiB limit, and a dashed outline on any overflow.",
+      "Metrics `Per token, per stream`, `Per stream at this context`, `Streams that fit`, and `Headroom`.",
       "A callout that names the headroom or the overflow.",
     ],
     howItWorks: [
@@ -66,7 +66,8 @@ const cardInfo: ModuleCardInfo = {
     summary:
       "Two panels against concurrency from one formula: a decode step reads every weight once plus every stream's cache, then emits one token per stream. The shaded region is where the KV cache no longer fits in memory.",
     whatYouSee: [
-      "Top panel: total tokens per second across all streams. Bottom panel: tokens per second each user sees. Both have a marker at the current user count.",
+      "A timeline drawn to scale. Each block on the GPU lane is one decode step, split into the time to read the weights and the time to read the caches it serves, and each dot is a token landing in a stream. Up to five streams are drawn, and an arrow marks the wait between one user's tokens.",
+      "Below it, a top panel of total tokens per second across all streams and a bottom panel of tokens per second each user sees. Both have a marker at the current user count, labelled with its value.",
       "A shaded region past the last stream count that fits, labelled with the limit.",
       "Metrics `Total`, `Per user`, `Time per output token`, and `Time to first token`, and a paragraph of stated assumptions.",
     ],
@@ -96,7 +97,7 @@ const cardInfo: ModuleCardInfo = {
     whatYouSee: [
       "`Hardware` presets (`Lab default`, `RTX 4090`, `H100 SXM`, `M4 Max laptop`, `CPU box`) that set four editable inputs, `Memory`, `Memory bandwidth`, `Compute`, and `Price`, plus `Busy share of each hour`. No preset is pressed once you edit a number, and the note under them gives each figure's source and date.",
       "Switches for `Paged attention` and `Speculative decoding`; `KV cache type` (`fp16`, `q8_0`, `q4_0`, with bytes per value); sliders for `Average fill of the reserved context`, `Acceptance rate` (α), `Draft length` (γ), and `Draft cost` (c).",
-      "Metrics `Streams that fit`, `Per user`, `Total`, and `Cost per million tokens` for your selection, and a bar list with `No levers`, each lever alone, and `Your selection`: bar length is total tokens per second, the label is the cost, and the detail line gives streams that fit and speeds.",
+      "Metrics `Streams that fit`, `Per user`, `Total`, and `Cost per million tokens` for your selection, and a bar list with `No levers`, each lever alone, and `Your selection`: each row has three bars, for streams that fit, tokens per second for each user, and total tokens per second, then its cost per million tokens. A tick on each bar marks the `No levers` value.",
     ],
     howItWorks: [
       "Memory = weights + users × (KV bytes per stream + state) + 1 GiB. KV bytes per stream = 2 × cache layers × KV heads × head dimension × bytes per value × tokens held. Tokens held is the whole context, or with paging ceil(fill × context / 16) × 16.",

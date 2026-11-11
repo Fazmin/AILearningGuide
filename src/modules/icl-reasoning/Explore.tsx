@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { Fragment, type CSSProperties, type ReactNode } from "react";
 import {
   BarList,
   LabSurface,
@@ -28,6 +28,8 @@ import {
   MAX_HOPS,
   MIN_BUDGET,
   MIN_HOPS,
+  START_NODE,
+  follow,
   promptLines,
   runScratchpad,
   sweepHops,
@@ -39,6 +41,37 @@ const asNumber = (state: ModuleContext["state"], key: string, fallback: number) 
   typeof state[key] === "number" && Number.isFinite(state[key]) ? state[key] : fallback;
 const clamp = (value: number, low: number, high: number) => Math.min(high, Math.max(low, value));
 const pct = (value: number) => `${Math.round(value * 100)}%`;
+
+/** A run of lookups drawn as nodes joined by arrows. */
+function Hops({ nodes, tone = "" }: { nodes: ReadonlyArray<string>; tone?: string }) {
+  return (
+    <>
+      {nodes.map((node, index) => (
+        <Fragment key={index}>
+          {index > 0 && <i className="icl-hop" aria-hidden="true" />}
+          <span className={`icl-node ${tone} ${index === 0 ? "is-from" : ""} ${index === nodes.length - 1 && index > 0 ? "is-reached" : ""}`.trim()}>
+            {index > 0 && <span className="sr-only">{ARROW} </span>}
+            {node}
+          </span>
+        </Fragment>
+      ))}
+    </>
+  );
+}
+
+/** One row of the sweep: k hop cells, filled where a pass covered them, with a gap between passes. */
+function HopCells({ hops, budget, covered }: { hops: number; budget: number; covered: number }) {
+  return (
+    <span className="icl-cells" aria-hidden="true">
+      {Array.from({ length: hops }, (_, index) => (
+        <i
+          key={index}
+          className={`${index < covered ? "is-done" : "is-left"} ${index > 0 && index % budget === 0 ? "is-new-pass" : ""}`.trim()}
+        />
+      ))}
+    </span>
+  );
+}
 
 export default function Explore({ state, setState, narrate }: ModuleContext) {
   const shown = clamp(Math.round(asNumber(state, "examples", 2)), 0, EXAMPLES.length);
@@ -59,10 +92,50 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
   const tokens = promptTokens(shown, instruction, query);
   const head = inductionHead(tokens);
   const headTop = head.output[0];
+  const last = tokens.length - 1;
+
+  /* Group the tokens so each earlier "… →, answer" the head matched is bracketed like the "query →" it is matching. */
+  const tokenChip = (index: number) => {
+    const weight = index < head.weights.length ? head.weights[index] : 0;
+    const isLast = index === last;
+    return (
+      <span
+        key={index}
+        className={`icl-token ${isLast ? "is-current" : ""} ${tokens[index] === NEWLINE ? "is-newline" : ""}`.trim()}
+        style={{ "--icl-weight": Math.min(1, weight * 2.2) } as CSSProperties}
+      >
+        <b>{tokens[index]}</b>
+        <i>{isLast ? "now" : weight >= 0.005 ? pct(weight) : ""}</i>
+      </span>
+    );
+  };
+  const tokenGroups: ReactNode[] = [];
+  for (let index = 0; index < tokens.length; ) {
+    const wordMatch = index + 2 < last && head.scores[index + 2] === 2;
+    const arrowMatch = index + 1 < last && head.scores[index + 1] >= 1;
+    const isQuery = index === last - 1;
+    const size = wordMatch ? 3 : arrowMatch || isQuery ? 2 : 1;
+    const chips = Array.from({ length: size }, (_, offset) => tokenChip(index + offset));
+    if (size === 1) tokenGroups.push(chips[0]);
+    else
+      tokenGroups.push(
+        <span
+          key={`group-${index}`}
+          className={`icl-match ${isQuery ? "is-query" : wordMatch ? "is-word" : "is-arrow"}`}
+        >
+          <span>{chips}</span>
+          <em>{isQuery ? "looking for this" : wordMatch ? `same word and ${ARROW}: copy` : `same ${ARROW}: copy`}</em>
+        </span>,
+      );
+    index += size;
+  }
 
   const run = runScratchpad(hops, budget, padOn);
   const sweep = sweepHops(budget);
   const scratchTokens = run.written.slice(0, -1);
+  const fullPath = follow(START_NODE, hops);
+  const lastPass = run.passes[run.passes.length - 1];
+  const unreached = fullPath.slice(lastPass.hopsDone);
 
   return (
     <div className="tg-lab tg-lab--hero icl-lab a08-lab">
@@ -73,24 +146,24 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           aside={<span className="tg-badge">{`${surviving.length} of ${RULES.length} rules fit`}</span>}
         />
         <div className="icl-prompt-layout">
-          <div>
-            <pre className="icl-prompt" aria-label="Prompt text the model would read">
-              {instruction && (
-                <span className="icl-prompt__instruction">
-                  {INSTRUCTION}
-                  {"\n"}
-                </span>
-              )}
-              {EXAMPLES.slice(0, shown).map((example) => (
-                <span key={example.word}>
-                  {example.word} {ARROW} {example.answer}
-                  {"\n"}
-                </span>
-              ))}
-              <span className="icl-prompt__query">
-                {query} {ARROW} <b>?</b>
+          <pre className="icl-prompt" aria-label="Prompt text the model would read">
+            {instruction && (
+              <span className="icl-prompt__instruction">
+                {INSTRUCTION}
+                {"\n"}
               </span>
-            </pre>
+            )}
+            {EXAMPLES.slice(0, shown).map((example) => (
+              <span key={example.word}>
+                {example.word} {ARROW} {example.answer}
+                {"\n"}
+              </span>
+            ))}
+            <span className="icl-prompt__query">
+              {query} {ARROW} <b>?</b>
+            </span>
+          </pre>
+          <div className="icl-ask-controls">
             <div className="icl-examples-control">
               <RangeControl
                 label="Examples"
@@ -124,72 +197,88 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
               />
             </div>
           </div>
-          <div>
-            <table className="icl-rules">
-              <caption className="sr-only">Candidate rules checked against each shown example</caption>
-              <thead>
-                <tr>
-                  <th scope="col">Rule</th>
-                  {EXAMPLES.slice(0, shown).map((example) => (
-                    <th scope="col" key={example.word}>
-                      {example.word}
-                      <small>= {example.answer}</small>
-                    </th>
-                  ))}
-                  <th scope="col">
-                    {query}
-                    <small>would be</small>
+        </div>
+        <div className="icl-rules-scroll">
+          <table className="icl-rules icl-rule-matrix">
+            <caption className="sr-only">Candidate rules checked against each shown example</caption>
+            <thead>
+              <tr>
+                <th scope="col">Rule</th>
+                {EXAMPLES.slice(0, shown).map((example) => (
+                  <th scope="col" key={example.word}>
+                    {example.word}
+                    <small>= {example.answer}</small>
                   </th>
-                  <th scope="col">Weight</th>
-                </tr>
-              </thead>
-              <tbody>
-                {RULES.map((rule, index) => {
-                  const miss = firstMiss(rule, shown);
-                  const alive = posterior[index] > 0;
-                  return (
-                    <tr key={rule.id} className={alive ? "is-alive" : "is-out"}>
-                      <th scope="row">{rule.name}</th>
-                      {EXAMPLES.slice(0, shown).map((example, column) => {
-                        const value = rule.apply(example.word);
-                        const ok = value === example.answer;
-                        return (
-                          <td key={example.word} className={ok ? "is-ok" : column === miss ? "is-miss" : "is-after"}>
+                ))}
+                <th scope="col">
+                  {query}
+                  <small>would be</small>
+                </th>
+                <th scope="col">Weight</th>
+              </tr>
+            </thead>
+            <tbody>
+              {RULES.map((rule, index) => {
+                const miss = firstMiss(rule, shown);
+                const alive = posterior[index] > 0;
+                return (
+                  <tr key={rule.id} className={alive ? "is-alive" : "is-out"}>
+                    <th scope="row">{rule.name}</th>
+                    {EXAMPLES.slice(0, shown).map((example, column) => {
+                      const value = rule.apply(example.word);
+                      const ok = value === example.answer;
+                      return (
+                        <td key={example.word} className={ok ? "is-ok" : column === miss ? "is-miss" : "is-after"}>
+                          <span>
                             {value} {ok ? "✓" : "✗"}
-                          </td>
-                        );
-                      })}
-                      <td className="icl-rules__answer">{rule.apply(query)}</td>
-                      <td>
-                        {alive
-                          ? pct(posterior[index])
-                          : instruction && !rule.named && miss === -1
-                            ? "ruled out by the instruction"
-                            : `out at ${EXAMPLES[miss]?.word ?? "the instruction"}`}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-            <BarList
-              label={`Answer distribution for ${query}`}
-              max={1}
-              items={distribution.map((entry) => ({
+                          </span>
+                        </td>
+                      );
+                    })}
+                    <td className="icl-rules__answer">{rule.apply(query)}</td>
+                    <td>
+                      {alive ? (
+                        <span className="icl-weight">
+                          <i aria-hidden="true">
+                            <b style={{ width: pct(posterior[index]) }} />
+                          </i>
+                          {pct(posterior[index])}
+                        </span>
+                      ) : instruction && !rule.named && miss === -1 ? (
+                        "ruled out by the instruction"
+                      ) : (
+                        `out at ${EXAMPLES[miss]?.word ?? "the instruction"}`
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <div className="icl-answer-layout">
+          <BarList
+            label={`Answer distribution for ${query}`}
+            max={1}
+            items={distribution.map((entry) => {
+              const backers = RULES.filter(
+                (rule, index) => posterior[index] > 0 && rule.apply(query) === entry.answer,
+              ).map((rule) => rule.name);
+              return {
                 id: String(entry.answer),
                 label: `${query} ${ARROW} ${entry.answer}`,
                 value: entry.probability,
                 display: pct(entry.probability),
-                tone: entry.answer === trueCount ? "forward" : "muted",
+                tone: entry.answer === trueCount ? ("forward" as const) : ("muted" as const),
                 emphasis: entry.answer === trueCount,
-                detail: entry.answer === trueCount ? "the letter count" : undefined,
-              }))}
-            />
-            <div className="metric-row">
-              <Metric label={`P(${query} ${ARROW} ${trueCount})`} value={pct(pTrue)} tone="forward" />
-              <Metric label="Rules still fitting" value={`${surviving.length}`} />
-              <Metric label="Weights changed" value="0" />
-            </div>
+                detail: `${entry.answer === trueCount ? "the letter count · " : ""}from ${backers.join(", ")}`,
+              };
+            })}
+          />
+          <div className="metric-row">
+            <Metric label={`P(${query} ${ARROW} ${trueCount})`} value={pct(pTrue)} tone="forward" />
+            <Metric label="Rules still fitting" value={`${surviving.length}`} />
+            <Metric label="Weights changed" value="0" />
           </div>
         </div>
         <p className="lab-note">
@@ -210,20 +299,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           role="img"
           aria-label={`Attention from the final arrow over ${tokens.length - 1} earlier tokens. The head predicts ${headTop.token} with ${pct(headTop.probability)}.`}
         >
-          {tokens.map((token, index) => {
-            const weight = index < head.weights.length ? head.weights[index] : 0;
-            const isLast = index === tokens.length - 1;
-            return (
-              <span
-                key={index}
-                className={`icl-token ${isLast ? "is-current" : ""} ${token === NEWLINE ? "is-newline" : ""}`.trim()}
-                style={{ "--icl-weight": Math.min(1, weight * 2.2) } as CSSProperties}
-              >
-                <b>{token}</b>
-                <i>{isLast ? "now" : weight >= 0.005 ? pct(weight) : ""}</i>
-              </span>
-            );
-          })}
+          {tokenGroups}
         </div>
         <BarList
           label="Induction head's predicted next token"
@@ -253,37 +329,37 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           aside={<span className="tg-badge">{run.correct ? "answer right" : "answer wrong"}</span>}
         />
         <div className="icl-prompt-layout">
+          <div className="icl-scratch-controls">
+            <RangeControl
+              label="Hops k"
+              min={MIN_HOPS}
+              max={MAX_HOPS}
+              step={1}
+              value={hops}
+              onChange={(value) => setState({ hops: value })}
+            />
+            <RangeControl
+              label="Per-pass budget b"
+              min={MIN_BUDGET}
+              max={MAX_BUDGET}
+              step={1}
+              value={budget}
+              onChange={(value) => setState({ budget: value })}
+            />
+            <SegmentedControl
+              label="Scratchpad"
+              value={padOn ? "on" : "off"}
+              options={[
+                { value: "off", label: "off" },
+                { value: "on", label: "on" },
+              ]}
+              onChange={(value) => {
+                setState({ scratchpad: value });
+                narrate(`Scratchpad ${value}.`);
+              }}
+            />
+          </div>
           <div>
-            <div className="icl-scratch-controls">
-              <RangeControl
-                label="Hops k"
-                min={MIN_HOPS}
-                max={MAX_HOPS}
-                step={1}
-                value={hops}
-                onChange={(value) => setState({ hops: value })}
-              />
-              <RangeControl
-                label="Per-pass budget b"
-                min={MIN_BUDGET}
-                max={MAX_BUDGET}
-                step={1}
-                value={budget}
-                onChange={(value) => setState({ budget: value })}
-              />
-              <SegmentedControl
-                label="Scratchpad"
-                value={padOn ? "on" : "off"}
-                options={[
-                  { value: "off", label: "off" },
-                  { value: "on", label: "on" },
-                ]}
-                onChange={(value) => {
-                  setState({ scratchpad: value });
-                  narrate(`Scratchpad ${value}.`);
-                }}
-              />
-            </div>
             <pre className="icl-prompt" aria-label="The context the model reads: the prompt, then the tokens it has written">
               {promptLines(hops).join("\n")}
               {"\n"}
@@ -299,47 +375,74 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
               </span>
             </pre>
           </div>
-          <div>
-            <table className="icl-rules icl-scratch-passes">
-              <caption className="sr-only">Each forward pass, where it starts, its silent lookups, and the token it writes</caption>
-              <thead>
-                <tr>
-                  <th scope="col">Pass</th>
-                  <th scope="col">Starts from</th>
-                  <th scope="col">
-                    Silent lookups
-                    <small>not written down</small>
-                  </th>
-                  <th scope="col">Writes</th>
+        </div>
+        <div className="icl-rules-scroll">
+          <table className="icl-rules icl-scratch-passes">
+            <caption className="sr-only">Each forward pass, where it starts, its silent lookups, and the token it writes</caption>
+            <thead>
+              <tr>
+                <th scope="col">Pass</th>
+                <th scope="col">Starts from</th>
+                <th scope="col">
+                  Silent lookups
+                  <small>not written down · at most {budget} per pass</small>
+                </th>
+                <th scope="col">Writes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {run.passes.map((pass) => (
+                <tr key={pass.index} className="is-alive">
+                  <th scope="row">{pass.index}</th>
+                  <td>
+                    <span className={`icl-node is-start ${pass.readFrom === "prompt" ? "" : "is-read-back"}`.trim()}>
+                      {pass.from}
+                    </span>{" "}
+                    · {pass.readFrom === "prompt" ? "prompt" : "read back"}
+                  </td>
+                  <td>
+                    <span className="icl-hops">
+                      <Hops nodes={pass.lookups} />
+                      {Array.from({ length: budget - (pass.lookups.length - 1) }, (_, index) => (
+                        <Fragment key={index}>
+                          <i className="icl-hop is-spare" aria-hidden="true" />
+                          <span className="icl-node is-spare" aria-hidden="true" />
+                        </Fragment>
+                      ))}
+                      {pass.outOfBudget ? <em>{` · budget used up after ${budget}`}</em> : null}
+                    </span>
+                  </td>
+                  <td className="icl-rules__answer">
+                    <span className={`icl-node is-written is-${pass.kind}`}>{pass.writes}</span> · {pass.kind}
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {run.passes.map((pass) => (
-                  <tr key={pass.index} className="is-alive">
-                    <th scope="row">{pass.index}</th>
-                    <td>
-                      {pass.from} · {pass.readFrom === "prompt" ? "prompt" : "read back"}
-                    </td>
-                    <td>
-                      {pass.lookups.join(` ${ARROW} `)}
-                      {pass.outOfBudget ? ` · budget used up after ${budget}` : ""}
-                    </td>
-                    <td className="icl-rules__answer">
-                      {pass.writes} · {pass.kind}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <div className="metric-row">
-              <Metric label="Answer" value={run.answer} tone={run.correct ? "forward" : "loss"} />
-              <Metric label="Correct answer" value={run.target} />
-              <Metric label="Passes (one token each)" value={`${run.tokens}`} />
-            </div>
-          </div>
+              ))}
+              {unreached.length > 1 && (
+                <tr className="icl-unreached">
+                  <th scope="row">
+                    <span className="sr-only">Not reached</span>
+                  </th>
+                  <td>never run</td>
+                  <td>
+                    <span className="icl-hops">
+                      <Hops nodes={unreached} tone="is-ghost" />
+                    </span>
+                  </td>
+                  <td>
+                    <span className="icl-node is-target">{run.target}</span> · correct
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        <div className="metric-row">
+          <Metric label="Answer" value={run.answer} tone={run.correct ? "forward" : "loss"} />
+          <Metric label="Correct answer" value={run.target} />
+          <Metric label="Passes (one token each)" value={`${run.tokens}`} />
         </div>
         <div className="icl-scratch-sweep" style={{ marginTop: "0.9rem" }}>
-          <table className="icl-rules">
+          <table className="icl-rules icl-sweep">
             <caption className="sr-only">Every hop count at the current per-pass budget, with and without the scratchpad</caption>
             <thead>
               <tr>
@@ -350,11 +453,11 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
                 </th>
                 <th scope="col">
                   No scratchpad
-                  <small>one pass</small>
+                  <small>one pass · filled = hops it covers</small>
                 </th>
                 <th scope="col">
                   Scratchpad
-                  <small>and its cost</small>
+                  <small>and its cost · a gap = a new pass</small>
                 </th>
               </tr>
             </thead>
@@ -364,10 +467,21 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
                   <th scope="row">{row.hops}</th>
                   <td>{row.target}</td>
                   <td className={row.without.correct ? "is-ok" : "is-miss"}>
-                    {row.without.answer} {row.without.correct ? "✓" : "✗"}
+                    <span className="icl-sweep__cell">
+                      <HopCells hops={row.hops} budget={MAX_HOPS} covered={Math.min(row.hops, budget)} />
+                      <span>
+                        {row.without.answer} {row.without.correct ? "✓" : "✗"}
+                      </span>
+                    </span>
                   </td>
                   <td className={row.with.correct ? "is-ok" : "is-miss"}>
-                    {row.with.answer} {row.with.correct ? "✓" : "✗"} · {row.with.passes} {row.with.passes === 1 ? "pass" : "passes"}
+                    <span className="icl-sweep__cell">
+                      <HopCells hops={row.hops} budget={budget} covered={row.hops} />
+                      <span>
+                        {row.with.answer} {row.with.correct ? "✓" : "✗"} · {row.with.passes}{" "}
+                        {row.with.passes === 1 ? "pass" : "passes"}
+                      </span>
+                    </span>
                   </td>
                 </tr>
               ))}

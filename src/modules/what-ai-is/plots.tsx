@@ -1,5 +1,5 @@
 import { useId } from "react";
-import { B_RANGE, FIT_POINTS, W_RANGE, contour, gradient, leastSquares, residuals, STEP_SIZE } from "./fit";
+import { B_RANGE, W_RANGE, contour, gradient, leastSquares, residuals, STEP_SIZE } from "./fit";
 
 const scale = (d0: number, d1: number, r0: number, r1: number) => (value: number) =>
   r0 + ((value - d0) / (d1 - d0)) * (r1 - r0);
@@ -19,6 +19,12 @@ export function DataPlot({ w, b }: { w: number; b: number }) {
   const ys = scale(0, 4, bottom, top);
   const rows = residuals(w, b);
   const unitY = ys(0) - ys(1);
+  // Name the line above its right-hand end; if it leaves through the top, name it where it leaves.
+  const exitX = w > 1e-6 ? Math.min(3, (4 - b) / w) : 3;
+  const lineLabel = {
+    x: Math.max(left + 100, xs(exitX) - 16),
+    y: Math.max(top + 9, Math.min(bottom - 6, ys(w * exitX + b) - 7)),
+  };
   return (
     <svg
       className="gw-plot wai-plot"
@@ -81,19 +87,43 @@ export function DataPlot({ w, b }: { w: number; b: number }) {
           />
         ))}
       </g>
-      {FIT_POINTS.map((point) => (
-        <g key={point.x}>
-          <circle className="gw-dot is-filled" cx={xs(point.x)} cy={ys(point.y)} r="4" />
+      {rows.map((row) => {
+        // The residual's value, printed past its square on the side the line is not on.
+        const side = Math.abs(row.residual) * unitY;
+        if (side < 9) return null;
+        return (
           <text
-            className="gw-note"
-            x={xs(point.x) + (point.x > 2 ? -8 : 8)}
-            y={ys(point.y) - 7}
-            textAnchor={point.x > 2 ? "end" : "start"}
+            key={`rv-${row.x}`}
+            className="wai-miss"
+            x={Math.min(xs(row.x) + side + 4, right - 26)}
+            y={Math.min(bottom - 4, Math.max(top + 9, (ys(row.y) + ys(row.prediction)) / 2 + 3.5))}
           >
-            ({point.x}, {point.y})
+            {row.residual > 0 ? "+" : "−"}
+            {Math.abs(row.residual).toFixed(2)}
           </text>
-        </g>
-      ))}
+        );
+      })}
+      {rows.map((row) => {
+        // The label sits on the side of the dot the line is not on, so it never covers the residual.
+        const below = row.prediction >= row.y;
+        const y = Math.min(bottom - 4, Math.max(top + 9, ys(row.y) + (below ? 16 : -9)));
+        return (
+          <g key={row.x}>
+            <circle className="gw-dot is-filled" cx={xs(row.x)} cy={ys(row.y)} r="4" />
+            <text
+              className="gw-note wai-halo"
+              x={xs(row.x) + (row.x > 2 ? -7 : 7)}
+              y={y}
+              textAnchor={row.x > 2 ? "end" : "start"}
+            >
+              ({row.x}, {row.y})
+            </text>
+          </g>
+        );
+      })}
+      <text className="wai-line-name" x={lineLabel.x} y={lineLabel.y} textAnchor="end">
+        ŷ = {w.toFixed(2)}x + {b.toFixed(2)}
+      </text>
     </svg>
   );
 }
@@ -200,7 +230,112 @@ export function ParamPlot({ w, b, trail }: { w: number; b: number; trail: Readon
         className="wai-best"
         d={`M${xs(best.w) - 5} ${ys(best.b) - 5}l10 10m0 -10l-10 10`}
       />
+      <text
+        className="wai-pin is-best"
+        x={xs(best.w) + (xs(best.w) > right - 70 ? -9 : 9)}
+        y={ys(best.b) + (ys(b) > ys(best.b) + 2 ? -8 : 16)}
+        textAnchor={xs(best.w) > right - 70 ? "end" : "start"}
+      >
+        lowest L
+      </text>
       <circle className="gw-dot is-forward" cx={xs(w)} cy={ys(b)} r="5" />
+      <text
+        className="wai-pin is-you"
+        x={xs(w) + (xs(w) > right - 62 ? -9 : 9)}
+        y={ys(b) + (ys(b) > ys(best.b) + 2 ? 16 : -8)}
+        textAnchor={xs(w) > right - 62 ? "end" : "start"}
+      >
+        your line
+      </text>
+    </svg>
+  );
+}
+
+/**
+ * L after each press of the downhill button, on the path walked so far. The dashed floor is the least-squares
+ * minimum, so the picture shows both how fast L falls and how little is left to gain.
+ */
+export function LossPath({ losses, floor }: { losses: readonly number[]; floor: number }) {
+  const width = 660;
+  const height = 104;
+  const left = 46;
+  const right = width - 150;
+  const top = 18;
+  const bottom = height - 24;
+  const first = losses[0] ?? 0;
+  const last = losses[losses.length - 1] ?? 0;
+  const peak = Math.max(0.1, ...losses) * 1.1;
+  const count = Math.max(6, losses.length - 1);
+  const xs = scale(0, count, left, right);
+  const ys = scale(0, peak, bottom, top);
+  const path = losses
+    .map((value, index) => `${index === 0 ? "M" : "L"}${xs(index).toFixed(1)} ${ys(value).toFixed(1)}`)
+    .join("");
+  const presses = losses.length - 1;
+  const every = Math.ceil(count / 10);
+  return (
+    <svg
+      className="gw-plot wai-plot wai-losspath"
+      viewBox={`0 0 ${width} ${height}`}
+      role="img"
+      aria-label={
+        presses > 0
+          ? `Loss after each downhill step. L started at ${first.toFixed(3)} and is ${last.toFixed(3)} after ${presses} ${
+              presses === 1 ? "press" : "presses"
+            }. The lowest possible L is ${floor.toFixed(4)}.`
+          : `Loss path. L is ${last.toFixed(3)} and no downhill step has been taken yet. The lowest possible L is ${floor.toFixed(
+              4,
+            )}.`
+      }
+    >
+      <line className="gw-axis" x1={left} x2={right} y1={bottom} y2={bottom} />
+      <line className="gw-axis" x1={left} x2={left} y1={top} y2={bottom} />
+      <text className="gw-tick" x={left - 5} y={bottom + 3.5} textAnchor="end">
+        0
+      </text>
+      <text className="gw-tick" x={left - 8} y={ys(first) + 3.5} textAnchor="end">
+        {first.toFixed(2)}
+      </text>
+      <text className="gw-label" x={6} y={11}>
+        L after each press
+      </text>
+      <text className="gw-tick" x={left} y={bottom + 14} textAnchor="middle">
+        start
+      </text>
+      {Array.from({ length: count }, (_, index) => index + 1)
+        .filter((press) => press % every === 0)
+        .map((press) => (
+          <text key={press} className="gw-tick" x={xs(press)} y={bottom + 14} textAnchor="middle">
+            {press}
+          </text>
+        ))}
+      <line className="wai-floor" x1={left} x2={right} y1={ys(floor)} y2={ys(floor)} />
+      {losses.length > 1 && <path className="gw-loss" d={path} />}
+      {losses.slice(0, -1).map((value, index) => (
+        <g key={index}>
+          <circle className="wai-trail-dot" cx={xs(index)} cy={ys(value)} r="2.6" />
+          {losses.length <= 7 && index > 0 && (
+            <text className="gw-tick wai-halo" x={xs(index)} y={ys(value) - 7} textAnchor="middle">
+              {value.toFixed(3)}
+            </text>
+          )}
+        </g>
+      ))}
+      <circle className="gw-dot is-loss" cx={xs(losses.length - 1)} cy={ys(last)} r="4.5" />
+      <text className="wai-miss" x={xs(losses.length - 1) + 8} y={Math.max(top + 4, ys(last) - 7)}>
+        L = {last.toFixed(3)}
+      </text>
+      <text className="wai-pin is-best" x={right + 8} y={ys(floor) - 5}>
+        lowest possible L
+      </text>
+      <text className="wai-pin is-best" x={right + 8} y={ys(floor) + 8}>
+        {floor.toFixed(4)}
+      </text>
+      {presses === 0 && (
+        <text className="gw-note" x={xs(1.4)} y={(top + bottom) / 2 + 4}>
+          Each press of Take a downhill step adds a point here.
+        </text>
+      )}
     </svg>
   );
 }

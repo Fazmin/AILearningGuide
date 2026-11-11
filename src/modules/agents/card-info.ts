@@ -7,7 +7,8 @@ const cardInfo: ModuleCardInfo = {
       "The host builds a context, calls the model, and checks the output. A plain-text answer is a terminal action and ends the loop. A tool call is executed by the host, its result is appended, and the host checks the step cap and any stop rule before calling the model again.",
     whatYouSee: [
       "Task: Look up hours, Recover from error, Retry forever, or Fix an argument.",
-      "A loop diagram: Context → Model call → final answer? → Stop · answer, or → Host runs the tool → Host check → next call or Stop. Solid boxes are the model's side, dashed boxes are host code; the active step is filled.",
+      "A loop diagram: Context → Model call → final answer? → Stop · answer, or → Host runs the tool → Host check → next call or Stop. Solid boxes are the model's side, dashed boxes are host code; the active step is filled and the arrows the run has just followed are thick.",
+      "Under the diagram, the transcript drawn as one bar: one block per message, as wide as its token count. A bracket marks everything the latest model call read, the newest block is outlined, and messages not written yet are dashed outlines.",
       "Replay step, which walks every event of the run, and a sentence describing the current event.",
     ],
     howItWorks: [
@@ -63,6 +64,7 @@ const cardInfo: ModuleCardInfo = {
       "A run ends by a final answer, by the step cap, or by a host stop rule. The cap bounds the number of model calls; the stop rule ends a run early when the same call fails twice in a row. The metrics total what the run consumed.",
     whatYouSee: [
       "Step cap from 1 to 10 model calls, and Stop rule: none, or stop after 2 identical failures.",
+      "A row of ten call slots. A used slot shows ✓ when its tool ran, ✕ when its tool failed, or A for the answer. Dashed slots were allowed but unused, hatched slots are past the cap, and a heavy bar marks the cap.",
       "Metrics: Model calls, Tool runs (and how many failed), Stop reason, Tokens read and Tokens written.",
     ],
     howItWorks: [
@@ -116,7 +118,8 @@ const cardInfo: ModuleCardInfo = {
     whatYouSee: [
       "Four controls: Per-step success (50 to 100%), Steps in the run (1 to 30), Approval gate after step (0 means no gate) and Reviewer catches (0 to 100% of wrong runs).",
       "Metrics: Completes end to end, With the gate, Longest run that finishes half the time, and Expected steps run.",
-      "A line chart of completion probability against run length: a solid line without a gate, a dashed line with it, and a marker at the current length. A table gives the same values for selected lengths.",
+      "A strip of bars for the current run: the share of runs still fully right after each step, blue while at least half are and red once fewer are. A gate is a dashed wall with a green arrow showing how far the reviewer lifts that share, and short dashes mark where the bars would stand without it.",
+      "A line chart of completion probability against run length: a solid line without a gate, a dashed line with it, a dotted line at one half, and a marker at the current length. A table of the same values for selected lengths opens under the chart.",
     ],
     howItWorks: [
       "No gate: P = p^n, where p is Per-step success and n is Steps in the run. With a gate after step k and catch rate d: s = p^k and P = (s + (1 − s)·d·s)·p^(n − k). A gate set beyond the run's last step sits after the last step.",

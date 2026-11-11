@@ -44,9 +44,9 @@ const cardInfo: ModuleCardInfo = {
     summary:
       "The DPO loss −log σ(β·m) drawn against the log-ratio margin m for half, the current and double beta, with every pair placed on the current curve. As a pair slides right, its loss flattens and its gradient fades.",
     whatYouSee: [
-      "Loss on the y axis, from 0 to 1.2, against the log-ratio margin m in nats on the x axis, with a dashed line at m = 0 where every pair starts at ln 2.",
-      "Three curves: the current β solid, half β dotted, double β dashed. Numbered circles are the pairs at their current m.",
-      "One row per pair with its m, its loss, and its pull σ(−β·m), the share of full gradient strength it still carries.",
+      "Loss on the y axis, from 0 to 1.2, against the log-ratio margin m in nats on the x axis, with a dashed line at m = 0 where every pair starts at ln 2. A dashed ring marks that start, and the region left of the line, where a pair is ordered wrongly, is tinted.",
+      "Three curves: the current β solid, half β dotted, double β dashed. Numbered circles are the pairs at their current m, and a thick band on the current curve runs from the start to the furthest pair, showing how far they have slid.",
+      "One row per pair with its m, its loss, and its pull σ(−β·m), the share of full gradient strength it still carries. A bar draws the pull against 50%, the pull every pair starts with.",
       "A note giving the m each β needs to reach a loss of 0.1.",
     ],
     howItWorks: [
@@ -140,8 +140,8 @@ const cardInfo: ModuleCardInfo = {
       "One row per pair: both completions, a dumbbell placing their implicit rewards on an axis centred at the reference, and the margin between them. This is where you see whether every pair carries the average.",
     whatYouSee: [
       "A numbered block per training pair (numbers match the loss curve) with the prompt and both completions, then three blocks labelled `H1` to `H3` under a heading for the held-out pairs.",
-      "A dumbbell: a circle for the chosen reward, a square for the rejected reward, a bar between them for the margin, and a dashed centre line at 0, the reference. All pairs share one scale.",
-      "Both rewards printed with signs, and a footer with the margin, whether the reference already preferred the chosen completion, and the two lengths when they differ.",
+      "A dumbbell: a circle for the chosen reward, a square for the rejected reward, a bar between them for the margin, and a dashed centre line at 0, the reference. All pairs share one scale, printed once above each group of blocks, so the dumbbells line up down the card.",
+      "Both rewards printed with signs beside their markers, the chosen one above the bar and the rejected one below, and a footer with the margin, whether the reference already preferred the chosen completion, and the two lengths when they differ.",
       "A solid left edge and the words `ordered correctly` on pairs with a positive margin, a dashed edge and `not ordered` on the rest.",
     ],
     howItWorks: [

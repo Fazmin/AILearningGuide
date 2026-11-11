@@ -8,12 +8,15 @@ const cardInfo: ModuleCardInfo = {
     whatYouSee: [
       "A kicker naming the base and where the vectors came from, and a badge with the cosine similarity of the two task vectors.",
       "`Task vectors from` (`Full fine-tunes` or `LoRA rank 4`), `Recipe epochs`, and `Proverb epochs`, each 0 to 40 in steps of 2.",
-      "Two 30 × 30 maps, `τ recipes` and `τ proverbs`. Rows are the previous character, columns the next character. Blue raises that logit, red lowers it, colour depth is |entry| on one shared scale, and grey means unchanged. A diagonal strike marks every entry whose sign disagrees with the other vector.",
+      "Two 30 × 30 maps, `τ recipes` and `τ proverbs`. Rows are the previous character, columns the next character. Blue raises that logit, red lowers it, colour deepens with |entry| on one shared scale, and grey means unchanged. A dot marks every entry whose sign disagrees with the other vector.",
+      "One cell is ringed on both maps, and the line under the maps reads its entry in each vector and whether the two agree. It starts on the conflict where both fine-tunes pushed hardest; point at any cell to move it.",
+      "One bar for all 900 weights, split into the entries that agree in sign, the entries that conflict, and the entries neither fine-tune changed.",
       "Four metrics: each specialist's loss on its own corpus, how many of the 900 entries both vectors changed, and how many of those disagree in sign.",
     ],
     howItWorks: [
       "The base is `trainTinyModel` on Harbor weather notes for 48 epochs at seed 1. Full fine-tunes continue from it at learning rate 0.6, seeds 3 and 4. The LoRA option trains a rank-4, alpha-8 adapter instead and uses its product `(α / r)·B·A` as the task vector.",
       "`τ = θ_tuned − θ_base`, entry by entry. A specialist is `θ_base + τ`, scored with full-corpus cross-entropy.",
+      "Colour is shaded by the square root of |entry| divided by the largest entry, so small entries still show their sign.",
       "Rows for characters a corpus never uses as context (`j`, `q`, `x`, `z`, the brackets) receive no gradient, so they stay grey. That holds for LoRA too: the row of B for an unused context never receives gradient and stays at zero.",
       "Sign statistics count an entry as changed when |τ| > 1e-6. Cosine is the ordinary normalized dot product of the two 900-entry vectors.",
     ],
@@ -40,7 +43,7 @@ const cardInfo: ModuleCardInfo = {
     whatYouSee: [
       "`Merge method`: `Linear blend`, `Task arithmetic`, `TIES`, `DARE`, `SLERP`. Below it, only that method's controls: `Blend t`, `Scale λ`, `Keep top`, `Drop rate p`, and `New random mask`.",
       "A `Served weights` formula with the current numbers substituted, and both merged losses as its result. A badge reports the merged vector's length.",
-      "A strip of ten coordinates named `previous→next`: the five largest sign conflicts, then the five largest agreements, ranked by |τ_recipes| + |τ_proverbs|. Each has three bars in a fixed order, recipes, proverbs, merged, on one symmetric scale, with the merged value printed.",
+      "A strip of ten coordinates named `previous→next`: the five largest sign conflicts, then the five largest agreements, ranked by |τ_recipes| + |τ_proverbs|. Each has three bars in a fixed order, recipes, proverbs, merged, lettered r, p and m, on one symmetric scale, with the merged value printed. When the method is not a 50/50 average, a diamond on each merged bar marks where that average would end.",
       "For TIES, trimmed inputs are dashed outlines and the elected sign is printed above or below the merged bar. For DARE, dropped inputs are dashed outlines and a short line in the text colour marks each survivor's height before rescaling.",
     ],
     howItWorks: [
@@ -71,15 +74,15 @@ const cardInfo: ModuleCardInfo = {
       "Every merge scored on both corpora at once, plotted against the base, the two specialists, and the corner you would reach by keeping two separate models. A table lists every method at the current settings and splits each gap into interference and shrinkage.",
     whatYouSee: [
       "Recipe loss on the x axis and proverb loss on the y axis, both in nats per character. Lower and further left is better on both.",
-      "Fixed markers: `harbor base` (hollow circle), `recipe specialist` (square), `proverb specialist` (triangle), and `two separate models` (cross), which sits at each specialist's own loss.",
-      "The selected merge as a large filled circle, the other four methods as small hollow circles tagged Lin, TA, TIES, DARE, SL, a dotted line for Linear blend from t = 0 to 1, and a dashed line for Task arithmetic from λ = 0 to 1.5.",
-      "A table with each method's recipe and proverb loss, its gap to the specialist, and its interference. A note below states what the other task did to each loss.",
+      "Fixed markers: `harbor base` (hollow circle), `recipe specialist` (square), `proverb specialist` (triangle), and `two separate models` (cross), which sits at each specialist's own loss. Two faint dashed guide lines cross there, one at each specialist's own loss.",
+      "The selected merge as a large filled circle, the other four methods as small hollow circles labelled by name, a dotted line for Linear blend from t = 0 to 1, and a dashed line for Task arithmetic from λ = 0 to 1.5 with λ = 0.5, 1 and 1.5 marked on it.",
+      "A table with each method's recipe and proverb loss, its gap to the specialist, and its interference. Each gap is also a bar from zero: the solid part is the gap with the other task vector removed, and the hatched part is what the other task added or took off. A note below states what the other task did to each loss.",
     ],
     howItWorks: [
       "Each point is `tinyCrossEntropy` of `θ_base + τ_merged` on the full Recipe steps and Proverbs corpora.",
       "Interference on recipes is `loss(merge(τ_r, τ_p)) − loss(merge(τ_r, 0))`: the same method re-run with the proverb vector set to zero. Proverbs is scored the same way with the recipe vector removed.",
       "Gap minus interference is the cost of the method shrinking, trimming or dropping a task's own vector. SLERP has no one-vector version, so its interference is left blank.",
-      "The plot stretches to hold the anchors, the linear path and the selected merge. Any other merge further out is pinned to the edge, drawn with a dashed outline, and labelled with its true losses.",
+      "The plot stretches to hold the anchors, the linear path and the selected merge. Any other merge further out is pinned to the edge, drawn with a dashed outline, and labelled with its true losses. The gap bars share one scale set by the second-largest method, so one runaway merge is cut off with » instead of flattening the rest.",
     ],
     controls: [
       "No controls of its own. Every control on the two cards above moves these points.",

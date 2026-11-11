@@ -25,6 +25,7 @@ import {
   type DecisionKey,
 } from "./decision";
 import { buildFineTuneData, SOURCE_SENTENCES, TARGET_SENTENCES } from "./holdout";
+import { ForgetCell, HeadStart, RuleMatrix, SentenceTiles, TradeArrows, type RuleRow } from "./visuals";
 import {
   BLOCK_SIZE,
   boundedDecision,
@@ -111,6 +112,11 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
 
   const progressAt = (index: number, total: number) => index / Math.max(1, total - 1);
 
+  /** The two curves of the comparison card, scored once and drawn twice: as lines and as their gap. */
+  const transferCurve = transfer.checkpoints.map((point) => tinyCrossEntropy(point.weights, targetCorpus.text));
+  const scratchCurve = scratch.checkpoints.map((point) => tinyCrossEntropy(point.weights, targetCorpus.text));
+  const headStart = transferCurve.map((value, index) => (scratchCurve[index] ?? value) - value);
+
   /** Both corpora scored at every checkpoint of the transfer run. */
   const meter = useMemo(() => {
     const target = transfer.checkpoints.map((point) => tinyCrossEntropy(point.weights, targetCorpus.text));
@@ -136,6 +142,29 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
     [base.weights, transfer.weights],
   );
   const maxMovement = Math.max(1e-6, ...rowMovement);
+
+  /** The same fine-tune with every row free: how far a frozen row would have moved. Drawn as an outline only. */
+  const freeRun = useMemo(
+    () =>
+      frozen.length === 0
+        ? transfer
+        : trainTinyModel({ text: targetCorpus.text, epochs: fineTuneEpochs, learningRate, init: base.weights, seed: 2 }),
+    [base.weights, fineTuneEpochs, frozen.length, learningRate, transfer],
+  );
+  const freeMovement = useMemo(
+    () =>
+      Array.from({ length: TINY_VOCAB_SIZE }, (_, row) => {
+        let squared = 0;
+        for (let k = 0; k < TINY_VOCAB_SIZE; k += 1) {
+          const index = row * TINY_VOCAB_SIZE + k;
+          squared += (freeRun.weights[index] - base.weights[index]) ** 2;
+        }
+        return Math.sqrt(squared);
+      }),
+    [base.weights, freeRun.weights],
+  );
+  /** One scale whatever is frozen, so freezing a block never resizes the bars beside it. */
+  const movementScale = Math.max(maxMovement, ...freeMovement);
   const unusedTrainable = rowMovement.filter((value, row) => trainableRows[row] && value === 0).length;
 
   /**
@@ -200,13 +229,14 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
   const showLoss = (value: number) => (Number.isFinite(value) ? value.toFixed(3) : "none held out");
   const showForgetting = (value: number, empty: string) =>
     Number.isFinite(value) ? `${value >= 0 ? "+" : ""}${value.toFixed(3)}` : empty;
-  const replayRows: Array<{ label: string; plain: string; replay: string }> = [
+  const replayRows: Array<{ label: string; plain: string; replay: string; forgetting?: [number, number] }> = [
     { label: "Trained-on target", plain: showLoss(plainScore.trained), replay: showLoss(replayScore.trained) },
     { label: "Held-out target", plain: showLoss(plainScore.held), replay: showLoss(replayScore.held) },
     {
       label: "Forgetting, all original sentences",
       plain: showForgetting(plainScore.forgetting, "none"),
       replay: showForgetting(replayScore.forgetting, "none"),
+      forgetting: [plainScore.forgetting, replayScore.forgetting],
     },
     ...(data.replaySentences > 0
       ? [
@@ -214,20 +244,49 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             label: "Forgetting, the replayed sentences",
             plain: showForgetting(plainScore.replayed, "none"),
             replay: showForgetting(replayScore.replayed, "none"),
+            forgetting: [plainScore.replayed, replayScore.replayed] as [number, number],
           },
           {
             label: "Forgetting, the sentences not replayed",
             plain: showForgetting(plainScore.notReplayed, "none left"),
             replay: showForgetting(replayScore.notReplayed, "none left"),
+            forgetting: [plainScore.notReplayed, replayScore.notReplayed] as [number, number],
           },
         ]
       : []),
     { label: "Optimizer steps", plain: `${plainScore.steps}`, replay: `${replayScore.steps}` },
   ];
+  const forgetReach = Math.max(
+    0.05,
+    ...replayRows.flatMap((row) => (row.forgetting ?? []).filter(Number.isFinite).map(Math.abs)),
+  );
 
   // The decision card is a hand-written table, not a training run: no memo is needed.
   const answers = boundedDecision(state);
   const recommendation = recommend(answers);
+  /**
+   * The rule table folds the four answers into three conditions. Which of them a rule needs is read off the
+   * rule itself: switch one condition off with the other two on, and see whether the rule still matches.
+   */
+  const allOn = { knowledgeChanges: true, needsCitations: true, needsConsistency: true, hasExamples: true };
+  const ruleRows: RuleRow[] = DECISION_RULES.map((rule) => ({
+    when: rule.when,
+    route: ROUTES[rule.route].title,
+    needs: [
+      !rule.matches({ ...allOn, knowledgeChanges: false, needsCitations: false }),
+      !rule.matches({ ...allOn, needsConsistency: false }),
+      !rule.matches({ ...allOn, hasExamples: false }),
+    ],
+  }));
+  const ruleFacts = [
+    {
+      title: "Facts change or need citations",
+      value: answers.knowledgeChanges || answers.needsCitations,
+      detail: `changing ${answers.knowledgeChanges ? "Yes" : "No"} · citations ${answers.needsCitations ? "Yes" : "No"}`,
+    },
+    { title: "Consistent format or behaviour", value: answers.needsConsistency, detail: "third question" },
+    { title: "Examples and an evaluation set", value: answers.hasExamples, detail: "fourth question" },
+  ];
   const answerDecision = (key: DecisionKey, yes: boolean) => {
     setState({ [key]: yes });
     narrate(
@@ -253,24 +312,19 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
               id: "transfer",
               name: "started from pretrained",
               tone: "forward",
-              points: transfer.checkpoints.map((point, index) => ({
-                x: progressAt(index, transfer.checkpoints.length),
-                y: tinyCrossEntropy(point.weights, targetCorpus.text),
-              })),
+              points: transferCurve.map((value, index) => ({ x: progressAt(index, transferCurve.length), y: value })),
             },
             {
               id: "scratch",
               name: "started from zero",
               tone: "loss",
               dash: "dashed",
-              points: scratch.checkpoints.map((point, index) => ({
-                x: progressAt(index, scratch.checkpoints.length),
-                y: tinyCrossEntropy(point.weights, targetCorpus.text),
-              })),
+              points: scratchCurve.map((value, index) => ({ x: progressAt(index, scratchCurve.length), y: value })),
             },
           ]}
           footnote="Both curves are measured on the full target corpus at each saved checkpoint. Same data, same seed, same budget — only the starting weights differ."
         />
+        {headStart.length > 1 && <HeadStart gaps={headStart} />}
         <div className="metric-row">
           <Metric label="Transfer, target loss" value={`${targetAfter.toFixed(3)} nats`} tone="forward" />
           <Metric label="Scratch, target loss" value={`${scratch.finalLoss.toFixed(3)} nats`} tone="loss" />
@@ -283,6 +337,44 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             value={`${Math.abs(scratch.finalLoss - targetAfter).toFixed(3)} nats`}
             tone={scratch.finalLoss - targetAfter >= 0 ? "forward" : "loss"}
           />
+        </div>
+      </LabSurface>
+
+      <LabSurface label="Fine-tuning controls" className="tg-finetune-panel ftt-panel">
+        <SurfaceHeading kicker="Adaptation budget" title="How hard to push" />
+        <div className="ftt-controls__dials">
+          <RangeControl
+            label="Fine-tune epochs"
+            min={EPOCHS_MIN}
+            max={EPOCHS_MAX}
+            step={1}
+            value={fineTuneEpochs}
+            format={(value) => (value === 0 ? "no adaptation" : `${value} passes`)}
+            onChange={(value) => {
+              setState({ fineTuneEpochs: value });
+              narrate(`${value} fine-tuning epochs.`);
+            }}
+          />
+          <RangeControl
+            label="Fine-tune learning rate"
+            min={LEARNING_RATE_MIN}
+            max={LEARNING_RATE_MAX}
+            step={0.05}
+            value={learningRate}
+            format={(value) => value.toFixed(2)}
+            onChange={(value) => setState({ learningRate: value })}
+          />
+        </div>
+        <TradeArrows
+          rows={[
+            { id: "target", label: `${targetCorpus.name} (target)`, before: targetBefore, after: targetAfter },
+            { id: "source", label: `${source.name} (original)`, before: sourceBefore, after: sourceAfter },
+          ]}
+        />
+        <div className="metric-row">
+          <Metric label="Source before" value={sourceBefore.toFixed(3)} />
+          <Metric label="Source after" value={sourceAfter.toFixed(3)} tone={forgetting > 0.05 ? "loss" : undefined} />
+          <Metric label="Target gained" value={(targetBefore - targetAfter).toFixed(3)} tone="forward" />
         </div>
       </LabSurface>
 
@@ -332,106 +424,83 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
         </div>
       </LabSurface>
 
-      <div className="tg-column">
-        <LabSurface label="Fine-tuning controls" className="tg-finetune-panel ftt-panel">
-          <SurfaceHeading kicker="Adaptation budget" title="How hard to push" />
-          <RangeControl
-            label="Fine-tune epochs"
-            min={EPOCHS_MIN}
-            max={EPOCHS_MAX}
-            step={1}
-            value={fineTuneEpochs}
-            format={(value) => (value === 0 ? "no adaptation" : `${value} passes`)}
-            onChange={(value) => {
-              setState({ fineTuneEpochs: value });
-              narrate(`${value} fine-tuning epochs.`);
-            }}
+      <LabSurface label="Layer freezing" className="tg-freeze-wrap ftt-panel">
+        <SurfaceHeading kicker="Freeze grid" title="Choose which weights may move" />
+        <div className="tg-freeze-grid">
+          {blocks.map((block) => {
+            const isFrozen = frozen.includes(block.id);
+            return (
+              <button
+                type="button"
+                key={block.id}
+                aria-pressed={isFrozen}
+                className={isFrozen ? "is-frozen" : ""}
+                onClick={() => {
+                  setState({
+                    frozen: isFrozen
+                      ? frozen.filter((id) => id !== block.id)
+                      : [...frozen, block.id],
+                  });
+                  narrate(`${block.label} ${isFrozen ? "unfrozen" : "frozen"}.`);
+                }}
+              >
+                <span>{block.label}</span>
+                <small>{isFrozen ? "frozen" : "trainable"}</small>
+              </button>
+            );
+          })}
+        </div>
+        <div className="ftt-rows">
+          <span className="ftt-rows__title">How far each row moved, ‖W_after − W_before‖ per context character</span>
+          <div
+            className="ftt-rows__bars"
+            role="img"
+            aria-label={`Row movement after fine-tuning. Largest ${maxMovement.toFixed(2)}. ${frozenRows} frozen rows and ${unusedTrainable} trainable rows that recipes never use as context did not move.`}
+          >
+            {blocks.map((block) => (
+              <span key={block.id} className={`ftt-rows__group${frozen.includes(block.id) ? " is-frozen" : ""}`}>
+                {block.rows.map((row) => {
+                  const value = rowMovement[row];
+                  const frozenRow = !trainableRows[row];
+                  return (
+                    <span
+                      key={row}
+                      className={`ftt-rows__col ${frozenRow ? "is-frozen" : value === 0 ? "is-unused" : ""}`.trim()}
+                      title={`${TINY_VOCAB[row] === " " ? "space" : TINY_VOCAB[row]}: ${frozenRow ? `frozen; free, it would have moved ${freeMovement[row].toFixed(2)}` : value === 0 ? "no gradient" : value.toFixed(2)}`}
+                    >
+                      <span className="ftt-rows__lane">
+                        {frozenRow && <u style={{ height: `${(freeMovement[row] / movementScale) * 100}%` }} />}
+                        <i style={{ height: `${(value / movementScale) * 100}%` }} />
+                      </span>
+                      <b>{TINY_VOCAB[row] === " " ? "␣" : TINY_VOCAB[row]}</b>
+                    </span>
+                  );
+                })}
+              </span>
+            ))}
+          </div>
+          <span className="ftt-rows__key">
+            Bar height out of {movementScale.toFixed(2)}. Hatched: frozen, with a dashed outline of how far the
+            row would have moved if left free. Empty with a dot: trainable but never a context in recipes, so
+            no gradient.
+          </span>
+        </div>
+        <div className="metric-row">
+          <Metric label="Frozen rows" value={`${frozenRows} / ${TINY_VOCAB_SIZE}`} />
+          <Metric
+            label="Trainable weights"
+            value={`${(TINY_VOCAB_SIZE - frozenRows) * TINY_VOCAB_SIZE}`}
+            tone="forward"
           />
-          <RangeControl
-            label="Fine-tune learning rate"
-            min={LEARNING_RATE_MIN}
-            max={LEARNING_RATE_MAX}
-            step={0.05}
-            value={learningRate}
-            format={(value) => value.toFixed(2)}
-            onChange={(value) => setState({ learningRate: value })}
-          />
-          <div className="metric-row">
-            <Metric label="Source before" value={sourceBefore.toFixed(3)} />
-            <Metric label="Source after" value={sourceAfter.toFixed(3)} tone={forgetting > 0.05 ? "loss" : undefined} />
-            <Metric label="Target gained" value={(targetBefore - targetAfter).toFixed(3)} tone="forward" />
-          </div>
-        </LabSurface>
-
-        <LabSurface label="Layer freezing" className="tg-freeze-wrap ftt-panel">
-          <SurfaceHeading kicker="Freeze grid" title="Choose which weights may move" />
-          <div className="tg-freeze-grid">
-            {blocks.map((block) => {
-              const isFrozen = frozen.includes(block.id);
-              return (
-                <button
-                  type="button"
-                  key={block.id}
-                  aria-pressed={isFrozen}
-                  className={isFrozen ? "is-frozen" : ""}
-                  onClick={() => {
-                    setState({
-                      frozen: isFrozen
-                        ? frozen.filter((id) => id !== block.id)
-                        : [...frozen, block.id],
-                    });
-                    narrate(`${block.label} ${isFrozen ? "unfrozen" : "frozen"}.`);
-                  }}
-                >
-                  <span>{block.label}</span>
-                  <small>{isFrozen ? "frozen" : "trainable"}</small>
-                </button>
-              );
-            })}
-          </div>
-          <div className="metric-row">
-            <Metric label="Frozen rows" value={`${frozenRows} / ${TINY_VOCAB_SIZE}`} />
-            <Metric
-              label="Trainable weights"
-              value={`${(TINY_VOCAB_SIZE - frozenRows) * TINY_VOCAB_SIZE}`}
-              tone="forward"
-            />
-            <Metric label="Forgetting" value={`${forgetting >= 0 ? "+" : ""}${forgetting.toFixed(3)}`} tone={forgetting > 0.05 ? "loss" : "forward"} />
-          </div>
-          <div className="ftt-rows">
-            <span className="ftt-rows__title">How far each row moved, ‖W_after − W_before‖ per context character</span>
-            <div
-              className="ftt-rows__bars"
-              role="img"
-              aria-label={`Row movement after fine-tuning. Largest ${maxMovement.toFixed(2)}. ${frozenRows} frozen rows and ${unusedTrainable} trainable rows that recipes never use as context did not move.`}
-            >
-              {rowMovement.map((value, row) => {
-                const frozenRow = !trainableRows[row];
-                return (
-                  <span
-                    key={row}
-                    className={`ftt-rows__col ${frozenRow ? "is-frozen" : value === 0 ? "is-unused" : ""}`.trim()}
-                    title={`${TINY_VOCAB[row] === " " ? "space" : TINY_VOCAB[row]}: ${frozenRow ? "frozen" : value === 0 ? "no gradient" : value.toFixed(2)}`}
-                  >
-                    <i style={{ height: `${(value / maxMovement) * 100}%` }} />
-                    <b>{TINY_VOCAB[row] === " " ? "␣" : TINY_VOCAB[row]}</b>
-                  </span>
-                );
-              })}
-            </div>
-            <span className="ftt-rows__key">
-              Bar height out of {maxMovement.toFixed(2)}. Hatched: frozen. Empty with a dot: trainable
-              but never a context in recipes, so no gradient.
-            </span>
-          </div>
-          <p className="lab-note">
-            This model has no layers, so the grid freezes blocks of the weight table by the character
-            each row predicts from. Here the gradient for a frozen row is computed and then discarded;
-            frameworks usually skip computing it at all. A real freeze grid would name layers, not
-            letters.
-          </p>
-        </LabSurface>
-      </div>
+          <Metric label="Forgetting" value={`${forgetting >= 0 ? "+" : ""}${forgetting.toFixed(3)}`} tone={forgetting > 0.05 ? "loss" : "forward"} />
+        </div>
+        <p className="lab-note">
+          This model has no layers, so the grid freezes blocks of the weight table by the character
+          each row predicts from. Here the gradient for a frozen row is computed and then discarded;
+          frameworks usually skip computing it at all. A real freeze grid would name layers, not
+          letters.
+        </p>
+      </LabSurface>
 
       <LabSurface label="Replay and held-out target" className="ftt-replay-panel ftt-panel">
         <SurfaceHeading
@@ -472,6 +541,11 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             }}
           />
         </div>
+        <SentenceTiles
+          target={{ label: targetCorpus.name, sentences: TARGET_SENTENCES, trained: data.trainSentences }}
+          source={{ label: source.name, sentences: SOURCE_SENTENCES, replayed: data.replaySentences }}
+          spoken={`${data.trainSentences} of ${TARGET_SENTENCES.length} ${targetCorpus.name.toLowerCase()} sentences are trained on and ${data.heldSentences} held out. ${data.replaySentences} of ${SOURCE_SENTENCES.length} ${source.name.toLowerCase()} sentences are replayed.`}
+        />
         <LineChart
           label="Trained-on target, held-out target, and original loss during fine-tuning"
           xLabel="fine-tuning progress"
@@ -519,8 +593,8 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
         <table className="tg-board ftt-replay-table">
           <caption className="ftt-rows__title">
             {data.replaySentences === 0
-              ? "No replay: the loss mentions only the target sentences. Lower is better; forgetting is the change from the base model."
-              : `With ${replayShare}% replay: ${data.replaySentences} ${source.name.toLowerCase()} sentences, ${Math.round(data.replayFraction * 100)}% of the fine-tuning sentences. Lower is better; forgetting is the change from the base model.`}
+              ? "No replay: the loss mentions only the target sentences. Lower is better; forgetting is the change from the base model, and its bar grows right of the tick for worse, left for better."
+              : `With ${replayShare}% replay: ${data.replaySentences} ${source.name.toLowerCase()} sentences, ${Math.round(data.replayFraction * 100)}% of the fine-tuning sentences. Lower is better; forgetting is the change from the base model, and its bar grows right of the tick for worse, left for better.`}
           </caption>
           <thead>
             <tr>
@@ -533,8 +607,10 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             {replayRows.map((row) => (
               <tr key={row.label}>
                 <th scope="row">{row.label}</th>
-                <td>{row.plain}</td>
-                {data.replaySentences > 0 && <td>{row.replay}</td>}
+                <td>{row.forgetting ? <ForgetCell value={row.forgetting[0]} reach={forgetReach} text={row.plain} /> : row.plain}</td>
+                {data.replaySentences > 0 && (
+                  <td>{row.forgetting ? <ForgetCell value={row.forgetting[1]} reach={forgetReach} text={row.replay} /> : row.replay}</td>
+                )}
               </tr>
             ))}
           </tbody>
@@ -592,18 +668,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
         </ul>
         <div className="ftt-decision__rules">
           <span className="ftt-rows__title">The whole rule table. The first row that matches wins.</span>
-          <ol aria-label="Rule table, first match wins">
-            {DECISION_RULES.map((rule, index) => (
-              <li
-                key={rule.when}
-                className={index === recommendation.rule ? "is-matched" : ""}
-                aria-current={index === recommendation.rule ? "true" : undefined}
-              >
-                <span>{rule.when}</span> <span aria-hidden="true">→</span> <strong>{ROUTES[rule.route].title}</strong>
-                {index === recommendation.rule ? <em> (matched)</em> : null}
-              </li>
-            ))}
-          </ol>
+          <RuleMatrix rules={ruleRows} facts={ruleFacts} matched={recommendation.rule} />
         </div>
         <p className="lab-note">
           This card is a rule of thumb that someone wrote by hand. Nothing on it was measured, and

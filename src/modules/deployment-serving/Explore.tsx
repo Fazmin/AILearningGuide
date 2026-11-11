@@ -1,6 +1,5 @@
 import { useMemo } from "react";
 import {
-  BarList,
   LabSurface,
   Metric,
   RangeControl,
@@ -26,7 +25,8 @@ import {
   type OperatingModel,
   type OperatingPoint,
 } from "./operate";
-import { BLOCK_TYPE, formatBytes, GIB, HARDWARE } from "./serving";
+import { BLOCK_TYPE, formatBytes, HARDWARE } from "./serving";
+import { DecodeTimeline, LeverTable, MemoryBar, ThroughputPlot, timelineSpan } from "./visuals";
 
 const MAX_USERS = LIMITS.users.max;
 const TOY_WEIGHTS = TINY_VOCAB_SIZE * TINY_VOCAB_SIZE;
@@ -38,165 +38,6 @@ const ms = (seconds: number) => (seconds >= 10 ? `${seconds.toFixed(1)} s` : `${
 const dollars = (value: number) => `$${value >= 0.1 ? value.toFixed(2) : value.toFixed(3)}`;
 const costLabel = (point: OperatingPoint) =>
   !point.fits ? "over memory" : Number.isFinite(point.costPerMillionTokens) ? `${dollars(point.costPerMillionTokens)} per M tokens` : "no output";
-
-function MemoryBar({ point, users }: { point: OperatingPoint; users: number }) {
-  const left = 12;
-  const right = 708;
-  const scaleBytes = Math.max(HARDWARE.vramBytes, point.totalBytes) * 1.02;
-  const xAt = (bytes: number) => left + (bytes / scaleBytes) * (right - left);
-  const top = 30;
-  const barHeight = 34;
-  const segments = [
-    { id: "weights", label: "weights", start: 0, bytes: point.weightBytes },
-    {
-      id: "kv",
-      label: `${point.stateBytes > 0 ? "KV cache + state" : "KV cache"} · ${users} stream${users === 1 ? "" : "s"}`,
-      start: point.weightBytes,
-      bytes: point.kvBytes + point.stateBytes,
-    },
-    {
-      id: "overhead",
-      label: "activations + runtime",
-      start: point.weightBytes + point.kvBytes + point.stateBytes,
-      bytes: HARDWARE.overheadBytes,
-    },
-  ];
-  const ticks: number[] = [];
-  const stepGiB = [4, 8, 16, 32, 64].find((step) => scaleBytes / GIB / step <= 10) ?? 128;
-  for (let gib = 0; gib * GIB <= scaleBytes; gib += stepGiB) ticks.push(gib);
-  const perStream = point.kvBytesPerStream + point.stateBytesPerStream;
-  const streamEdges =
-    users > 1 && users <= MAX_USERS && xAt(perStream) - xAt(0) >= 2.5
-      ? Array.from({ length: users - 1 }, (_, index) => point.weightBytes + perStream * (index + 1))
-      : [];
-  return (
-    <svg
-      className="ds-plot ds-memory"
-      viewBox="0 0 720 96"
-      role="img"
-      aria-label={`Memory: weights ${formatBytes(point.weightBytes)}, KV cache ${formatBytes(point.kvBytes)}${point.stateBytes > 0 ? ` and recurrent state ${formatBytes(point.stateBytes)}` : ""} for ${users} streams, activations and runtime ${formatBytes(HARDWARE.overheadBytes)}; total ${formatBytes(point.totalBytes)} against a ${formatBytes(HARDWARE.vramBytes)} limit. At this context, ${point.maxStreams} streams fit.`}
-    >
-      {ticks.map((gib) => (
-        <g key={gib}>
-          <line className="ds-grid" x1={xAt(gib * GIB)} x2={xAt(gib * GIB)} y1={top - 4} y2={top + barHeight + 4} />
-          <text x={xAt(gib * GIB)} y={top + barHeight + 16} textAnchor="middle">
-            {gib}
-          </text>
-        </g>
-      ))}
-      {segments.map((segment) => (
-        <rect
-          key={segment.id}
-          className={`ds-seg is-${segment.id}`}
-          x={xAt(segment.start)}
-          y={top}
-          width={Math.max(0, xAt(segment.start + segment.bytes) - xAt(segment.start))}
-          height={barHeight}
-        />
-      ))}
-      {streamEdges.map((bytes) => (
-        <line key={bytes} className="ds-stream-edge" x1={xAt(bytes)} x2={xAt(bytes)} y1={top + 4} y2={top + barHeight - 4} />
-      ))}
-      {!point.fits && (
-        <rect
-          className="ds-over"
-          x={xAt(HARDWARE.vramBytes)}
-          y={top - 6}
-          width={xAt(point.totalBytes) - xAt(HARDWARE.vramBytes)}
-          height={barHeight + 12}
-        />
-      )}
-      <line className="ds-limit" x1={xAt(HARDWARE.vramBytes)} x2={xAt(HARDWARE.vramBytes)} y1={top - 12} y2={top + barHeight + 6} />
-      <text
-        className="ds-limit-label"
-        x={xAt(HARDWARE.vramBytes) + (point.fits ? -4 : 4)}
-        y={top - 16}
-        textAnchor={point.fits ? "end" : "start"}
-      >
-        {formatBytes(HARDWARE.vramBytes)} limit
-      </text>
-      <text x={point.fits ? left : right} y={top - 16} textAnchor={point.fits ? "start" : "end"}>
-        used {formatBytes(point.totalBytes)} · axis in GiB
-      </text>
-    </svg>
-  );
-}
-
-function ThroughputPlot({
-  sweep,
-  users,
-  maxStreams,
-  ceiling,
-}: {
-  sweep: { users: number; total: number; perUser: number }[];
-  users: number;
-  maxStreams: number;
-  ceiling: number;
-}) {
-  const left = 58;
-  const right = 700;
-  const panels = [
-    { key: "total" as const, title: "total tokens/s across all streams", top: 20, bottom: 126 },
-    { key: "perUser" as const, title: "tokens/s each user sees", top: 158, bottom: 250 },
-  ];
-  const xAt = (n: number) => left + ((n - 1) / (MAX_USERS - 1)) * (right - left);
-  const fitEdge = maxStreams < MAX_USERS ? Math.max(1, maxStreams + 0.5) : null;
-  const current = sweep[users - 1];
-  return (
-    <svg
-      className="ds-plot ds-throughput"
-      viewBox="0 0 720 290"
-      role="img"
-      aria-label={`Decode throughput against concurrent streams. At ${users}: ${tokens(current.total)} tokens per second in total, ${tokens(current.perUser)} per user. ${fitEdge ? `Beyond ${maxStreams} streams the KV cache no longer fits.` : "Every point on the chart fits in memory."} Compute ceiling ${ceiling.toFixed(0)} tokens per second.`}
-    >
-      {panels.map((panel) => {
-        const peak = Math.max(...sweep.map((point) => point[panel.key])) * 1.08;
-        const yAt = (value: number) => panel.bottom - (value / peak) * (panel.bottom - panel.top);
-        const path = sweep.map((point, index) => `${index === 0 ? "M" : "L"}${xAt(point.users)},${yAt(point[panel.key])}`).join(" ");
-        return (
-          <g key={panel.key}>
-            <text x={left} y={panel.top - 6}>
-              {panel.title}
-            </text>
-            {fitEdge && (
-              <rect
-                className="ds-nofit"
-                x={xAt(fitEdge)}
-                y={panel.top}
-                width={right - xAt(fitEdge)}
-                height={panel.bottom - panel.top}
-              />
-            )}
-            {[0, 0.5, 1].map((fraction) => (
-              <g key={fraction}>
-                <line className="ds-grid" x1={left} x2={right} y1={yAt((peak / 1.08) * fraction)} y2={yAt((peak / 1.08) * fraction)} />
-                <text x={left - 6} y={yAt((peak / 1.08) * fraction) + 3} textAnchor="end">
-                  {tokens((peak / 1.08) * fraction)}
-                </text>
-              </g>
-            ))}
-            <path className={`ds-curve is-${panel.key}`} d={path} />
-            <circle className={`ds-dot is-${panel.key}`} cx={xAt(users)} cy={yAt(current[panel.key])} r={4.5} />
-          </g>
-        );
-      })}
-      {fitEdge && (
-        <text className="ds-nofit-label" x={xAt(fitEdge) + 6} y={120}>
-          over {formatBytes(HARDWARE.vramBytes)} beyond {maxStreams}
-        </text>
-      )}
-      <line className="marker-guide" x1={xAt(users)} x2={xAt(users)} y1={20} y2={250} />
-      {[1, 8, 16, 24, 32, 40, 48, 56, 64].map((tick) => (
-        <text key={tick} x={xAt(tick)} y={266} textAnchor="middle">
-          {tick}
-        </text>
-      ))}
-      <text x={(left + right) / 2} y={284} textAnchor="middle">
-        concurrent streams
-      </text>
-    </svg>
-  );
-}
 
 export default function Explore({ state, setState, narrate }: ModuleContext) {
   const config = normalizeConfig(state);
@@ -222,6 +63,9 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
   const block = BLOCK_TYPE[format.name] ?? BLOCK_TYPE.Q4_K_M;
   const toyBytes = Math.ceil((TOY_WEIGHTS * block.bitsPerWeight) / 8);
   const headroom = HARDWARE.vramBytes - serving.totalBytes;
+  // With one stream the total is one token per step, so its inverse is the single-stream step time.
+  const soloStep = 1 / sweep[0].total;
+  const span = timelineSpan(soloStep);
 
   // The hardware, lever, and cost card: same model, format, load, and scheduler, other hardware and levers.
   const hardware = hardwareFrom(config, config.utilization);
@@ -251,7 +95,6 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
   ].map((row) => ({ ...row, point: operatingPoint(model, format, users, context, batching, hardware, row.levers) }));
   const baseline = leverRows[0].point;
   const chosen = leverRows[leverRows.length - 1].point;
-  const peakTotal = Math.max(1e-9, ...leverRows.filter((row) => row.point.fits).map((row) => row.point.totalTokensPerSecond));
 
   return (
     <div className="tg-lab ds-lab">
@@ -332,14 +175,6 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
         />
         <div className="tg-budget ds-budget">
           <MemoryBar point={serving} users={users} />
-          <div className="ds-legend" aria-hidden="true">
-            <span className="is-weights">weights {formatBytes(serving.weightBytes)}</span>
-            <span className="is-kv">
-              KV cache {formatBytes(serving.kvBytes)}
-              {hybrid ? ` + recurrent state ${formatBytes(serving.stateBytes)}` : ""}
-            </span>
-            <span className="is-overhead">activations + runtime {formatBytes(HARDWARE.overheadBytes)}</span>
-          </div>
         </div>
         <div className="metric-row">
           <Metric label="Per token, per stream" value={formatBytes(serving.kvBytesPerToken)} />
@@ -356,7 +191,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           </strong>
           <span>
             Weights are paid once. The KV cache is paid per token per stream: the thin dividers in the red segment are
-            one stream each. This budget reserves the full context for every stream, the worst case; a paged cache
+            one stream each, and the dashed slots after it are streams that would still fit. This budget reserves the full context for every stream, the worst case; a paged cache
             allocates in small blocks as a conversation grows, so real streams usually hold less.
             {hybrid &&
               " The recurrent layers add a fixed state per stream that does not grow with context, which is why this model's cache stays small at long context."}
@@ -370,6 +205,17 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           title="Total throughput rises while each user waits longer"
           aside={<span className="tg-badge">{serving.computeBound ? "compute bound" : "bandwidth bound"}</span>}
         />
+        <p className="ds-figure-title">
+          {batching ? "Every decode step feeds every stream" : "Each decode step feeds one stream"} · {ms(span)} drawn to scale
+        </p>
+        <DecodeTimeline
+          point={serving}
+          users={users}
+          batching={batching}
+          soloStep={soloStep}
+          bandwidth={LAB_HARDWARE.bandwidthBytesPerSecond}
+        />
+        <p className="ds-figure-title">The same arithmetic at every user count from 1 to {MAX_USERS}</p>
         <ThroughputPlot sweep={sweep} users={users} maxStreams={serving.maxStreams} ceiling={serving.computeCeiling} />
         <div className="metric-row">
           <Metric label="Total" value={`${tokens(serving.totalTokensPerSecond)} tok/s`} tone="forward" />
@@ -559,18 +405,9 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           <Metric label="Total" value={`${tokens(chosen.totalTokensPerSecond)} tok/s`} tone="forward" />
           <Metric label="Cost per million tokens" value={chosen.fits ? dollars(chosen.costPerMillionTokens) : "over memory"} />
         </div>
-        <BarList
-          label="Total tokens per second for each lever on its own and for your selection, with each one's cost per million tokens"
-          items={leverRows.map((row) => ({
-            id: row.id,
-            label: row.label,
-            value: row.point.fits ? row.point.totalTokensPerSecond : 0,
-            display: costLabel(row.point),
-            tone: row.id === "selected" ? "forward" : row.id === "none" ? "loss" : "gradient",
-            emphasis: row.id === "selected",
-            detail: `${row.point.maxStreams} streams fit · ${tokens(row.point.perUserTokensPerSecond)} tok/s each · ${tokens(row.point.totalTokensPerSecond)} tok/s total`,
-          }))}
-          max={peakTotal}
+        <LeverTable
+          label="Streams that fit, tokens per second for each user, and total tokens per second for each lever on its own and for your selection, with each one's cost per million tokens"
+          rows={leverRows.map((row) => ({ id: row.id, label: row.label, point: row.point, cost: costLabel(row.point).replace(" per M tokens", "") }))}
         />
         <p className="lab-note">
           Arithmetic, not measurement. Decode runs at 100% of the memory bandwidth above for the share of each hour you

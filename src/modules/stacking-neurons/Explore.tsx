@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   FormulaWithValues,
   LabSurface,
@@ -13,6 +13,7 @@ import {
   DEEP_NARROW_NET,
   forward,
   LARGE_NET,
+  makeDataset,
   MAX_DEPTH,
   MAX_EPOCHS,
   MAX_WIDTH,
@@ -22,6 +23,7 @@ import {
   NOISE_FLIPS,
   parameterCount,
   SHALLOW_WIDE_NET,
+  sigmoid,
   snapshotAt,
   trainCached,
   trainRingSplit,
@@ -284,6 +286,16 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
     [seed, noisy],
   );
 
+  // Which of the 60 ring points carry a flipped label in the run the held-out card trained on.
+  const flipped = useMemo(() => {
+    const clean = makeDataset("ring");
+    const marked = new Set<number>();
+    narrowSplit.data.forEach((point, index) => {
+      if (point.label !== clean[index].label) marked.add(index);
+    });
+    return marked;
+  }, [narrowSplit]);
+
   const lossCeiling =
     Math.ceil(
       Math.max(
@@ -327,10 +339,12 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
   // Network diagram geometry.
   const columns = sizes.length;
   const maxRows = Math.max(...sizes);
-  const tileSize = maxRows <= 2 ? 60 : maxRows <= 4 ? 50 : 42;
-  const outputSize = maxRows <= 2 ? 68 : 58;
-  const rowGap = tileSize + 26;
   const diagramWidth = Math.max(320, measuredWidth);
+  // Tiles are as large as the card allows: each one is a picture the lesson asks the reader to compare.
+  const roomPerColumn = Math.floor((diagramWidth - 48) / columns) - 22;
+  const tileSize = Math.max(34, Math.min(maxRows <= 2 ? 84 : maxRows <= 4 ? 62 : 46, roomPerColumn));
+  const outputSize = Math.max(40, Math.min(maxRows <= 2 ? 96 : 72, roomPerColumn + 8));
+  const rowGap = tileSize + 26;
   const diagramHeight = Math.max(170, 34 + maxRows * rowGap);
   // When columns are close, print only the value under hidden tiles; the tile's title keeps the name.
   const compactLabels = (diagramWidth - 48 - outputSize) / (columns - 1) < 92;
@@ -505,12 +519,29 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             ↑ x₂
           </text>
         </svg>
-        <p className="nn-legend">
-          Shade is the output ŷ: green toward 1, red toward 0. Circles are label
-          1, squares label 0; a ring marks a point the network gets wrong.
-          Dashed lines h1…h{width} are where each first-layer unit's weighted
-          sum is 0. The cross is the probe.
-        </p>
+        <ul className="nn-key" aria-label="Key to the decision surface">
+          <li>
+            <i className="nn-key__swatch nn-key__swatch--pos" />ŷ toward 1
+          </li>
+          <li>
+            <i className="nn-key__swatch nn-key__swatch--neg" />ŷ toward 0
+          </li>
+          <li>
+            <i className="nn-key__dot" />label 1
+          </li>
+          <li>
+            <i className="nn-key__square" />label 0
+          </li>
+          <li>
+            <i className="nn-key__ring" />wrong answer
+          </li>
+          <li>
+            <i className="nn-key__dash" />h1…h{width}: one first-layer unit's sum is 0
+          </li>
+          <li>
+            <i className="nn-key__cross" />probe
+          </li>
+        </ul>
       </LabSurface>
 
       <LabSurface label="Network training controls" className="nn-card">
@@ -720,40 +751,48 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             ))}
           </svg>
         </div>
-        <div className="nn-probe-controls">
-          <RangeControl
-            label="Probe x₁"
-            min={-1}
-            max={1}
-            step={0.05}
-            value={probeX}
-            format={(value) => fmt(value, 2)}
-            onChange={(value) => setState({ probeX: value })}
+        <HiddenSpace
+          network={network}
+          activation={activation}
+          data={history.data}
+          probe={probe}
+          hiddenLayers={depth}
+        >
+          <div className="nn-probe-controls">
+            <RangeControl
+              label="Probe x₁"
+              min={-1}
+              max={1}
+              step={0.05}
+              value={probeX}
+              format={(value) => fmt(value, 2)}
+              onChange={(value) => setState({ probeX: value })}
+            />
+            <RangeControl
+              label="Probe x₂"
+              min={-1}
+              max={1}
+              step={0.05}
+              value={probeY}
+              format={(value) => fmt(value, 2)}
+              onChange={(value) => setState({ probeY: value })}
+            />
+          </div>
+          <FormulaWithValues
+            label="Output unit at the probe"
+            tone="forward"
+            expression={`ŷ = σ(${outputLayer.weights[0]
+              .map(
+                (weight, index) =>
+                  `${signedText(weight)}·${signedText(lastHidden[index])}`,
+              )
+              .join(
+                " + ",
+              )} ${outputLayer.biases[0] < 0 ? "−" : "+"} ${fmt(Math.abs(outputLayer.biases[0]), 2)})`}
+            result={fmt(pass.output)}
+            detail={`z = ${fmt(pass.pre[pass.pre.length - 1][0], 2)}. Each tile shades one unit's output over the whole square; the dot inside it is the probe.`}
           />
-          <RangeControl
-            label="Probe x₂"
-            min={-1}
-            max={1}
-            step={0.05}
-            value={probeY}
-            format={(value) => fmt(value, 2)}
-            onChange={(value) => setState({ probeY: value })}
-          />
-        </div>
-        <FormulaWithValues
-          label="Output unit at the probe"
-          tone="forward"
-          expression={`ŷ = σ(${outputLayer.weights[0]
-            .map(
-              (weight, index) =>
-                `${signedText(weight)}·${signedText(lastHidden[index])}`,
-            )
-            .join(
-              " + ",
-            )} ${outputLayer.biases[0] < 0 ? "−" : "+"} ${fmt(Math.abs(outputLayer.biases[0]), 2)})`}
-          result={fmt(pass.output)}
-          detail={`z = ${fmt(pass.pre[pass.pre.length - 1][0], 2)}. Each tile shades one unit's output over the whole square; the dot inside it is the probe.`}
-        />
+        </HiddenSpace>
       </LabSurface>
 
       <LabSurface label="Depth against width" className="nn-card nn-card--wide nn-width-card">
@@ -777,12 +816,16 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
               <h4>
                 {entry.title}: {entry.shape.depth} × {entry.shape.width} units
               </h4>
-              <MiniSurface
-                network={snapshotAt(entry.history, epochs)}
-                activation={activation}
-                data={entry.history.data}
-                label={`${entry.title}, ${entry.shape.depth} layer${entry.shape.depth === 1 ? "" : "s"} of ${entry.shape.width} units, after ${epochs} epochs on ${DATASET_NAMES[dataset]}: ${percent(entry.history.accuracies[epochs])} of ${entry.history.data.length} training points correct.`}
-              />
+              <div className="nn-shape-row">
+                <ShapeGlyph sizes={entry.history.sizes} />
+                <MiniSurface
+                  network={snapshotAt(entry.history, epochs)}
+                  activation={activation}
+                  data={entry.history.data}
+                  markWrong
+                  label={`${entry.title}, ${entry.shape.depth} layer${entry.shape.depth === 1 ? "" : "s"} of ${entry.shape.width} units, after ${epochs} epochs on ${DATASET_NAMES[dataset]}: ${percent(entry.history.accuracies[epochs])} of ${entry.history.data.length} training points correct.`}
+                />
+              </div>
               <div className="metric-row">
                 <Metric
                   label="Accuracy"
@@ -795,6 +838,18 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             </div>
           ))}
         </div>
+        <ul className="nn-key" aria-label="Key to the two surfaces">
+          <li>
+            <i className="nn-key__dot" />label 1
+          </li>
+          <li>
+            <i className="nn-key__square" />label 0
+          </li>
+          <li>
+            <i className="nn-key__ring" />wrong answer
+          </li>
+          <li>columns of dots: the units in each layer</li>
+        </ul>
         <LineChart
           label="Training accuracy by epoch, one wide layer against two narrow layers"
           xLabel={`epoch, 0 → ${MAX_EPOCHS}`}
@@ -865,6 +920,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           <SplitPanel
             title={`Narrow: ${NARROW_NET.depth} × ${NARROW_NET.width} units`}
             history={narrowSplit}
+            flipped={flipped}
             curve={heldCurve}
             epoch={epochs}
             lossCeiling={lossCeiling}
@@ -872,6 +928,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           <SplitPanel
             title={`Large: ${LARGE_NET.depth} × ${LARGE_NET.width} units`}
             history={largeSplit}
+            flipped={flipped}
             curve={heldCurve}
             epoch={epochs}
             lossCeiling={lossCeiling}
@@ -905,17 +962,59 @@ function sampleOutputGrid(network: Network, activation: HiddenActivation, n: num
   return values;
 }
 
+/** A training point: a filled circle for label 1, an open square for label 0, a ring when it is answered wrong. */
+function PointMark({
+  cx,
+  cy,
+  label,
+  wrong = false,
+  flipped = false,
+  r = 4,
+}: {
+  cx: number;
+  cy: number;
+  label: 0 | 1;
+  wrong?: boolean;
+  flipped?: boolean;
+  r?: number;
+}) {
+  const half = r * 0.9;
+  const reach = r * 2.1;
+  return (
+    <g>
+      {flipped && (
+        <path
+          className="nn-point__flipped"
+          d={`M ${cx} ${cy - reach} L ${cx + reach} ${cy} L ${cx} ${cy + reach} L ${cx - reach} ${cy} Z`}
+        />
+      )}
+      {label === 1 ? (
+        <circle className="nn-point__one" cx={cx} cy={cy} r={r} />
+      ) : (
+        <rect className="nn-point__zero" x={cx - half} y={cy - half} width={half * 2} height={half * 2} />
+      )}
+      {wrong && <circle className="nn-point__ring" cx={cx} cy={cy} r={r * 1.9} />}
+    </g>
+  );
+}
+
 /** A small decision surface for one network, with its training points drawn over it. */
 function MiniSurface({
   network,
   activation,
   data,
   label,
+  markWrong = false,
+  flipped,
 }: {
   network: Network;
   activation: HiddenActivation;
   data: readonly Example[];
   label: string;
+  /** Ring every training point the network answers wrong. */
+  markWrong?: boolean;
+  /** Indexes of training points whose label was flipped; each gets a diamond. */
+  flipped?: ReadonlySet<number>;
 }) {
   const size = 150;
   const cells = useMemo(() => outputGrid(network, activation, MINI_GRID), [network, activation]);
@@ -937,22 +1036,383 @@ function MiniSurface({
           />
         );
       })}
-      {data.map((point, index) =>
-        point.label === 1 ? (
-          <circle key={index} className="nn-point__one" cx={at(point.x1)} cy={atY(point.x2)} r={2.6} />
-        ) : (
-          <rect
-            key={index}
-            className="nn-point__zero"
-            x={at(point.x1) - 2.2}
-            y={atY(point.x2) - 2.2}
-            width={4.4}
-            height={4.4}
-          />
-        ),
-      )}
+      {data.map((point, index) => (
+        <PointMark
+          key={index}
+          cx={at(point.x1)}
+          cy={atY(point.x2)}
+          label={point.label}
+          r={2.6}
+          flipped={flipped?.has(index)}
+          wrong={
+            markWrong &&
+            (forward(network, [point.x1, point.x2], activation).output >= 0.5 ? 1 : 0) !== point.label
+          }
+        />
+      ))}
       <rect className="nn-frame" x={0} y={0} width={size} height={size} />
     </svg>
+  );
+}
+
+/** A network's shape as columns of dots, one dot per unit, so wide-and-shallow reads differently from narrow-and-deep. */
+function ShapeGlyph({ sizes }: { sizes: readonly number[] }) {
+  const width = 92;
+  const height = 150;
+  const most = Math.max(...sizes);
+  const pitch = Math.min(12, (height - 26) / most);
+  const radius = Math.min(3, pitch * 0.36);
+  const x = (layer: number) => 9 + (layer * (width - 18)) / (sizes.length - 1);
+  const y = (count: number, index: number) => (height - 18) / 2 + (index - (count - 1) / 2) * pitch;
+  return (
+    <svg
+      className="nn-shape"
+      viewBox={`0 0 ${width} ${height}`}
+      role="img"
+      aria-label={`Network shape: ${sizes[0]} inputs, ${sizes
+        .slice(1, -1)
+        .map((count) => `a hidden layer of ${count} units`)
+        .join(", then ")}, 1 output.`}
+    >
+      {sizes.slice(1).map((count, layer) =>
+        Array.from({ length: count }, (_, to) =>
+          Array.from({ length: sizes[layer] }, (_, from) => (
+            <line
+              key={`${layer}-${to}-${from}`}
+              className="nn-shape__edge"
+              x1={x(layer)}
+              y1={y(sizes[layer], from)}
+              x2={x(layer + 1)}
+              y2={y(count, to)}
+            />
+          )),
+        ),
+      )}
+      {sizes.map((count, layer) =>
+        Array.from({ length: count }, (_, index) => (
+          <circle
+            key={`${layer}-${index}`}
+            className={`nn-shape__unit${layer > 0 && layer < sizes.length - 1 ? " is-hidden" : ""}`}
+            cx={x(layer)}
+            cy={y(count, index)}
+            r={radius}
+          />
+        )),
+      )}
+      <text className="nn-shape__label" x={width / 2} y={height - 3} textAnchor="middle">
+        {sizes.join(" → ")}
+      </text>
+    </svg>
+  );
+}
+
+const HS = { width: 248, left: 34, top: 22, right: 14, bottom: 30 };
+const HS_PLOT = HS.width - HS.left - HS.right;
+const HS_HEIGHT = HS.top + HS_PLOT + HS.bottom;
+const HS_GRID = 24;
+
+/**
+ * The training points as the output unit receives them. With two units in the last hidden layer the
+ * points are drawn at their hidden values, to scale, with the output unit's straight cut. With any other
+ * width they are drawn at the one number the output unit computes from them, z, on its sigmoid.
+ */
+function HiddenSpace({
+  network,
+  activation,
+  data,
+  probe,
+  hiddenLayers,
+  children,
+}: {
+  network: Network;
+  activation: HiddenActivation;
+  data: readonly Example[];
+  probe: readonly [number, number];
+  hiddenLayers: number;
+  /** The probe sliders and the output formula, shown beside the plot under its caption. */
+  children: ReactNode;
+}) {
+  const seen = useMemo(
+    () =>
+      data.map((point) => {
+        const pass = forward(network, [point.x1, point.x2], activation);
+        return {
+          label: point.label,
+          hidden: pass.post[pass.post.length - 2],
+          z: pass.pre[pass.pre.length - 1][0],
+          output: pass.output,
+        };
+      }),
+    [network, activation, data],
+  );
+  const output = network.layers[network.layers.length - 1];
+  const weights = output.weights[0];
+  const bias = output.biases[0];
+  const probePass = forward(network, probe, activation);
+  const probeHidden = probePass.post[probePass.post.length - 2];
+  const probeZ = probePass.pre[probePass.pre.length - 1][0];
+  const isWrong = (point: (typeof seen)[number]) => (point.output >= 0.5 ? 1 : 0) !== point.label;
+  const correct = seen.filter((point) => !isWrong(point)).length;
+  const layerName = hiddenLayers === 1 ? "the hidden layer" : `hidden layer ${hiddenLayers}`;
+  const title = "The same points, as the output unit sees them";
+  const frame = <rect className="nn-frame" x={HS.left} y={HS.top} width={HS_PLOT} height={HS_PLOT} />;
+  // Points that land on top of each other are counted, so a pile of twelve does not read as one.
+  const clumpLabels = (spots: ReadonlyArray<{ x: number; y: number }>) => {
+    const clumps: { x: number; y: number; count: number }[] = [];
+    spots.forEach((spot) => {
+      const found = clumps.find((clump) => Math.hypot(clump.x - spot.x, clump.y - spot.y) < 11);
+      if (found) {
+        found.x = (found.x * found.count + spot.x) / (found.count + 1);
+        found.y = (found.y * found.count + spot.y) / (found.count + 1);
+        found.count += 1;
+      } else {
+        clumps.push({ ...spot, count: 1 });
+      }
+    });
+    const centreX = HS.left + HS_PLOT / 2;
+    const centreY = HS.top + HS_PLOT / 2;
+    // Largest piles first; a count that would sit on top of one already placed is left out.
+    const placed: { x: number; y: number }[] = [];
+    return clumps
+      .filter((clump) => clump.count >= 5)
+      .sort((a, b) => b.count - a.count)
+      .map((clump) => {
+        const x = clump.x + (clump.x < centreX ? 12 : -12);
+        const y = clump.y + (clump.y < centreY ? 20 : -13);
+        if (placed.some((other) => Math.abs(other.x - x) < 64 && Math.abs(other.y - y) < 13)) return null;
+        placed.push({ x, y });
+        return (
+          <text
+            key={`${clump.x.toFixed(0)}-${clump.y.toFixed(0)}`}
+            className="nn-clump-label"
+            x={x}
+            y={y}
+            textAnchor={clump.x < centreX ? "start" : "end"}
+          >
+            {clump.count} points
+          </text>
+        );
+      });
+  };
+  const cross = (x: number, y: number) => (
+    <g className="nn-probe">
+      <line x1={x - 7} x2={x + 7} y1={y} y2={y} />
+      <line x1={x} x2={x} y1={y - 7} y2={y + 7} />
+    </g>
+  );
+
+  if (weights.length === 2) {
+    const values = [...seen.flatMap((point) => point.hidden), ...probeHidden];
+    const rawLow = Math.min(0, ...values);
+    const rawHigh = Math.max(0, ...values);
+    const span = Math.max(1e-6, rawHigh - rawLow);
+    const [low, high] = activation === "tanh" ? [-1.15, 1.15] : [rawLow - span * 0.1, rawHigh + span * 0.1];
+    const half = (high - low) / 2;
+    const middle = (high + low) / 2;
+    const px = (value: number) => HS.left + ((value - low) / (high - low)) * HS_PLOT;
+    const py = (value: number) => HS.top + (1 - (value - low) / (high - low)) * HS_PLOT;
+    // The cut w₁h₁ + w₂h₂ + c = 0, found in the plot's own [−1, 1]² coordinates.
+    const cut = unitBoundary([weights[0] * half, weights[1] * half], bias + (weights[0] + weights[1]) * middle);
+    const fromUnit = (value: number) => middle + half * value;
+    // Name the cut at whichever of three places along it is farthest from the points.
+    const cutLabel = cut
+      ? [0.25, 0.5, 0.75]
+          .map((t) => {
+            const x = px(fromUnit(cut[0][0] + (cut[1][0] - cut[0][0]) * t));
+            const y = py(fromUnit(cut[0][1] + (cut[1][1] - cut[0][1]) * t));
+            const clear = Math.min(
+              ...seen.map((point) => Math.hypot(px(point.hidden[0]) - x, py(point.hidden[1]) - y)),
+            );
+            return { x, y, clear };
+          })
+          .reduce((best, spot) => (spot.clear > best.clear ? spot : best))
+      : { x: 0, y: 0, clear: 0 };
+    const ticks =
+      activation === "tanh"
+        ? [-1, 0, 1]
+        : [rawLow, 0, rawHigh].filter(
+            (tick, index, all) => all.findIndex((other) => Math.abs(other - tick) < span * 0.14) === index,
+          );
+    const tickText = (tick: number) =>
+      tick === 0
+        ? "0"
+        : `${tick < 0 ? "−" : ""}${activation === "tanh" ? Math.abs(tick) : Math.abs(tick).toFixed(1)}`;
+    const cell = HS_PLOT / HS_GRID;
+    return (
+      <div className="nn-builder-lower">
+        <svg
+          className="nn-hidden__plot"
+          viewBox={`0 0 ${HS.width} ${HS_HEIGHT}`}
+          role="img"
+          aria-label={`Hidden space. Each of the ${seen.length} training points is drawn at its two hidden values, h1 across and h2 up. The output unit's straight cut puts ${correct} of them on the correct side.`}
+        >
+          <defs>
+            <clipPath id="nn-hidden-square">
+              <rect x={HS.left} y={HS.top} width={HS_PLOT} height={HS_PLOT} />
+            </clipPath>
+          </defs>
+          <g clipPath="url(#nn-hidden-square)">
+            {Array.from({ length: HS_GRID * HS_GRID }, (_, index) => {
+              const column = index % HS_GRID;
+              const row = Math.floor(index / HS_GRID);
+              const h1 = low + ((column + 0.5) / HS_GRID) * (high - low);
+              const h2 = high - ((row + 0.5) / HS_GRID) * (high - low);
+              const style = shade(sigmoid(weights[0] * h1 + weights[1] * h2 + bias), "output", 1);
+              return (
+                <rect
+                  key={index}
+                  className={`nn-cell nn-cell--${style.tone}`}
+                  x={HS.left + column * cell}
+                  y={HS.top + row * cell}
+                  width={cell + 0.3}
+                  height={cell + 0.3}
+                  opacity={style.opacity}
+                />
+              );
+            })}
+            {cut && (
+              <line
+                className="nn-unit-line"
+                x1={px(fromUnit(cut[0][0]))}
+                y1={py(fromUnit(cut[0][1]))}
+                x2={px(fromUnit(cut[1][0]))}
+                y2={py(fromUnit(cut[1][1]))}
+              />
+            )}
+          </g>
+          {cut && (
+            <text
+              className="nn-unit-label"
+              x={clamp(cutLabel.x, HS.left + 30, HS.left + HS_PLOT - 30)}
+              y={clamp(cutLabel.y - 6, HS.top + 12, HS.top + HS_PLOT - 6)}
+              textAnchor="middle"
+            >
+              ŷ = 0.5
+            </text>
+          )}
+          {seen.map((point, index) => (
+            <PointMark
+              key={index}
+              cx={px(point.hidden[0])}
+              cy={py(point.hidden[1])}
+              label={point.label}
+              wrong={isWrong(point)}
+              r={3.6}
+            />
+          ))}
+          {clumpLabels(seen.map((point) => ({ x: px(point.hidden[0]), y: py(point.hidden[1]) })))}
+          {cross(px(probeHidden[0]), py(probeHidden[1]))}
+          {frame}
+          {ticks.map((tick) => (
+            <g key={tick}>
+              <text className="nn-tick" x={px(tick)} y={HS.top + HS_PLOT + 13} textAnchor="middle">
+                {tickText(tick)}
+              </text>
+              <text className="nn-tick" x={HS.left - 5} y={py(tick) + 3.5} textAnchor="end">
+                {tickText(tick)}
+              </text>
+            </g>
+          ))}
+          <text className="nn-axis" x={HS.left + HS_PLOT} y={HS_HEIGHT - 2} textAnchor="end">
+            h1 →
+          </text>
+          <text className="nn-axis" x={HS.left} y={HS.top - 8}>
+            ↑ h2
+          </text>
+        </svg>
+        <div className="nn-builder-probe">
+          <p className="nn-hidden__caption">
+            <strong>{title}</strong>
+            <span>
+              Each training point is redrawn at the two numbers {layerName} gives it. The dashed line is the output
+              unit's one straight cut: {correct} of {seen.length} points are on their correct side.
+            </span>
+          </p>
+          {children}
+        </div>
+      </div>
+    );
+  }
+
+  const reach = Math.max(1, Math.abs(probeZ), ...seen.map((point) => Math.abs(point.z))) * 1.08;
+  const px = (z: number) => HS.left + ((z + reach) / (2 * reach)) * HS_PLOT;
+  const py = (value: number) => HS.top + 10 + (1 - value) * (HS_PLOT - 20);
+  const strips = 30;
+  const strip = HS_PLOT / strips;
+  const curve = Array.from({ length: 81 }, (_, index) => {
+    const z = -reach + (index / 80) * 2 * reach;
+    return `${index === 0 ? "M" : "L"}${px(z).toFixed(1)} ${py(sigmoid(z)).toFixed(1)}`;
+  }).join(" ");
+  const edge = Math.max(1, Math.floor(reach));
+  return (
+    <div className="nn-builder-lower">
+      <svg
+        className="nn-hidden__plot"
+        viewBox={`0 0 ${HS.width} ${HS_HEIGHT}`}
+        role="img"
+        aria-label={`Each of the ${seen.length} training points drawn at the output unit's weighted sum z, on the sigmoid curve that turns z into the output. ${correct} of them are on the correct side of z = 0.`}
+      >
+        {Array.from({ length: strips }, (_, index) => {
+          const style = shade(sigmoid(-reach + ((index + 0.5) / strips) * 2 * reach), "output", 1);
+          return (
+            <rect
+              key={index}
+              className={`nn-cell nn-cell--${style.tone}`}
+              x={HS.left + index * strip}
+              y={HS.top}
+              width={strip + 0.3}
+              height={HS_PLOT}
+              opacity={style.opacity * 0.55}
+            />
+          );
+        })}
+        <line className="nn-unit-line" x1={px(0)} x2={px(0)} y1={HS.top} y2={HS.top + HS_PLOT} />
+        <path className="nn-hidden__curve" d={curve} />
+        <text className="nn-unit-label" x={px(0) + 6} y={py(0.3)}>
+          ŷ = 0.5
+        </text>
+        {seen.map((point, index) => (
+          <PointMark
+            key={index}
+            cx={px(point.z)}
+            cy={py(point.output)}
+            label={point.label}
+            wrong={isWrong(point)}
+            r={3.6}
+          />
+        ))}
+        {clumpLabels(seen.map((point) => ({ x: px(point.z), y: py(point.output) })))}
+        {cross(px(probeZ), py(probePass.output))}
+        {frame}
+        {[-edge, 0, edge].map((tick) => (
+          <text key={tick} className="nn-tick" x={px(tick)} y={HS.top + HS_PLOT + 13} textAnchor="middle">
+            {tick < 0 ? `−${-tick}` : tick}
+          </text>
+        ))}
+        {[0, 0.5, 1].map((tick) => (
+          <text key={tick} className="nn-tick" x={HS.left - 5} y={py(tick) + 3.5} textAnchor="end">
+            {tick}
+          </text>
+        ))}
+        <text className="nn-axis" x={HS.left + HS_PLOT} y={HS_HEIGHT - 2} textAnchor="end">
+          weighted sum z →
+        </text>
+        <text className="nn-axis" x={HS.left} y={HS.top - 8}>
+          ↑ ŷ, the output
+        </text>
+      </svg>
+      <div className="nn-builder-probe">
+        <p className="nn-hidden__caption">
+          <strong>{title}</strong>
+          <span>
+            The output unit turns the {weights.length === 1 ? "one hidden value" : `${weights.length} hidden values`}{" "}
+            of each training point into one number, z, and cuts at z = 0: {correct} of {seen.length} points are on
+            their correct side.
+          </span>
+        </p>
+        {children}
+      </div>
+    </div>
   );
 }
 
@@ -963,6 +1423,7 @@ function SplitPanel({
   curve,
   epoch,
   lossCeiling,
+  flipped,
 }: {
   title: string;
   history: TrainHistory;
@@ -970,6 +1431,8 @@ function SplitPanel({
   epoch: number;
   /** Shared by both panels so their loss curves sit on one scale. */
   lossCeiling: number;
+  /** Training points whose label was flipped (empty when the labels are clean). */
+  flipped: ReadonlySet<number>;
 }) {
   const heldAccuracies = history.heldAccuracies ?? [];
   const heldLosses = history.heldLosses ?? [];
@@ -979,11 +1442,29 @@ function SplitPanel({
   const format = accuracyMode ? percent : (value: number) => fmt(value, 3);
   const trainAccuracy = history.accuracies[epoch];
   const heldAccuracy = heldAccuracies[epoch];
+  const gap = trainAccuracy - heldAccuracy;
   return (
     <div className="nn-pair__item">
       <h4>
         {title} · {parameterCount(history.sizes)} parameters
       </h4>
+      <MiniSurface
+        network={snapshotAt(history, epoch)}
+        activation="tanh"
+        data={history.data}
+        flipped={flipped}
+        label={`${title}: its answer across the input square after ${epoch} epochs, with the 60 training points${flipped.size > 0 ? `, ${flipped.size} of them carrying a flipped label` : ""}. Training accuracy ${percent(trainAccuracy)}, held-out accuracy ${percent(heldAccuracy)}.`}
+      />
+      <p className="nn-mini-note">
+        {flipped.size > 0 ? (
+          <>
+            <i className="nn-key__diamond" />a flipped training label. A pocket of the other colour around one means
+            the network learned the mistake.
+          </>
+        ) : (
+          "The 60 training points, all labelled correctly."
+        )}
+      </p>
       <LineChart
         label={`${title}: ${accuracyMode ? "accuracy" : "loss"} on training points and on held-out points by epoch`}
         xLabel={`epoch, 0 → ${MAX_EPOCHS}`}
@@ -1010,12 +1491,44 @@ function SplitPanel({
           },
         ]}
       />
-      <div className="metric-row">
-        <Metric label="Training accuracy" value={percent(trainAccuracy)} tone="forward" />
-        <Metric label="Held-out accuracy" value={percent(heldAccuracy)} tone="loss" />
-        <Metric label="Gap" value={points(trainAccuracy - heldAccuracy)} />
-        <Metric label="Held-out loss" value={fmt(heldLosses[epoch])} />
-      </div>
+      <dl className="nn-readout">
+        <div className="nn-readout__row">
+          <dt>Training accuracy</dt>
+          <dd>
+            <span className="nn-readout__track" aria-hidden="true">
+              <i className="nn-readout__fill nn-readout__fill--train" style={{ width: `${trainAccuracy * 100}%` }} />
+            </span>
+            <strong className="nn-readout__value nn-readout__value--train">{percent(trainAccuracy)}</strong>
+          </dd>
+        </div>
+        <div className="nn-readout__row">
+          <dt>Held-out accuracy</dt>
+          <dd>
+            <span className="nn-readout__track" aria-hidden="true">
+              <i className="nn-readout__fill nn-readout__fill--held" style={{ width: `${heldAccuracy * 100}%` }} />
+              <i
+                className="nn-readout__gap"
+                style={{
+                  left: `${Math.min(trainAccuracy, heldAccuracy) * 100}%`,
+                  width: `${Math.abs(gap) * 100}%`,
+                }}
+              />
+            </span>
+            <strong className="nn-readout__value nn-readout__value--held">{percent(heldAccuracy)}</strong>
+          </dd>
+        </div>
+        <div className="nn-readout__stat">
+          <dt>
+            <i className="nn-readout__gap-key" />
+            Gap
+          </dt>
+          <dd>{points(gap)}</dd>
+        </div>
+        <div className="nn-readout__stat">
+          <dt>Held-out loss</dt>
+          <dd>{fmt(heldLosses[epoch])}</dd>
+        </div>
+      </dl>
     </div>
   );
 }
@@ -1029,8 +1542,9 @@ function LossChart({
   accuracies: readonly number[];
   epoch: number;
 }) {
-  const width = 340;
-  const height = 158;
+  const [chartRef, measured] = useWidth(300);
+  const width = Math.max(240, measured);
+  const height = 164;
   const left = 34;
   const right = width - 10;
   const top = 20;
@@ -1048,86 +1562,88 @@ function LossChart({
   const firstPerfect = accuracies.findIndex((value) => value === 1);
   const current = losses[epoch];
   return (
-    <svg
-      className="nn-loss"
-      viewBox={`0 0 ${width} ${height}`}
-      role="img"
-      aria-label={`Training loss by epoch, from ${fmt(losses[0])} at epoch 0 to ${fmt(losses[losses.length - 1])} at epoch ${MAX_EPOCHS}. Marker at epoch ${epoch}, loss ${fmt(current)}.`}
-    >
-      {[0, yMax / 2, yMax].map((tick) => (
-        <g key={tick}>
-          <line
-            className="nn-loss__grid"
-            x1={left}
-            x2={right}
-            y1={yAt(tick)}
-            y2={yAt(tick)}
-          />
-          <text
-            className="nn-tick"
-            x={left - 5}
-            y={yAt(tick) + 3.5}
-            textAnchor="end"
-          >
-            {tick.toFixed(tick === 0 ? 0 : 1)}
-          </text>
-        </g>
-      ))}
-      {[0, 100, 200, 300].map((tick) => (
-        <text
-          key={tick}
-          className="nn-tick"
-          x={xAt(tick)}
-          y={bottom + 13}
-          textAnchor="middle"
-        >
-          {tick}
-        </text>
-      ))}
-      <line
-        className="nn-loss__ln2"
-        x1={left}
-        x2={right}
-        y1={yAt(Math.LN2)}
-        y2={yAt(Math.LN2)}
-      />
-      <text
-        className="nn-loss__ln2-label"
-        x={right}
-        y={yAt(Math.LN2) - 4}
-        textAnchor="end"
+    <div ref={chartRef}>
+      <svg
+        className="nn-loss"
+        viewBox={`0 0 ${width} ${height}`}
+        role="img"
+        aria-label={`Training loss by epoch, from ${fmt(losses[0])} at epoch 0 to ${fmt(losses[losses.length - 1])} at epoch ${MAX_EPOCHS}. Marker at epoch ${epoch}, loss ${fmt(current)}.`}
       >
-        0.693 = always 50%
-      </text>
-      {firstPerfect >= 0 && (
+        {[0, yMax / 2, yMax].map((tick) => (
+          <g key={tick}>
+            <line
+              className="nn-loss__grid"
+              x1={left}
+              x2={right}
+              y1={yAt(tick)}
+              y2={yAt(tick)}
+            />
+            <text
+              className="nn-tick"
+              x={left - 5}
+              y={yAt(tick) + 3.5}
+              textAnchor="end"
+            >
+              {tick.toFixed(tick === 0 ? 0 : 1)}
+            </text>
+          </g>
+        ))}
+        {[0, 100, 200, 300].map((tick) => (
+          <text
+            key={tick}
+            className="nn-tick"
+            x={xAt(tick)}
+            y={bottom + 13}
+            textAnchor="middle"
+          >
+            {tick}
+          </text>
+        ))}
         <line
-          className="nn-loss__perfect"
-          x1={xAt(firstPerfect)}
-          x2={xAt(firstPerfect)}
+          className="nn-loss__ln2"
+          x1={left}
+          x2={right}
+          y1={yAt(Math.LN2)}
+          y2={yAt(Math.LN2)}
+        />
+        <text
+          className="nn-loss__ln2-label"
+          x={right}
+          y={yAt(Math.LN2) - 4}
+          textAnchor="end"
+        >
+          0.693 = always 50%
+        </text>
+        {firstPerfect >= 0 && (
+          <line
+            className="nn-loss__perfect"
+            x1={xAt(firstPerfect)}
+            x2={xAt(firstPerfect)}
+            y1={top}
+            y2={bottom}
+          />
+        )}
+        <path className="nn-loss__line" d={path} />
+        <line
+          className="nn-loss__marker"
+          x1={xAt(epoch)}
+          x2={xAt(epoch)}
           y1={top}
           y2={bottom}
         />
-      )}
-      <path className="nn-loss__line" d={path} />
-      <line
-        className="nn-loss__marker"
-        x1={xAt(epoch)}
-        x2={xAt(epoch)}
-        y1={top}
-        y2={bottom}
-      />
-      <circle
-        className="nn-loss__dot"
-        cx={xAt(epoch)}
-        cy={yAt(current)}
-        r={4}
-      />
-      <text className="nn-axis" x={right} y={height - 1} textAnchor="end">
-        epoch →
-      </text>
-      <text className="nn-axis" x={2} y={10}>
-        loss
-      </text>
-    </svg>
+        <circle
+          className="nn-loss__dot"
+          cx={xAt(epoch)}
+          cy={yAt(current)}
+          r={4}
+        />
+        <text className="nn-axis" x={right} y={height - 1} textAnchor="end">
+          epoch →
+        </text>
+        <text className="nn-axis" x={2} y={10}>
+          loss
+        </text>
+      </svg>
+    </div>
   );
 }

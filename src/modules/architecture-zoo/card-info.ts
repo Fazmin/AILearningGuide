@@ -33,7 +33,8 @@ const cardInfo: ModuleCardInfo = {
       "A 3×3 kernel is dotted with every 3×3 window of the pad. The same 9 weights produce all 64 outputs, which is weight sharing, and each output depends only on its own window, which is locality.",
     whatYouSee: [
       "Filter: vertical edge, horizontal edge, or center blob.",
-      "The 3×3 kernel with signed weights, and an 8×8 grid of signed responses. Positive cells are tinted blue, negative cells orange, and the sign is always printed.",
+      "One product drawn out: the 3×3 window of pixels around the selected cell, times the 3×3 kernel with signed weights, equals that cell's output. Pairs where an inked pixel meets a nonzero weight are ringed.",
+      "Below it, an 8×8 grid of signed responses. Positive cells are tinted blue, negative cells orange, and the sign is always printed.",
       "A formula row that lists the nonzero pixel × weight products for the selected output, and metrics comparing 9 shared weights with a dense 64 → 64 layer.",
     ],
     howItWorks: [
@@ -61,8 +62,8 @@ const cardInfo: ModuleCardInfo = {
       "A one-number recurrent net reads the eight column means in order: h_t = tanh(w·h_(t−1) + x_t). The gradient of the final state h7 with respect to an early input is a product of one factor per later step, so it shrinks or grows geometrically with distance.",
     whatYouSee: [
       "Recurrent weight w and RNN step t.",
-      "Eight boxes h0 to h7 with the hidden value and the input x below it, tinted by |h|. The small ×factor above each arrow is w·(1 − h²) for that step; the links from the selected step to h7 are drawn in orange.",
-      "Bars of the gradient ∂h7/∂x_t for every column, a formula row that multiplies out the selected one, and metrics Hidden, ∂h7/∂x for the selected column, Hops to h7, and Column mean.",
+      "Eight boxes h0 to h7 with the hidden value and the input x below it, tinted by |h|. The small ×factor above each arrow is w·(1 − h²) for that step; the links from the selected step to h7 are drawn in orange, and each one is as thick as the share of the selected column's signal that is left at that point.",
+      "A bar under each box for the gradient ∂h7/∂x_t of that column, with its value above it, a formula row that multiplies out the selected one, and metrics Hidden, ∂h7/∂x for the selected column, Hops to h7, and Column mean.",
     ],
     howItWorks: [
       "Inputs x_t are the fraction of inked pixels in column t + 1. h starts at 0; there is one weight on the input (fixed at 1) and one recurrent weight w.",
@@ -89,6 +90,7 @@ const cardInfo: ModuleCardInfo = {
     whatYouSee: [
       "Wiring: Dense MLP, Per-position MLP, Convolution, Recurrent, Attention, State-space. Conv layers appears for Convolution.",
       "The matrix: filled cells marked 1 are reached in one hop, lighter numbered cells through a chain, dotted cells cannot be seen.",
+      "Beside it, the same wiring as lines: inputs along the bottom, outputs along the top, and the wires of one output drawn bold. The numbered circles pick which output to trace, and that output's row is outlined in the matrix. Convolution shows one row of units per layer; Recurrent and State-space show the chain of steps.",
       "A table at width d = 64, kernel k = 3, state size N = 16, with the current wiring highlighted.",
     ],
     howItWorks: [
@@ -97,7 +99,7 @@ const cardInfo: ModuleCardInfo = {
       "Kept to extend is what must be stored to add one more position: the window, nothing, (k − 1)·d per conv layer, the hidden state d, the KV cache 2·n·d, or the SSM state d·N, shown at n = 8 and n = 4,096.",
     ],
     controls: [
-      "Wiring, and Conv layers from 1 to 7 when Convolution is selected.",
+      "Wiring, and Conv layers from 1 to 7 when Convolution is selected. The numbered circles above the wiring picture choose which output's wires are traced.",
       "Comparison worth running: Recurrent against Attention. The same cells are visible, but attention reaches input 1 in 1 hop and recurrence in 8.",
     ],
     notice: [
@@ -117,7 +119,8 @@ const cardInfo: ModuleCardInfo = {
       "A mixture-of-experts layer replaces one MLP with E expert MLPs and a router. Each token runs through only its top k experts, weighted by a softmax over those k router scores. Memory grows with E; compute per token grows with k.",
     whatYouSee: [
       "Experts E from 2 to 16 and Experts per token k from 1 to 4.",
-      "A routing table: one row per token (each pad column as an 8-number vector), one column per expert, with the gate percentage where a token is routed. The load row counts tokens per expert; zero is marked.",
+      "A routing table: one row per token (each pad column as an 8-number vector), one column per expert, with the gate percentage where a token is routed. The load row counts tokens per expert with a bar for each; zero is marked.",
+      "A strip with one block per expert, k of them filled: the share of the stored expert weights that one token runs.",
       "Metrics Total expert weights, Active per token, and Router weights.",
     ],
     howItWorks: [

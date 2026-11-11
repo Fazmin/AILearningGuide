@@ -8,7 +8,8 @@ const cardInfo: ModuleCardInfo = {
     whatYouSee: [
       "A kicker counting templated training characters and a badge `N examples`.",
       "Three pressable rows — `System block`, `Role markers`, `End-of-turn marker` — each with an `in template` or `off` chip, and `Loss on` with `Assistant reply only` and `Every character`.",
-      "The strip: one cell per character. A top rule marks the turn it belongs to (system dotted, user dashed, assistant solid). Graded cells are plain with a blue underline; context-only cells are hatched and greyed. Each cell's bar is −log p of that character under the trained templated model, from 0 to 5 nats.",
+      "The strip: one cell per character. A top rule marks the turn it belongs to (system dotted, user dashed, assistant solid). Graded cells are plain with a blue underline; context-only cells are hatched and greyed. Each cell's bar is −log p of that character under the trained templated model, from 0 to 5 nats. With the mask on, a flag reading `graded from here` stands on the first graded character.",
+      "One bar that splits the example's predicted characters into those read as context and those graded.",
       "Three metrics: how many of the example's characters are graded, and the mean −log p of the graded and the context-only characters.",
     ],
     howItWorks: [
@@ -41,7 +42,7 @@ const cardInfo: ModuleCardInfo = {
     whatYouSee: [
       "A chart of optimizer step against batch loss on the graded characters. Solid `with template`, dashed `no template`, y from 0.60 to about 3.50, with a footnote giving each run's graded-target count.",
       "Three metrics: `Reply log-prob per char, templated`, `Reply log-prob per char, plain`, and the probability of `<` after the reply's last character for each model.",
-      "Two samples at temperature 0.6, length 70, seed 17: the templated model continuing everything before the reply (markers shown), and the plain model continuing `instruction + space`.",
+      "Two samples at temperature 0.6, length 70, seed 17: the templated model continuing everything before the reply (markers shown, with the angle brackets picked out in colour), and the plain model continuing `instruction + space`.",
     ],
     howItWorks: [
       "Reply log-prob is the mean of log p over the reply characters of the first example, each conditioned on the character before it in its own format. Both models are scored on the same characters and divided by the same count.",
@@ -102,7 +103,7 @@ const cardInfo: ModuleCardInfo = {
       "The next-character distribution after the last character of the first reply, from both models. With `<end>` in the template, the templated model piles probability on the reserved `<`; the plain model has never seen anything follow a reply.",
     whatYouSee: [
       "A kicker naming the boundary character, a full stop for the default pairs.",
-      "Two bar lists of the top five next characters: the templated model above, the plain model below, each with its probability.",
+      "Two bar lists of the top five next characters: the templated model above, the plain model below, each under its own heading and with its probability.",
       "A note that states what each model saw after that character in training.",
     ],
     howItWorks: [
@@ -133,7 +134,7 @@ const cardInfo: ModuleCardInfo = {
     whatYouSee: [
       "`Serve with`, a three-way switch: `Chat template`, `No template` and `Wrong role marker`.",
       "A box with the exact string sent, its last character marked, and a line naming the one character each model reads.",
-      "Two samples, templated above and plain below, at temperature 0.6, length 90 and seed 17 with markers shown. Each has a note on where its first marker falls, because a marker is the stop signal.",
+      "Two samples, templated first and plain second, at temperature 0.6, length 90 and seed 17 with markers shown. A `stop` tag sits at each sample's first marker and the text after it is struck through, because a marker is the stop signal; a note under the sample says the same in words.",
       "Two bar lists of the five likeliest next characters, one per model, for the served string.",
       "Two readouts written `templated vs plain`: the probability of the first reply character, and the log-probability per character of a held-out reply.",
     ],

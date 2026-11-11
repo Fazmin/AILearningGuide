@@ -8,7 +8,8 @@ const cardInfo: ModuleCardInfo = {
     whatYouSee: [
       "A kicker One dataset, eight methods and a badge that repeats the algorithm string.",
       "Algorithm, an eight-way segmented control.",
-      "Sliders k from 1 to 7 and Tree depth from 1 to 5.",
+      "A strip of eight small decision surfaces, one per method, all fitted at the current k and Tree depth. Each shows the 18 points, rings the ones it gets wrong in red, and prints how many it gets right; kmeans prints no labels. The current method is outlined, and clicking a thumbnail selects it.",
+      "Sliders k from 1 to 7 and Tree depth from 1 to 5. A slider the current method ignores is dimmed, and a line under each says which methods use it.",
       "A note that names which slider each method reads.",
     ],
     howItWorks: [
@@ -16,7 +17,7 @@ const cardInfo: ModuleCardInfo = {
       "Linear solves the least-squares normal equation for labels in {0,1}. Logistic runs 80 full-batch gradient steps on log-loss from w = 0. SVM runs 3000 primal subgradient steps on ½‖w‖² + 8·Σ hinge with a shrinking step and keeps the lowest-objective iterate. knn votes at query time. The tree splits on x or y by Gini gain 2p(1−p). The forest majority-votes 7 bootstrap trees. Naive Bayes fits a prior and a 1-D Gaussian per coordinate per class. k-means runs 12 assign-and-average steps and never reads a label.",
     ],
     controls: [
-      "Algorithm switches the method. k and Tree depth only matter for the methods named in the note.",
+      "Algorithm, or a click on a thumbnail, switches the method. k and Tree depth only matter for the methods named in the note.",
       "Comparison worth running: linear versus knn with k = 1, then logistic versus SVM, then naive Bayes.",
     ],
     notice: [
@@ -37,7 +38,7 @@ const cardInfo: ModuleCardInfo = {
       "A square canvas of 784 cells with x and y ticks from 0 to 1, 18 labeled circles, and one probe ring.",
       "A dark edge wherever the predicted class (or cluster id) changes between neighbouring cells, and a small × over every training point the method misclassifies.",
       "A solid hyperplane for linear, logistic, and SVM; dashed margin lines and ringed support vectors for SVM; split segments for a tree (or tree 0 of the forest), each bounded by its parent's region; neighbor spokes for knn; numbered crosses for k-means centers.",
-      "A legend that names shading, point labels, misclassification marks, and the probe, so color is never the only cue.",
+      "A legend beside the canvas that names shading, point labels, misclassification marks, and the probe, so color is never the only cue.",
     ],
     howItWorks: [
       "The grid evaluates the fitted rule at cell centers. Linear thresholds a 3-weight score at 0.5. Logistic and naive Bayes threshold a probability at 0.5, and opacity grows with |P(y=1|x) − 0.5|. SVM thresholds w·x+b at 0. knn majority-votes k neighbors. The tree walks axis-aligned splits. The forest majority-votes 7 trees. k-means shades by nearest center index.",
@@ -63,6 +64,7 @@ const cardInfo: ModuleCardInfo = {
       "Probe x and Probe y choose a query. The formula row is the number that method actually computes there: a linear score, σ(z), a margin, a k-vote, a forest vote, or a naive Bayes posterior. The note names the inductive bias.",
     whatYouSee: [
       "Sliders Probe x and Probe y from 0 to 1.",
+      "A picture of the probe's reading, different for each method. Linear, logistic, and SVM show the probe as a ring on a number line with the cut marked and class 0 and class 1 on either side; the SVM line also shades the street. knn and the forest show one ballot per voter, filled for class 1 and hollow for class 0, then the tally. The tree shows its questions as a chain of boxes from the root to the leaf the probe reaches. Naive Bayes shows the two class scores as shares of one bar with the 50% mark. kmeans shows a bar for the distance to each center.",
       "A FormulaWithValues block whose expression matches the selected algorithm.",
       "A note that states the bias: hyperplane, probability, margin, local vote, axis-aligned cut, averaged trees, conditional independence, or Voronoi.",
     ],
@@ -91,6 +93,7 @@ const cardInfo: ModuleCardInfo = {
       "After fitting, linear, logistic, and SVM keep three weights; knn keeps the 18 points; the tree keeps its splits and leaves; the forest keeps 7 trees; naive Bayes keeps a prior plus a mean and variance per coordinate per class; k-means keeps k centers. Accuracy is replaced by within-cluster sum of squares for k-means, because that method never saw a label.",
     whatYouSee: [
       "Metrics Keeps, Numbers stored, and Train accuracy (or Within-cluster SS for k-means).",
+      "Eight bars on one scale: the numbers each method stores at the current k and Tree depth, with the current method highlighted.",
       "A note that names what the current method stored and, for trees, how many leaves the current depth grew.",
     ],
     howItWorks: [

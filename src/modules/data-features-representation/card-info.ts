@@ -89,7 +89,7 @@ const cardInfo: ModuleCardInfo = {
       "The model class is a 1-D threshold: ŷ = 1[stamp ≥ t]. Stamp the gate reads chooses rooms, door color, or park. The same six tags therefore meet a different yard when the coordinate changes.",
     whatYouSee: [
       "Stamp the gate reads, three segments, and Gate height t from 0 to 5.",
-      "Two yards — Predicted low and Predicted high — with the six facades. A struck-through pill marks a miss.",
+      "A ruler from 0 to 5 with each facade standing at the value of the stamp the gate reads; houses with the same value stack. The gate is a red bar at t. Left of it is the Predicted low yard and right of it the Predicted high yard. A struck-through pill marks a miss.",
       "Metrics Tags the gate matches, and the selected listing's ŷ.",
     ],
     howItWorks: [
@@ -143,8 +143,9 @@ const cardInfo: ModuleCardInfo = {
       "A 3×3 picture of 0/1 pixels, read row by row, is a vector of nine numbers, and it can be compared with three template pictures by the same straight-line distance used on the street. A sentence is turned into IDs by looking each word up in a fixed eight-word vocabulary. Both are previews of how later labs turn pictures and text into numbers.",
     whatYouSee: [
       "A 3×3 pad of buttons. Each cell prints its value, 1 for ink or 0 for blank, and is a pressed or unpressed button, so the state never depends on colour alone.",
-      "A vector chip with the nine numbers, row by row, and a table of the three template pictures (plus, ring, bar) with their pixels, their distance to your drawing, and their rank.",
+      "A vector chip with the nine numbers, row by row, and a table of the three template pictures (plus, ring, bar). Each template is drawn small with the pixels that differ from your drawing ringed, beside its pixels as digits, the count of pixels that differ, its distance to your drawing, and its rank.",
       "Sentence, four presets, and a table of each word, its ID, and whether it is on the list. A word that is not on the list shows ID 0.",
+      "A number line of the eight IDs, 0 to 7, with each word under its ID and the words of the chosen sentence filled in. Two arcs start at cat: a solid one to mat marked gap 3 and a dashed one to dog marked gap 4.",
       "Metrics for the nearest template and its distance, the sentence as a list of IDs, the ID gap from cat to dog and from cat to mat, and the one-hot gap between any two words.",
     ],
     howItWorks: [
@@ -172,6 +173,7 @@ const cardInfo: ModuleCardInfo = {
       "The six listings, spoiled three ways: one room count is blank, one listing appears twice, and one price tag is flipped. A small table summary (rows, mean rooms, share of high prices) and a three-nearest-neighbour answer for a new listing show what each problem does, and how handling a blank cell changes it.",
     whatYouSee: [
       "Missing value, Handle missing (read as 0, drop the row, fill with the mean), Duplicate row, and Mislabelled row, each a set of buttons.",
+      "A distance line: every listing sits at its distance from the new listing, with its name, distance, and tag. A filled mark is a high tag and a hollow mark a low one. The shaded span reaches to the third-nearest listing, so the marks inside it are the three that vote. A row the mess moved keeps a dashed ghost at its clean distance and an arrow to where it went; a dropped row is struck through. Under the line, the vote and the answer are written out.",
       "A table of the listings with a What is wrong column in words, so the spoiled rows are named and not only shaded.",
       "Metrics: rows in the summary, mean rooms, high-price share, the three-nearest answer, leave-one-out accuracy, and whether the answer changed against the clean table.",
       "A note that names the three nearest listings with their distances and tags, and says what each switched-on problem did.",
