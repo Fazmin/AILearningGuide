@@ -26,6 +26,8 @@ export const initialState: ModuleState = {
   keep: 1,
   undo: "leave",
   predictUndo: -1,
+  forgetView: "flat",
+  keepFast: 1,
   pieces: 2,
   predictPieces: -1,
   round: 0,
@@ -38,6 +40,8 @@ export const initialState: ModuleState = {
 };
 
 export const UNDOS = ["leave", "stretch"] as const;
+/** The rank card's two pictures: the flat map of two numbers per word, and three numbers per word in space. */
+export const FORGET_VIEWS = ["flat", "space"] as const;
 
 const member = <T extends string>(value: unknown, allowed: readonly T[], fallback: T): T =>
   typeof value === "string" && (allowed as readonly string[]).includes(value) ? (value as T) : fallback;
@@ -59,6 +63,7 @@ export const RANGES = {
   stretch: [0.5, 1.5],
   matrix: [-2, 2],
   keep: [0, 1],
+  keepFast: [0, 1],
 } as const;
 
 export interface LabState {
@@ -78,6 +83,8 @@ export interface LabState {
   keep: number;
   undo: (typeof UNDOS)[number];
   predictUndo: number;
+  forgetView: (typeof FORGET_VIEWS)[number];
+  keepFast: number;
   pieces: number;
   predictPieces: number;
   round: number;
@@ -112,6 +119,8 @@ export const cleanState = (raw: Record<string, unknown>): ModuleState => {
     keep: num("keep", ...RANGES.keep),
     undo: member(raw.undo, UNDOS, "leave"),
     predictUndo: int("predictUndo", -1, 2),
+    forgetView: member(raw.forgetView, FORGET_VIEWS, "flat"),
+    keepFast: num("keepFast", ...RANGES.keepFast),
     pieces: int("pieces", 1, PIECES.length),
     predictPieces: int("predictPieces", -1, 2),
     round: int("round", 0, ROUNDS.length - 1),
@@ -146,6 +155,8 @@ export const readState = (state: ModuleState): LabState => {
     keep: n("keep"),
     undo: t("undo") as (typeof UNDOS)[number],
     predictUndo: n("predictUndo"),
+    forgetView: t("forgetView") as (typeof FORGET_VIEWS)[number],
+    keepFast: n("keepFast"),
     pieces: n("pieces"),
     predictPieces: n("predictPieces"),
     round: n("round"),

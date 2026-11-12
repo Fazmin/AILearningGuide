@@ -9,6 +9,7 @@ import {
   type ModuleContext,
 } from "@app/module-sdk";
 import { LayoutMap } from "./LayoutMap";
+import { GpuBlock } from "./GpuBlock";
 import { PipelineSchedule } from "./PipelineSchedule";
 import {
   CHECKPOINT_MINUTES,
@@ -637,16 +638,38 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
             onChange={(index) => update({ microbatches: MICROBATCHES_LADDER[index] ?? 1 }, `${MICROBATCHES_LADDER[index] ?? 1} microbatches.`)}
           />
         </div>
-        <LayoutMap
-          model={model}
-          tensor={config.tensor}
-          pipeline={config.pipeline}
-          data={config.data}
-          expert={expert}
-          moe={moe}
-          sliceParameters={memory.sliceParameters}
-          gpus={gpus}
-        />
+        <div className="stage3d-switch par-picture">
+          <SegmentedControl
+            label="Picture"
+            value={config.layoutView}
+            options={[
+              { value: "flat", label: "Slab and rack" },
+              { value: "block", label: "3D block of GPUs" },
+            ]}
+            onChange={(value) => {
+              setState({ layoutView: value });
+              narrate(
+                value === "block"
+                  ? "3D block: every GPU is one cube. Pipeline stages run across, tensor slices up, data replicas back."
+                  : "Slab and rack: the model cut into pieces, and the first two nodes.",
+              );
+            }}
+          />
+        </div>
+        {config.layoutView === "block" ? (
+          <GpuBlock tensor={config.tensor} pipeline={config.pipeline} data={config.data} gpus={gpus} />
+        ) : (
+          <LayoutMap
+            model={model}
+            tensor={config.tensor}
+            pipeline={config.pipeline}
+            data={config.data}
+            expert={expert}
+            moe={moe}
+            sliceParameters={memory.sliceParameters}
+            gpus={gpus}
+          />
+        )}
         <div className="metric-row">
           <Metric label="GPUs" value={gpus.toLocaleString("en-US")} />
           <Metric label="Nodes of 8" value={nodes.toLocaleString("en-US")} />

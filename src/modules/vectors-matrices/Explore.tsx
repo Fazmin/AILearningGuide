@@ -107,7 +107,7 @@ export default function Explore({ state, setState, currentStep, narrate, steps, 
             onPick={(index) => setState({ predictUndo: index })}
             explanation="At × 0 both words become the list (−0.8, 0.0). A matrix gives one output for one input, so two identical lists can never come out different. At × 0.05 the gap is tiny but still there, and stretching by 20 brings it back. Choose “stretch it back” at both settings and compare."
           />
-          <ForgetCard s={s} setState={setState} />
+          <ForgetCard s={s} setState={setState} narrate={narrate} />
         </LabSurface>
         )}
 

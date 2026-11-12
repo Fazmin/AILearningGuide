@@ -138,6 +138,25 @@ Every rate slider on **Optimizer race** starts at that optimizer's usual setting
 
 Now switch **Curves** to **Held-out loss**. An epoch is one pass through all 378 training pairs. AdamW's curve drops to its lowest point, 2.025, at epoch 13. Then it drifts back up to 2.041. SGD's curve is still falling when the run ends.
 
+### Walk a ravine
+
+The race has 900 weights, and nobody can draw that. So one card shows a tiny loss with only two weights.
+
+The card is called **A ravine in two weights**. It draws the loss as ground in 3D, and high ground means a
+big loss. The ground is a ravine, which is a long valley with steep sides.
+
+Press **Play**. Three balls walk down from the same start.
+
+SGD bounces from side to side at first. One step size has to suit the steep sides, so it is slow on the
+floor. Momentum swings from side to side for longer. Adam walks at a steady pace and gets there first, in
+35 steps.
+
+Now set **Ravine runs** to **Between the weights** and press **Play** again. SGD and Momentum walk just as
+they did before. Adam is still not done after 120 steps.
+
+Adam sets a step size for each weight. That helps when the steep way lines up with one weight. It helps
+less when the steep way runs between the two.
+
 ### Rare rows and busy rows
 
 **Try this:** On **Step size per row**, set **Optimizer** to SGD and read **q ÷ space**. Then switch to AdamW and read it again.

@@ -58,7 +58,7 @@ const CANONICAL = {
     from: /TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION/,
     until: /END OF TERMS AND CONDITIONS/,
     whole: true,
-    reference: { pkg: "@tauri-apps/api", file: "LICENSE_APACHE-2.0" },
+    reference: { pkg: "@tauri-apps/api", file: "LICENSE-APACHE-2.0" },
   },
   "OFL-1.1": {
     title: "SIL Open Font License, Version 1.1",

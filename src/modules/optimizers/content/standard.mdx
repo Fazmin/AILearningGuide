@@ -133,6 +133,24 @@ AdamW finishes lowest on both, Muon second, and SGD and momentum all but tie. Sw
 **Held-out loss**: AdamW's curve bottoms out at 2.025 at epoch 13 and drifts back up to 2.041, while
 SGD's is still falling at epoch 25.
 
+### Walk a ravine
+
+**A ravine in two weights** is a picture, not a run: the quadratic loss ½(0.018·u² + 1.8·v²) over two
+weights, drawn as a surface in 3D, with condition number 100. SGD, momentum and Adam walk it from the
+same start with the race's update rules and default rates, 1, 0.1 and 0.03.
+
+With the ravine along weight 1, SGD's rate times the steep curvature is 1.8, so the error across the
+ravine is multiplied by −0.8 each step while the error along the floor shrinks by only 0.982. It settles
+at step 49. Momentum at 0.1 takes the same steady-state step along the floor and decays more slowly
+across, by about 0.95 per step, and settles at step 59. Adam normalizes each coordinate by its own
+gradient scale, moves both weights about 0.03 per step, and settles at step 35.
+
+Set **Ravine runs** to **Between the weights** to rotate the same ravine by 45°. SGD and momentum are
+rotation-equivariant, so their walks are the same walks rotated. Adam's diagonal preconditioner now sees
+the same mix of both curvatures in each coordinate, and it has not settled after 120 steps. Set **Rates**
+to **Double** and SGD's rate of 2 exceeds 2 ÷ 1.8 ≈ 1.11, so it diverges, while momentum and Adam still
+settle.
+
 ### Rare rows and busy rows
 
 On **Step size per row**, with **Optimizer** on SGD, the space row, which is in 580 of the 600 batches,

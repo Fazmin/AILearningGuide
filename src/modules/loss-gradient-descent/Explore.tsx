@@ -26,6 +26,7 @@ import {
   type Optimizer,
   type Regime,
 } from "./descent";
+import { LossSurface3D } from "./LossSurface3D";
 
 const LR_MIN = 0.01;
 const LR_MAX = 0.5;
@@ -146,6 +147,7 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
   const beta = clamp(asNumber(state, "momentum", 0.9), 0, 0.95);
   const optimizer: Optimizer = state.optimizer === "momentum" ? "momentum" : "gd";
   const step = clamp(Math.round(asNumber(state, "step", 0)), 0, MAX_STEPS);
+  const picture = state.picture === "surface" ? "surface" : "map";
 
   const run = useMemo(
     () => runDescent({ w0: startW, b0: startB, learningRate, optimizer, beta }),
@@ -310,7 +312,39 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           title="Contours are equal-loss lines; −∇L crosses each one at a right angle"
           aside={<span className="lgd-badge">{REGIME_TEXT[currentRegime]}</span>}
         />
+        <div className="stage3d-switch lgd-picture">
+          <SegmentedControl
+            label="Picture"
+            value={picture}
+            options={[
+              { value: "map", label: "Flat map" },
+              { value: "surface", label: "3D surface" },
+            ]}
+            onChange={(value) => {
+              setState({ picture: value });
+              narrate(
+                value === "surface"
+                  ? "3D surface: the loss drawn as ground. Height is the loss, and the run lies on it."
+                  : "Flat map: the loss surface seen from straight above.",
+              );
+            }}
+          />
+        </div>
         <div ref={surfaceRef}>
+          {picture === "surface" ? (
+            <LossSurface3D
+              points={run.points}
+              step={step}
+              levels={CONTOUR_LEVELS}
+              startW={startW}
+              startB={startB}
+              formatLoss={formatLoss}
+              onStart={(w, b) => {
+                setStart(w, b);
+                narrate(`Start moved to w ${w.toFixed(2)}, b ${b.toFixed(2)}. Step reset to 0.`);
+              }}
+            />
+          ) : (
           <svg
             className="lgd-surface"
             viewBox={`0 0 ${SURFACE_W} ${SURFACE_H}`}
@@ -424,8 +458,9 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
               ↑ intercept b
             </text>
           </svg>
+          )}
         </div>
-        <div className="lgd-legend" aria-hidden="true">
+        <div className="lgd-legend" aria-hidden="true" hidden={picture === "surface"}>
           <span><i className="lgd-key lgd-key--taken" />steps taken</span>
           <span><i className="lgd-key lgd-key--planned" />the full {MAX_STEPS}-step run at this η</span>
           <span><i className="lgd-key lgd-key--arrow" />−∇L, steepest downhill</span>

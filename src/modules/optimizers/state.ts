@@ -11,6 +11,7 @@ import {
   type DecayMode,
   type OptimizerId,
 } from "./race";
+import { RAVINE_STEPS, type RavineRates, type RavineTurn } from "./ravine";
 
 /**
  * The lab's controls. Every number is a notch on a slider, so `readState` snaps it to the nearest notch
@@ -32,6 +33,10 @@ export interface OptimizersState {
   decayMode: DecayMode;
   capture: CaptureId;
   nsSteps: number;
+  /** A ravine in two weights: which way it runs, the rates the three walks use, and how far they have walked. */
+  ravineTurn: RavineTurn;
+  ravineRates: RavineRates;
+  ravineStep: number;
 }
 
 export const defaultState: OptimizersState = {
@@ -47,6 +52,9 @@ export const defaultState: OptimizersState = {
   decayMode: "decoupled",
   capture: "middle",
   nsSteps: 5,
+  ravineTurn: "axis",
+  ravineRates: "default",
+  ravineStep: 0,
 };
 
 export const initialState: ModuleState = { ...defaultState };
@@ -78,6 +86,9 @@ export function readState(value: unknown): OptimizersState {
     decayMode: pick(source.decayMode, ["decoupled", "l2"] as const, defaultState.decayMode),
     capture: pick(source.capture, ["first", "middle"] as const, defaultState.capture),
     nsSteps: Math.round(bounded(source.nsSteps, 0, NS_MAX, defaultState.nsSteps)),
+    ravineTurn: pick(source.ravineTurn, ["axis", "diagonal"] as const, defaultState.ravineTurn),
+    ravineRates: pick(source.ravineRates, ["half", "default", "double"] as const, defaultState.ravineRates),
+    ravineStep: Math.round(bounded(source.ravineStep, 0, RAVINE_STEPS, defaultState.ravineStep)),
   };
 }
 

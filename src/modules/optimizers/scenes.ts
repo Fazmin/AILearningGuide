@@ -25,6 +25,15 @@ const scenes: LabScene[] = [
     focus: "Optimizer race",
   },
   {
+    id: "ravine-walk",
+    sections: ["Walk a ravine"],
+    title: "Three walks on one ravine",
+    look: "Press Play and watch SGD bounce between the walls, Momentum swing from side to side, and Adam walk down at a steady pace.",
+    step: 1,
+    state: { ravineTurn: "axis", ravineRates: "default", ravineStep: 0 },
+    focus: "A ravine in two weights",
+  },
+  {
     id: "held-out-curves",
     sections: ["On the race"],
     title: "Held-out loss turns back up",

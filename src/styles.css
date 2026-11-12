@@ -7660,6 +7660,223 @@ input[type="range"]::-webkit-slider-thumb {
 }
 
 /* The foot of a lab that pages through its cards: where you are, and a button to the next step. */
+/* ── A 3D picture a reader can turn (module-sdk/stage3d) ── */
+.stage3d {
+  display: grid;
+  min-width: 0;
+  gap: 0.45rem;
+}
+
+.stage3d__frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / var(--stage3d-aspect, 0.7);
+  max-height: 34rem;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background:
+    radial-gradient(120% 90% at 50% 8%, color-mix(in srgb, var(--module-accent) 5%, transparent), transparent 70%),
+    var(--panel-solid);
+}
+
+.stage3d__canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  /* A finger moving up or down still scrolls the lab; sideways turns the picture. */
+  touch-action: pan-y;
+  outline: none;
+}
+
+.stage3d__canvas[data-dragging="true"] {
+  cursor: grabbing;
+}
+
+.stage3d__canvas:focus-visible {
+  outline: 2px solid var(--module-accent);
+  outline-offset: -3px;
+  border-radius: var(--radius-sm);
+}
+
+.stage3d[data-status="unavailable"] .stage3d__canvas {
+  visibility: hidden;
+}
+
+/* Nothing to turn or flatten when the picture could not be drawn. */
+.stage3d[data-status="unavailable"] .stage3d__bar {
+  display: none;
+}
+
+.stage3d__labels {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.stage3d__label {
+  position: absolute;
+  top: 0;
+  left: 0;
+  margin: -0.6em 0 0;
+  color: var(--ink-soft);
+  font-size: 0.72rem;
+  font-weight: 650;
+  line-height: 1.2;
+  white-space: nowrap;
+  text-shadow:
+    0 0 3px var(--panel-solid),
+    0 0 3px var(--panel-solid),
+    0 0 6px var(--panel-solid);
+}
+
+.stage3d__label[data-align="center"] { translate: -50% 0; }
+.stage3d__label[data-align="end"] { translate: -100% 0; }
+
+.stage3d__label.is-tick {
+  color: var(--muted);
+  font-family: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, monospace;
+  font-size: 0.66rem;
+  font-weight: 500;
+}
+
+.stage3d__label.is-axis { color: var(--muted); font-weight: 600; }
+.stage3d__label.is-faint { color: var(--muted); font-weight: 550; }
+.stage3d__label.is-accent { color: var(--module-accent); }
+.stage3d__label.is-loss { color: var(--loss); }
+.stage3d__label.is-gradient { color: var(--gradient); }
+.stage3d__label.is-forward { color: var(--forward); }
+.stage3d__label.is-attention { color: var(--attention); }
+.stage3d__label.is-positive { color: var(--positive); }
+.stage3d__label.is-ink { color: var(--ink); }
+
+.stage3d__status {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  margin: 0;
+  padding: 1.2rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.stage3d__status.is-fallback {
+  place-content: center start;
+  overflow: auto;
+  text-align: left;
+}
+
+.stage3d__status b {
+  display: block;
+  margin-bottom: 0.3rem;
+  color: var(--ink);
+}
+
+.stage3d__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem 0.8rem;
+}
+
+.stage3d__hint {
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.stage3d__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.stage3d__button {
+  min-height: 2rem;
+  padding: 0.3rem 0.7rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--ink-soft);
+  background: var(--panel-muted);
+  font-size: 0.72rem;
+  font-weight: 650;
+}
+
+.stage3d__button:hover:not(:disabled) {
+  border-color: var(--module-accent);
+  color: var(--ink);
+}
+
+.stage3d__button[aria-pressed="true"] {
+  border-color: var(--module-accent);
+  color: var(--module-accent);
+  background: color-mix(in srgb, var(--module-accent) 10%, var(--panel-solid));
+}
+
+.stage3d__button:disabled {
+  opacity: 0.5;
+}
+
+/* Two pictures of one thing: a switch between them, then whichever is showing. */
+.stage3d-switch {
+  display: grid;
+  min-width: 0;
+  gap: 0.5rem;
+}
+
+.stage3d-switch > .segmented {
+  justify-self: start;
+  width: min(100%, 17rem);
+}
+
+.stage3d-legend {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 0;
+  padding: 0;
+  gap: 0.25rem 0.9rem;
+  color: var(--muted);
+  font-size: 0.7rem;
+  list-style: none;
+}
+
+.stage3d-legend i {
+  display: inline-block;
+  width: 1.1rem;
+  height: 0;
+  margin-right: 0.35rem;
+  border-top: 3px solid var(--key, var(--ink));
+  vertical-align: middle;
+}
+
+.stage3d-legend i.is-dashed { border-top-style: dashed; border-top-width: 2px; }
+.stage3d-legend i.is-ball {
+  width: 0.62rem;
+  height: 0.62rem;
+  border: 0;
+  border-radius: 50%;
+  background: var(--key, var(--ink));
+}
+.stage3d-legend i.is-shade {
+  width: 2.4rem;
+  height: 0.55rem;
+  border: 0;
+  border-radius: 2px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--module-accent) 9%, var(--panel-solid)),
+    color-mix(in srgb, var(--module-accent) 74%, var(--panel-solid))
+  );
+  outline: 1px solid var(--line);
+}
+
 .viz-step-pager {
   display: flex;
   align-items: center;
@@ -14007,6 +14224,26 @@ path.sl-reference {
   color: var(--muted);
   gap: 0.3rem 0.9rem;
   font-size: 0.6875rem;
+}
+
+.lgd-legend[hidden] {
+  display: none;
+}
+
+.lgd-picture {
+  margin-bottom: 0.6rem;
+}
+
+.lgd-surface3d {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.lgd-surface3d__off {
+  margin: 0;
+  color: var(--loss);
+  font-size: 0.75rem;
+  font-weight: 650;
 }
 
 .lgd-legend span {
@@ -27509,6 +27746,53 @@ path.sl-reference {
 
 .op-lab > .op-wide {
   grid-column: 1 / -1;
+}
+
+/* A ravine in two weights */
+.op-ravine__lede {
+  max-width: 44rem;
+  margin: 0 0 0.8rem;
+  color: var(--ink-soft);
+  font-size: 0.8125rem;
+  line-height: 1.55;
+}
+
+.op-ravine__controls {
+  display: flex;
+  flex-wrap: wrap;
+  margin-bottom: 0.7rem;
+  gap: 0.6rem 1.4rem;
+}
+
+.op-ravine__controls .segmented {
+  margin: 0;
+}
+
+.op-ravine-card .stage3d-legend {
+  margin-top: 0.5rem;
+}
+
+.op-ravine__transport {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: end;
+  margin-top: 0.6rem;
+  gap: 1rem;
+}
+
+.op-ravine__transport .primary-action {
+  width: auto;
+  min-width: 6.5rem;
+  margin: 0 0 0.35rem;
+}
+
+.op-ravine__swatch {
+  display: inline-block;
+  width: 0.62rem;
+  height: 0.62rem;
+  margin-right: 0.45rem;
+  border-radius: 50%;
+  background: var(--key);
 }
 
 @media (max-width: 1180px) {
@@ -46375,6 +46659,27 @@ button.sll-rail__cell {
   background: var(--panel-muted);
 }
 
+.par-picture {
+  margin-top: 0.7rem;
+}
+
+.par-picture > .segmented {
+  width: min(100%, 21rem);
+}
+
+.par-block {
+  display: grid;
+  margin-top: 0.5rem;
+  gap: 0.5rem;
+}
+
+.par-block__note {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
 .par-map svg {
   display: block;
   width: 100%;
@@ -49293,6 +49598,38 @@ details.db-probe-table-wrap > .db-probe-table {
   }
 }
 
+/* The 3D picture takes the card's full width; its controls line up underneath. */
+.sg-split.is-surface {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.sg-picture {
+  min-width: 0;
+}
+
+.sg-picture > .sg-frame,
+.sg-frame--surface {
+  margin-top: 0;
+}
+
+.sg-frame--surface {
+  display: grid;
+  gap: 0.5rem;
+}
+
+@container (min-width: 37rem) {
+  .sg-split.is-surface > .sg-side {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: 1.4rem;
+    align-items: start;
+  }
+
+  .sg-split.is-surface > .sg-side > .metric-row,
+  .sg-split.is-surface > .sg-side > .viz-goal {
+    grid-column: 1 / -1;
+  }
+}
+
 .sg-side {
   display: grid;
   min-width: 0;
@@ -51688,6 +52025,45 @@ button.ps-col__name[aria-pressed="true"] {
 
 .vm-box__grid .is-alive {
   color: color-mix(in srgb, var(--vm-alive) 82%, var(--ink));
+}
+
+.vm-box--three .vm-box__grid {
+  grid-template-columns: auto auto auto;
+}
+
+.vm-box__grid .is-fast {
+  color: color-mix(in srgb, var(--gradient) 82%, var(--ink));
+}
+
+.vm-box--three figcaption {
+  max-width: 14rem;
+}
+
+/* The rank card in 3D: the picture takes the card's width, its controls line up underneath. */
+.vm-forget-switch {
+  margin-bottom: 0.7rem;
+}
+
+.vm-forget-switch > .segmented {
+  width: min(100%, 22rem);
+}
+
+.vm-space {
+  display: grid;
+  min-width: 0;
+  gap: 0.8rem;
+}
+
+@container (min-width: 36rem) {
+  .vm-space__side {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: start;
+    column-gap: 1rem;
+  }
+
+  .vm-space__side > .vm-target {
+    grid-row: span 2;
+  }
 }
 
 .vm-box figcaption {

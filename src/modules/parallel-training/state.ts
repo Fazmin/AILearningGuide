@@ -37,6 +37,8 @@ export interface ParallelState {
   checkpointMinutes: number;
   saveSeconds: number;
   restartMinutes: number;
+  /** Which picture the Parallel layout card shows: the cut slab and rack, or every GPU as a cube. */
+  layoutView: "flat" | "block";
 }
 
 /** The first step's setup: the 8B model on 64 data-parallel GPUs with no sharding, so its state does not fit. */
@@ -54,6 +56,7 @@ export const defaultState: ParallelState = {
   checkpointMinutes: 60,
   saveSeconds: 60,
   restartMinutes: 10,
+  layoutView: "flat",
 };
 
 export const initialState: ModuleState = { ...defaultState };
@@ -121,6 +124,7 @@ export function readState(value: unknown): ParallelState {
     checkpointMinutes: stepped(source.checkpointMinutes, CHECKPOINT_MINUTES, defaultState.checkpointMinutes),
     saveSeconds: stepped(source.saveSeconds, SAVE_SECONDS, defaultState.saveSeconds),
     restartMinutes: stepped(source.restartMinutes, RESTART_MINUTES, defaultState.restartMinutes),
+    layoutView: oneOf(source.layoutView, ["flat", "block"] as const, defaultState.layoutView),
   };
 }
 

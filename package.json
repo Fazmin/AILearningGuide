@@ -40,6 +40,7 @@
     "react-dom": "^19.1.1",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
+    "three": "^0.187.0",
     "zustand": "^5.0.8"
   },
   "devDependencies": {
@@ -50,6 +51,7 @@
     "@types/node": "^24.3.1",
     "@types/react": "^19.1.12",
     "@types/react-dom": "^19.1.9",
+    "@types/three": "^0.187.0",
     "@vitejs/plugin-react": "^5.0.2",
     "jsdom": "^27.0.0",
     "remark-frontmatter": "^5.0.0",

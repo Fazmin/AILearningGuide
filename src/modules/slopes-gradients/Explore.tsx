@@ -33,6 +33,7 @@ import {
 } from "./curves";
 import { ChainPlot } from "./ChainPlot";
 import { GradientMap, RaceMap } from "./ContourMaps";
+import { GradientSurface, RaceSurface } from "./SurfaceViews";
 import { NudgePlot } from "./NudgePlot";
 import { SlopePlot } from "./SlopePlot";
 import { WalkPlot } from "./WalkPlot";
@@ -96,8 +97,13 @@ export default function Explore({ state, setState, currentStep, narrate, steps, 
   const mapMeter = surfaceValue(lab.surface, lab.mapW, lab.mapB);
   const gradient = surfaceGradient(lab.surface, lab.mapW, lab.mapB);
   const steepness = Math.hypot(gradient.x, gradient.y);
+  const onSurface = lab.mapView === "surface";
   const legsNote =
-    lab.legs === "w"
+    onSurface && lab.legs !== "both"
+      ? `Only ${lab.legs} turns, so the ball can only travel along the coloured cut. Its top edge is a one-dial curve like the ones in cards 1 and 2, and its slope under the ball is ${signed(
+          lab.legs === "w" ? gradient.x : gradient.y,
+        )}. Move the other dial and the cut moves to a different curve.`
+      : lab.legs === "w"
       ? `Only w turns, so the point can only travel along the dashed line. The slope along that line is ${signed(
           gradient.x,
         )}: the blue leg points the way w must turn to raise the meter, and it is longer where that climb is steeper.`
@@ -318,7 +324,8 @@ export default function Explore({ state, setState, currentStep, narrate, steps, 
         <SurfaceHeading kicker="3 of 6 · the gradient" title="Two dials: one slope each, then one arrow" />
         <p className="sg-lede">
           Now the machine has a second dial, <b>b</b>, beside <b>w</b>. You are looking down on it from above: each line joins dial
-          settings where the meter reads the same, like height lines on a hiking map.
+          settings where the meter reads the same, like height lines on a hiking map. Switch <b>Picture</b> to 3D surface to see
+          the ground those lines describe.
         </p>
         <PredictCheck
           prompt="Hold one dial still and you get one slope, drawn as a leg. When the two legs are joined into a single arrow from the point, which way will it point?"
@@ -334,14 +341,42 @@ export default function Explore({ state, setState, currentStep, narrate, steps, 
             </>
           }
         />
-        <div className="sg-split">
-          <GradientMap
-            surface={lab.surface}
-            w1={lab.mapW}
-            w2={lab.mapB}
-            legs={lab.legs}
-            onMove={(w1, w2) => setState({ mapW: w1, mapB: w2 })}
-          />
+        <div className={`sg-split${onSurface ? " is-surface" : ""}`}>
+          <div className="stage3d-switch sg-picture">
+            <SegmentedControl
+              label="Picture"
+              value={lab.mapView}
+              options={[
+                { value: "map", label: "Flat map" },
+                { value: "surface", label: "3D surface" },
+              ]}
+              onChange={(value) => {
+                setState({ mapView: value });
+                narrate(
+                  value === "surface"
+                    ? "3D surface: the same meter drawn as ground. Height is the meter reading, and each contour line sits at its own height."
+                    : "Flat map: the ground seen from straight above.",
+                );
+              }}
+            />
+            {lab.mapView === "surface" ? (
+              <GradientSurface
+                surface={lab.surface}
+                w1={lab.mapW}
+                w2={lab.mapB}
+                legs={lab.legs}
+                onMove={(w1, w2) => setState({ mapW: w1, mapB: w2 })}
+              />
+            ) : (
+              <GradientMap
+                surface={lab.surface}
+                w1={lab.mapW}
+                w2={lab.mapB}
+                legs={lab.legs}
+                onMove={(w1, w2) => setState({ mapW: w1, mapB: w2 })}
+              />
+            )}
+          </div>
           <div className="sg-side">
             <SegmentedControl
               label="Surface"
@@ -599,8 +634,26 @@ export default function Explore({ state, setState, currentStep, narrate, steps, 
           slopes, by the same step size. Choose that one number so the meter ends under {fmt(RACE_TARGET)}; the valley floor
           reads {fmt(RACE_FLOOR)}.
         </p>
-        <div className="sg-split">
-          <RaceMap path={racePath} ghost={raceGhost} ghostStep={lab.racePrev} />
+        <div className={`sg-split${lab.raceView === "surface" ? " is-surface" : ""}`}>
+          <div className="stage3d-switch sg-picture">
+            <SegmentedControl
+              label="Picture"
+              value={lab.raceView}
+              options={[
+                { value: "map", label: "Flat map" },
+                { value: "surface", label: "3D surface" },
+              ]}
+              onChange={(value) => {
+                setState({ raceView: value });
+                narrate(value === "surface" ? "3D surface: the long valley drawn as ground, with the walk on it." : "Flat map: the valley seen from straight above.");
+              }}
+            />
+            {lab.raceView === "surface" ? (
+              <RaceSurface path={racePath} ghost={raceGhost} ghostStep={lab.racePrev} />
+            ) : (
+              <RaceMap path={racePath} ghost={raceGhost} ghostStep={lab.racePrev} />
+            )}
+          </div>
           <div className="sg-side">
             <RangeControl
               label="Step size"

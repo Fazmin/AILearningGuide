@@ -65,6 +65,11 @@
       "group": "libraries",
       "usedFor": "Tables, task lists, and strikethrough in the topic guide's replies."
     },
+    "three": {
+      "displayName": "three.js",
+      "group": "libraries",
+      "usedFor": "Draws the 3D pictures a reader can turn: loss surfaces, the block of GPUs, and words as points in space."
+    },
     "zustand": {
       "displayName": "Zustand",
       "group": "libraries",

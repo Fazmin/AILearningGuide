@@ -10,6 +10,7 @@ const cardInfo: ModuleCardInfo = {
       "Sliders on power-of-two ladders: `Tensor parallel` 1 to 32, `Pipeline` 1 to 16, `Data parallel` 1 to 2,048, `Expert parallel` 1 to 8 (Mixtral only, never above Data parallel), `Micro-batch size` 1 to 8 sequences of 8,192 tokens, and `Microbatches` 1 to 128 per step.",
       "A diagram in two parts. First the model as one slab, cut into pipeline stages across and tensor slices down, with the data-parallel copies stacked behind it and the piece one GPU holds filled in. Then the first two 8-GPU nodes, with a line through the GPUs of each group that GPU 0 belongs to: solid where the group stays inside a node on NVLink, dotted where it has to leave it for InfiniBand.",
       "Metrics `GPUs`, `Nodes of 8`, `Tokens per step`, and `Parameters per GPU`, then a list saying what each degree splits, what it sends, and over which link.",
+      "`Picture` switches between `Slab and rack` and `3D block of GPUs`. In the block every GPU is one cube: pipeline stages run across, tensor slices run up and data replicas run back, with at most 16 replicas drawn and the rest counted in a label. GPU 0 is the front bottom left cube, the three coloured lines of cubes that meet there are its tensor, pipeline and data groups, and the outlined box is one node of 8.",
     ],
     howItWorks: [
       "Parameters come from the shape: Ψ = L·(2h² + 2h·kv·h/a + 3h·f·E) + 2Vh, which gives 8.03 B, 70.55 B, and 405.85 B for the Llama shapes and 46.70 B for Mixtral, 12.88 B of them active because each token uses 2 of 8 experts.",
@@ -20,6 +21,7 @@ const cardInfo: ModuleCardInfo = {
     controls: [
       "Every slider redraws all six cards. `Expert parallel` appears only for Mixtral and is lowered with `Data parallel` whenever it would exceed it.",
       "Comparison worth running: hold the 70B model at Pipeline 4 and move Tensor parallel from 8 to 16. Parameters per GPU halves, but the TP all-reduce row in Communication per step grows almost tenfold.",
+      "On the `3D block of GPUs`, drag to turn the block. Each of `Tensor parallel`, `Pipeline` and `Data parallel` lengthens one edge of it.",
     ],
     notice: [
       "Tensor and pipeline parallelism divide the model; data parallelism multiplies the batch. Only ZeRO, on the Memory per GPU card, lets data parallelism divide memory too.",

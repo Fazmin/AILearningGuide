@@ -38,6 +38,10 @@ The 60 labs are split into seven groups. You can go in order or jump to whatever
 
 ![The vectors and matrices lab, with a prediction answered](docs/screenshots/vectors-matrices.jpg)
 
+**3D you can turn.** Five labs draw their idea in 3D: loss surfaces you can turn and press flat into a contour map, three optimizers walking one ravine, a training run as a block of GPUs, and words as points in space. Drag to turn any of them.
+
+![The slopes and gradients lab with its loss surface drawn in 3D](docs/screenshots/surface-3d.jpg)
+
 **Attention lab.** Click a word and see which other words it looks at. This one runs a real small transformer right in the app.
 
 ![The attention lab](docs/screenshots/attention.jpg)
@@ -66,6 +70,7 @@ The 60 labs are split into seven groups. You can go in order or jump to whatever
 
 - **60 interactive labs.** Each lab is split into a few short steps with a "Try this" hint, so you always know what to do next.
 - **Three ways to read.** Simple mode uses short sentences an 8th grader can follow. Plain mode uses everyday words. Standard mode uses the proper technical terms. Switch at any time from the top bar.
+- **3D pictures you can turn.** Loss surfaces, a ravine with three optimizers on it, a block of GPUs and a cloud of words are drawn in 3D where a flat picture would hide the shape. Each one also has a flat view or the numbers beside it.
 - **Real models where it matters.** The attention lab runs a small trained transformer in the app. The training labs train a tiny language model live while you watch.
 - **Checkpoints.** Short quizzes at the end of each lab to check what stuck.
 - **Progress and bookmarks.** Your progress is saved, and the Learn panel remembers where you stopped reading in each lab. Bookmark any section to come back to it later, or copy a link that opens the lab exactly as you left it.
@@ -191,6 +196,7 @@ You don't need to do this to run the app. The trained models are already include
 - [Tauri 2](https://tauri.app/) and Rust for the desktop app
 - [React](https://react.dev/), TypeScript, and [Vite](https://vite.dev/) for the interface
 - [MDX](https://mdxjs.com/) for the lessons
+- [three.js](https://threejs.org/) for the 3D pictures
 - [ONNX Runtime Web](https://onnxruntime.ai/) for running the small models
 - [llama.cpp](https://github.com/ggml-org/llama.cpp) for the optional local AI guide
 - SQLite for saving your progress

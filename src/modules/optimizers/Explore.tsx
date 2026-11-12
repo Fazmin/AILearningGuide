@@ -49,6 +49,7 @@ import {
   type SweepRow,
 } from "./race";
 import { BAND_HIGH, BAND_LOW, ZERO_SINGULAR, type SpectrumSummary } from "./spectrum";
+import { RavineCard } from "./RavineCard";
 import { readState } from "./state";
 
 const TONES: Record<OptimizerId, string> = {
@@ -271,6 +272,16 @@ export default function Explore({ state, setState, narrate }: ModuleContext) {
           comparable with another's: AdamW's 0.03 and SGD's 1 are each that optimizer's default. The dotted line at{" "}
           {UNIFORM_CROSS_ENTROPY.toFixed(3)} is a model that learned nothing.
         </p>
+      </LabSurface>
+
+      <LabSurface label="A ravine in two weights" className="op-wide op-ravine-card">
+        <RavineCard
+          turn={settings.ravineTurn}
+          rates={settings.ravineRates}
+          step={settings.ravineStep}
+          onChange={(patch) => setState(patch)}
+          narrate={narrate}
+        />
       </LabSurface>
 
       <LabSurface label="Step size per row" className="op-rows-card">

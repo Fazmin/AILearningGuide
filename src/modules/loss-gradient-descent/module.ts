@@ -8,6 +8,7 @@ const initialState: ModuleState = {
   momentum: 0.9,
   optimizer: "gd",
   step: 0,
+  picture: "map",
 };
 
 const clamp = (value: number, low: number, high: number) => Math.min(high, Math.max(low, value));

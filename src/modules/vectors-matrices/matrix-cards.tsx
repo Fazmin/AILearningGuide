@@ -36,6 +36,7 @@ import {
 } from "./math";
 import { Arrow, MovedGrid, MovedSquare, Plane, PlaneLabel, WordMark, labelSpot, useGlide, type Geometry } from "./plane";
 import { RANGES, type LabState } from "./state";
+import { ForgetSpace } from "./space-card";
 import { WordPicker, followWord } from "./vector-cards";
 
 type SetState = ModuleContext["setState"];
@@ -370,7 +371,34 @@ export function OrderCard({ s, setState, narrate }: { s: LabState; setState: Set
 
 /* ── 6 · When a matrix forgets ── */
 
-export function ForgetCard({ s, setState }: { s: LabState; setState: SetState }) {
+/** The switch between the flat map and the 3D cloud, then whichever is showing. */
+export function ForgetCard({ s, setState, narrate }: { s: LabState; setState: SetState; narrate?: (text: string) => void }) {
+  return (
+    <>
+      <div className="stage3d-switch vm-forget-switch">
+        <SegmentedControl
+          label="Each word is"
+          value={s.forgetView}
+          options={[
+            { value: "flat", label: "Two numbers" },
+            { value: "space", label: "Three numbers, in 3D" },
+          ]}
+          onChange={(value) => {
+            setState({ forgetView: value });
+            narrate?.(
+              value === "space"
+                ? "Three numbers per word: size, alive and fast. The words are points in space, and a squeeze can press them onto a sheet or a line."
+                : "Two numbers per word: the flat map.",
+            );
+          }}
+        />
+      </div>
+      {s.forgetView === "space" ? <ForgetSpace s={s} setState={setState} /> : <ForgetFlat s={s} setState={setState} />}
+    </>
+  );
+}
+
+function ForgetFlat({ s, setState }: { s: LabState; setState: SetState }) {
   const squeeze = squeezeMatrix("alive", s.keep);
   const undo = undoSqueeze("alive", s.keep);
   const trying = s.undo === "stretch";

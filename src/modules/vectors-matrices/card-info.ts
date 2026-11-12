@@ -173,6 +173,7 @@ const cardInfo: ModuleCardInfo = {
       "The squeezing matrix written out: 1.0 and 0.0 on top, 0.0 and the factor underneath.",
       "Tiles for the Area of the shaded square, Words with their own spot, and the Closest pair.",
       "At a factor of zero, a red ring round cat and bicycle and a message naming the list they now share.",
+      "Each word is switches between Two numbers and Three numbers, in 3D. In 3D every word has a third number, fast, and is a point in space. Two sliders multiply the alive and the fast numbers, the shaded box shows what the squeeze does to a cube, and a stem joins each word to the sheet where alive is 0.",
     ],
     howItWorks: [
       "Every word (size, alive) is sent to (size, factor × alive).",
@@ -184,6 +185,7 @@ const cardInfo: ModuleCardInfo = {
       "Multiply every alive number by runs from × 1.00 down to × 0.00 in steps of 0.05.",
       "Then chooses between leave it and stretch it back.",
       "The Predict first question at the top can be answered before you try to undo the squeeze.",
+      "In 3D, drag to turn the cloud. Slide alive to 0 to press the cloud onto a sheet, then fast to 0 to press the sheet onto a line. Directions left counts what remains: 3, 2 or 1.",
     ],
     notice: [
       "At × 0.05 the words look merged but the tiles still read 8 of 8, and stretch it back still works.",
@@ -192,6 +194,7 @@ const cardInfo: ModuleCardInfo = {
     limits: [
       "In this lab: the matrix only ever squeezes the alive direction, and cat and bicycle were given the same size so that exactly one pair merges.",
       "In general: any matrix whose columns lie along one line flattens the plane the same way, and which inputs merge depends on which direction it drops. Models often drop directions on purpose, to ignore what does not matter, and they pay this same price for it.",
+      "In this lab: the third number, fast, is invented like the other two, and the 3D squeeze only ever multiplies a direction that lines up with one of the three numbers.",
     ],
   },
   "A table from a few pieces": {

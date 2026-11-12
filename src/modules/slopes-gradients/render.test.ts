@@ -152,3 +152,57 @@ describe("number formatting", () => {
     expect(snap(2.999, 0, 6)).toBe(3);
   });
 });
+
+describe("the 3D surface pictures", () => {
+  it("keeps the flat map as the default and swaps it for the surface on request", () => {
+    const flat = render({}, 2);
+    expect(flat).toContain("sg-map");
+    expect(flat).not.toContain("stage3d__frame");
+    const lifted = render({ mapView: "surface" }, 2);
+    expect(lifted).toContain("stage3d__frame");
+    expect(lifted).not.toContain("sg-map");
+    expectClean(lifted, "card 3 in 3D");
+    // The card, its switch and its controls are the same either way.
+    for (const html of [flat, lifted]) {
+      expect(visible(html)).toContain("Flat map");
+      expect(visible(html)).toContain("3D surface");
+      expect(html).toContain('aria-label="Dial w"');
+      expect(html).toContain('aria-label="Dial b"');
+    }
+  });
+
+  it("describes the surface, the ball and the cut in words", () => {
+    const html = render({ mapView: "surface", surface: "saddle", mapW: 4.6, mapB: 1.8, legs: "both" }, 2);
+    const label = html.match(/<canvas[^>]*aria-label="([^"]*)"/)?.[1] ?? "";
+    expect(label).toContain("a saddle");
+    expect(label).toContain("w = 4.60, b = 1.80");
+    expect(label).toContain("meter reads 5.56");
+    expect(label).toContain("+1.60");
+    expect(label).toContain("+1.20");
+    expect(label).toContain("2.00 long");
+    const cut = render({ mapView: "surface", legs: "b" }, 2);
+    expect(cut.match(/<canvas[^>]*aria-label="([^"]*)"/)?.[1]).toContain("cuts the ground along dial b with w held still");
+    expect(visible(cut)).toContain("Only b turns, so the ball can only travel along the coloured cut");
+  });
+
+  it("draws the challenge on the valley with the walk's reading in words", () => {
+    const html = render({ raceView: "surface", raceStep: 0.9, raceSteps: 12, racePrev: 0.3 }, 5);
+    expectClean(html, "card 6 in 3D");
+    const label = html.match(/<canvas[^>]*aria-label="([^"]*)"/)?.[1] ?? "";
+    expect(label).toContain("After 12 steps");
+    expect(label).toContain("meter reads 1.012");
+    expect(visible(html)).toContain("last try, step size 0.30");
+    expect(visible(html)).toContain("goal met");
+  });
+
+  it("survives every surface, leg and end of the dials in 3D", () => {
+    for (const surface of ["bowl", "valley", "saddle"]) {
+      for (const legs of ["w", "b", "both"]) {
+        for (const [mapW, mapB] of [[0, 0], [6, 6], [3, 3], [0, 6]]) {
+          expectClean(render({ mapView: "surface", surface, legs, mapW, mapB }, 2), `${surface} ${legs} ${mapW} ${mapB}`);
+        }
+      }
+    }
+    expectClean(render({ mapView: "moon", raceView: 7 }), "junk picture choice");
+  });
+});

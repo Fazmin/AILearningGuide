@@ -75,17 +75,21 @@ const cardInfo: ModuleCardInfo = {
       "With w only or b only, a dashed line shows the path the point can take when one dial turns, and a leg shows the slope along it: blue for w, purple for b. The leg points the way that dial raises the meter.",
       "With Both together, the legs are drawn tip to tail and the pink arrow from the point to their end is the gradient. A small square marks the right angle between it and the contour, and a short dashed arrow points the opposite way, downhill.",
       "The tiles give the meter, the two slopes, and the arrow's length. The Gradient line writes the two slopes as a list.",
+      "Picture switches between Flat map and 3D surface. The 3D surface is the same meter drawn as ground: height is the meter reading, the contour lines lie on it at their own heights, and a ball marks the current setting with a dashed line down to the floor.",
+      "On the 3D surface, w only or b only cuts the ground with a coloured curtain along that dial. The curtain's top edge is a one-dial curve, like the curves in cards 1 and 2.",
     ],
     howItWorks: [
       "Round bowl is L = 1 + ½[(w − 3)² + (b − 3)²], Long valley is L = 1 + ½[0.25(w − 3)² + 2(b − 3)²], and Saddle is L = 5 + ½[(w − 3)² − (b − 3)²].",
       "Each slope is the derivative with respect to one dial with the other held fixed. On Long valley they are 0.25(w − 3) and 2(b − 3).",
       "The arrow is drawn 0.6 map units long for each unit of slope. Its length on the Steepness tile is the square root of the sum of the two slopes squared.",
       "Contour lines are traced by marching squares on a 48 by 48 grid over the map.",
+      "The 3D surface uses one height scale, 0 to 11.25, for all three surfaces, so their steepness can be compared by eye.",
     ],
     controls: [
       "Drag the point on the map, or use Dial w and Dial b. With the point focused, the arrow keys move it by 0.1.",
       "Dials turning chooses which legs are drawn: w only, b only, or Both together.",
       "Surface switches between Round bowl, Long valley and Saddle.",
+      "On the 3D surface, drag to turn the picture and click the ground to move the ball. With the picture focused, the arrow keys turn it. Press it flat lowers the ground into its own contour map and Lift it back up raises it again.",
     ],
     notice: [
       "On Round bowl the arrow points directly away from the lowest point. On Long valley at w = 1, b = 4 it points almost straight up the wall instead, so the downhill direction misses the lowest point.",
@@ -164,6 +168,7 @@ const cardInfo: ModuleCardInfo = {
       "The red path is the current attempt, with a dot for each step. The grey dashed path is the previous attempt at a different step size.",
       "The goal bar fills as the meter falls from its starting value toward the valley floor, with a tick at the goal. The tiles give the steps left and the meter.",
       "Next step prints −step size × gradient with the current numbers, one entry for each dial.",
+      "Picture switches between Flat map and 3D surface. On the 3D surface the valley is drawn as ground with the walk lying on it: one dot per step, a ball at the last one, and the goal as a ring on the valley floor.",
     ],
     howItWorks: [
       "The surface is L = 1 + ½[0.25(w − 3)² + 2(b − 3)²], starting at L = 4.03, with a floor of 1.",
@@ -174,6 +179,7 @@ const cardInfo: ModuleCardInfo = {
     controls: [
       "Step size runs from 0.05 to 1.1. Changing it sends the walk back to the start and keeps the old path as the dashed one.",
       "Run all 12 steps finishes the attempt, Take one step advances it by one, and Back to the start resets it.",
+      "On the 3D surface, drag to turn the valley and look along its floor. Press it flat lowers it into the contour map.",
     ],
     notice: [
       "At 0.10 the walk drops down the wall and then crawls along the floor, ending at 1.436.",

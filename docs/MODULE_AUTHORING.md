@@ -146,6 +146,48 @@ Three SDK pieces carry the predict-then-check habit the lessons ask for. The thr
 A lab whose folder is renamed lists its old slug in `formerSlugs`, and links made under the old
 slug keep opening it. Keep the `id` as it was.
 
+### 3D pictures
+
+Use 3D when the thing being taught has a shape that a flat picture has to encode: a loss over two
+weights, a block of GPUs with three directions, points in space pressed onto a sheet. If a flat
+picture already shows it, keep the flat picture. Five labs are the worked examples:
+`slopes-gradients`, `loss-gradient-descent`, `optimizers`, `parallel-training` and
+`vectors-matrices`.
+
+- `SurfaceStage` draws a height surface over two settings, with its equal-height lines lying on
+  it and whatever the lab adds: paths, balls, arrows, cuts and rings. Positions are in the lab's
+  own units. Its **Press it flat** button lowers the surface into its own contour map, which is
+  how a reader ties the two pictures together.
+- `Stage3D` is the frame underneath, for any other scene. Give it
+  `scene={() => import("./my-scene")}`, the scene's `props`, a starting `view` and a `label`. The
+  scene file's default export is a `SceneFactory`: it builds on a `Stage` and returns `update`.
+  See `parallel-training/gpu-block-scene.ts` for a short one.
+
+Rules that keep a 3D picture honest and usable:
+
+- **Import three.js only inside a scene file**, and reach the scene only through a dynamic
+  `import()`. Labs are bundled eagerly, so a static import of `three`, or of
+  `module-sdk/stage3d/runtime`, from an `Explore.tsx` would put three.js in the app's first
+  download. A scene file imports from `@app/module-sdk/stage3d/runtime`.
+- **Compute every height and position** from the same functions the lab's numbers come from.
+  If the surface is cut off above some height, say so in the label and on the card.
+- **Keep a flat picture or the numbers beside it.** A device without WebGL shows the `label`
+  text instead of the picture, and a test renders only the frame. Where a card already has a
+  flat picture, offer both behind a `Picture` switch stored in module state, flat by default.
+- **Write the `label` as the full reading of the picture**, numbers included. It is the canvas's
+  text alternative and the fallback text.
+- **Take colours from CSS variables**: pass `"--loss"` or any CSS colour to `stage.color`,
+  `stage.line` and the surface props. The stage rebuilds the scene when the theme, contrast or
+  palette changes.
+- **Do not tell things apart by colour alone.** Label the balls, and repeat each colour in a
+  `stage3d-legend` list under the picture.
+- **Use `stage.tween` for motion.** It jumps straight to the end when the reader has asked for
+  reduced motion.
+
+The frame handles turning (drag, or arrow keys when focused), zoom (pinch, or Ctrl with the
+wheel, so a plain wheel still scrolls the lab), touch (sideways turns, up and down scrolls) and
+resizing.
+
 ## Card explanations
 
 Every `LabSurface` carries an info icon that opens a detailed explanation of that one

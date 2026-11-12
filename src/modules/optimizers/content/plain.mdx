@@ -223,6 +223,29 @@ Now switch **Curves** to **Held-out loss**. AdamW's curve drops to its lowest po
 13, where an epoch is one pass through all 378 training pairs, and then it drifts back up to 2.041.
 SGD's curve, by contrast, is still falling when the run ends.
 
+### Walk a ravine
+
+The race trains 900 weights at once, which no picture can show, so the card **A ravine in two weights**
+draws a much smaller loss that has only two. The loss is drawn as ground in 3D, where higher ground means
+a bigger loss. The ground is a ravine, which is a valley whose sides are a hundred times steeper than its
+floor.
+
+Press **Play** and three balls walk down from the same start, using the same rules and default rates as
+in the race. SGD has one rate for both weights, and that rate has to stay small enough for the steep
+sides. So after a few bounces it creeps along the floor, and it settles at step 49.
+
+Momentum swings from side to side for longer and settles at step 59. Adam gives each weight its own step
+size, so it walks down the side and along the floor at the same steady pace and settles at step 35.
+
+Now set **Ravine runs** to **Between the weights**, which turns the same ravine so that it runs
+diagonally, and press **Play** again. SGD and Momentum do exactly what they did before, only turned, but
+Adam has still not settled after 120 steps.
+
+Adam sizes its steps one weight at a time. That helps when the steep direction lines up with a single
+weight, and it helps much less when the steep direction runs between two of them.
+
+You can drag the picture to turn it, and **Press it flat** lowers the ground into a map seen from above.
+
 ### Rare rows and busy rows
 
 **Try this:** on **Step size per row**, set **Optimizer** to SGD and read **q ÷ space**, then switch to

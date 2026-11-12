@@ -33,6 +33,37 @@ const cardInfo: ModuleCardInfo = {
     ],
   },
 
+  "A ravine in two weights": {
+    title: "The shape that makes one step size hard to choose",
+    summary:
+      "A loss over two weights drawn as ground in 3D: a ravine a hundred times steeper across than along its floor. SGD, momentum and Adam walk it from the same start with the update rules and default rates they have in the race. It is a picture to reason with, computed from a formula; it is not one of the training runs.",
+    whatYouSee: [
+      "The ground: height is the loss, cut off at 0.9, with equal-loss lines lying on it, a dashed line along the ravine floor and a cross at the lowest point. Drag to turn it; `Press it flat` turns it into its own contour map seen from above.",
+      "Three balls, SGD, Momentum and Adam, each trailing the path it has walked, and a ring where they all started.",
+      "`Ravine runs` switches between `Along weight 1` and `Between the weights`. `Rates` switches between `Half`, `Each one's own` and `Double`.",
+      "`Play` and a `Step` slider from 0 to 120, and a table with each optimizer's rate, its loss at the step shown, and the step at which it settles.",
+    ],
+    howItWorks: [
+      "The loss is 0.5 × (0.018 × along² + 1.8 × across²), where along and across are measured from the lowest point. Turning the ravine turns those two directions by 45° and moves the start with them, so every walk begins the same distance along the floor and up the wall.",
+      "SGD moves by rate × gradient. Momentum keeps a velocity, 0.9 × the last one plus the gradient, and moves by rate × velocity. Adam keeps running averages of each weight's gradient and squared gradient, with β 0.9 and 0.999 and bias correction, and moves each weight by rate × one average ÷ the root of the other.",
+      "The default rates are the race's: 1, 0.1 and 0.03. A walk has settled once its loss stays under 0.001 for the rest of the 120 steps. A walk whose loss passes 10,000 has flown out and stops.",
+    ],
+    controls: [
+      "`Rates` scales all three rates together. `Ravine runs` and `Rates` both send the walks back to step 0.",
+      "Comparison worth running: at `Each one's own`, switch `Ravine runs` to `Between the weights`. SGD and momentum settle at steps 49 and 59 either way. Adam settles at step 35 along weight 1 and has not settled after 120 steps on the diagonal.",
+    ],
+    notice: [
+      "Along weight 1 at the default rates, SGD bounces from wall to wall while it creeps along the floor. Each bounce is 0.8 times the one before, because rate × steepness is 1.8.",
+      "At `Double`, SGD's rate of 2 is past 2 ÷ 1.8 = 1.11, the most the walls allow, and it flies out. Momentum settles at step 46 and Adam at 35. At `Half`, SGD needs 97 steps and momentum 99, while Adam needs 52.",
+      "Adam's first steps are the same size in both weights, about its rate, whatever the slopes are. That is why it cuts straight across here and why the q row moves so far on `Step size per row`.",
+    ],
+    limits: [
+      "In this lab: two weights, a formula for the loss, and no noise. The real runs on `Optimizer race` have 900 weights and a different batch at every step, so nothing here predicts their numbers.",
+      "In this lab: Muon is left out. It reshapes a whole matrix of weights, and two weights are not a matrix it can act on.",
+      "In general: Adam scales each weight separately, so it helps most when steep and gentle directions line up with single weights, and less when they run between weights. Real loss surfaces are a mix of both, in millions of dimensions, with many ravines of different steepness at once.",
+    ],
+  },
+
   "Step size per row": {
     title: "Per-weight steps, read one row at a time",
     summary:

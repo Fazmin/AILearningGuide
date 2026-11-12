@@ -12,6 +12,7 @@ const cardInfo: ModuleCardInfo = {
       "The pink arrow is −∇L at the current point, drawn at a fixed length. Its direction is the claim; `∂L/∂w` and `∂L/∂b` below give its size. A dotted pink line carries that direction on to the edge of the map.",
       "A black dashed ellipse runs through the current point: every (w, b) with the same loss as this step. A small square at the point marks the right angle between it and the arrow. The grey dotted line through the minimum is the valley floor.",
       "Metrics `Step`, `Loss L`, `∂L/∂w`, and `∂L/∂b`. At the default start (w −1, b 1.2) they read 0, 2.511, −3.039, and −1.403. The badge names the regime: one-sided, overshoots, or diverges.",
+      "`Picture` switches between `Flat map` and `3D surface`. The 3D surface draws the same loss as ground: height is the loss, cut off above 6, with the map's contour lines lying on it, the path on the ground and a ball at the current step.",
     ],
     howItWorks: [
       "`L(w, b) = (1/8) Σ (w·xᵢ + b − yᵢ)²`, with `∂L/∂w = (2/8) Σ rᵢxᵢ` and `∂L/∂b = (2/8) Σ rᵢ`, where `rᵢ = ŷᵢ − yᵢ`. A unit test checks both against finite differences.",
@@ -22,6 +23,7 @@ const cardInfo: ModuleCardInfo = {
     controls: [
       "Click anywhere on the surface to start there; `Start w` and `Start b` on `Optimizer controls` do the same from the keyboard. Moving the start returns to step 0.",
       "Comparison worth running: at step 0 the arrow crosses the nearest contour at a right angle. Now look where it points. It misses the minimum, because the gradient is the steepest local direction, not the direction to the bottom.",
+      "On the `3D surface`, drag to turn the valley, and click the ground to move the start. `Press it flat` lowers the ground into the contour map; `Lift it back up` raises it again.",
     ],
     notice: [
       "The path first drops across the narrow valley, then crawls along its floor. The crawl is slow because the floor is nearly flat: curvature 0.307 there.",

@@ -3,6 +3,9 @@ import { MAX_WALK_STEPS, NUDGES, RACE_BUDGET, clamp, type Curve, type Surface } 
 
 export type Legs = "w" | "b" | "both";
 export const LEGS: readonly Legs[] = ["w", "b", "both"];
+/** The two pictures of a two-dial meter: the contour map seen from above, and the surface it describes. */
+export type Picture = "map" | "surface";
+export const PICTURES: readonly Picture[] = ["map", "surface"];
 /** The two curves each one-dial card offers. */
 export const SLOPE_CURVES: readonly Curve[] = ["valleys", "shelf"];
 export const WALK_CURVES: readonly Curve[] = ["valleys", "bowl"];
@@ -32,6 +35,7 @@ export const initialState: ModuleState = {
   mapB: 4,
   legs: "w",
   arrowGuess: -1,
+  mapView: "map",
   // Card 4: dials that drive dials
   chainW: 3,
   chainGuess: -1,
@@ -45,6 +49,7 @@ export const initialState: ModuleState = {
   raceStep: 0.1,
   raceSteps: 0,
   racePrev: 0,
+  raceView: "map",
 };
 
 export interface LabState {
@@ -58,6 +63,7 @@ export interface LabState {
   mapB: number;
   legs: Legs;
   arrowGuess: number;
+  mapView: Picture;
   chainW: number;
   chainGuess: number;
   walkCurve: Curve;
@@ -68,6 +74,7 @@ export interface LabState {
   raceStep: number;
   raceSteps: number;
   racePrev: number;
+  raceView: Picture;
 }
 
 const round = (value: number, digits = 2) => Number(value.toFixed(digits));
@@ -109,6 +116,7 @@ export function readState(state: Record<string, unknown> | null | undefined): La
     mapB: number(source.mapB, 4, LIMITS.dial[0], LIMITS.dial[1]),
     legs: member(source.legs, LEGS, "w"),
     arrowGuess: guess(source.arrowGuess, GUESS_OPTIONS.arrowGuess),
+    mapView: member(source.mapView, PICTURES, "map"),
     chainW: number(source.chainW, 3, LIMITS.dial[0], LIMITS.dial[1]),
     chainGuess: guess(source.chainGuess, GUESS_OPTIONS.chainGuess),
     walkCurve: member(source.walkCurve, WALK_CURVES, "valleys"),
@@ -123,6 +131,7 @@ export function readState(state: Record<string, unknown> | null | undefined): La
       typeof racePrev === "number" && Number.isFinite(racePrev) && racePrev >= LIMITS.raceStep[0]
         ? number(racePrev, 0, LIMITS.raceStep[0], LIMITS.raceStep[1])
         : 0,
+    raceView: member(source.raceView, PICTURES, "map"),
   };
 }
 

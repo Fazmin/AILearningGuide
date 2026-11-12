@@ -39,6 +39,21 @@ export type {
   SeriesTone,
   StageFlowStage,
 } from "./visualizations";
+export { Stage3D } from "./stage3d/Stage3D";
+export type { Stage3DProps } from "./stage3d/Stage3D";
+export { SurfaceStage, SURFACE_VIEW } from "./stage3d/SurfaceStage";
+export type { SurfaceStageProps } from "./stage3d/SurfaceStage";
+export { contourLines } from "./stage3d/contours";
+export type {
+  SurfaceArrow,
+  SurfacePath,
+  SurfacePoint,
+  SurfaceRing,
+  SurfaceSceneProps,
+  SurfaceSlice,
+  SurfaceXY,
+} from "./stage3d/surface-types";
+export type { SceneFactory, Stage, StageLabel, StageView } from "./stage3d/runtime";
 export {
   bigramPairs,
   createTinyWeights,
