@@ -22,7 +22,7 @@ const definition: ModuleDefinition = {
   slug: "inference-kv-cache",
   title: "Inference & KV cache",
   group: "inside-models",
-  order: 20,
+  order: 21,
   icon: "DatabaseZap",
   accent: "#1b8f72",
   prerequisites: ["module-09-transformer-block"],

@@ -7,7 +7,7 @@ const definition: ModuleDefinition = {
   slug: "attention",
   title: "Attention",
   group: "inside-models",
-  order: 18,
+  order: 19,
   icon: "ScanEye",
   accent: "#8a5bc2",
   prerequisites: ["module-07-next-token-prediction"],

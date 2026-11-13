@@ -16,7 +16,7 @@ const definition: ModuleDefinition = {
   slug: "agents",
   title: "Agents",
   group: "building-with-models",
-  order: 27,
+  order: 28,
   icon: "Workflow",
   accent: "#3d7a8c",
   prerequisites: ["module-40-tools-function-calling"],

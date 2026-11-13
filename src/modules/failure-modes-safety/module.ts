@@ -50,7 +50,7 @@ const definition: ModuleDefinition = {
   slug: "failure-modes-safety",
   title: "Failure modes, safety, and security",
   group: "building-with-models",
-  order: 29,
+  order: 30,
   icon: "ShieldAlert",
   accent: "#b03d3d",
   prerequisites: ["module-39-retrieval-augmented-generation", "module-40-tools-function-calling", "module-41-agents"],

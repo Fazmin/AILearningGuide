@@ -52349,3 +52349,568 @@ button.ps-col__name[aria-pressed="true"] {
 :root[data-motion="reduced"] .vm-cosine__track b {
   transition: none;
 }
+
+/* neural-networks · a machine full of knobs */
+/* Neural networks: six full-width cards shown one per step, drawn at the card's real width. */
+.nk-lab {
+  display: grid;
+  width: 100%;
+  max-width: 78rem;
+  margin: 0 auto;
+  gap: 0.9rem;
+  container-type: inline-size;
+}
+
+.nk-lab > .nk-card {
+  min-width: 0;
+}
+
+/* The lab shows one card per step. Its heading is the scroll target, so each step opens from the top. */
+.explore-scroll[data-module="neural-networks"][data-current-step="0"] .nk-card--line > .surface-heading,
+.explore-scroll[data-module="neural-networks"][data-current-step="1"] .nk-card--hand > .surface-heading,
+.explore-scroll[data-module="neural-networks"][data-current-step="2"] .nk-card--auto > .surface-heading,
+.explore-scroll[data-module="neural-networks"][data-current-step="3"] .nk-card--wide > .surface-heading,
+.explore-scroll[data-module="neural-networks"][data-current-step="4"] .nk-card--count > .surface-heading,
+.explore-scroll[data-module="neural-networks"][data-current-step="5"] .nk-card--play > .surface-heading {
+  --lesson-step-target: 1;
+  scroll-margin-top: 1.2rem;
+  scroll-margin-bottom: min(34rem, 62vh);
+}
+
+.nk-lede {
+  max-width: 72ch;
+  margin: -0.35rem 0 0;
+  color: var(--ink-soft);
+  font-size: 0.8125rem;
+  line-height: 1.55;
+}
+
+.nk-lede b {
+  color: var(--ink);
+  font-weight: 650;
+}
+
+.nk-card .formula-live {
+  margin-top: 0.75rem;
+}
+
+.nk-card .viz-predict__reveal b {
+  color: var(--ink);
+  font-weight: 650;
+}
+
+/* ---- layout ---- */
+.nk-split {
+  display: grid;
+  align-items: start;
+  margin-top: 0.75rem;
+  gap: 1rem;
+}
+
+@container (min-width: 37rem) {
+  .nk-split {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .nk-split--plot {
+    grid-template-columns: minmax(0, 1.3fr) minmax(15rem, 1fr);
+  }
+}
+
+.nk-side,
+.nk-picture {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+}
+
+.nk-frame {
+  min-width: 0;
+  margin-top: 0.75rem;
+}
+
+.nk-side > .nk-frame:first-child,
+.nk-picture > .nk-frame:first-child,
+.nk-side > .range-control:first-child {
+  margin-top: 0;
+}
+
+.nk-side .segmented,
+.nk-controls .segmented {
+  margin: 0.75rem 0 0;
+}
+
+.nk-controls {
+  display: grid;
+  margin-top: 0.35rem;
+  gap: 0 1.2rem;
+}
+
+@container (min-width: 37rem) {
+  .nk-controls {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .nk-controls > .segmented {
+    grid-column: span 2;
+  }
+
+  .nk-controls > .segmented:first-child {
+    grid-column: span 3;
+  }
+
+  .nk-controls > .segmented:nth-child(2) {
+    grid-column: span 1;
+  }
+
+  .nk-controls > .range-control {
+    grid-column: span 3;
+  }
+}
+
+.nk-caption {
+  margin: 0.45rem 0 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.nk-actions {
+  display: flex;
+  flex-wrap: wrap;
+  margin-top: 0.8rem;
+  gap: 0.5rem;
+}
+
+.nk-actions .primary-action,
+.nk-actions .quiet-action {
+  width: auto;
+  min-width: 7.5rem;
+  margin-top: 0;
+  flex: 1 1 7.5rem;
+}
+
+.nk-actions button:disabled {
+  cursor: not-allowed;
+  filter: none;
+  opacity: 0.45;
+}
+
+.nk-actions button[aria-pressed="true"] {
+  border-color: var(--module-accent);
+  color: var(--ink);
+}
+
+.nk-card .metric-row.nk-metrics--grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.nk-metrics--grid .metric:nth-child(2n) {
+  border-right: 0;
+}
+
+.nk-metrics--grid .metric:nth-child(n + 3) {
+  border-top: 1px solid var(--line);
+}
+
+/* ---- pictures ---- */
+.nk-plot {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel-muted);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.nk-plot text {
+  font-family: "JetBrains Mono Variable", monospace;
+}
+
+.nk-plot .nk-tick {
+  fill: var(--muted);
+  font-size: 10.5px;
+}
+
+.nk-plot .nk-axis-label,
+.nk-plot .nk-op {
+  fill: var(--ink-soft);
+  font-size: 11px;
+}
+
+.nk-plot .nk-grid {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.nk-plot .nk-axis {
+  stroke: var(--line-strong);
+  stroke-width: 1.2;
+}
+
+.nk-plot .nk-curve {
+  fill: none;
+  stroke: var(--forward);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.nk-plot .nk-gap {
+  stroke: var(--loss);
+  stroke-width: 1.8;
+}
+
+.nk-plot .nk-dot {
+  fill: var(--panel-solid);
+  stroke: var(--ink);
+  stroke-width: 1.8;
+}
+
+.nk-plot .nk-piece {
+  fill: none;
+  stroke: var(--attention);
+  stroke-width: 1.5;
+  stroke-dasharray: 6 3;
+  stroke-linejoin: round;
+}
+
+.nk-plot .nk-piece--1 { stroke-dasharray: 2 3; }
+.nk-plot .nk-piece--2 { stroke-dasharray: 9 3 2 3; }
+.nk-plot .nk-piece--3 { stroke-dasharray: 4 2; }
+.nk-plot .nk-piece--4 { stroke-dasharray: 1 2; }
+.nk-plot .nk-piece--5 { stroke-dasharray: 12 4; }
+
+.nk-plot .nk-probe {
+  fill: var(--forward);
+  stroke: var(--panel-solid);
+  stroke-width: 2;
+}
+
+.nk-plot .nk-probe-line {
+  stroke: var(--forward);
+  stroke-width: 1.2;
+  stroke-dasharray: 3 3;
+}
+
+.nk-legend {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  color: var(--muted);
+  font-size: 0.7rem;
+  line-height: 1.4;
+  list-style: none;
+  gap: 0.25rem 0.9rem;
+}
+
+.nk-legend li {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.nk-key {
+  display: inline-block;
+  width: 1.1rem;
+  height: 0;
+  border-top: 3px solid var(--forward);
+}
+
+.nk-key--dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border: 1.8px solid var(--ink);
+  border-radius: 50%;
+  background: var(--panel-solid);
+}
+
+.nk-key--gap {
+  width: 0;
+  height: 0.8rem;
+  border-top: 0;
+  border-left: 2px solid var(--loss);
+}
+
+.nk-key--piece {
+  border-top: 2px dashed var(--attention);
+}
+
+/* ---- the machine and the network ---- */
+.nk-plot .nk-wire {
+  stroke: var(--line-strong);
+  stroke-width: 2;
+}
+
+.nk-plot .nk-wire--stub {
+  stroke-width: 1.4;
+  stroke-dasharray: 3 3;
+}
+
+.nk-plot .nk-chip,
+.nk-plot .nk-node {
+  fill: var(--panel-solid);
+  stroke: var(--line-strong);
+  stroke-width: 1.4;
+}
+
+.nk-plot .nk-chip__title {
+  fill: var(--muted);
+  font-size: 10px;
+}
+
+.nk-plot .nk-chip__value {
+  fill: var(--ink);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.nk-plot .nk-node__text {
+  fill: var(--ink);
+  font-size: 12.5px;
+  font-weight: 650;
+}
+
+.nk-plot .nk-spark {
+  fill: none;
+  stroke: var(--attention);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+/* ---- knobs ---- */
+.nk-knob {
+  outline: none;
+}
+
+.nk-knob.is-live {
+  cursor: grab;
+  touch-action: none;
+}
+
+.nk-knob.is-live:active {
+  cursor: grabbing;
+}
+
+.nk-knob .nk-knob__hit {
+  fill: transparent;
+}
+
+.nk-knob .nk-knob__track {
+  fill: none;
+  stroke: var(--line-strong);
+  stroke-width: 4;
+  stroke-linecap: round;
+}
+
+.nk-knob .nk-knob__fill {
+  fill: none;
+  stroke: var(--forward);
+  stroke-width: 4;
+  stroke-linecap: round;
+}
+
+.nk-knob.is-negative .nk-knob__fill {
+  stroke: var(--loss);
+}
+
+.nk-knob .nk-knob__cap {
+  fill: var(--panel-solid);
+  stroke: var(--line-strong);
+  stroke-width: 1.2;
+}
+
+.nk-knob .nk-knob__pointer {
+  stroke: var(--ink);
+  stroke-width: 2.6;
+  stroke-linecap: round;
+}
+
+.nk-knob.is-selected .nk-knob__cap {
+  stroke: var(--module-accent);
+  stroke-width: 2.6;
+}
+
+.nk-knob:focus-visible .nk-knob__cap {
+  stroke: var(--ink);
+  stroke-width: 2.8;
+}
+
+.nk-knob .nk-knob__hint {
+  fill: none;
+  stroke: var(--gradient);
+  stroke-width: 2.8;
+  stroke-linecap: round;
+}
+
+.nk-knob .nk-knob__hint-head {
+  fill: var(--gradient);
+  stroke: var(--gradient);
+  stroke-width: 1;
+  stroke-linejoin: round;
+}
+
+.nk-plot .nk-knob__text {
+  fill: var(--ink);
+  font-size: 11px;
+  font-weight: 600;
+  paint-order: stroke;
+  stroke: var(--panel-muted);
+  stroke-width: 3.5px;
+  stroke-linejoin: round;
+}
+
+.nk-plot .nk-knob__name {
+  fill: var(--ink-soft);
+  font-weight: 700;
+}
+
+.nk-mini circle {
+  fill: var(--panel-solid);
+  stroke: var(--line-strong);
+  stroke-width: 1.2;
+}
+
+.nk-mini line {
+  stroke: var(--forward);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+}
+
+.nk-mini.is-negative line {
+  stroke: var(--loss);
+}
+
+/* ---- sketches of bigger networks ---- */
+.nk-plot .nk-thread {
+  stroke: color-mix(in srgb, var(--forward) 34%, transparent);
+  stroke-width: 0.8;
+}
+
+.nk-plot .nk-bead {
+  fill: var(--panel-solid);
+  stroke: var(--forward);
+  stroke-width: 1.5;
+}
+
+.nk-plot .nk-fold {
+  fill: var(--muted);
+  font-size: 15px;
+}
+
+.nk-tally {
+  display: grid;
+  margin: 0.6rem 0 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  list-style: none;
+  overflow: hidden;
+}
+
+.nk-tally li {
+  display: grid;
+  align-items: baseline;
+  padding: 0.38rem 0.6rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+  gap: 0.1rem 0.6rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.nk-tally li + li {
+  border-top: 1px solid var(--line);
+}
+
+.nk-tally code {
+  grid-column: 1;
+  color: var(--ink-soft);
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 0.72rem;
+}
+
+.nk-tally strong {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  align-self: center;
+  color: var(--ink);
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+/* ---- card 3: the knobs beside the setting the dots were made with ---- */
+.nk-table-wrap {
+  margin-top: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
+}
+
+.nk-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.75rem;
+}
+
+.nk-table caption {
+  padding: 0.45rem 0.6rem;
+  color: var(--muted);
+  font-size: 0.7rem;
+  text-align: left;
+  caption-side: top;
+}
+
+.nk-table th,
+.nk-table td {
+  padding: 0.34rem 0.5rem;
+  border-top: 1px solid var(--line);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.nk-table th[scope="row"],
+.nk-table thead th:first-child {
+  color: var(--muted);
+  font-weight: 600;
+  text-align: left;
+}
+
+.nk-table thead th {
+  color: var(--ink-soft);
+  font-family: "JetBrains Mono Variable", monospace;
+  font-weight: 650;
+}
+
+.nk-table td {
+  color: var(--ink);
+  font-family: "JetBrains Mono Variable", monospace;
+}
+
+.nk-table tbody tr:nth-child(2) td {
+  color: var(--gradient);
+}
+
+/* Knob names carry subscripts, which only the monospace face draws at a readable size. */
+.nk-pick .segmented button,
+.nk-name {
+  font-family: "JetBrains Mono Variable", monospace;
+}
+
+.nk-pick .segmented button {
+  font-size: 0.78rem;
+}
+
+.nk-name {
+  color: var(--ink);
+  font-weight: 650;
+}
+
+/* Count the knobs: the bar list's value column holds words ("175 billion"), so it gets more room. */
+.nk-card--count .viz-bar-row > * {
+  grid-template-columns: minmax(5.5rem, 8.5rem) minmax(0, 1fr) 5.6rem;
+}

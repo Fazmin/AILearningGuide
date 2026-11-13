@@ -7,7 +7,7 @@ const definition: ModuleDefinition = {
   slug: "parallel-training",
   title: "Splitting training across GPUs",
   group: "pretraining",
-  order: 39,
+  order: 40,
   icon: "Waypoints",
   accent: "#2f7d95",
   prerequisites: ["module-17-training-run", "module-34-why-gpus"],

@@ -20,7 +20,7 @@ const definition: ModuleDefinition = {
   slug: "reasoning-models",
   title: "Reasoning models",
   group: "training-adapting",
-  order: 55,
+  order: 56,
   icon: "Lightbulb",
   accent: "#8a5a2a",
   prerequisites: ["module-13-icl-reasoning", "module-45-rl-foundations", "module-24-preference-optimization"],

@@ -1,0 +1,203 @@
+---
+objectives: ["Describe a neural network as fixed wiring whose behaviour is set entirely by its parameters: a weight on every wire and a bias in every neuron", "Explain why trying parameter settings one by one fails, and how a training step instead turns every parameter a little against its own slope of the loss", "Show that different parameter settings can compute the same function, so one parameter has no meaning on its own", "Relate the number of hidden neurons to the shapes a network can draw, and tell a network that cannot make a shape from one that got stuck while training", "Count a fully connected network's parameters from its layer sizes and place the count beside published models"]
+terms: ["Neural network", "Parameter", "Weight", "Bias", "Neuron", "Hidden layer", "Forward pass", "Loss", "Gradient", "Training step", "Learning rate", "Momentum", "Weight-space symmetry", "Capacity"]
+sections: {"What is inside the box?":"overview","Build a network, one knob at a time":"mechanism","Your turn: the playground":"lab","Where the knob picture stops working":"limits","The labs that open each part up":"next"}
+---
+
+## What is inside the box?
+
+You have probably read that some AI model has “175 billion parameters”, as if that explained anything. What is a parameter, and why would a machine need 175 billion of them? Until now, this guide treated a model as a closed box with a dial on the front. This lab takes the lid off.
+
+Here is what you will find inside. No programmer wrote a list of rules in there, and there is no store of facts. There is wiring that never changes, and there are numbers sitting on that wiring that do. Each number works like a knob, and the knob settings decide everything the machine does.
+
+So “training a model” turns out to mean something very plain. It means turning the knobs bit by bit until the machine gives the outputs we want. The puzzle in this lesson is how anybody could do that for billions of knobs at once.
+
+### A shower with two taps
+
+Think about setting the temperature of a shower that has a hot tap and a cold tap. Nobody works out the right setting on paper. You feel the water, notice that it is too cold, and turn the hot tap a little. Then you feel the water again and adjust again, until the temperature is right.
+
+A neural network gets tuned in the same way. The water temperature is the machine's output. The temperature you want is the right answer, and the taps are the knobs. One number, called the **loss**, plays the part of your hand under the water. The loss says how far off the output is.
+
+The comparison stops matching in two places, and both matter later. A tap has an obvious job, hot or cold. A single knob in a network has no job that you could name. You also turn one tap at a time, but training turns every knob at the same moment.
+
+### What you will be able to do
+
+The plan is to start with the smallest machine you can tune and build a network up. Each card adds one idea, and the last card gives you a playground. When you have finished, you will be able to do five things:
+
+- Describe a neural network as fixed wiring with knobs. Every wire and every neuron has a knob, and nothing else can change.
+- Explain why trying knob settings one after another cannot work. Say how a training step turns every knob a little instead.
+- Show that two different sets of knob settings can be exactly the same machine. So a single knob means nothing by itself.
+- Say how the number of hidden neurons limits the shapes a network can draw. Tell a network that cannot make a shape apart from one that got stuck.
+- Count a network's knobs from its layer sizes, and compare that count with real published models.
+
+### What the lab is made of
+
+It is worth being clear about what is real here. The networks in this lab are real ones, and the training runs in your browser. The lab measures every loss on the screen from the network's knobs at that moment.
+
+The dots are not real data. Every card has 17 dots, and a short formula made each set with no measuring errors. That is on purpose, because it means a perfect setting of the knobs exists. So you can tell exactly how close you are to that setting.
+
+## Build a network, one knob at a time
+
+Keep the lab open beside this page. Each part below belongs to one card and tells you which control to touch. The lab shows one card at a time. The **Next** button under a card opens the following one. The step bar above the lab jumps to any card you pick.
+
+### Two knobs
+
+Begin with the first card, **A machine with two knobs**. The strip on the left is the whole machine. A number called the input, `x`, goes in at one end. The machine multiplies that number by knob `w` and then adds knob `b`. The result comes out at the other end, and that is everything the machine does.
+
+**Pause and predict:** suppose the knobs are set to `w` = 0.5 and `b` = 1. If you then feed in an input of 2, what would come out? Choose an answer in the card's **Predict first** box before you read on.
+
+The answer is 2, because 2 times 0.5 is 1, and 1 plus 1 is 2. To check, set **Knob w**, **Knob b** and **Input x** to those values. Then read the three boxes on the machine.
+
+Now look at the plot on the right, where the dots are the right answers. There are 17 inputs, and a dot marks the output we want for each one. The blue line shows what the machine gives at every input with its knobs as they are. When the lab opens, `w` is −0.50 and `b` is −1.00. The line slopes the wrong way entirely.
+
+A thin line joins each dot to the machine's line. That thin line's length is the gap between the answer we want and the answer we got. The **loss** turns all 17 gaps into one number: square each gap, then take the average. The loss reads 4.79 at the start. A lower loss is better, and a loss of 0 means the line passes through every dot.
+
+Turn **Knob w** up and watch the line tilt. Stop at +0.80, where something useful happens: every gap becomes the same length. That means the tilt is now right and the line is only too low. The loss has fallen to 2.25. Now turn **Knob b** up to +0.50. That slides the whole line upward without tilting it, and the loss reaches 0.000.
+
+You have now trained a model by hand, so notice what changed and what did not. The dots and the wiring stayed as they were, so two numbers hold everything the machine learned. Numbers like these get tuned to fit the examples, and they are called **parameters**. This lab draws every parameter as a knob.
+
+To recap: wiring says what a machine can do, and knobs say which of those things it does. But a machine that multiplies and adds can only ever draw a straight line. What happens when the dots do not lie on one?
+
+### Seven knobs
+
+Open the second card, **Seven knobs by hand**. These dots form a hill, low at both ends and high in the middle. No setting of the two-knob machine can bend a straight line into that shape.
+
+The fix is to wire several small machines together. The input now feeds two boxes in the middle, called **hidden neurons**. Each neuron is a small machine like the one on card 1. It has a knob on the wire coming in and a knob of its own. Then the neuron does one extra step: it bends its result into a fixed S-shaped curve. The little picture inside each box shows the curve that neuron is sending on.
+
+On the right, the output adds the two neurons' curves together. Each curve passes through a knob on its way there. The output has one more knob of its own, so count them all and you get seven. A knob on a wire is a **weight**, and a neuron's own knob is its **bias**. The whole setup is a small **neural network**.
+
+**Pause and predict:** suppose you tried only 10 settings of each knob. The two-knob machine would have had 100 combinations to try. How many does a network with seven knobs have? Choose in the **Predict first** box.
+
+It has ten million, because every extra knob multiplies the count by 10. At one try every second, working through them would take about 116 days. That is for a network small enough to draw on a card. Trying settings one after another is finished as a plan.
+
+So tune the network by feel instead. Pick a knob under **Selected knob**, then drag **Turn the selected knob**. You can also drag around any knob in the diagram. Start with `w₁`: it makes neuron 1's S-curve steeper, and a negative setting flips the curve over. Knob `b₁` slides that curve left and right. Knob `v₁` sets how tall the neuron's share of the output is. The two thin lines in the plot are those shares.
+
+Here is an experiment that shows why seven knobs are so much harder than two. This very network made the dots, with `w₁` and `b₁` at +2.0 and `v₁` at +1.5. Set those three knobs to their correct values and look at the loss. The loss started at 1.79, and it is now 2.81. You moved three knobs to exactly the right place and the network got worse.
+
+The reason is that the other four knobs are still wrong. A correct neuron added to a wrong one gives a wrong total. Keep going: set `w₂` to +2.0, `b₂` to −2.0 and `v₂` to −1.5. The loss now reads 2.89, and that is worse again. The loss drops to 0.000 only when the last knob, `c`, goes to −1.0. You cannot judge any knob by itself.
+
+Now press **Swap the two neurons**. Six of the seven readings change, because neuron 1's knobs trade places with neuron 2's. Yet the curve does not move and the loss is still 0.000. The output only adds the two neurons up, and a sum does not care about order. Two different lists of seven numbers are exactly the same machine.
+
+To recap: wiring small machines together lets the output bend. The price is knobs whose best settings all depend on one another. Hand tuning will not survive many more knobs. So how does a machine with millions of them get tuned?
+
+### Let the machine turn them
+
+Open the third card, **Let the machine turn the knobs**. The card shows the same seven knobs, exactly as you left them. If you tuned them on card 2, they sit on a perfect setting with nothing left to learn. Press the **See it in the lab** card above this paragraph. That puts the knobs back where the lab began.
+
+Each knob now carries a pink arrow. For every knob, the machine has worked out the slope of the loss. The slope says how much the loss would change if you turned that one knob a little. It also says which direction the loss would move. The arrow points the way that makes the loss go down. A longer arrow means a small turn changes the loss more. If you have done the Slopes & gradients lab, the list of seven slopes is the **gradient**.
+
+Press **Take one step** and watch closely. Every knob turns a little along its own arrow, all at the same moment. The lab prints the rule for each knob under the table. The new setting is the old setting minus the step size times the slope. The step size here is 0.2. From the setting the lab opens with, one step takes the loss from 1.79 to 1.36.
+
+Notice what the machine does not know: it has no idea where any knob should end up. Each knob gets only a direction and a size for one small turn. After the turn, the machine works out all the slopes again from the new position.
+
+**Pause and predict:** the machine will keep stepping until the loss is close to 0. When the loss gets there, will the seven knobs show the numbers the dots were made with? Choose in the **Predict first** box.
+
+Press **Run to the goal** and then compare two rows of the table, **Now** and **Made with**. From the opening setting, the loss goes under 0.01 after 62 steps. The curve sits on the dots, and yet the knobs are different. Knob `w₁` ends near −1.4, but the dots were made with +2.0.
+
+You already know why from the swap on card 2. Several settings draw this same curve, and the steps only walk downhill from where the knobs started. They stop at whichever good setting lies along that path. Press **Scramble the knobs** and run again, and the machine reaches different numbers after a different step count.
+
+The recap: training is the same small step repeated, and every knob turns along its own slope. That deals with the problem of having too many knobs to search. But are seven knobs enough for any shape of dots?
+
+### More neurons, more shapes
+
+Open the fourth card, **More neurons, more shapes**. The dots now form a wave that rises, falls, rises and falls again. The lab has trained six networks on the wave, with one to six hidden neurons. Each one followed the same recipe of 600 steps from scrambled knobs.
+
+**Pause and predict:** a network with one hidden neuron can only draw a single S-shaped step. If you trained it for ten times as long, would its curve follow the wave? Choose in the **Predict first** box.
+
+It would not. Set **Hidden neurons** to 1 and look at the curve. You see a gentle tilt through the middle of the dots, with a loss of 0.648. Training can only choose among the shapes that the knobs are able to make. Four knobs can move one S-shaped step around, stretch it and flip it. A wave is not on that list of shapes.
+
+Now drag **Hidden neurons** upward and read the bars. Two neurons leave a loss of 0.589 and three leave 0.299. Four neurons make 13 knobs, and with them the loss drops to 0.002. The curve now runs through every dot. Look at the thin lines at that setting. Each one is a single S-shaped step, and none of them looks like a wave. The wave only appears when the network adds them together.
+
+The range of shapes that a network's knobs could produce is called its **capacity**. More neurons give more capacity, and this card shows what happens with too little of it.
+
+There is a second way to fail, and you could mix it up with the first. Leave **Hidden neurons** at 4 and press **Scramble the knobs** twice. The four-neuron network now ends with a loss of 0.290. Yet you saw a moment ago that its 13 knobs can fit the wave. Nothing is wrong with the network. This run started from a different scramble, walked downhill, and came to rest in a poor place.
+
+The recap: enough knobs make a shape possible, but do not promise the steps will find it. So if four neurons manage a wave, what do real networks need all their knobs for?
+
+### Billions of knobs
+
+Open the fifth card, **Count the knobs**. Real networks are the same thing with more of everything. They have more inputs, more neurons in each layer, and more layers. A **layer** is one row of neurons. Every neuron in one layer has a wire to every neuron in the next. So counting the knobs is ordinary multiplication.
+
+**Pause and predict:** one row of 100 neurons feeds a second row of 100. How many knobs does the second row add? Choose in the **Predict first** box.
+
+It adds 10,100. Each of the 100 neurons has 100 wires coming in, and that makes 10,000 wire knobs. Each neuron also has one knob of its own, so nearly all the knobs are on the wires.
+
+Press **A small digit reader**. The button builds a network that could take a small picture of a handwritten digit. The picture is 784 dots of ink, and the network gives 10 outputs, one for each digit. The network has two hidden layers of 16 neurons. The **Knobs** line adds everything up for you: 12,560 plus 272 plus 170 is 13,002 knobs.
+
+**Try this:** raise **Neurons per layer** from 16 to 64 and watch the middle line of the list. The knobs between the two hidden layers jump from 272 to 4,160. Making both layers four times as wide gave sixteen times as many wires between them.
+
+Then read the bars under the count. They compare your network with four that were really built. LeNet-5 read handwritten digits in 1998, and it has about 60 thousand knobs. AlexNet named objects in photos in 2012, and it has about 60 million. The largest GPT-2 is a language model from 2019, with about 1.5 billion. GPT-3 followed it in 2020, and it has 175 billion. Each equal stretch of bar stands for ten times as many knobs. No screen could fit these counts on an ordinary scale.
+
+Here is the answer to the question that opened this lesson: a parameter is one knob. So “175 billion parameters” means 175 billion numbers that training turned, each along its own slope. If you touched one of them every second, touching them all once would take about 5,500 years. That is why arithmetic has to work out the slopes, for every knob at once.
+
+## Your turn: the playground
+
+Open the sixth card, **Playground: train a network**. Everything from the first five cards is here in one place. You choose the dots, the size of the network and how it steps. The lab scrambles the knobs and takes up to 600 training steps. As it steps, you watch the curve, the wall of knobs and the loss together.
+
+The challenge is to get the loss on the Wave dots under 0.01. Then try to do it with as few knobs as you can.
+
+### A first try
+
+Leave everything as it is and press **Train**. The network has one hidden layer of 2 neurons, and that makes 7 knobs. The curve wriggles, settles into a shallow bend, and stops improving. After all 600 steps the loss is 0.589, a long way above the goal.
+
+You have seen this failure before, on card 4. Two neurons lack the shapes for a wave with two crests, so more training will not help.
+
+### Give it more knobs
+
+Raise **Neurons per layer** to 4 and press **Train** again. For the first hundred steps or so the loss falls slowly and the curve looks stuck. Then the knobs find their way and the curve snaps onto the dots. The loss goes under 0.01 at step 188, and the network meets the goal with 13 knobs.
+
+Drag **Training steps** back and forth to replay the run while you watch the wall of dials. Nobody set those 13 numbers. You chose the dots, the network's size and the stepping rule, and the steps found the settings.
+
+### Change how it steps
+
+Keep the 4 neurons and switch **Momentum** to Off, then press **Train**. The loss now ends at 0.063, and the run misses the goal. **Momentum** lets each knob keep nine tenths of its previous move. That carries the knobs across flat stretches where plain steps slow to a crawl. Card 3 used plain steps, and they were enough for its easier dots.
+
+Switch **Momentum** back to On before you go on. Then try the other controls one at a time. Set **Hidden layers** to 2 and the network grows to 33 knobs, passing the goal at step 76. Switch **Dots** to Hill or Step and see how few neurons each of those needs.
+
+### What you just did
+
+Count your decisions: which dots, how many neurons and layers, what step size, and whether to use momentum. Anyone training a real network makes those same choices, but the knob settings are never among them. The steps find the settings, and that is the sense in which a network *learns* its parameters.
+
+## Where the knob picture stops working
+
+A simple picture is useful only if you know where it ends. This section is about those edges: first the lab's, then the idea's.
+
+### What the lab simplifies
+
+Every network here has one input and one output, so everything it does fits in one plot. Real networks take thousands of inputs at once, and nobody can draw their behaviour as one curve.
+
+The dots come from formulas, with no measuring errors. The lab also measures the loss on the same dots the network trained on. That hides one of the biggest problems in real training. A network with many knobs can fit its training examples closely and still get new ones wrong. Nothing in this lab can show you that, because it has no new examples to test on. The Stacking neurons lab has a card that does.
+
+Each step also uses all 17 dots, but real training has far too many examples for that. So each step looks at a small random handful, and the slopes it gets are rougher.
+
+### When training gets stuck
+
+On card 4, four neurons fitted the wave from one scramble and ended at 0.290 from another. A step only uses the slope at the place where the knobs are now. The step cannot see that a much better setting exists somewhere else. So a run can come to rest with a high loss and no way of knowing.
+
+This has a practical lesson: when a network fails, there are two different questions to ask. Could its knobs make the shape at all? And if they could, did the steps find it? More neurons help with the first question. A different start or a different stepping rule helps with the second.
+
+### When the steps are too long
+
+In the playground, with 4 neurons, set **Step size** to 0.5 and **Momentum** to Off, then press **Train**. The loss does not creep toward 0, and it ends near 1,595. You can only trust a slope for a small turn. A step this long throws each knob far past the place the slope was pointing to. The next step throws the knob back even further, until the knobs are pinned against their stops.
+
+The step size is called the **learning rate**. It is usually the first number anyone sets when training a network. Too small and the run crawls, and too large and it does this.
+
+### What a knob is not
+
+**A common mix-up:** it is tempting to think that each knob stores something. One knob might hold “the height of the hill”, and another a fact about the data. The swap on card 2 shows why that is wrong. Six knobs changed and the machine did not, so no single knob was holding anything. What a network knows is spread across all of its knobs together.
+
+A second mix-up is reading a knob count as a measure of how clever a model is. The count only says how big the model is. What the model can do also depends on its wiring, what it trained on and for how long.
+
+**How sure is this?** The step counts and losses in this lesson are for the lab as it opens. Card 3 reached its goal for the opening setting and for each of the next nine scrambles. It got there somewhere between step 46 and step 147. The playground runs covered the opening start and the next seven scrambles. Across those runs, no network with fewer than 13 knobs got the wave under 0.01. Those are measurements on a toy problem, not laws.
+
+## The labs that open each part up
+
+This lab showed you a whole network working at once. The next few labs take it apart and look closely at one piece each.
+
+- **A single neuron** opens up one of the boxes. Inside are the weighted sum, the bias, and the curve that bends the result.
+- **Stacking neurons** gives a network two inputs and compares wide networks with deep ones. It also tests a network on examples it was not trained on.
+- **Loss & gradient descent** draws the loss as a landscape over two knobs. It shows what the step size does to the walk across that landscape.
+- **Backpropagation** explains how one backward pass can work out the slope for every knob. That is what makes billions of knobs possible.
+- **Training dynamics** watches the loss on training examples and on fresh ones part ways.
+
+Further on, the Scaling laws lab asks what a bigger knob count buys. The Why GPUs lab asks what it takes to turn billions of knobs in a reasonable time. All of them are describing the machine you just tuned by hand.

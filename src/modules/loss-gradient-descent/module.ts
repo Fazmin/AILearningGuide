@@ -37,7 +37,7 @@ const definition: ModuleDefinition = {
   slug: "loss-gradient-descent",
   title: "Loss & gradient descent",
   group: "foundations",
-  order: 12,
+  order: 13,
   icon: "Mountain",
   accent: "#dd6b45",
   prerequisites: ["module-02-single-neuron", "module-59-slopes-gradients"],

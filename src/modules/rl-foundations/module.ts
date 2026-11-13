@@ -50,7 +50,7 @@ const definition: ModuleDefinition = {
   slug: "rl-foundations",
   title: "Reinforcement learning foundations",
   group: "frontiers",
-  order: 30,
+  order: 31,
   icon: "Gamepad2",
   accent: "#2d7a5a",
   prerequisites: ["module-33-how-models-are-evaluated"],

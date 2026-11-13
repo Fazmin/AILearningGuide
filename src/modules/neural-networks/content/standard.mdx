@@ -1,0 +1,242 @@
+---
+objectives: ["Describe a neural network as fixed wiring whose behaviour is set entirely by its parameters: a weight on every wire and a bias in every neuron", "Explain why trying parameter settings one by one fails, and how a training step instead turns every parameter a little against its own slope of the loss", "Show that different parameter settings can compute the same function, so one parameter has no meaning on its own", "Relate the number of hidden neurons to the shapes a network can draw, and tell a network that cannot make a shape from one that got stuck while training", "Count a fully connected network's parameters from its layer sizes and place the count beside published models"]
+terms: ["Neural network", "Parameter", "Weight", "Bias", "Neuron", "Hidden layer", "Forward pass", "Loss", "Gradient", "Training step", "Learning rate", "Momentum", "Weight-space symmetry", "Capacity"]
+sections: {"What is inside the box?":"overview","Build a network, one knob at a time":"mechanism","Your turn: the playground":"lab","Where the knob picture stops working":"limits","The labs that open each part up":"next"}
+---
+
+## What is inside the box?
+
+A model card says “175 billion parameters”. What is one parameter, and what would it mean to have
+that many? Earlier labs treated a model as a closed box with a dial and a meter. This one opens the
+box: inside is a fixed arrangement of simple units, and a set of numbers on that arrangement that
+training is free to change. Those numbers are the parameters, and they decide everything the model
+computes.
+
+The common picture is a panel of knobs, and the lab makes it literal. Every weight and every bias is
+drawn as a rotary knob you can turn. You tune two by hand, then seven, then let gradient steps turn
+them, and finally count how many a published model has. The picture is accurate about what a
+parameter is and misleading about what a single one means; the limits section says where.
+
+### What you will be able to explain
+
+- What a feedforward network computes: affine maps with learned weights and biases, alternated with
+  a fixed nonlinearity, and nothing else that changes.
+- Why exhaustive search over parameter settings is exponential in their number, and how a gradient
+  step replaces it with one local update of every parameter.
+- Why the map from parameters to function is many-to-one (permutation and sign symmetries), so a
+  parameter value has no meaning in isolation.
+- How width bounds the functions a one-hidden-layer network can represent, and how to tell a
+  representational failure from an optimization failure.
+- How to count the parameters of a fully connected network, and how that count compares with
+  LeNet-5, AlexNet, GPT-2 and GPT-3.
+
+### What the lab shows
+
+Every network on the page is real and is trained in the browser: one scalar input, tanh hidden
+units, a linear output, mean squared error, full-batch gradients by backpropagation. The data are
+synthetic. Each card fits 17 noise-free points on `[−2, 2]` generated from a short formula, so an
+exact fit exists for the hand-tuned cards and every loss is a training loss. Nothing is held out.
+
+## Build a network, one knob at a time
+
+Six cards, one per step; **Next** under a card opens the following one. The first five build the
+idea and the sixth is a playground.
+
+### Two knobs
+
+The first card's model is `ŷ = w·x + b`: two parameters, shown as **Knob w** and **Knob b**. The
+strip on the left traces one input through it, and the plot shows the model's line against 17
+targets generated with `w = 0.8`, `b = 0.5`.
+
+**Pause and predict:** with `w = 0.5` and `b = 1`, what is the output for `x = 2`?
+
+It is 2: multiply, then add. Evaluating the model on an input with the parameters held fixed is a
+**forward pass**, and it is all a trained model does at inference.
+
+The thin segments are residuals, and **Loss** is their mean square. The card opens at `w = −0.5`,
+`b = −1` with a loss of 4.79. Setting `w` to 0.8 makes every residual equal, which is how a correct
+slope looks, and leaves 2.25; setting `b` to 0.5 then gives 0.000. The data never changed and
+neither did the architecture: the fit is stored in two numbers. That is what a **parameter** is. The
+architecture defines a family of functions, and the parameters select one member.
+
+An affine model can only select straight lines. Fitting anything curved needs a different family.
+
+### Seven knobs
+
+The second card's targets form a hill. The model is now a one-hidden-layer network,
+
+`ŷ = v₁·tanh(w₁x + b₁) + v₂·tanh(w₂x + b₂) + c`,
+
+with seven parameters: four **weights** on connections and three **biases**. Each hidden unit is
+the affine model of card 1 followed by a fixed nonlinearity, and the output is an affine map of the
+two hidden activations. The box inside each unit plots its activation over the input range, and the
+two thin curves in the plot are the terms `vᵢ·tanh(wᵢx + bᵢ)`.
+
+**Pause and predict:** at 10 candidate values per parameter, the two-parameter model has 100
+settings to try. How many does this one have?
+
+Ten million: grid search is exponential in the number of parameters, `10ⁿ`, which at one evaluation
+per second is about 116 days for `n = 7`. No practical model is fitted by enumeration.
+
+Hand tuning shows a second problem, which is coupling. The targets were generated by this network at
+`(w₁, b₁, w₂, b₂, v₁, v₂, c) = (2, 2, 2, −2, 1.5, −1.5, −1)`. From the opening setting, loss 1.79,
+move `w₁`, `b₁` and `v₁` to their generating values and the loss rises to 2.81. Add `w₂`, `b₂` and
+`v₂` and it reads 2.89. Only when `c` is also set does it fall to 0.000. The loss is not separable:
+whether a value is good for one parameter depends on all the others.
+
+**Swap the two neurons** exchanges the two hidden units together with their weights. Six of seven
+values change and the function is identical, because the output sums over units. This is
+**weight-space symmetry**. A layer of `n` hidden units has `n!` such orderings, and a tanh unit adds
+a sign symmetry, since negating its input weight, bias and output weight leaves `v·tanh(wx + b)`
+unchanged. The generating setting is therefore one of `2! × 2² = 8` equivalent settings.
+
+### Let the machine turn them
+
+The third card keeps the same seven parameters and draws, on each knob, the direction that lowers
+the loss. The lab computes `∂L/∂θ` for every parameter by backpropagation; the seven partial
+derivatives are the **gradient**. One **training step** applies
+
+`θ ← θ − η·∂L/∂θ`
+
+to all seven at once, with step size `η = 0.2`. The **Next turn** line evaluates it for the selected
+knob, and the table lists every value and its partial derivative.
+
+From the opening setting one step takes the loss from 1.79 to 1.36. Each parameter receives a
+direction and a magnitude for one small move, never a destination, and the gradient is recomputed
+after every step. The arrows shorten as the loss falls, since the gradient vanishes at a minimum.
+
+**Pause and predict:** when the loss is near zero, will the parameters equal the generating values?
+
+Not necessarily. **Run to the goal** brings the loss under 0.01 in 62 steps, and the table's
+**Now** row ends near `w₁ = −1.4`, `b₁ = 1.3`, `v₁ = 1.7`, against generating values of 2, 2 and
+1.5 in the **Made with** row. Descent has converged toward one of the eight symmetric copies, with
+the units exchanged and one of them sign-flipped. It finds a minimizer, not *the* parameters, and
+which one depends on the initialization. **Scramble the knobs** redraws the start and the run ends
+elsewhere.
+
+### More neurons, more shapes
+
+The fourth card fixes the training recipe and varies the width. Six networks, `1 → n → 1` for `n`
+from 1 to 6, are trained on a wave, `−1.2·cos(πx)`, for 600 steps of gradient descent with momentum
+0.9 and `η = 0.05`. A network of width `n` has `3n + 1` parameters.
+
+**Pause and predict:** would training the `n = 1` network ten times longer fit the wave?
+
+No. Its output, `v·tanh(wx + b) + c`, is monotone in `x` for every parameter setting, so no
+minimizer fits a function that rises and falls. Its loss is 0.648. This is a limit of **capacity**,
+the set of functions the architecture can represent, and optimization cannot move it.
+
+At the opening seed the final losses for `n = 1…6` are 0.648, 0.589, 0.299, 0.002, 0.003 and 0.003.
+The thin curves at `n = 4` are four sigmoidal steps; none resembles the target, and their sum
+passes through every point. Universal approximation is this picture pushed to the limit: enough
+such steps approximate any continuous function on a bounded interval.
+
+Capacity is necessary and not sufficient. Leave **Hidden neurons** at 4 and press **Scramble the
+knobs** twice: the same architecture now ends at 0.290, while `n = 3` ends at 0.018. Nothing about
+representation changed, only the initialization, so this is an optimization failure. The two
+failures call for different fixes, and the loss alone does not say which one you have.
+
+### Billions of knobs
+
+The fifth card counts. In a fully connected layer every unit receives a weight from every unit of
+the previous layer plus one bias, so a layer of `m` units after a layer of `k` adds `k·m + m`
+parameters.
+
+**Pause and predict:** how many parameters does a layer of 100 units add after a layer of 100?
+
+10,100. The weight matrix dominates and scales with the product of adjacent widths: doubling both
+widths roughly quadruples it.
+
+**A small digit reader** builds `784 → 16 → 16 → 10`, with `12,560 + 272 + 170 = 13,002`
+parameters. Raising **Neurons per layer** to 64 takes the middle term from 272 to 4,160. The bars
+place the count on a logarithmic axis beside published totals: about 60 thousand for LeNet-5 (1998),
+60 million for AlexNet (2012), 1.5 billion for the largest GPT-2 (2019) and 175 billion for GPT-3
+(2020). Those four are convolutional networks and transformers, which share and route weights, so
+the comparison is of counts and not of designs.
+
+Visiting each of GPT-3's parameters once, at one per second, would take about 5,500 years. Training
+is feasible because backpropagation returns every partial derivative in one backward pass, at a
+small constant multiple of the cost of a forward pass, whatever the parameter count.
+
+## Your turn: the playground
+
+The sixth card trains a network you configure: the targets, one or two hidden layers of up to six
+tanh units, the step size, and whether the update carries **momentum**
+(`Δθ ← 0.9·Δθ − η·∂L/∂θ`). Each run starts from a seeded random initialization, takes at most 600
+full-batch steps, and can be replayed with **Training steps**. The challenge is a loss under 0.01 on
+Wave with as few parameters as you can manage.
+
+### A first try
+
+With the opening settings, one hidden layer of 2 units and 7 parameters, **Train** ends at a loss of
+0.589. That is the capacity failure of card 4.
+
+### Give it more knobs
+
+At **Neurons per layer** 4, with 13 parameters, the loss falls slowly for the first hundred steps or
+so, then drops under 0.01 at step 188. The wall of dials shows all 13 parameters moving on every step.
+
+### Change how it steps
+
+With **Momentum** Off the same network ends at 0.063: plain gradient descent is still on the slow
+stretch when its 600 steps run out. Turn it back on and set **Hidden layers** to 2 for 33 parameters and the goal
+is met at step 76. Two hidden layers of 2 units also have 13 parameters and end at 0.580, so equal
+counts with different wiring are different function families.
+
+### What you just did
+
+You chose the data, the architecture and the optimizer settings. Those are **hyperparameters**. The
+parameters themselves were never chosen by anyone; they are the output of the optimization.
+
+## Where the knob picture stops working
+
+### What the lab simplifies
+
+One input and one output make the whole function drawable. Real inputs have thousands of
+dimensions, and the function can only be probed or projected. The targets are noise-free and every
+loss is measured on the training points, so the lab cannot exhibit overfitting; the Stacking neurons
+lab holds data out and does. Each step here uses all 17 points, where real training estimates the
+gradient from a random mini-batch.
+
+### When training gets stuck
+
+The stuck run on card 4 is the general situation: a gradient step is a local decision on a
+non-convex surface. It can stall on a plateau or converge to a poor minimum, and the loss curve
+looks the same in both cases as it does when capacity is short. Diagnose by changing the seed or the
+optimizer before changing the architecture.
+
+### When the steps are too long
+
+In the playground with 4 units, set **Step size** to 0.5 and **Momentum** to Off. The loss ends near
+1,595. The gradient is a first-order approximation that holds for small moves; a step this large
+overshoots along the steep directions, each overshoot is larger than the last, and the parameters
+run to the lab's clamp at ±8. The step size is the **learning rate**, and its usable range is set by
+the curvature of the loss.
+
+### What a knob is not
+
+**A common mix-up:** a knob suggests a control with a purpose, like the volume on a radio. A
+parameter has none in isolation. The swap changed six of seven values and nothing else, so no single
+value encoded anything; what a network has learned is a property of the whole setting, and
+interpretability research starts from that fact. A parameter count is likewise a measure of size.
+Capability also depends on architecture, data and training.
+
+**How sure is this?** The figures above are for the opening seeds. On card 3 the opening setting and
+the next nine scrambles all reach 0.01, between step 46 and step 147. In the playground, across the
+opening start, the next seven scrambles and every setting offered, no network with fewer than 13
+parameters fits Wave to 0.01 in 600 steps. These are measurements on a toy problem, not bounds.
+
+## The labs that open each part up
+
+- **A single neuron** takes one unit apart: the weighted sum, the bias, the activation, and the
+  decision boundary they produce.
+- **Stacking neurons** moves to two inputs, compares depth with width at equal parameter counts, and
+  scores networks on held-out points.
+- **Loss & gradient descent** draws the loss surface over two parameters and shows what the learning
+  rate and momentum do on it.
+- **Backpropagation** derives the gradient for every parameter in one backward pass.
+- **Training dynamics** separates training loss from validation loss.
+
+Later, Scaling laws asks what additional parameters buy, Why GPUs asks how billions of them are
+updated in reasonable time, and the two interpretability labs ask what, given the symmetries above,
+it can mean to say what a network has learned.

@@ -55,7 +55,7 @@ const definition: ModuleDefinition = {
   slug: "synthetic-data",
   title: "Synthetic data",
   group: "pretraining",
-  order: 41,
+  order: 42,
   icon: "Factory",
   accent: "#7a4a9a",
   prerequisites: ["module-18-dataset-building"],

@@ -7,7 +7,7 @@ const definition: ModuleDefinition = {
   slug: "evaluation",
   title: "Evaluation",
   group: "pretraining",
-  order: 45,
+  order: 46,
   icon: "ClipboardCheck",
   accent: "#3f7cc0",
   prerequisites: ["module-20-train-tiny-lm", "module-33-how-models-are-evaluated"],

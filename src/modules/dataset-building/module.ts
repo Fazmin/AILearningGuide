@@ -50,7 +50,7 @@ const definition: ModuleDefinition = {
   slug: "dataset-building",
   title: "Building a dataset",
   group: "pretraining",
-  order: 40,
+  order: 41,
   icon: "Database",
   accent: "#2f8b6a",
   prerequisites: ["module-17-training-run"],

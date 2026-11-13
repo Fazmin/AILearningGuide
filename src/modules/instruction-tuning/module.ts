@@ -26,7 +26,7 @@ const definition: ModuleDefinition = {
   slug: "instruction-tuning",
   title: "Instruction tuning & templates",
   group: "training-adapting",
-  order: 53,
+  order: 54,
   icon: "MessageSquareCode",
   accent: "#c0574f",
   prerequisites: ["module-21-fine-tuning-transfer", "module-12-post-training"],

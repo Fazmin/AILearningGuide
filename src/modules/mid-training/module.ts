@@ -7,7 +7,7 @@ const definition: ModuleDefinition = {
   slug: "mid-training",
   title: "Mid-training & data mixtures",
   group: "pretraining",
-  order: 48,
+  order: 49,
   icon: "Blend",
   accent: "#7d7426",
   prerequisites: ["module-20-train-tiny-lm", "module-18-dataset-building", "module-44-synthetic-data"],

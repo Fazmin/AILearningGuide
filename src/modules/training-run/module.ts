@@ -7,7 +7,7 @@ const definition: ModuleDefinition = {
   slug: "training-run",
   title: "Anatomy of a training run",
   group: "pretraining",
-  order: 38,
+  order: 39,
   icon: "Repeat",
   accent: "#4a6fd0",
   prerequisites: ["module-06-training-dynamics", "module-07-next-token-prediction"],

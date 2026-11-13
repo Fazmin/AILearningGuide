@@ -22,7 +22,7 @@ const definition: ModuleDefinition = {
   slug: "preference-optimization",
   title: "Preference optimization in practice",
   group: "training-adapting",
-  order: 54,
+  order: 55,
   icon: "Scale",
   accent: "#5d8a2f",
   prerequisites: ["module-12-post-training", "module-23-instruction-tuning"],

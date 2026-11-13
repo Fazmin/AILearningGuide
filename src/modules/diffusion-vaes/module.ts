@@ -51,7 +51,7 @@ const definition: ModuleDefinition = {
   slug: "diffusion-vaes",
   title: "Diffusion & VAEs",
   group: "frontiers",
-  order: 33,
+  order: 34,
   icon: "WandSparkles",
   accent: "#c05b91",
   prerequisites: ["module-03-stacking-neurons"],

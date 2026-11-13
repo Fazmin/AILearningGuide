@@ -49,7 +49,7 @@ const definition: ModuleDefinition = {
   slug: "quantization",
   title: "Quantization",
   group: "training-adapting",
-  order: 57,
+  order: 58,
   icon: "Ruler",
   accent: "#8d6a2c",
   prerequisites: ["module-11-inference-kv-cache", "module-20-train-tiny-lm"],

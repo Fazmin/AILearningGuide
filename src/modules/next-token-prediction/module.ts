@@ -67,7 +67,7 @@ const definition: ModuleDefinition = {
   slug: "next-token-prediction",
   title: "Next-token prediction",
   group: "inside-models",
-  order: 17,
+  order: 18,
   icon: "TextCursorInput",
   accent: "#4974d1",
   prerequisites: ["module-01-tokens-embeddings", "module-06-training-dynamics", "module-60-probability-surprise"],

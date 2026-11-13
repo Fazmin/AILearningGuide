@@ -7,7 +7,7 @@ const definition: ModuleDefinition = {
   slug: "train-tiny-lm",
   title: "Train one from scratch",
   group: "pretraining",
-  order: 44,
+  order: 45,
   icon: "Bot",
   accent: "#7a5bc7",
   prerequisites: ["module-18-dataset-building", "module-19-hyperparameters-schedules"],

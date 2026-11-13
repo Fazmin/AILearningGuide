@@ -16,7 +16,7 @@ const definition: ModuleDefinition = {
   slug: "tools-function-calling",
   title: "Tools and function calling",
   group: "building-with-models",
-  order: 26,
+  order: 27,
   icon: "Wrench",
   accent: "#b54d3a",
   prerequisites: ["module-37-structured-decoding"],

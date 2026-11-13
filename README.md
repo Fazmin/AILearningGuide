@@ -2,11 +2,11 @@
 
 A desktop app that teaches you how modern AI works by letting you play with it.
 
-There are 60 small hands-on labs. In each one you move a slider, click a word, or train a tiny model, and you watch what changes. Next to every lab there is a short lesson that explains what you just saw. You can read it in short, simple sentences, in plain everyday words, or in the more technical version.
+There are 61 small hands-on labs. In each one you move a slider, click a word, or train a tiny model, and you watch what changes. Next to every lab there is a short lesson that explains what you just saw. You can read it in short, simple sentences, in plain everyday words, or in the more technical version.
 
 **[Try it in your browser](https://fazmin.github.io/AILearningGuide/)**. There's nothing to install.
 
-![A tour of Discover AI: picking Simple, Plain or Standard in the welcome tour, scrolling the learning map of 60 labs, guessing before the answer in a math lab, dragging sliders in the single neuron lab, answering checkpoint questions, marking a lab complete, stepping gradient descent and backpropagation, the glossary, searching with Cmd+K, clicking words in the attention lab, training a tiny language model, splitting a training run across GPUs, switching between Simple, Plain and Standard, accessibility options and text size, AI guide settings, the connections map, and dark theme](docs/screenshots/demo.gif)
+![A tour of Discover AI: picking Simple, Plain or Standard in the welcome tour, scrolling the learning map, guessing before the answer in a math lab, dragging sliders in the single neuron lab, answering checkpoint questions, marking a lab complete, stepping gradient descent and backpropagation, the glossary, searching with Cmd+K, clicking words in the attention lab, training a tiny language model, splitting a training run across GPUs, switching between Simple, Plain and Standard, accessibility options and text size, AI guide settings, the connections map, and dark theme](docs/screenshots/demo.gif)
 
 [Watch the tour as a video](docs/screenshots/demo.mp4) for a sharper version.
 
@@ -16,17 +16,17 @@ I wanted to create a single place for anyone to learn AI. One that runs on your 
 
 ## What's inside
 
-The 60 labs are split into seven groups. You can go in order or jump to whatever you're curious about.
+The 61 labs are split into seven groups. You can go in order or jump to whatever you're curious about.
 
 | Group | What you'll learn |
 | --- | --- |
 | **Start with the groundwork** (1 to 8) | What AI is, three math labs (vectors and matrices, slopes and gradients, probability and surprise), data and features, classic machine learning, the training loop, and how we know a model works |
-| **Build the foundations** (9 to 16) | Tokens and embeddings, a single neuron, stacking neurons, loss and gradient descent, backpropagation, training dynamics, why GPUs matter, and the main model types |
-| **Look inside models** (17 to 23) | Next-token prediction, attention, the transformer block, the KV cache, attention at scale, scaling laws, and structured decoding |
-| **Build with a trained model** (24 to 29) | Search with embeddings, RAG, tools and function calling, agents, multimodal models, and failure modes and safety |
-| **Explore the frontier** (30 to 37) | Reinforcement learning, post-training, in-context learning and reasoning, diffusion, the AI ecosystem, ethics, and interpretability |
-| **Pretrain a model** (38 to 48) | A full training run: splitting it across GPUs, building a dataset, synthetic data, hyperparameters, optimizers, training from scratch, evaluation, keeping a run stable, mixture-of-experts training, and mid-training with data mixtures |
-| **Adapt and ship a model** (49 to 60) | Fine-tuning, LoRA, model merging, training an embedding model, instruction tuning, preference tuning, reasoning models, RL environments for agents, quantization, distillation, serving, and a final "ship it" capstone |
+| **Build the foundations** (9 to 17) | Tokens and embeddings, a neural network whose parameters you turn like knobs, a single neuron, stacking neurons, loss and gradient descent, backpropagation, training dynamics, why GPUs matter, and the main model types |
+| **Look inside models** (18 to 24) | Next-token prediction, attention, the transformer block, the KV cache, attention at scale, scaling laws, and structured decoding |
+| **Build with a trained model** (25 to 30) | Search with embeddings, RAG, tools and function calling, agents, multimodal models, and failure modes and safety |
+| **Explore the frontier** (31 to 38) | Reinforcement learning, post-training, in-context learning and reasoning, diffusion, the AI ecosystem, ethics, and interpretability |
+| **Pretrain a model** (39 to 49) | A full training run: splitting it across GPUs, building a dataset, synthetic data, hyperparameters, optimizers, training from scratch, evaluation, keeping a run stable, mixture-of-experts training, and mid-training with data mixtures |
+| **Adapt and ship a model** (50 to 61) | Fine-tuning, LoRA, model merging, training an embedding model, instruction tuning, preference tuning, reasoning models, RL environments for agents, quantization, distillation, serving, and a final "ship it" capstone |
 
 ## Screenshots
 
@@ -41,6 +41,10 @@ The 60 labs are split into seven groups. You can go in order or jump to whatever
 **3D you can turn.** Five labs draw their idea in 3D: loss surfaces you can turn and press flat into a contour map, three optimizers walking one ravine, a training run as a block of GPUs, and words as points in space. Drag to turn any of them.
 
 ![The slopes and gradients lab with its loss surface drawn in 3D](docs/screenshots/surface-3d.jpg)
+
+**Neural networks lab.** Every parameter is a knob you can turn. Tune two by hand, then seven, then watch training turn them all at once, and count how many a real model has.
+
+![The neural networks lab, with a turn hint on every knob](docs/screenshots/neural-networks.jpg)
 
 **Attention lab.** Click a word and see which other words it looks at. This one runs a real small transformer right in the app.
 
@@ -58,7 +62,7 @@ The 60 labs are split into seven groups. You can go in order or jump to whatever
 
 ![The optimizers lab](docs/screenshots/optimizers.jpg)
 
-**Connections map.** See how all 60 labs link together. Pick one to see what it builds on and what it leads to.
+**Connections map.** See how all 61 labs link together. Pick one to see what it builds on and what it leads to.
 
 ![The connections map](docs/screenshots/connections.jpg)
 
@@ -68,7 +72,7 @@ The 60 labs are split into seven groups. You can go in order or jump to whatever
 
 ## Features
 
-- **60 interactive labs.** Each lab is split into a few short steps with a "Try this" hint, so you always know what to do next.
+- **61 interactive labs.** Each lab is split into a few short steps with a "Try this" hint, so you always know what to do next.
 - **Three ways to read.** Simple mode uses short sentences an 8th grader can follow. Plain mode uses everyday words. Standard mode uses the proper technical terms. Switch at any time from the top bar.
 - **3D pictures you can turn.** Loss surfaces, a ravine with three optimizers on it, a block of GPUs and a cloud of words are drawn in 3D where a flat picture would hide the shape. Each one also has a flat view or the numbers beside it.
 - **Real models where it matters.** The attention lab runs a small trained transformer in the app. The training labs train a tiny language model live while you watch.

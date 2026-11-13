@@ -7,7 +7,7 @@ const definition: ModuleDefinition = {
   slug: "training-stability",
   title: "Keeping a run stable",
   group: "pretraining",
-  order: 46,
+  order: 47,
   icon: "Siren",
   accent: "#1f7a8c",
   prerequisites: ["module-53-optimizers", "module-20-train-tiny-lm"],

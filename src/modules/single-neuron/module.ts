@@ -41,10 +41,10 @@ const definition: ModuleDefinition = {
   slug: "single-neuron",
   title: "A single neuron",
   group: "foundations",
-  order: 10,
+  order: 11,
   icon: "CircleDot",
   accent: "#0d9a94",
-  prerequisites: ["module-01-tokens-embeddings", "module-30-math-you-need"],
+  prerequisites: ["module-01-tokens-embeddings", "module-30-math-you-need", "module-61-neural-networks"],
   estimatedMinutes: 12,
   steps: ["Set inputs", "Tune weights", "Choose an activation", "Read the boundary", "Try exclusive-or"],
   stepInstructions: [

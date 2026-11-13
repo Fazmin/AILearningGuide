@@ -44,7 +44,7 @@ const definition: ModuleDefinition = {
   slug: "icl-reasoning",
   title: "ICL & reasoning",
   group: "frontiers",
-  order: 32,
+  order: 33,
   icon: "BrainCircuit",
   accent: "#6c68c2",
   prerequisites: ["module-08-attention", "module-12-post-training"],

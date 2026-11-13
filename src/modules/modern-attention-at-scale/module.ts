@@ -68,7 +68,7 @@ const definition: ModuleDefinition = {
   slug: "modern-attention-at-scale",
   title: "Modern attention at scale",
   group: "inside-models",
-  order: 21,
+  order: 22,
   icon: "Focus",
   accent: "#7b4fc4",
   prerequisites: ["module-09-transformer-block", "module-11-inference-kv-cache"],
