@@ -189,6 +189,12 @@ function progressEntry(existing?: ModuleProgress): ModuleProgress {
   };
 }
 
+/** Lay a stored state over the defaults, keeping session-only settings at their defaults. */
+export function mergePersistedState<T extends { sidebarCollapsed: boolean }>(persisted: unknown, current: T): T {
+  if (!persisted || typeof persisted !== "object") return current;
+  return { ...current, ...(persisted as Partial<T>), sidebarCollapsed: current.sidebarCollapsed };
+}
+
 export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
@@ -203,7 +209,9 @@ export const useAppStore = create<AppState>()(
       typeface: "sans",
       mode: "plain",
       fontStep: 1,
-      sidebarCollapsed: false,
+      // Every launch opens on the learning map with the sidebar collapsed, so the map gets the width.
+      // It is not persisted: expanding it lasts for the session only.
+      sidebarCollapsed: true,
       learnOpen: true,
       learnExpanded: false,
       chatOpen: false,
@@ -477,12 +485,13 @@ export const useAppStore = create<AppState>()(
           migratePersistedState(clearAdditionalSystemPrompt(persisted, version), version),
           version,
         ) as AppState,
+      // Stores written before the sidebar stopped being persisted still carry `sidebarCollapsed`; ignore it.
+      merge: (persisted, current) => mergePersistedState(persisted, current),
       partialize: (state) => ({
         theme: state.theme,
         typeface: state.typeface,
         mode: state.mode,
         fontStep: state.fontStep,
-        sidebarCollapsed: state.sidebarCollapsed,
         learnOpen: state.learnOpen,
         highContrast: state.highContrast,
         reducedMotion: state.reducedMotion,

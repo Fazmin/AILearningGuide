@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { useAppStore } from "./app-store";
+import { mergePersistedState, useAppStore } from "./app-store";
 
 const state = () => useAppStore.getState();
 
@@ -105,5 +105,23 @@ describe("bookmarks", () => {
     state().setReadingPosition("module-a", { mode: "plain", section: "What it is", parent: "What it is" });
     state().setReadingPosition("module-a", section);
     expect(state().readingPositions["module-a"]).toMatchObject({ section: "Why divide by 8?", parent: "What it is" });
+  });
+});
+
+describe("the sidebar on launch", () => {
+  it("starts collapsed and is not written to storage", () => {
+    expect(useAppStore.getInitialState().sidebarCollapsed).toBe(true);
+    state().toggleSidebar();
+    const stored = useAppStore.persist.getOptions().partialize?.(state()) as Record<string, unknown>;
+    expect(stored).not.toHaveProperty("sidebarCollapsed");
+    expect(stored).toHaveProperty("theme");
+    state().toggleSidebar();
+  });
+
+  it("ignores an expanded sidebar saved by an earlier version", () => {
+    const current = { sidebarCollapsed: true, theme: "light" };
+    expect(mergePersistedState({ sidebarCollapsed: false, theme: "dark" }, current)).toEqual({ sidebarCollapsed: true, theme: "dark" });
+    expect(mergePersistedState(null, current)).toBe(current);
+    expect(mergePersistedState("junk", current)).toBe(current);
   });
 });
