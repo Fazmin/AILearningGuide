@@ -7,7 +7,7 @@ const definition: ModuleDefinition = {
   slug: "embedding-training",
   title: "Training an embedding model",
   group: "training-adapting",
-  order: 53,
+  order: 54,
   icon: "Magnet",
   accent: "#5b4fa8",
   prerequisites: ["module-38-embeddings-search", "module-21-fine-tuning-transfer"],

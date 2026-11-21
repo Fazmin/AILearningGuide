@@ -52914,3 +52914,821 @@ button.ps-col__name[aria-pressed="true"] {
 .nk-card--count .viz-bar-row > * {
   grid-template-columns: minmax(5.5rem, 8.5rem) minmax(0, 1fr) 5.6rem;
 }
+
+/* agi-superintelligence · two axes, a loop, and four kinds of claim */
+.asi-lab {
+  display: grid;
+  width: 100%;
+  max-width: 78rem;
+  margin: 0 auto;
+  gap: 0.9rem;
+  container-type: inline-size;
+}
+
+.asi-lab > .asi-card {
+  min-width: 0;
+}
+
+/* The lab shows one card per step. Its heading is the scroll target, so each step opens from the top. */
+.explore-scroll[data-module="agi-superintelligence"][data-current-step="0"] .asi-card--levels > .surface-heading,
+.explore-scroll[data-module="agi-superintelligence"][data-current-step="1"] .asi-card--profile > .surface-heading,
+.explore-scroll[data-module="agi-superintelligence"][data-current-step="2"] .asi-card--speed > .surface-heading,
+.explore-scroll[data-module="agi-superintelligence"][data-current-step="3"] .asi-card--loop > .surface-heading,
+.explore-scroll[data-module="agi-superintelligence"][data-current-step="4"] .asi-card--forecast > .surface-heading,
+.explore-scroll[data-module="agi-superintelligence"][data-current-step="5"] .asi-card--claims > .surface-heading {
+  --lesson-step-target: 1;
+  scroll-margin-top: 1.2rem;
+  scroll-margin-bottom: min(34rem, 62vh);
+}
+
+.asi-lede {
+  max-width: 72ch;
+  margin: -0.35rem 0 0;
+  color: var(--ink-soft);
+  font-size: 0.8125rem;
+  line-height: 1.55;
+}
+
+.asi-lede b,
+.asi-caption b,
+.asi-card .viz-predict__reveal b,
+.asi-card .lab-note b {
+  color: var(--ink);
+  font-weight: 650;
+}
+
+.asi-card .formula-live {
+  margin-top: 0.75rem;
+}
+
+.asi-caption {
+  margin: 0.45rem 0 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.asi-caption--lead {
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+}
+
+.asi-subhead {
+  margin: 1.1rem 0 0;
+  color: var(--ink);
+  font-size: 0.85rem;
+  font-weight: 650;
+}
+
+.asi-split {
+  display: grid;
+  align-items: start;
+  margin-top: 0.75rem;
+  gap: 1rem;
+}
+
+@container (min-width: 37rem) {
+  .asi-split--grid {
+    grid-template-columns: minmax(0, 1.5fr) minmax(13rem, 1fr);
+  }
+
+  .asi-split--plot {
+    grid-template-columns: minmax(0, 1.25fr) minmax(14rem, 1fr);
+  }
+}
+
+.asi-side {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: 0.6rem;
+}
+
+.asi-side .viz-goal {
+  margin-top: 0;
+}
+
+.asi-pick {
+  display: grid;
+  margin-top: 0.75rem;
+  gap: 0 1.2rem;
+}
+
+.asi-pick .segmented,
+.asi-controls .segmented {
+  margin: 0;
+}
+
+@container (min-width: 37rem) {
+  .asi-pick {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 2.2fr);
+  }
+}
+
+.asi-controls {
+  display: grid;
+  margin-top: 0.6rem;
+  gap: 0 1.4rem;
+}
+
+@container (min-width: 37rem) {
+  .asi-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .asi-controls--three {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .asi-controls > .range-control:first-child:nth-last-child(odd) {
+    grid-column: 1 / -1;
+  }
+
+  .asi-controls--three > .range-control:first-child:nth-last-child(odd) {
+    grid-column: auto;
+  }
+}
+
+.asi-controls--two .segmented {
+  align-self: end;
+  margin-bottom: 0.2rem;
+}
+
+.asi-actions {
+  display: flex;
+  flex-wrap: wrap;
+  margin-top: 0.2rem;
+  gap: 0.5rem;
+}
+
+.asi-actions .quiet-action {
+  width: auto;
+  min-width: 7.5rem;
+  margin-top: 0;
+  flex: 1 1 7.5rem;
+}
+
+.asi-actions button:disabled {
+  cursor: not-allowed;
+  filter: none;
+  opacity: 0.45;
+}
+
+/* ---- pictures ---- */
+.asi-frame {
+  min-width: 0;
+  margin-top: 0.75rem;
+}
+
+.asi-split > .asi-frame,
+.asi-side > .asi-frame {
+  margin-top: 0;
+}
+
+.asi-plot {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel-muted);
+}
+
+.asi-plot text {
+  font-family: "JetBrains Mono Variable", monospace;
+}
+
+.asi-plot .asi-tick {
+  fill: var(--muted);
+  font-size: 10.5px;
+}
+
+.asi-plot .asi-tick--strong {
+  fill: var(--ink);
+  font-weight: 650;
+}
+
+.asi-plot .asi-row-label {
+  fill: var(--ink-soft);
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.asi-plot .asi-grid-line,
+.asi-plot .asi-tick-line {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.asi-plot .asi-axis {
+  stroke: var(--line-strong);
+  stroke-width: 1.4;
+}
+
+.asi-legend {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  color: var(--muted);
+  font-size: 0.7rem;
+  line-height: 1.4;
+  list-style: none;
+  gap: 0.25rem 0.9rem;
+}
+
+.asi-legend li {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.asi-key {
+  display: inline-block;
+  width: 1.1rem;
+  height: 0;
+  border-top: 3px solid var(--forward);
+}
+
+.asi-key--other,
+.asi-key--ghost {
+  border-top: 2px dashed var(--muted);
+}
+
+.asi-key--adult {
+  border-top: 2px solid var(--ink-soft);
+}
+
+.asi-key--beyond {
+  border-top: 2px dashed var(--gradient);
+}
+
+.asi-key--world,
+.asi-key--inorder,
+.asi-key--parallel,
+.asi-key--gap,
+.asi-key--p10,
+.asi-key--p50 {
+  width: 0.75rem;
+  height: 0.75rem;
+  border: 0;
+  border-radius: 2px;
+}
+
+.asi-key--world { background: var(--loss); }
+.asi-key--inorder { background: var(--attention); }
+.asi-key--parallel { background: var(--forward); }
+.asi-key--gap { background: color-mix(in srgb, var(--gradient) 22%, transparent); outline: 1px solid var(--gradient); }
+.asi-key--p10 { border-radius: 50%; background: var(--panel-solid); outline: 2px solid var(--forward); }
+.asi-key--p50 { border-radius: 50%; background: var(--forward); }
+.asi-key--fit { border-top: 3px solid var(--ink-soft); }
+.asi-key--forward { border-top: 3px dashed var(--forward); }
+
+/* ---- card 1: the levels grid ---- */
+.asi-chips {
+  display: flex;
+  flex-wrap: wrap;
+  margin-top: 0.75rem;
+  gap: 0.35rem;
+}
+
+.asi-chips button {
+  padding: 0.3rem 0.6rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  color: var(--ink-soft);
+  background: var(--panel-solid);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.asi-chips button.is-placed {
+  border-style: dashed;
+  color: var(--muted);
+}
+
+.asi-chips button[aria-pressed="true"] {
+  border-style: solid;
+  border-color: var(--module-accent);
+  color: var(--ink);
+  background: color-mix(in srgb, var(--module-accent) 12%, var(--panel-solid));
+}
+
+.asi-chips button.is-right { border-color: var(--positive); }
+.asi-chips button.is-wrong { border-color: var(--negative); }
+
+.asi-grid {
+  display: grid;
+  min-width: 0;
+  gap: 0.25rem;
+  grid-template-columns: 6.2rem minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.asi-grid__row {
+  display: contents;
+}
+
+.asi-grid__head {
+  padding: 0.2rem 0.4rem;
+  color: var(--ink);
+  font-size: 0.75rem;
+  font-weight: 650;
+  text-align: center;
+}
+
+.asi-grid__head small {
+  display: block;
+  color: var(--muted);
+  font-size: 0.65rem;
+  font-weight: 500;
+}
+
+.asi-grid__level {
+  display: flex;
+  align-items: center;
+  padding: 0 0.3rem;
+  color: var(--ink-soft);
+  font-size: 0.72rem;
+  gap: 0.4rem;
+}
+
+.asi-grid__level b {
+  display: grid;
+  width: 1.3rem;
+  height: 1.3rem;
+  flex: none;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  color: var(--ink);
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 0.7rem;
+  place-items: center;
+}
+
+.asi-cell {
+  position: relative;
+  display: flex;
+  min-height: 3.1rem;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 0.35rem 0.45rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+  background: var(--panel-solid);
+  gap: 0.2rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.asi-cell:hover {
+  border-color: var(--line-strong);
+}
+
+.asi-cell.is-empty {
+  background: repeating-linear-gradient(135deg, var(--panel-muted) 0 6px, var(--panel-solid) 6px 12px);
+}
+
+.asi-cell.is-asi {
+  border: 1.5px dashed var(--gradient);
+  background: color-mix(in srgb, var(--gradient) 9%, var(--panel-solid));
+}
+
+.asi-cell.is-selected {
+  outline: 2px solid var(--module-accent);
+  outline-offset: 1px;
+}
+
+.asi-cell__tag {
+  position: absolute;
+  top: 0.25rem;
+  right: 0.35rem;
+  color: var(--gradient);
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.asi-cell__tag--soft {
+  color: var(--forward);
+  font-weight: 600;
+}
+
+.asi-cell__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem;
+}
+
+.asi-cell__chips i {
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  color: var(--ink);
+  background: var(--panel-strong);
+  font-size: 0.68rem;
+  font-style: normal;
+  font-weight: 600;
+}
+
+.asi-cell__chips i.is-right { background: color-mix(in srgb, var(--positive) 22%, var(--panel-solid)); }
+.asi-cell__chips i.is-wrong { background: color-mix(in srgb, var(--negative) 22%, var(--panel-solid)); }
+
+.asi-cell__answer {
+  color: var(--muted);
+  font-size: 0.64rem;
+  line-height: 1.3;
+}
+
+.asi-cellinfo {
+  display: grid;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--line);
+  border-left: 0.2rem solid var(--module-accent);
+  border-radius: var(--radius-sm);
+  background: var(--panel-muted);
+  gap: 0.25rem;
+}
+
+.asi-cellinfo.is-asi {
+  border-left-color: var(--gradient);
+}
+
+.asi-cellinfo span {
+  color: var(--muted);
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 0.68rem;
+}
+
+.asi-cellinfo strong {
+  color: var(--ink);
+  font-size: 0.82rem;
+}
+
+.asi-cellinfo p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+/* ---- card 2: the profile ---- */
+.asi-plot .asi-ring {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.asi-plot .asi-ring--adult {
+  stroke: var(--ink-soft);
+  stroke-width: 1.8;
+}
+
+.asi-plot .asi-ring--beyond {
+  stroke: var(--gradient);
+  stroke-width: 1.4;
+  stroke-dasharray: 5 4;
+}
+
+.asi-plot .asi-spoke {
+  stroke: var(--line);
+}
+
+.asi-plot .asi-shape {
+  fill: color-mix(in srgb, var(--forward) 22%, transparent);
+  stroke: var(--forward);
+  stroke-width: 2.4;
+  stroke-linejoin: round;
+}
+
+.asi-plot .asi-shape--other {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.4;
+  stroke-dasharray: 4 3;
+}
+
+.asi-plot .asi-vertex {
+  fill: var(--forward);
+}
+
+.asi-plot .asi-vertex.is-zero {
+  fill: var(--panel-solid);
+  stroke: var(--loss);
+  stroke-width: 2;
+}
+
+.asi-plot .asi-label {
+  fill: var(--ink-soft);
+  font-family: var(--font-ui);
+  font-size: 10.5px;
+}
+
+.asi-plot .asi-label__value {
+  fill: var(--ink);
+  font-family: "JetBrains Mono Variable", monospace;
+  font-weight: 700;
+}
+
+.asi-plot .asi-note {
+  fill: var(--muted);
+  font-size: 9.5px;
+}
+
+.asi-verdicts {
+  display: grid;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.asi-verdict {
+  display: grid;
+  align-items: center;
+  padding: 0.5rem 0.65rem;
+  gap: 0.3rem 0.6rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.asi-verdict + .asi-verdict {
+  border-top: 1px solid var(--line);
+}
+
+.asi-verdict.is-active {
+  background: color-mix(in srgb, var(--module-accent) 8%, transparent);
+}
+
+.asi-verdict span {
+  color: var(--ink-soft);
+  font-size: 0.75rem;
+}
+
+.asi-verdict.is-active span {
+  color: var(--ink);
+  font-weight: 650;
+}
+
+.asi-verdict strong {
+  color: var(--ink);
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 0.85rem;
+}
+
+.asi-verdict i {
+  display: block;
+  height: 0.55rem;
+  grid-column: 1 / -1;
+  border-radius: 0.4rem;
+  background: var(--panel-strong);
+  overflow: hidden;
+}
+
+.asi-verdict i b {
+  display: block;
+  height: 100%;
+  border-radius: 0.4rem;
+  background: var(--forward);
+}
+
+/* ---- card 3: the clock ---- */
+.asi-plot .asi-pin {
+  fill: var(--forward);
+}
+
+.asi-plot .asi-pin--alone {
+  fill: var(--muted);
+}
+
+.asi-plot .asi-part--world { fill: var(--loss); }
+.asi-plot .asi-part--inorder { fill: var(--attention); }
+.asi-plot .asi-part--parallel { fill: var(--forward); }
+
+/* ---- card 4: the loop ---- */
+.asi-loop {
+  position: relative;
+  display: grid;
+  align-items: center;
+  margin-top: 0.75rem;
+  padding: 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel-muted);
+  gap: 0.4rem;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr) auto;
+}
+
+.asi-loop > div {
+  display: grid;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+  background: var(--panel-solid);
+  gap: 0.1rem;
+}
+
+.asi-loop span {
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.asi-loop strong {
+  color: var(--ink);
+  font-family: "JetBrains Mono Variable", monospace;
+  font-size: 0.9rem;
+}
+
+.asi-loop small {
+  color: var(--muted);
+  font-size: 0.64rem;
+}
+
+.asi-loop em {
+  color: var(--muted);
+  font-size: 1rem;
+  font-style: normal;
+}
+
+.asi-loop__back {
+  color: var(--gradient) !important;
+  font-size: 1.3rem !important;
+}
+
+.asi-plot .asi-curve {
+  fill: none;
+  stroke: var(--forward);
+  stroke-width: 3;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.asi-plot .asi-curve--ghost {
+  stroke: var(--muted);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+}
+
+.asi-plot .asi-curve--fit {
+  stroke: var(--ink-soft);
+}
+
+.asi-plot .asi-curve--forward {
+  stroke-dasharray: 7 4;
+}
+
+.asi-plot .asi-threshold {
+  stroke: var(--ink-soft);
+  stroke-width: 1.3;
+  stroke-dasharray: 2 3;
+}
+
+.asi-plot .asi-threshold--beyond {
+  stroke: var(--gradient);
+}
+
+.asi-plot .asi-threshold-label {
+  fill: var(--ink-soft);
+  font-size: 10.5px;
+  paint-order: stroke;
+  stroke: var(--panel-muted);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+.asi-plot .asi-gap {
+  fill: color-mix(in srgb, var(--gradient) 14%, transparent);
+}
+
+.asi-plot .asi-cursor {
+  stroke: var(--forward);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.asi-plot .asi-dot {
+  fill: var(--forward);
+  stroke: var(--panel-solid);
+  stroke-width: 2;
+}
+
+/* ---- card 5: forecasts ---- */
+.asi-plot .asi-range {
+  stroke: color-mix(in srgb, var(--forward) 45%, transparent);
+  stroke-width: 6;
+  stroke-linecap: round;
+}
+
+.asi-plot .asi-p10 {
+  fill: var(--panel-solid);
+  stroke: var(--forward);
+  stroke-width: 2;
+}
+
+.asi-plot .asi-p50 {
+  fill: var(--forward);
+  stroke: var(--panel-solid);
+  stroke-width: 2;
+}
+
+.asi-plot .asi-measured {
+  fill: color-mix(in srgb, var(--ink) 6%, transparent);
+}
+
+/* ---- card 6: the claims ---- */
+.asi-claims {
+  display: grid;
+  margin: 0.8rem 0 0;
+  padding: 0;
+  list-style: none;
+  gap: 0.5rem;
+  counter-reset: claim;
+}
+
+.asi-claims > li {
+  display: grid;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--line);
+  border-left: 0.2rem solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--panel-solid);
+  gap: 0.45rem;
+  counter-increment: claim;
+}
+
+.asi-claims > li.is-right { border-left-color: var(--positive); }
+.asi-claims > li.is-wrong { border-left-color: var(--negative); }
+
+.asi-claims__text {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.asi-claims__text::before {
+  content: counter(claim) ". ";
+  color: var(--muted);
+  font-family: "JetBrains Mono Variable", monospace;
+}
+
+.asi-claims__kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.asi-claims__kinds button {
+  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  color: var(--ink-soft);
+  background: var(--panel-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.asi-claims__kinds button.is-right {
+  border-color: var(--positive);
+  color: var(--ink);
+  background: color-mix(in srgb, var(--positive) 16%, var(--panel-solid));
+}
+
+.asi-claims__kinds button.is-wrong {
+  border-color: var(--negative);
+  color: var(--ink);
+  background: color-mix(in srgb, var(--negative) 14%, var(--panel-solid));
+}
+
+.asi-claims__kinds button.is-answer {
+  border-style: dashed;
+  border-color: var(--positive);
+}
+
+.asi-claims__why {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.74rem;
+  line-height: 1.45;
+}
+
+.asi-claims__why strong {
+  color: var(--ink);
+}
+
+@container (max-width: 34rem) {
+  .asi-loop {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .asi-loop em {
+    justify-self: center;
+    transform: rotate(90deg);
+  }
+
+  .asi-grid {
+    grid-template-columns: 4.6rem minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .asi-grid__level span {
+    font-size: 0.64rem;
+  }
+}

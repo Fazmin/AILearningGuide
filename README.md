@@ -2,7 +2,7 @@
 
 A desktop app that teaches you how modern AI works by letting you play with it.
 
-There are 61 small hands-on labs. In each one you move a slider, click a word, or train a tiny model, and you watch what changes. Next to every lab there is a short lesson that explains what you just saw. You can read it in short, simple sentences, in plain everyday words, or in the more technical version.
+There are 62 small hands-on labs. In each one you move a slider, click a word, or train a tiny model, and you watch what changes. Next to every lab there is a short lesson that explains what you just saw. You can read it in short, simple sentences, in plain everyday words, or in the more technical version.
 
 **[Try it in your browser](https://fazmin.github.io/AILearningGuide/)**. There's nothing to install.
 
@@ -16,7 +16,7 @@ I wanted to create a single place for anyone to learn AI. One that runs on your 
 
 ## What's inside
 
-The 61 labs are split into seven groups. You can go in order or jump to whatever you're curious about.
+The 62 labs are split into seven groups. You can go in order or jump to whatever you're curious about.
 
 | Group | What you'll learn |
 | --- | --- |
@@ -24,9 +24,9 @@ The 61 labs are split into seven groups. You can go in order or jump to whatever
 | **Build the foundations** (9 to 17) | Tokens and embeddings, a neural network whose parameters you turn like knobs, a single neuron, stacking neurons, loss and gradient descent, backpropagation, training dynamics, why GPUs matter, and the main model types |
 | **Look inside models** (18 to 24) | Next-token prediction, attention, the transformer block, the KV cache, attention at scale, scaling laws, and structured decoding |
 | **Build with a trained model** (25 to 30) | Search with embeddings, RAG, tools and function calling, agents, multimodal models, and failure modes and safety |
-| **Explore the frontier** (31 to 38) | Reinforcement learning, post-training, in-context learning and reasoning, diffusion, the AI ecosystem, ethics, and interpretability |
-| **Pretrain a model** (39 to 49) | A full training run: splitting it across GPUs, building a dataset, synthetic data, hyperparameters, optimizers, training from scratch, evaluation, keeping a run stable, mixture-of-experts training, and mid-training with data mixtures |
-| **Adapt and ship a model** (50 to 61) | Fine-tuning, LoRA, model merging, training an embedding model, instruction tuning, preference tuning, reasoning models, RL environments for agents, quantization, distillation, serving, and a final "ship it" capstone |
+| **Explore the frontier** (31 to 39) | Reinforcement learning, post-training, in-context learning and reasoning, diffusion, the AI ecosystem, ethics, interpretability, and what AGI and superintelligence mean |
+| **Pretrain a model** (40 to 50) | A full training run: splitting it across GPUs, building a dataset, synthetic data, hyperparameters, optimizers, training from scratch, evaluation, keeping a run stable, mixture-of-experts training, and mid-training with data mixtures |
+| **Adapt and ship a model** (51 to 62) | Fine-tuning, LoRA, model merging, training an embedding model, instruction tuning, preference tuning, reasoning models, RL environments for agents, quantization, distillation, serving, and a final "ship it" capstone |
 
 ## Screenshots
 
@@ -46,6 +46,10 @@ The 61 labs are split into seven groups. You can go in order or jump to whatever
 
 ![The neural networks lab, with a turn hint on every knob](docs/screenshots/neural-networks.jpg)
 
+**AGI and superintelligence lab.** Place real systems on a two-axis map where AGI and ASI are named cells, see one set of test scores give three answers to "is it AGI?", and run a small model of an intelligence explosion to see which assumptions make it run away.
+
+![The AGI and superintelligence lab, with the feedback loop racing off the chart](docs/screenshots/agi-superintelligence.jpg)
+
 **Attention lab.** Click a word and see which other words it looks at. This one runs a real small transformer right in the app.
 
 ![The attention lab](docs/screenshots/attention.jpg)
@@ -62,7 +66,7 @@ The 61 labs are split into seven groups. You can go in order or jump to whatever
 
 ![The optimizers lab](docs/screenshots/optimizers.jpg)
 
-**Connections map.** See how all 61 labs link together. Pick one to see what it builds on and what it leads to.
+**Connections map.** See how all 62 labs link together. Pick one to see what it builds on and what it leads to.
 
 ![The connections map](docs/screenshots/connections.jpg)
 
@@ -72,7 +76,7 @@ The 61 labs are split into seven groups. You can go in order or jump to whatever
 
 ## Features
 
-- **61 interactive labs.** Each lab is split into a few short steps with a "Try this" hint, so you always know what to do next.
+- **62 interactive labs.** Each lab is split into a few short steps with a "Try this" hint, so you always know what to do next.
 - **Three ways to read.** Simple mode uses short sentences an 8th grader can follow. Plain mode uses everyday words. Standard mode uses the proper technical terms. Switch at any time from the top bar.
 - **3D pictures you can turn.** Loss surfaces, a ravine with three optimizers on it, a block of GPUs and a cloud of words are drawn in 3D where a flat picture would hide the shape. Each one also has a flat view or the numbers beside it.
 - **Real models where it matters.** The attention lab runs a small trained transformer in the app. The training labs train a tiny language model live while you watch.

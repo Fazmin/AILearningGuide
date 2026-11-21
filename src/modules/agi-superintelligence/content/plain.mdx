@@ -1,0 +1,168 @@
+---
+objectives: ["Place narrow AI, AGI and ASI on two separate axes, performance and generality, and say why a narrow superhuman system is not ASI", "Show that whether a system counts as AGI depends on the definition, by reading one jagged profile under three rules", "Compute how speed, copies and work that cannot be sped up limit what a faster mind could do, and say which kind of superiority the arithmetic leaves out", "Explain the intelligence-explosion argument as a feedback loop, and predict how returns to research and a human-only bottleneck change its shape", "Tell measurements, definitions, arguments and forecasts apart in claims about AGI and ASI, and say how the wording of a question and an assumed trend move a forecast"]
+terms: ["Narrow AI", "Artificial general intelligence (AGI)", "Artificial superintelligence (ASI)", "Levels of AGI", "Jagged profile", "Human-level machine intelligence", "Transformative AI", "Intelligence explosion", "Recursive self-improvement", "Takeoff", "Returns to research", "Bottleneck", "Technological singularity", "Orthogonality thesis", "Task time horizon"]
+sections: {"Two words nobody agrees on":"overview","Build the vocabulary, one card at a time":"mechanism","Your turn: sort the claims":"lab","What this lab cannot tell you":"limits","Where to go from here":"next"}
+---
+
+## Two words nobody agrees on
+
+Some people say AGI is a few years away, other people say it already arrived, and a third group says the word means nothing at all. Superintelligence, often shortened to ASI, gets described as the best thing that could happen to people and as the worst, sometimes in the same article. How can a single word mean so many different things?
+
+The answer this lab works toward is that most of the disagreement is not about machines. It comes from people using the same word for different things, and from mixing up what has been measured with what is only argued or guessed. Once you can see those differences, the arguments become much easier to follow.
+
+There is a catch you should know about from the start. Nobody has built AGI or ASI, so no lab can show you one. What this lab can show you is the exact meaning of each word, the arithmetic behind the strongest arguments, and the evidence people point to when they make forecasts.
+
+### A ladder and a map
+
+Most people picture intelligence as one ladder, with a calculator near the bottom, a person somewhere in the middle and a superintelligence high above the top rung. That picture hides something important, because a chess program can stand above every person on the chess ladder while standing below a toddler on almost every other one.
+
+The researchers whose table you will use in the first card replace the ladder with a map that has two directions. One direction asks how good a system is compared with people, and the other asks how many different kinds of task it can do. The comparison stops working in one place, which is that a real map has measured distances, while this one has positions that experts judge.
+
+### What you will be able to do
+
+The plan is to build up the vocabulary one card at a time and then to test it on a set of real claims. When you have finished, you will be able to do five things:
+
+- place narrow AI, AGI and ASI on a map with two directions, and explain why a program that beats everyone at one task is not ASI;
+- show that the same set of test scores can be close to AGI or nowhere near it, depending only on which definition you use;
+- work out what thinking faster and running many copies could and could not speed up, and name the kind of advantage the arithmetic leaves out;
+- explain the argument that AI improving AI could run away, and predict how two unmeasured numbers change whether it does;
+- sort claims about AGI and ASI into measurements, definitions, arguments and forecasts, and say what makes a forecast move.
+
+### What the lab is made of
+
+The first two cards and the fifth use tables and figures from published papers, which are listed under References at the bottom of this panel. The third and fourth cards are small models written for this lab, and the lab says so on every card, because their numbers show how an argument works rather than what will happen.
+
+## Build the vocabulary, one card at a time
+
+Keep the lab open beside this page, because every part below belongs to one card and tells you which control to touch. The lab shows one card at a time, the **Next** button under a card opens the following one, and the step bar above the lab jumps to any of them.
+
+### Two axes, not one ladder
+
+Open the first card, **Narrow, general, and how good**, which draws a table from a 2024 paper by researchers at Google DeepMind. The rows grade performance, from level 0, which is no AI at all, up to level 5, which outperforms every human. The two columns grade breadth: **narrow** means one task or a few, and **general** means a wide range of tasks.
+
+**Pause and predict:** has any AI system already beaten every human at something? Choose an answer in the card's **Predict first** box before you read on.
+
+It has, at a few narrow tasks. The table's top row lists AlphaFold, which predicts the shapes of proteins, along with AlphaZero and the chess program Stockfish, and each of them outperforms every person at its one job. So "superhuman" already exists, one task at a time.
+
+Now place the eight systems above the table, by picking a chip and then clicking the cell where you think the table puts it. Once all eight are placed, ticks and crosses show the table's answers, and every cell lists the examples the paper gives. Watch especially where ChatGPT lands, which in the paper's view is level 1 in the general column, called Emerging AGI.
+
+Then click the top-right cell, which has a dashed pink border. The paper names it **artificial superintelligence**, or ASI, and marks it "not yet achieved". ASI means superhuman and general at once, so it needs both directions of the map, while AlphaFold has only one of them.
+
+The cell one row above ChatGPT, level 2 in the general column, carries the paper's label Competent AGI. The authors say it is probably the best catch-all for many existing definitions of AGI, so when people say AGI they usually mean something near that cell. Hold on to the word "definitions", because the next card is about what happens when people choose different ones.
+
+### One profile, three verdicts
+
+Open the second card, **One profile, three verdicts**. A 2025 paper by Dan Hendrycks and colleagues defines AGI as matching a well-educated adult across ten areas of thinking, such as reading, maths, memory and hearing. Each area is worth 10 points, so a system that matched the adult everywhere would score 100.
+
+The chart has one spoke for each area, and the filled shape shows the scores the paper's authors gave GPT-5. Notice how lopsided it is: reading and writing and maths reach the full 10, while long-term memory storage sits at 0. A shape like this, strong in some places and empty in others, is called a **jagged profile**.
+
+**Pause and predict:** GPT-5 scores 57 out of 100 on this test. If AGI instead meant "adult level in every one of the ten areas", how close would GPT-5 be? Choose in the **Predict first** box.
+
+It would be at 0%, because its weakest area scores nothing. Switch **Rule** to **Weakest domain decides** and watch the reading fall from 57% to 0%, although not a single score has changed. Then try **Count domains at adult level**, which gives 20%, because two of the ten areas are full.
+
+Now switch **Model** to GPT-4. Its total is 27%, so by the paper's own rule GPT-5 is about twice as close to AGI. Under the weakest-area rule, though, both models read exactly 0%, and from that point of view nothing has improved at all.
+
+Here is the part that matters most for ASI. The chart's solid outline is one well-educated adult, and the scale stops there, so a system far beyond every person would score the same 100% as one that only matched the adult. A test designed to define AGI has no room for anything beyond it, which is why measuring ASI needs a different kind of question altogether.
+
+### Faster, more, or better
+
+Open the third card, **Faster, more, or better**. It asks a concrete question: what would it actually mean for a mind to be beyond human? There are at least three ways. A mind could think **faster**, it could run as many **copies** at once, or it could think **better**, and the first two can be worked out with ordinary arithmetic.
+
+The card starts with a project that would take one expert 100 years. Raise **Speed** to 1,000×, so that each copy thinks a thousand times faster than a person, and watch the blue pin slide left along the time ruler to 37 days. Then raise **Copies** to 1 million×, and the whole project finishes in about 3 seconds.
+
+**Pause and predict:** now suppose 10% of the work is waiting on the outside world, such as running experiments, growing cells or building machines. With the same million fast copies, about how long does the project take? Choose in the **Predict first** box.
+
+It takes about 10 years. Set **Waits on the world** to 10% and the bar turns almost entirely red, because 10% of 100 expert-years is 10 years of experiments, and no amount of thinking makes a cell grow faster. The tile **Fastest possible here** confirms that 10 years is the floor, however high you push the other two sliders.
+
+**Must happen in order** adds a second kind of limit, which covers thinking where each step needs the one before it, so extra copies cannot share it out. Set it to 50% with nothing waiting on the world, and the copies stop helping with half of the work while speed still does.
+
+The third way, thinking better, has no slider, and that is not an oversight. A better idea is not the same thing as a faster one, and nobody knows how to put the quality of thinking on a scale. Many people who worry about ASI are worried about exactly this third kind, which is the kind the arithmetic cannot show.
+
+### A loop that feeds itself
+
+Open the fourth card, **A loop that feeds itself**. The best-known argument for ASI comes from a 1960s paper by the mathematician I. J. Good. If a machine could design better machines, he wrote, the better machines could design even better ones, and the result would be an **intelligence explosion** that leaves human intelligence far behind.
+
+The card turns that argument into a small model. Before AI matches people at AI research, people do all the work, so ability climbs steadily from 0.1× to 1× in six years in every run. After that, AI takes over the research it can do, so a better AI makes research faster and faster research makes a better AI. The boxes above the plot show that loop at whichever **Year** you pick.
+
+Two numbers decide what happens next, and nobody has measured either of them. **Returns to research** says how much better AI gets when research effort doubles. Step it from 0.5 up to 3 and watch the curve. Below 1 it bends over and slows, and at exactly 1 it climbs at a steady pace. Above 1, each doubling arrives sooner than the last, until the curve shoots off the top of the chart.
+
+With returns at 1.5, AI goes from matching people to 100× beyond them in 12 years, and leaves the chart, past a million times, a year later. The lab uses 100× as its stand-in for far beyond people, and the time between the two dotted lines is what people call **takeoff**. A short gap is a fast takeoff and a long one is a slow takeoff.
+
+**Pause and predict:** keep returns at 1.5, and suppose 20% of AI research can only be done by people. What happens to the curve? Choose in the **Predict first** box.
+
+It never reaches 100× in 40 years. Set **Only people can do** to 20%, and the dashed line shows your previous run racing away while the new solid line levels off. If a fifth of the work runs at human speed, research can never go more than 5× faster than today, however clever the AI becomes. Economists call this kind of limit a **bottleneck**: growth is held back by what is essential and hard to improve.
+
+Now try 1% instead of 20%. The curve still reaches 100× in year 19.8, almost as fast as with no bottleneck at all, but it never leaves the chart. So a small bottleneck barely slows the climb to "far beyond people" while still stopping the runaway, and a large one stops both. Which of these describes the real world is one of the central open questions about ASI.
+
+### Reading a forecast
+
+Open the fifth card, **Reading forecasts**. Arguments about when AGI will arrive lean on two kinds of evidence: asking experts, and measuring a trend and carrying it forward. The card shows one of each, and how much each one depends on how it is set up.
+
+The timeline comes from a survey of 2,778 published AI researchers in late 2023. They were asked two versions of nearly the same question: when machines would beat people at every task, and when every human occupation could be fully automated.
+
+**Pause and predict:** how far apart were their 50% years for the two questions? Choose in the **Predict first** box.
+
+They were 69 years apart. The researchers gave a 50% chance of machines beating people at every task by 2047, and of every occupation being automatable by 2116. Since the two questions describe nearly the same world, the gap says more about how a question is worded than about machines. Switch **Survey** to 2022 and the first 50% year moves to 2060, 13 years later than in the newer survey.
+
+The second plot is a trend that was really measured. A research group called METR timed software tasks by how long they take people, then found the longest tasks AI could finish half the time. That length, called the **task time horizon**, was about 50 minutes in early 2025, after doubling about every seven months since 2019.
+
+Drag **Years after early 2025** to 5. At the measured pace, the trend reaches tasks of about 1.9 working months, which matches the paper's own projection. The paper adds that this holds only if its results carry over to real-world software tasks. Now change **Assumed doubling time** from 7 months to 12, and the same start reaches only about 3.3 working days. Everything to the right of the shaded band is an assumption, however smoothly the line continues.
+
+### More words in this family
+
+You will meet other terms in this area, and most of them fit somewhere on the cards you have used:
+
+- **Narrow AI**, sometimes written ANI, is the left column of the first card: systems built for one task or a few.
+- **Human-level machine intelligence** is the survey's wording for machines that can do every task better and more cheaply than people, which is one more version of AGI.
+- **Transformative AI** is defined by its effect rather than by how smart it is: AI that changes the economy and society about as much as the industrial revolution did. It could arrive before AGI or after it.
+- **Recursive self-improvement** is an AI improving the design of its own successors, the step that closes the loop on the fourth card.
+- **Technological singularity** is the writer Vernor Vinge's 1993 name for the point where superhuman intelligence arrives and change becomes too fast to predict.
+- **Takeoff**, fast or slow, is the shaded gap on the fourth card between matching people and leaving them far behind.
+- **The orthogonality thesis** is the philosopher Nick Bostrom's argument that intelligence and goals are independent, so a system could be extremely capable and still want almost anything.
+- **Alignment** is the problem of making a system pursue what people actually intend, which the Post-training lab looks at on a small scale.
+
+## Your turn: sort the claims
+
+Open the sixth card, **Challenge: sort the claims**. Statements about AGI and ASI mix four kinds of claim, and each kind deserves a different amount of trust. A **measurement** reports something observed, a **definition** chooses how to use a word, an **argument** follows from assumptions, and a **forecast** guesses at the future.
+
+The card holds eight claims, and every one of them comes from an earlier card. Pick a kind for each claim and read the short reason that appears under it. The meter fills as you sort them correctly, and you can change any answer as often as you like.
+
+**Try this:** before you choose, ask what would change your mind about the claim. If it is a new observation, the claim is probably a measurement, and if nothing could prove it wrong, it is probably a definition. If it depends on whether its assumptions hold, it is an argument, and if only time will tell, it is a forecast.
+
+Some claims lean on another kind, which is where people most often get tripped up. The 2047 claim comes from a survey that was measured, but what the survey reports is a forecast. The task-length trend was measured, but carrying it forward, as the fifth card does, is a forecast too.
+
+## What this lab cannot tell you
+
+A lab about things that do not exist yet has to be especially clear about its edges, so this section names them: first the lab's own, then the ones in the arguments themselves.
+
+### What the lab simplifies
+
+The third card treats the share of work that waits on the world as fixed, and it has no cost for coordinating a million copies. Both choices are simplifications that cut in opposite directions, because coordination would slow the copies down, while better ideas might redesign experiments so that they need less waiting.
+
+The fourth card's formula, its starting point and its clock are all made up so that the shapes are clear to see. The years mean nothing, and neither do 1× and 100× as measures of intelligence. The card shows how the intelligence-explosion argument works, and it cannot show whether the argument is right.
+
+The table on the first card and the scores on the second are the judgments of their authors at the time they wrote. Neither one places or scores newer systems, and the second card's two extra rules are readings this lab adds to make a point, not the paper's own definition.
+
+### Where the arguments are open
+
+Nobody knows the two numbers that decide the shape of the loop on the fourth card. Published estimates of the returns to AI research disagree, and so do views on how much research must wait on experiments, computing power or people. Reasonable experts reach very different conclusions because they start from different guesses about exactly these quantities.
+
+It is also unknown whether "thinking better" is a real dimension that can keep rising far beyond people, or whether some problems are hard for any mind. Both views appear in serious writing about ASI, and nothing on these cards can settle the question.
+
+**A common mix-up:** it is tempting to read "an AI beat the world champion" or "an AI scored 57% on an AGI test" as a step on a single ladder toward superintelligence. The first card shows why that is misleading, because those are positions on two different directions of the map. Beating everyone at one task says nothing about breadth, and a percentage on a test that stops at human level says nothing about going beyond it.
+
+A second mix-up is to treat a forecast as a measurement because it comes with a precise year. A year like 2047 is a measured summary of what people guessed, and the fifth card shows it moving by decades when the question changes.
+
+**How sure is this?** The table placements, the ten scores, the survey years and the task-length trend are copied from their papers. The times on the third card and every year on the fourth come from models written for this lab, and they would change with different made-up inputs.
+
+## Where to go from here
+
+The ideas on these cards connect to labs you may already have done, and to some you have not.
+
+- **What AI actually is** first introduced AGI as a goal with no agreed test, and this lab showed why that is so.
+- **Scaling laws** is where the measured trends behind most forecasts come from, and where you can see how far a fitted curve can be trusted.
+- **Post-training** looks at the alignment problem: the gap between the score a model is trained on and what people actually want.
+- **Interpretability I** and **Interpretability II** ask how anyone could check what a system has learned, which matters more the more capable systems become.
+- **Ethics and impact** covers the harms and benefits of systems that exist today.
+
+When you next read that AGI is close, or that superintelligence is impossible, try sorting the claim the way the sixth card does. Most strong statements in this area turn out to be arguments and forecasts, resting on definitions, with a few measurements underneath.

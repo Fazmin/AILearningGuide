@@ -1,0 +1,196 @@
+---
+objectives: ["Place narrow AI, AGI and ASI on two separate axes, performance and generality, and say why a narrow superhuman system is not ASI", "Show that whether a system counts as AGI depends on the definition, by reading one jagged profile under three rules", "Compute how speed, copies and work that cannot be sped up limit what a faster mind could do, and say which kind of superiority the arithmetic leaves out", "Explain the intelligence-explosion argument as a feedback loop, and predict how returns to research and a human-only bottleneck change its shape", "Tell measurements, definitions, arguments and forecasts apart in claims about AGI and ASI, and say how the wording of a question and an assumed trend move a forecast"]
+terms: ["Narrow AI", "Artificial general intelligence (AGI)", "Artificial superintelligence (ASI)", "Levels of AGI", "Jagged profile", "Human-level machine intelligence", "Transformative AI", "Intelligence explosion", "Recursive self-improvement", "Takeoff", "Returns to research", "Bottleneck", "Technological singularity", "Orthogonality thesis", "Task time horizon"]
+sections: {"Two words nobody agrees on":"overview","Build the vocabulary, one card at a time":"mechanism","Your turn: sort the claims":"lab","What this lab cannot tell you":"limits","Where to go from here":"next"}
+---
+
+## Two words nobody agrees on
+
+AGI is said to be years away, already here, or incoherent; ASI is described as the best and the worst
+outcome of the technology. Much of that disagreement is not about systems. It comes from one word
+standing for several definitions, and from measurements, definitions, arguments and forecasts being
+quoted as if they carried the same weight.
+
+No AGI or ASI exists, so no lab can exhibit one. What this lab can do is pin each term to a precise
+definition, run the arithmetic behind the strongest arguments, and show the evidence forecasts rest on.
+
+### What you will be able to explain
+
+- How a two-axis grading of performance and generality places narrow AI, AGI and ASI, and why a
+  narrow superhuman system is not ASI.
+- Why one jagged capability profile can be 57%, 20% or 0% of the way to AGI depending on the
+  aggregation rule, and why a human-capped scale cannot register ASI.
+- How speed, parallel copies, serial dependence and physical-world latency bound the wall-clock
+  advantage of a faster mind, and what the arithmetic omits.
+- The intelligence-explosion argument as a feedback loop, and how returns to research and an
+  unautomatable share (a Baumol-style bottleneck) decide between runaway, exponential and
+  decelerating growth.
+- How to classify a claim as a measurement, definition, argument or forecast, and how question
+  wording and an assumed trend move a forecast.
+
+### What the lab shows
+
+Cards 1, 2 and 5 reproduce published tables and figures. Cards 3 and 4 are models written for this
+lab; their numbers illustrate the structure of an argument and are not estimates.
+
+## Build the vocabulary, one card at a time
+
+Six cards, one per step; **Next** under a card opens the following one.
+
+### Two axes, not one ladder
+
+Morris et al. (ICML 2024) grade AI on two axes. Performance runs from level 0 (no AI) through
+Emerging, Competent (at least the 50th percentile of skilled adults), Expert (90th), Exceptional (99th)
+to Superhuman (outperforms 100% of humans). Generality is narrow or general.
+
+**Pause and predict:** has any AI system already outperformed every human at something?
+
+Yes, narrowly. Table 1 places AlphaFold, AlphaZero and Stockfish at level 5 narrow. In the general
+column it places ChatGPT, Bard, Llama 2 and Gemini at level 1 (Emerging AGI) and marks every higher
+general cell "not yet achieved". Level 2 general, Competent AGI, is in the authors' words probably the
+best catch-all for many existing definitions of AGI. Level 5 general is **artificial superintelligence**.
+
+The point of the second axis is that superhuman performance is already common one task at a time.
+ASI requires it across a wide range of tasks, which no single-axis ladder can express.
+
+### One profile, three verdicts
+
+Hendrycks et al. (2025) define AGI as matching the cognitive versatility and proficiency of a
+well-educated adult, operationalized as ten domains worth 10 points each. Their Table 1 scores GPT-4
+at 27 and GPT-5 at 57. GPT-5's profile runs from 10 in reading and writing and in mathematics to 0 in
+long-term memory storage: a **jagged profile**.
+
+**Pause and predict:** if AGI required adult level in every domain, where would GPT-5 stand?
+
+At 0%. The paper's AGI score is a sum, so strength compensates for weakness. A minimum, letting the
+weakest domain decide, gives 0% for both models; counting domains at full adult level gives 20% for
+GPT-5 and 0% for GPT-4. The scores are identical in all three readings; only the aggregation changes.
+Only the sum is the paper's definition. The other two are readings the lab adds.
+
+The scale also caps at the adult. A system far beyond every person and one that just matches the
+adult both score 100%, so an AGI benchmark built this way is structurally unable to register ASI.
+
+### Faster, more, or better
+
+A mind can exceed human performance by speed, by parallelism or by quality. The card computes the
+first two for a project of `W` expert-years:
+
+`T = W · [w + (1 − w) · (s / v + (1 − s) / (v · n))]`
+
+where `v` is speed, `n` is the number of copies, `s` is the share of the thinking that is serial and
+`w` is the share that waits on the physical world. It is Amdahl's law with a term that no compute can
+shrink.
+
+**Pause and predict:** with `v = 1,000`, `n = 10⁶` and `w = 10%`, how long does a 100 expert-year
+project take?
+
+About 10 years, against about 3 seconds with `w = 0`. Once thinking is cheap, `T → W · w`, which the
+card reports as **Fastest possible here**. Serial work behaves similarly with respect to copies:
+with `s = 50%`, extra copies cannot cut the time below `W · (1 − w) · s / v`.
+
+Quality has no term in the formula. That is the omission that matters most, because many arguments
+about ASI turn on qualitative superiority, and it cannot be reduced to speed or headcount.
+
+### A loop that feeds itself
+
+Good (1965) argued that a machine able to design better machines would set off an **intelligence
+explosion**. The card's model makes the loop explicit. Let `A` be AI research ability relative to
+today's human research community. Research effort, with a share `b` that only people can do, is
+
+`R(A) = 1 / (b + (1 − b) / max(1, A))`
+
+and progress follows `d ln A / dt = g · Rʳ / A`, with `g = 0.15` per year from `A = 0.1`. Below
+`A = 1`, `R = 1` and `A` grows linearly, reaching 1 in year 6 in every run. With `b = 0` and `A > 1`,
+`d ln A / dt = g · A^(r − 1)`: **returns to research** `r > 1` give finite-time blow-up, `r = 1` a
+constant doubling time and `r < 1` deceleration.
+
+With `b = 0`, the climb from 1× to 100×, the **takeoff**, takes 30.7 years at `r = 1`, 12.0 at
+`r = 1.5` and 3.3 at `r = 3`. Below `r = 1`, 100× is not reached within 40 years.
+
+**Pause and predict:** at `r = 1.5`, what does `b = 20%` do?
+
+It caps research effort at `1/b = 5`, after which `d ln A / dt ≤ g · 5^r / A` and growth becomes
+linear; 100× is not reached within 40 years. This is the **bottleneck** argument of Aghion, Jones and
+Jones (2017): growth is limited by what is essential and hard to improve. A small share behaves
+differently. At `b = 1%` the curve still reaches 100× in year 19.8, against 18.0 with no bottleneck,
+but no longer leaves the chart. Any `b > 0` eventually removes the singularity in this model; how
+much overshoot precedes it depends on how small `b` is.
+
+### Reading a forecast
+
+Grace et al. (2024) surveyed 2,778 published AI researchers in late 2023. The aggregate forecast gave
+machines outperforming humans at every task a 10% chance by 2027 and 50% by 2047, 13 years earlier
+than the 2022 survey's 2060. Full automation of all occupations received 10% by 2037 and 50% by 2116.
+
+**Pause and predict:** how far apart are the 50% years for "every task" and "every occupation"?
+
+69 years, from the same respondents, for nearly the same world. Framing moves the answer by more than
+the inter-survey shift.
+
+Kwa et al. (2025) measured the **task time horizon**: the length, in human working time, of software
+tasks frontier models complete with 50% success. It was about 50 minutes in early 2025 and had doubled
+about every seven months since 2019. Extrapolated five years at that rate it reaches about 317 hours,
+1.9 working months, consistent with the paper's projection, which it conditions on the results
+generalizing to real-world tasks. At a 12-month doubling the same start reaches 27 hours. The fitted
+segment is evidence; the extension is an assumption about it.
+
+### More words in this family
+
+- **Narrow AI** (ANI): the left column of card 1.
+- **Human-level machine intelligence** (HLMI): the survey's wording, unaided machines that can do
+  every task better and more cheaply than human workers.
+- **Transformative AI**: defined by impact, roughly a transition comparable to the industrial
+  revolution, independent of whether AGI has been reached.
+- **Recursive self-improvement**: an AI improving the design of its successors, the step that closes
+  card 4's loop.
+- **Technological singularity**: Vinge (1993), the point at which superhuman intelligence makes
+  further change unpredictable; he forecast the technical means within thirty years.
+- **Takeoff**: the interval from roughly human-level to far beyond, described as fast or slow.
+- **Orthogonality thesis**: Bostrom (2012), intelligence and final goals vary independently.
+- **Alignment**: getting a system to pursue what its designers intend; the Post-training lab measures
+  a small case.
+
+## Your turn: sort the claims
+
+The sixth card lists eight claims drawn from the earlier cards. Classify each as a **measurement**
+(an observation), a **definition** (a choice of usage), an **argument** (a consequence of
+assumptions) or a **forecast** (a statement about the future). Each answer shows the reason.
+
+The hard cases are composites. A survey result is a measurement of opinion whose content is a
+forecast; a fitted trend is a measurement whose extrapolation is a forecast. The card asks for the
+kind of the claim as stated.
+
+## What this lab cannot tell you
+
+### What the lab simplifies
+
+Card 3 has no coordination cost for copies and treats the world share as fixed; the first flatters
+parallelism, the second may understate what better ideas could redesign. Card 4's functional form,
+starting point and rate `g` are chosen for legibility, so its years carry no meaning and 1× and 100×
+are not units of intelligence. Cards 1 and 2 reproduce their authors' judgments at publication and do
+not grade later systems.
+
+### Where the arguments are open
+
+The parameters that decide card 4's shape have not been measured. Estimates of the returns to AI
+research differ, as do views on how much of research is bound by experiments, compute or people;
+Erdil and Besiroglu (2023) review the arguments for explosive growth and conclude it is plausible
+without warranting high confidence. Whether quality of cognition can rise far above human levels, or
+whether some problems are hard for any mind, is likewise unsettled, and it is the question card 3
+cannot represent.
+
+**A common mix-up:** reading a narrow superhuman result or a benchmark percentage as a rung on one
+ladder toward ASI. The first is a position on the performance axis only; the second, on a
+human-capped scale, cannot exceed the cap by construction.
+
+**How sure is this?** Table placements, domain scores, survey years and the time-horizon trend are
+copied from their sources. Every number on cards 3 and 4 follows from inputs chosen for the lab.
+
+## Where to go from here
+
+- **What AI actually is** introduced AGI as a goal with no agreed test.
+- **Scaling laws** covers the fitted trends most forecasts extrapolate, and where fits fail.
+- **Post-training** measures a small alignment failure: a proxy reward outrunning the real objective.
+- **Interpretability I** and **Interpretability II** ask how a system's learned behaviour could be
+  checked, which bears on oversight of more capable systems.
+- **Ethics and impact** covers present harms and benefits.

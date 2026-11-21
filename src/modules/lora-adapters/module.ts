@@ -24,7 +24,7 @@ const definition: ModuleDefinition = {
   slug: "lora-adapters",
   title: "LoRA & adapters",
   group: "training-adapting",
-  order: 51,
+  order: 52,
   icon: "Puzzle",
   accent: "#a8559b",
   prerequisites: ["module-21-fine-tuning-transfer"],
